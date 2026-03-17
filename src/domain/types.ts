@@ -1,8 +1,20 @@
-export type ISODateString = string
+import type {
+  CurrencyCode,
+  DocumentId,
+  ExceptionCaseId,
+  ExceptionSeverity,
+  ExceptionStatus,
+  ISODateString,
+  MatchGroupId,
+  MatchStatus,
+  SourceSystem,
+  TransactionDirection,
+  TransactionId
+} from './value-types'
 
 export interface SourceDocument {
-  id: string
-  sourceSystem: string
+  id: DocumentId
+  sourceSystem: SourceSystem
   documentType: string
   fileName: string
   uploadedAt: ISODateString
@@ -12,22 +24,22 @@ export interface SourceDocument {
 
 export interface ExtractedRecord {
   id: string
-  sourceDocumentId: string
+  sourceDocumentId: DocumentId
   recordType: string
   extractedAt: ISODateString
   rawReference?: string
   amountMinor?: number
-  currency?: string
+  currency?: CurrencyCode
   occurredAt?: ISODateString
   data: Record<string, unknown>
 }
 
 export interface NormalizedTransaction {
-  id: string
-  direction: 'in' | 'out' | 'internal'
-  source: string
+  id: TransactionId
+  direction: TransactionDirection
+  source: SourceSystem
   amountMinor: number
-  currency: string
+  currency: CurrencyCode
   bookedAt: ISODateString
   valueAt?: ISODateString
   accountId: string
@@ -36,13 +48,13 @@ export interface NormalizedTransaction {
   reservationId?: string
   invoiceNumber?: string
   extractedRecordIds: string[]
-  sourceDocumentIds: string[]
+  sourceDocumentIds: DocumentId[]
 }
 
 export interface MatchGroup {
-  id: string
-  transactionIds: string[]
-  status: 'proposed' | 'confirmed' | 'rejected'
+  id: MatchGroupId
+  transactionIds: TransactionId[]
+  status: MatchStatus
   reason: string
   confidence: number
   ruleKey: string
@@ -51,14 +63,14 @@ export interface MatchGroup {
 }
 
 export interface ExceptionCase {
-  id: string
+  id: ExceptionCaseId
   type: string
-  severity: 'low' | 'medium' | 'high' | 'critical'
-  status: 'open' | 'in_review' | 'resolved' | 'dismissed'
+  severity: ExceptionSeverity
+  status: ExceptionStatus
   explanation: string
-  relatedTransactionIds: string[]
+  relatedTransactionIds: TransactionId[]
   relatedExtractedRecordIds: string[]
-  relatedSourceDocumentIds: string[]
+  relatedSourceDocumentIds: DocumentId[]
   recommendedNextStep?: string
   createdAt: ISODateString
   resolvedAt?: ISODateString
