@@ -1,0 +1,31 @@
+# Minimal .gitignore for a Node/TypeScript/Next.js style web app
+
+# Node modules
+node_modules/
+
+# Next.js / build outputs
+.next/
+dist/
+build/
+
+# Coverage
+coverage/
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Python pytest/cache
+.pytest_cache/
+__pycache__/
+
+# Editors/IDE
+.vscode/
+.idea/
