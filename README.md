@@ -18,3 +18,24 @@ This repository currently contains:
 - reporting
 - domain
 - shared
+
+## Prompt workflow (Copilot Agent)
+Use the prompt system in `prompts/` to run implementation in small, consistent steps:
+
+- Base context and invariants:
+	- `prompts/master.md`
+	- `prompts/prefix.md`
+	- `prompts/task-template.md`
+- Step prompts:
+	- `prompts/01-validate-scaffold.prompt.md`
+	- `prompts/02-domain-types.prompt.md`
+	- `prompts/03-normalization-contracts.prompt.md`
+	- `prompts/04-matching-contracts.prompt.md`
+	- `prompts/05-first-normalizers.prompt.md`
+- Controller prompt:
+	- `prompts/run-next-step.prompt.md`
+
+Recommended usage:
+1. Start from the controller prompt (`run-next-step`) in Agent mode.
+2. Let the agent inspect state, execute the next unfinished step, run tests/typecheck, then commit and push.
+3. Repeat until all numbered steps are complete.
