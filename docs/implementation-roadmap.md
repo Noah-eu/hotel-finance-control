@@ -25,7 +25,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 17 | `prompts/17-comgate-parser.prompt.md` | done | A deterministic Comgate parser now extracts payout-line records for website reservations and parking payment flows with source traceability fields and focused tests. |
 | 18 | `prompts/18-invoice-receipt-ingestion.prompt.md` | done | Deterministic document-ingestion contracts and a first invoice parser path now exist with traceable extracted outputs, focused tests, and OCR reserved as a future fallback only. |
 | 19 | `prompts/19-monthly-reconciliation-batch.prompt.md` | done | A deterministic monthly reconciliation batch entry point now routes imported source files through extraction, reconciliation, and reporting with focused end-to-end tests. |
-| 20 | `prompts/20-review-screen-baseline.prompt.md` | next | Add the first real review workflow layer for matched, unmatched, suspicious, and missing-document items. |
+| 20 | `prompts/20-review-screen-baseline.prompt.md` | done | A deterministic review workflow baseline now surfaces matched, unmatched, suspicious, and missing-document items from monthly reconciliation outputs with focused tests. |
 
 ## Current implemented modules
 
@@ -36,6 +36,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/reconciliation`: end-to-end orchestration entrypoint with summary counts
 - `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
 - `src/monthly-batch`: deterministic monthly import-to-extraction-to-reconciliation-to-report orchestration over representative real source files
+- `src/review`: deterministic review workflow surface for matched, unmatched, suspicious, and missing-document reconciliation outcomes
 - `src/demo-fixtures`: reusable deterministic demo inputs plus expected reconciliation and reporting outputs
 - `src/real-input-fixtures`: representative deterministic raw-source fixtures plus expected extracted and normalized outputs for real hotel-finance inputs
 - `src/extraction`: deterministic Raiffeisenbank and Fio bank-statement parsers, Booking and Comgate payout/export parsers, plus deterministic document-ingestion contracts and a first invoice parser path
@@ -55,7 +56,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 
 ## Current roadmap status
 
-Steps `01` through `19` are complete. Step `20` is the next unfinished milestone.
+Steps `01` through `20` are complete. There is no unfinished roadmap step currently recorded.
 
 ## Next step selection rule
 

@@ -29,6 +29,12 @@ describe('smoke', () => {
       mode: 'deterministic'
     })
     expect(result).toHaveProperty('monthlyBatch.runMonthlyReconciliationBatch')
+    expect(result.review.placeholder()).toEqual({
+      name: 'review',
+      surface: 'baseline',
+      buildReviewScreen: result.review.buildReviewScreen
+    })
+    expect(result).toHaveProperty('review.buildReviewScreen')
     expect(result).toHaveProperty('cliDemo.runCliDemo')
     expect(result).toHaveProperty('webDemo.buildWebDemo')
     expect(result).toHaveProperty('realInputFixtures.getRealInputFixture')

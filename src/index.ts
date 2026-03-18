@@ -10,6 +10,7 @@ import * as cliDemo from './cli-demo'
 import * as webDemo from './web-demo'
 import * as realInputFixtures from './real-input-fixtures'
 import * as monthlyBatch from './monthly-batch'
+import * as review from './review'
 
 export function bootstrap() {
   return {
@@ -22,6 +23,7 @@ export function bootstrap() {
     reconciliation: reconciliation.placeholder(),
     reporting: reporting.placeholder(),
     monthlyBatch,
+    review,
     cliDemo,
     webDemo,
     realInputFixtures
@@ -39,5 +41,6 @@ export * as reconciliation from './reconciliation'
 export * as demoFixtures from './demo-fixtures'
 export * as realInputFixtures from './real-input-fixtures'
 export * as monthlyBatch from './monthly-batch'
+export * as review from './review'
 export * as cliDemo from './cli-demo'
 export * as webDemo from './web-demo'
