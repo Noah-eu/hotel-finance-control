@@ -15,6 +15,9 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 07 | `prompts/07-exceptions-baseline.prompt.md` | done | Baseline exception detector exists for unmatched transactions/documents and low-confidence matches. |
 | 08 | `prompts/08-reconciliation-flow.prompt.md` | done | End-to-end reconciliation orchestration exists with normalization, matching, exceptions, and summary counts. |
 | 09 | `prompts/09-reporting-export.prompt.md` | done | Reporting/export now builds a deterministic reconciliation report with summary, matches, exceptions, and transaction-level statuses. |
+| 10 | `prompts/10-demo-fixtures.prompt.md` | next | Add deterministic sample fixture inputs and expected reconciliation/report outputs for local development and demos. |
+| 11 | `prompts/11-cli-demo.prompt.md` | planned | Add a local CLI-style demo command that runs the pipeline on fixture data and prints a readable report. |
+| 12 | `prompts/12-minimal-web-demo.prompt.md` | planned | Add the first tiny browser-visible local demo layer that renders fixture-driven reconciliation output without becoming a production UI. |
 
 ## Current implemented modules
 
@@ -24,6 +27,12 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/exceptions`: baseline deterministic exception generation
 - `src/reconciliation`: end-to-end orchestration entrypoint with summary counts
 - `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
+
+## Upcoming workflow milestones
+
+- Step 10 focuses on deterministic demo fixtures: sample `ExtractedRecord[]` inputs plus expected reconciliation and reporting outputs that can support tests, demos, and local tooling.
+- Step 11 focuses on a local CLI demo entrypoint that runs the existing pipeline against fixture data and prints a readable report for manual inspection.
+- Step 12 focuses on a minimal local web demo: a tiny browser-visible layer that presents fixture-driven results without introducing a production application architecture.
 
 ## Next step selection rule
 
