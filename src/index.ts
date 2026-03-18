@@ -11,6 +11,7 @@ import * as webDemo from './web-demo'
 import * as realInputFixtures from './real-input-fixtures'
 import * as monthlyBatch from './monthly-batch'
 import * as review from './review'
+import * as uploadWeb from './upload-web'
 
 export function bootstrap() {
   return {
@@ -24,6 +25,7 @@ export function bootstrap() {
     reporting: reporting.placeholder(),
     monthlyBatch,
     review,
+  uploadWeb,
     cliDemo,
     webDemo,
     realInputFixtures
@@ -42,5 +44,6 @@ export * as demoFixtures from './demo-fixtures'
 export * as realInputFixtures from './real-input-fixtures'
 export * as monthlyBatch from './monthly-batch'
 export * as review from './review'
+export * as uploadWeb from './upload-web'
 export * as cliDemo from './cli-demo'
 export * as webDemo from './web-demo'
