@@ -9,3 +9,6 @@ export type {
   NormalizationResult,
   Normalizer
 } from './contracts'
+
+export { BankTransactionNormalizer, PayoutLineNormalizer } from './normalizers'
+export { NormalizerRegistry, createDefaultRegistry } from './registry'
