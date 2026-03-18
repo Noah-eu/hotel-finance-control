@@ -10,9 +10,11 @@ export interface ExceptionDetectionInput {
   unmatchedTransactions?: Array<{
     transactionId: TransactionId
     reason: string
+    ruleCode?: string
     severity?: ExceptionSeverity
     sourceDocumentIds?: SourceDocument['id'][]
     extractedRecordIds?: ExtractedRecord['id'][]
+    recommendedNextStep?: string
   }>
   unmatchedDocuments?: SourceDocument[]
   lowConfidenceMatches?: Array<{
@@ -55,13 +57,16 @@ export class BaselineExceptionDetector implements ExceptionDetector {
       cases.push({
         id,
         type: 'unmatched_transaction',
+        ruleCode: unmatched.ruleCode,
         severity: unmatched.severity ?? 'medium',
         status: context.defaultStatus ?? DEFAULT_STATUS,
         explanation: unmatched.reason,
         relatedTransactionIds: [unmatched.transactionId],
         relatedExtractedRecordIds: unmatched.extractedRecordIds ?? [],
         relatedSourceDocumentIds: unmatched.sourceDocumentIds ?? [],
-        recommendedNextStep: 'Review transaction classification and collect supporting documents.',
+        recommendedNextStep:
+          unmatched.recommendedNextStep
+          ?? 'Review transaction classification and collect supporting documents.',
         createdAt: context.requestedAt
       })
       trace.push({

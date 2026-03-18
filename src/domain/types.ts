@@ -65,6 +65,7 @@ export interface MatchGroup {
 export interface ExceptionCase {
   id: ExceptionCaseId
   type: string
+  ruleCode?: string
   severity: ExceptionSeverity
   status: ExceptionStatus
   explanation: string

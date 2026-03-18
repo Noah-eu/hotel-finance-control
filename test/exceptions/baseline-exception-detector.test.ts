@@ -41,9 +41,11 @@ describe('BaselineExceptionDetector', () => {
           {
             transactionId: 'txn-unmatched-1' as MatchGroup['transactionIds'][number],
             reason: 'Outgoing bank transaction has no linked invoice.',
+            ruleCode: 'missing_supporting_document',
             severity: 'high',
             sourceDocumentIds: ['doc-expense-1' as SourceDocument['id']],
-            extractedRecordIds: ['record-1']
+            extractedRecordIds: ['record-1'],
+            recommendedNextStep: 'Collect the missing invoice or receipt and link it to this expense transaction.'
           }
         ]
       },
@@ -53,12 +55,14 @@ describe('BaselineExceptionDetector', () => {
     expect(result.cases).toHaveLength(1)
     expect(result.cases[0]).toMatchObject({
       type: 'unmatched_transaction',
+      ruleCode: 'missing_supporting_document',
       severity: 'high',
       status: 'open',
       relatedTransactionIds: ['txn-unmatched-1'],
       relatedSourceDocumentIds: ['doc-expense-1'],
       relatedExtractedRecordIds: ['record-1']
     })
+    expect(result.cases[0].recommendedNextStep).toContain('Collect the missing invoice or receipt')
     expect(result.trace).toEqual([
       {
         exceptionCaseId: 'exc:txn:txn-unmatched-1',
@@ -117,5 +121,32 @@ describe('BaselineExceptionDetector', () => {
       relatedTransactionIds: ['txn-1']
     })
     expect(result.cases[0].explanation).toContain('below threshold 0.60')
+  })
+
+  it('preserves suspicious-expense rule metadata and traceability for review flows', () => {
+    const result = detectExceptions(
+      {
+        unmatchedTransactions: [
+          {
+            transactionId: 'txn-suspicious-1' as MatchGroup['transactionIds'][number],
+            reason: 'Outgoing expense txn-suspicious-1 is flagged as suspicious/private because its reference "PERSONAL-TECH" looks personal.',
+            ruleCode: 'suspicious_private_expense',
+            severity: 'high',
+            sourceDocumentIds: ['doc-expense-2' as SourceDocument['id']],
+            extractedRecordIds: ['record-2']
+          }
+        ]
+      },
+      context
+    )
+
+    expect(result.cases[0]).toMatchObject({
+      type: 'unmatched_transaction',
+      ruleCode: 'suspicious_private_expense',
+      severity: 'high',
+      relatedTransactionIds: ['txn-suspicious-1'],
+      relatedSourceDocumentIds: ['doc-expense-2'],
+      relatedExtractedRecordIds: ['record-2']
+    })
   })
 })

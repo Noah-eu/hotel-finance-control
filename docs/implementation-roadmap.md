@@ -32,15 +32,15 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 24 | `prompts/24-csv-xlsx-export.prompt.md` | done | Practical CSV and real XLSX export now exist for reconciliation transactions, review items, and monthly summaries, built directly from shared monthly-batch, reporting, and review outputs. |
 | 25 | `prompts/25-parser-hardening-raiff-fio-booking-comgate.prompt.md` | done | Deterministic Raiffeisenbank, Fio, Booking, and Comgate parsers now handle realistic delimiter, header-alias, quoting, BOM, date, and amount variants while keeping clear required-column failures and shared normalization intact. |
 | 26 | `prompts/26-invoice-receipt-expansion.prompt.md` | done | Deterministic document ingestion now covers realistic invoice and receipt variants through one shared parser path, a shared document normalizer, receipt routing in monthly-batch, and focused tests with clear unsupported-structure failures. |
-| 27 | `prompts/27-suspicious-expense-rules.prompt.md` | next | Add the first explicit review rules for suspicious/private expenses and missing supporting documents. |
-| 28 | `prompts/28-monthly-run-from-uploaded-files.prompt.md` | planned | Add one real end-to-end monthly processing flow using uploaded source files instead of demo fixtures. |
+| 27 | `prompts/27-suspicious-expense-rules.prompt.md` | done | Shared deterministic exception rules now flag suspicious/private expense-like outflows and missing supporting documents with explicit rule codes, traceability, review/report integration, and safe exclusions for legitimate payroll-style flows. |
+| 28 | `prompts/28-monthly-run-from-uploaded-files.prompt.md` | next | Add one real end-to-end monthly processing flow using uploaded source files instead of demo fixtures. |
 
 ## Current implemented modules
 
 - `src/domain`: shared vocabulary and core entity types
 - `src/normalization`: contracts, normalizers, registry, mixed-record normalization service
 - `src/matching`: contracts, deterministic payout-to-bank matcher, service entrypoint
-- `src/exceptions`: baseline deterministic exception generation
+- `src/exceptions`: deterministic exception generation for unmatched transactions/documents, low-confidence matches, suspicious/private expenses, and missing supporting documents
 - `src/reconciliation`: end-to-end orchestration entrypoint with summary counts
 - `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
 - `src/export`: shared CSV/XLSX export layer for reconciliation transactions, review items, and monthly summaries built from shared batch/report/review outputs
@@ -74,7 +74,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 
 ## Current roadmap status
 
-Steps `01` through `26` are complete. Step `27` is the next unfinished milestone.
+Steps `01` through `27` are complete. Step `28` is the next unfinished milestone.
 
 ## Next step selection rule
 

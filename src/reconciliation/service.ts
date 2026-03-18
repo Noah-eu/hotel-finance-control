@@ -11,6 +11,13 @@ import type {
 } from './contracts'
 
 const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.9
+const SUSPICIOUS_EXPENSE_RULE_CODE = 'suspicious_private_expense'
+const MISSING_SUPPORTING_DOCUMENT_RULE_CODE = 'missing_supporting_document'
+const DOCUMENT_SOURCE_SET = new Set(['invoice', 'receipt'])
+const SAFE_OUTFLOW_SOURCES = new Set(['invoice', 'receipt'])
+const SAFE_OUTFLOW_COUNTERPARTY_PATTERNS = [/payroll/i]
+const SUSPICIOUS_REFERENCE_PATTERNS = [/personal/i, /private/i]
+const SUSPICIOUS_COUNTERPARTY_PATTERNS = [/electro world/i]
 
 export class DefaultReconciliationService implements ReconciliationService {
   reconcile(input: ReconciliationInput, context: ReconciliationContext): ReconciliationResult {
@@ -90,13 +97,56 @@ function buildUnmatchedTransactionExceptions(
 ) {
   return transactions
     .filter((transaction) => !matchedIds.has(transaction.id))
-    .map((transaction) => ({
+    .map((transaction) => buildUnmatchedExceptionRule(transaction, matching.matchGroups, transactions))
+}
+
+function buildUnmatchedExceptionRule(
+  transaction: NormalizedTransaction,
+  matchGroups: MatchGroup[],
+  transactions: NormalizedTransaction[]
+) {
+  const supportingDocuments = transactions.filter(
+    (candidate) =>
+      candidate.direction === 'out'
+      && candidate.sourceDocumentIds.some((sourceDocumentId) =>
+        transaction.sourceDocumentIds.includes(sourceDocumentId)
+      )
+      && DOCUMENT_SOURCE_SET.has(candidate.source)
+  )
+
+  if (transaction.direction === 'out' && isSuspiciousExpense(transaction)) {
+    return {
       transactionId: transaction.id,
-      reason: buildUnmatchedReason(transaction, matching.matchGroups),
-      severity: transaction.direction === 'out' ? ('high' as const) : ('medium' as const),
+      ruleCode: SUSPICIOUS_EXPENSE_RULE_CODE,
+      reason: buildSuspiciousExpenseReason(transaction),
+      severity: 'high' as const,
       sourceDocumentIds: transaction.sourceDocumentIds,
-      extractedRecordIds: transaction.extractedRecordIds
-    }))
+      extractedRecordIds: transaction.extractedRecordIds,
+      recommendedNextStep:
+        'Review whether this expense is hotel-related and attach supporting invoice or receipt if it is legitimate.'
+    }
+  }
+
+  if (transaction.direction === 'out' && shouldFlagMissingSupportingDocument(transaction, supportingDocuments)) {
+    return {
+      transactionId: transaction.id,
+      ruleCode: MISSING_SUPPORTING_DOCUMENT_RULE_CODE,
+      reason: 'Outgoing expense-like transaction has no supporting invoice or receipt in the current monthly batch.',
+      severity: 'high' as const,
+      sourceDocumentIds: transaction.sourceDocumentIds,
+      extractedRecordIds: transaction.extractedRecordIds,
+      recommendedNextStep:
+        'Collect the missing invoice or receipt and link it to this expense transaction.'
+    }
+  }
+
+  return {
+    transactionId: transaction.id,
+    reason: buildUnmatchedReason(transaction, matchGroups),
+    severity: transaction.direction === 'out' ? ('high' as const) : ('medium' as const),
+    sourceDocumentIds: transaction.sourceDocumentIds,
+    extractedRecordIds: transaction.extractedRecordIds
+  }
 }
 
 function buildUnmatchedReason(
@@ -118,4 +168,54 @@ function buildUnmatchedReason(
   }
 
   return 'Expected incoming transaction could not be matched to an actual bank movement.'
+}
+
+function shouldFlagMissingSupportingDocument(
+  transaction: NormalizedTransaction,
+  supportingDocuments: NormalizedTransaction[]
+): boolean {
+  if (SAFE_OUTFLOW_SOURCES.has(transaction.source)) {
+    return false
+  }
+
+  if (supportingDocuments.length > 0) {
+    return false
+  }
+
+  if (isKnownLegitimateOutflow(transaction)) {
+    return false
+  }
+
+  return transaction.direction === 'out'
+}
+
+function isKnownLegitimateOutflow(transaction: NormalizedTransaction): boolean {
+  const reference = transaction.reference?.toLowerCase() ?? ''
+  const counterparty = transaction.counterparty?.toLowerCase() ?? ''
+
+  if (reference.includes('payroll')) {
+    return true
+  }
+
+  return SAFE_OUTFLOW_COUNTERPARTY_PATTERNS.some((pattern) => pattern.test(counterparty))
+}
+
+function isSuspiciousExpense(transaction: NormalizedTransaction): boolean {
+  if (transaction.direction !== 'out') {
+    return false
+  }
+
+  const reference = transaction.reference ?? ''
+  const counterparty = transaction.counterparty ?? ''
+
+  return SUSPICIOUS_REFERENCE_PATTERNS.some((pattern) => pattern.test(reference))
+    || SUSPICIOUS_COUNTERPARTY_PATTERNS.some((pattern) => pattern.test(counterparty))
+}
+
+function buildSuspiciousExpenseReason(transaction: NormalizedTransaction): string {
+  if ((transaction.reference ?? '').toLowerCase().includes('personal')) {
+    return `Outgoing expense ${transaction.id} is flagged as suspicious/private because its reference "${transaction.reference}" looks personal.`
+  }
+
+  return `Outgoing expense ${transaction.id} is flagged as suspicious/private because counterparty "${transaction.counterparty ?? 'unknown'}" matches a suspicious spending pattern.`
 }

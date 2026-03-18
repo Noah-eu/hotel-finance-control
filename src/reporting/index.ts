@@ -24,6 +24,7 @@ export interface ReconciliationReport {
   exceptions: Array<{
     exceptionCaseId: string
     type: string
+    ruleCode?: string
     severity: string
     explanation: string
     relatedTransactionIds: string[]
@@ -60,6 +61,7 @@ export function buildReconciliationReport(
     exceptions: input.reconciliation.exceptionCases.map((exceptionCase) => ({
       exceptionCaseId: exceptionCase.id,
       type: exceptionCase.type,
+      ruleCode: exceptionCase.ruleCode,
       severity: exceptionCase.severity,
       explanation: exceptionCase.explanation,
       relatedTransactionIds: exceptionCase.relatedTransactionIds,

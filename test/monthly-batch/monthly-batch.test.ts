@@ -55,6 +55,16 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.report.summary).toEqual(result.reconciliation.summary)
     expect(result.report.matches).toHaveLength(1)
     expect(result.report.exceptions).toHaveLength(8)
+    expect(
+      result.report.exceptions.some(
+        (exceptionCase) => exceptionCase.ruleCode === 'suspicious_private_expense'
+      )
+    ).toBe(true)
+    expect(
+      result.report.exceptions.some(
+        (exceptionCase) => exceptionCase.ruleCode === 'missing_supporting_document'
+      )
+    ).toBe(true)
   })
 
   it('fails clearly when a source document has no configured parser', () => {
@@ -224,5 +234,34 @@ describe('runMonthlyReconciliationBatch', () => {
       unmatchedExpectedCount: 0,
       unmatchedActualCount: 0
     })
+  })
+
+  it('avoids over-flagging known legitimate payroll outflows as missing-document or suspicious expenses', () => {
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: raiffeisen.sourceDocument,
+          content: [
+            'bookedAt,amountMinor,currency,accountId,counterparty,reference,transactionType',
+            '2026-03-18,-55000,CZK,raiffeisen-main,Hotel payroll,PAYROLL-MAR-2026,payroll'
+          ].join('\n')
+        }
+      ],
+      reconciliationContext: {
+        runId: 'payroll-run-2026-03',
+        requestedAt: '2026-03-18T22:47:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-18T22:48:00.000Z'
+    })
+
+    expect(result.reconciliation.exceptionCases).toHaveLength(1)
+    expect(result.reconciliation.exceptionCases[0]).toMatchObject({
+      type: 'unmatched_transaction',
+      ruleCode: undefined
+    })
+    expect(result.reconciliation.exceptionCases[0].explanation).not.toContain('suspicious/private')
+    expect(result.reconciliation.exceptionCases[0].explanation).not.toContain('supporting invoice or receipt')
   })
 })

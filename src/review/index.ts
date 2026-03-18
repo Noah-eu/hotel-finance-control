@@ -77,7 +77,7 @@ function toReviewItem(
   return {
     id: exceptionCase.id,
     kind,
-    title: `${toTitle(kind)}: ${exceptionCase.type}`,
+  title: `${toTitle(kind)}: ${exceptionCase.ruleCode ?? exceptionCase.type}`,
     detail: exceptionCase.explanation,
     transactionIds: exceptionCase.relatedTransactionIds,
     sourceDocumentIds: exceptionCase.relatedSourceDocumentIds,
@@ -99,7 +99,8 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
 }
 
 function isSuspicious(exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number]): boolean {
-  return exceptionCase.explanation.toLowerCase().includes('requires review')
+  return exceptionCase.ruleCode === 'suspicious_private_expense'
+    || exceptionCase.explanation.toLowerCase().includes('requires review')
     || exceptionCase.explanation.toLowerCase().includes('suspicious')
     || exceptionCase.severity === 'high'
 }
@@ -108,6 +109,10 @@ function isMissingDocument(
   exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
   batch: MonthlyBatchResult
 ): boolean {
+  if (exceptionCase.ruleCode === 'missing_supporting_document') {
+    return true
+  }
+
   if (exceptionCase.explanation.includes('supporting invoice or receipt')) {
     return true
   }
