@@ -12,6 +12,7 @@ describe('smoke', () => {
       parser: 'deterministic'
     })
     expect(result).toHaveProperty('extraction.parseBookingPayoutExport')
+    expect(result).toHaveProperty('extraction.parseComgateExport')
     expect(result).toHaveProperty('extraction.parseRaiffeisenbankStatement')
     expect(result).toHaveProperty('extraction.parseFioStatement')
     expect(result.normalization).toHaveProperty('name', 'normalization')
