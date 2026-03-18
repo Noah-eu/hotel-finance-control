@@ -24,6 +24,11 @@ describe('smoke', () => {
     expect(result.exceptions).toHaveProperty('detector', 'baseline')
     expect(result.reporting).toHaveProperty('renderer', 'reconciliation-report')
     expect(result).toHaveProperty('reconciliation.pipeline', 'default')
+    expect(result.monthlyBatch.placeholder()).toEqual({
+      name: 'monthly-batch',
+      mode: 'deterministic'
+    })
+    expect(result).toHaveProperty('monthlyBatch.runMonthlyReconciliationBatch')
     expect(result).toHaveProperty('cliDemo.runCliDemo')
     expect(result).toHaveProperty('webDemo.buildWebDemo')
     expect(result).toHaveProperty('realInputFixtures.getRealInputFixture')
