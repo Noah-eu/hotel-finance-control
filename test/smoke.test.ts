@@ -11,5 +11,6 @@ describe('smoke', () => {
     expect(result.exceptions).toHaveProperty('detector', 'baseline')
     expect(result.reporting).toHaveProperty('renderer', 'reconciliation-report')
     expect(result).toHaveProperty('reconciliation.pipeline', 'default')
+    expect(result).toHaveProperty('cliDemo.runCliDemo')
   })
 })

@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "demo:cli": "tsx src/cli-demo/run.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
   }

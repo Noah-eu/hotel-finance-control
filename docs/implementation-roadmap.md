@@ -16,8 +16,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 08 | `prompts/08-reconciliation-flow.prompt.md` | done | End-to-end reconciliation orchestration exists with normalization, matching, exceptions, and summary counts. |
 | 09 | `prompts/09-reporting-export.prompt.md` | done | Reporting/export now builds a deterministic reconciliation report with summary, matches, exceptions, and transaction-level statuses. |
 | 10 | `prompts/10-demo-fixtures.prompt.md` | done | Reusable deterministic fixture inputs and expected reconciliation/report outputs now exist under `src/demo-fixtures` with validation tests. |
-| 11 | `prompts/11-cli-demo.prompt.md` | next | Add a local CLI-style demo command that runs the pipeline on fixture data and prints a readable report. |
-| 12 | `prompts/12-minimal-web-demo.prompt.md` | planned | Add the first tiny browser-visible local demo layer that renders fixture-driven reconciliation output without becoming a production UI. |
+| 11 | `prompts/11-cli-demo.prompt.md` | done | A local `demo:cli` command now runs the pipeline on deterministic fixture data and prints a readable reconciliation report. |
+| 12 | `prompts/12-minimal-web-demo.prompt.md` | next | Add the first tiny browser-visible local demo layer that renders fixture-driven reconciliation output without becoming a production UI. |
 
 ## Current implemented modules
 
@@ -28,6 +28,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/reconciliation`: end-to-end orchestration entrypoint with summary counts
 - `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
 - `src/demo-fixtures`: reusable deterministic demo inputs plus expected reconciliation and reporting outputs
+- `src/cli-demo`: local CLI demo entrypoint and formatter built on shared demo fixtures, reconciliation, and reporting
 
 ## Upcoming workflow milestones
 

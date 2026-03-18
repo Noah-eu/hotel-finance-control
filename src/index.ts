@@ -6,6 +6,7 @@ import * as matching from './matching'
 import * as exceptions from './exceptions'
 import * as reconciliation from './reconciliation'
 import * as reporting from './reporting'
+import * as cliDemo from './cli-demo'
 
 export function bootstrap() {
   return {
@@ -16,7 +17,8 @@ export function bootstrap() {
     matching: matching.placeholder(),
     exceptions: exceptions.placeholder(),
     reconciliation: reconciliation.placeholder(),
-    reporting: reporting.placeholder()
+    reporting: reporting.placeholder(),
+    cliDemo
   }
 }
 
@@ -28,3 +30,4 @@ export * as matching from './matching'
 export * as exceptions from './exceptions'
 export * as reconciliation from './reconciliation'
 export * as demoFixtures from './demo-fixtures'
+export * as cliDemo from './cli-demo'
