@@ -7,6 +7,7 @@ export interface RealInputFixture {
     | 'booking-payout-export'
     | 'comgate-export'
     | 'invoice-document'
+  | 'receipt-document'
   description: string
   sourceDocument: SourceDocument
   rawInput: {
@@ -352,6 +353,48 @@ export const realInputFixtures: RealInputFixture[] = [
           amountMinor: 18500,
           currency: 'CZK',
           description: 'Laundry and linens'
+        }
+      })
+    ]
+  },
+  {
+    key: 'receipt-document',
+    description: 'Representative receipt text fixture for deterministic hotel expense receipt ingestion.',
+    sourceDocument: sourceDocument({
+      id: 'doc-receipt-2026-03-55' as SourceDocument['id'],
+      sourceSystem: 'receipt',
+      documentType: 'receipt',
+      fileName: 'receipt-2026-03-55.txt'
+    }),
+    rawInput: {
+      format: 'text',
+      content: [
+        'Receipt No: RCPT-2026-03-55',
+        'Merchant: Metro Cash & Carry',
+        'Purchase date: 2026-03-20',
+        'Total: 2 490 CZK',
+        'Category: supplies',
+        'Note: Cleaning materials'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'receipt-record-1',
+        sourceDocumentId: 'doc-receipt-2026-03-55' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'receipt-document',
+        rawReference: 'RCPT-2026-03-55',
+        amountMinor: 2490,
+        currency: 'CZK',
+        occurredAt: '2026-03-20',
+        data: {
+          sourceSystem: 'receipt',
+          receiptNumber: 'RCPT-2026-03-55',
+          merchant: 'Metro Cash & Carry',
+          purchaseDate: '2026-03-20',
+          amountMinor: 2490,
+          currency: 'CZK',
+          category: 'supplies',
+          description: 'Cleaning materials'
         }
       })
     ]

@@ -46,15 +46,15 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(result.extractedRecords).toHaveLength(10)
     expect(result.reconciliation.summary).toEqual({
-      normalizedTransactionCount: 9,
+      normalizedTransactionCount: 10,
       matchedGroupCount: 1,
-      exceptionCount: 7,
+      exceptionCount: 8,
       unmatchedExpectedCount: 2,
       unmatchedActualCount: 2
     })
     expect(result.report.summary).toEqual(result.reconciliation.summary)
     expect(result.report.matches).toHaveLength(1)
-    expect(result.report.exceptions).toHaveLength(7)
+    expect(result.report.exceptions).toHaveLength(8)
   })
 
   it('fails clearly when a source document has no configured parser', () => {
@@ -170,5 +170,59 @@ describe('runMonthlyReconciliationBatch', () => {
         extractedCount: 1
       }
     ])
+  })
+
+  it('routes uploaded receipts through the shared monthly-batch document path with traceability', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'účtenka-2026-03-55.txt',
+        content: [
+          'Číslo účtenky: RCPT-2026-03-55',
+          'Obchod: Metro Cash & Carry',
+          'Datum nákupu: 20.03.2026',
+          'Zaplaceno: 24.90 CZK',
+          'Kategorie: supplies',
+          'Poznámka: Cleaning materials'
+        ].join('\n'),
+        uploadedAt: '2026-03-18T22:45:00.000Z'
+      }
+    ])
+
+    expect(prepared[0].sourceDocument).toEqual({
+      id: 'uploaded:receipt:1:tenka-2026-03-55-txt',
+      sourceSystem: 'receipt',
+      documentType: 'receipt',
+      fileName: 'účtenka-2026-03-55.txt',
+      uploadedAt: '2026-03-18T22:45:00.000Z'
+    })
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'receipt-run-2026-03',
+        requestedAt: '2026-03-18T22:45:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-18T22:46:00.000Z'
+    })
+
+    expect(result.files).toEqual([
+      {
+        sourceDocumentId: 'uploaded:receipt:1:tenka-2026-03-55-txt',
+        extractedRecordIds: ['receipt-record-1'],
+        extractedCount: 1
+      }
+    ])
+    expect(result.extractedRecords[0]).toMatchObject({
+      recordType: 'receipt-document',
+      rawReference: 'RCPT-2026-03-55',
+      sourceDocumentId: 'uploaded:receipt:1:tenka-2026-03-55-txt'
+    })
+    expect(result.reconciliation.summary).toEqual({
+      normalizedTransactionCount: 1,
+      matchedGroupCount: 0,
+      exceptionCount: 1,
+      unmatchedExpectedCount: 0,
+      unmatchedActualCount: 0
+    })
   })
 })

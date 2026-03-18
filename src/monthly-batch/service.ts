@@ -4,6 +4,7 @@ import {
   parseComgateExport,
   parseFioStatement,
   parseInvoiceDocument,
+  parseReceiptDocument,
   parseRaiffeisenbankStatement
 } from '../extraction'
 import { reconcileExtractedRecords } from '../reconciliation'
@@ -93,6 +94,10 @@ function selectParser(sourceDocument: SourceDocument): Parser {
 
   if (sourceDocument.sourceSystem === 'invoice') {
     return parseInvoiceDocument
+  }
+
+  if (sourceDocument.sourceSystem === 'receipt') {
+    return parseReceiptDocument
   }
 
   throw new Error(

@@ -8,7 +8,8 @@ describe('realInputFixtures', () => {
       'fio-statement',
       'booking-payout-export',
       'comgate-export',
-      'invoice-document'
+      'invoice-document',
+      'receipt-document'
     ])
 
     for (const fixture of realInputFixtures) {
@@ -22,6 +23,7 @@ describe('realInputFixtures', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const booking = getRealInputFixture('booking-payout-export')
     const invoice = getRealInputFixture('invoice-document')
+  const receipt = getRealInputFixture('receipt-document')
 
     expect(raiffeisen.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'bank-transaction',
@@ -44,6 +46,13 @@ describe('realInputFixtures', () => {
         supplier: 'Laundry Supply s.r.o.'
       }
     })
+    expect(receipt.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'receipt-document',
+      data: {
+        receiptNumber: 'RCPT-2026-03-55',
+        merchant: 'Metro Cash & Carry'
+      }
+    })
   })
 
   it('includes normalized expectations where current deterministic normalizers already apply', () => {
@@ -56,5 +65,8 @@ describe('realInputFixtures', () => {
       source: 'booking',
       reference: 'PAYOUT-BOOK-20260310'
     })
+
+    const receipt = getRealInputFixture('receipt-document')
+    expect(receipt.expectedNormalizedTransactions).toBeUndefined()
   })
 })

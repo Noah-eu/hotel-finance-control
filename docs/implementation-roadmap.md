@@ -31,8 +31,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 23 | `prompts/23-browser-review-screen.prompt.md` | done | A first real browser review UI now renders matched, unmatched, suspicious, and missing-document sections directly from the shared uploaded batch preview and review workflow data. |
 | 24 | `prompts/24-csv-xlsx-export.prompt.md` | done | Practical CSV and real XLSX export now exist for reconciliation transactions, review items, and monthly summaries, built directly from shared monthly-batch, reporting, and review outputs. |
 | 25 | `prompts/25-parser-hardening-raiff-fio-booking-comgate.prompt.md` | done | Deterministic Raiffeisenbank, Fio, Booking, and Comgate parsers now handle realistic delimiter, header-alias, quoting, BOM, date, and amount variants while keeping clear required-column failures and shared normalization intact. |
-| 26 | `prompts/26-invoice-receipt-expansion.prompt.md` | next | Expand deterministic invoice and receipt ingestion coverage before introducing any OCR or AI fallback path. |
-| 27 | `prompts/27-suspicious-expense-rules.prompt.md` | planned | Add the first explicit review rules for suspicious/private expenses and missing supporting documents. |
+| 26 | `prompts/26-invoice-receipt-expansion.prompt.md` | done | Deterministic document ingestion now covers realistic invoice and receipt variants through one shared parser path, a shared document normalizer, receipt routing in monthly-batch, and focused tests with clear unsupported-structure failures. |
+| 27 | `prompts/27-suspicious-expense-rules.prompt.md` | next | Add the first explicit review rules for suspicious/private expenses and missing supporting documents. |
 | 28 | `prompts/28-monthly-run-from-uploaded-files.prompt.md` | planned | Add one real end-to-end monthly processing flow using uploaded source files instead of demo fixtures. |
 
 ## Current implemented modules
@@ -48,8 +48,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/review`: deterministic review workflow surface for matched, unmatched, suspicious, and missing-document reconciliation outcomes
 - `src/upload-web`: local static browser-visible upload flow plus shared uploaded-batch preparation, browser review rendering, and export package generation from the same shared outputs
 - `src/demo-fixtures`: reusable deterministic demo inputs plus expected reconciliation and reporting outputs
-- `src/real-input-fixtures`: representative deterministic raw-source fixtures plus expected extracted and normalized outputs for real hotel-finance inputs
-- `src/extraction`: deterministic Raiffeisenbank and Fio bank-statement parsers, Booking and Comgate payout/export parsers, plus deterministic document-ingestion contracts and a first invoice parser path
+- `src/real-input-fixtures`: representative deterministic raw-source fixtures plus expected extracted outputs for bank, payout, invoice, and receipt inputs, with normalized expectations where current shared normalizers apply
+- `src/extraction`: deterministic Raiffeisenbank and Fio bank-statement parsers, Booking and Comgate payout/export parsers, plus shared deterministic invoice and receipt document parsers
 - `src/cli-demo`: local CLI demo entrypoint and formatter built on shared demo fixtures, reconciliation, and reporting
 - `src/web-demo`: minimal browser-visible HTML demo generator built on shared demo fixtures, reconciliation, and reporting
 
@@ -74,7 +74,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 
 ## Current roadmap status
 
-Steps `01` through `25` are complete. Step `26` is the next unfinished milestone.
+Steps `01` through `26` are complete. Step `27` is the next unfinished milestone.
 
 ## Next step selection rule
 

@@ -1,5 +1,6 @@
 import type { Normalizer } from './contracts'
 import { BankTransactionNormalizer } from './normalizers/bank-transaction.normalizer'
+import { DocumentRecordNormalizer } from './normalizers/document-record.normalizer'
 import { PayoutLineNormalizer } from './normalizers/payout-line.normalizer'
 
 /**
@@ -33,5 +34,7 @@ export class NormalizerRegistry {
 export function createDefaultRegistry(): NormalizerRegistry {
   return new NormalizerRegistry()
     .register('bank-transaction', new BankTransactionNormalizer())
+    .register('invoice-document', new DocumentRecordNormalizer())
+    .register('receipt-document', new DocumentRecordNormalizer())
     .register('payout-line', new PayoutLineNormalizer())
 }
