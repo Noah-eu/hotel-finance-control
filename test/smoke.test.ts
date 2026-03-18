@@ -13,5 +13,6 @@ describe('smoke', () => {
     expect(result).toHaveProperty('reconciliation.pipeline', 'default')
     expect(result).toHaveProperty('cliDemo.runCliDemo')
     expect(result).toHaveProperty('webDemo.buildWebDemo')
+    expect(result).toHaveProperty('realInputFixtures.getRealInputFixture')
   })
 })

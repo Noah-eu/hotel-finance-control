@@ -8,6 +8,7 @@ import * as reconciliation from './reconciliation'
 import * as reporting from './reporting'
 import * as cliDemo from './cli-demo'
 import * as webDemo from './web-demo'
+import * as realInputFixtures from './real-input-fixtures'
 
 export function bootstrap() {
   return {
@@ -20,7 +21,8 @@ export function bootstrap() {
     reconciliation: reconciliation.placeholder(),
     reporting: reporting.placeholder(),
     cliDemo,
-    webDemo
+    webDemo,
+    realInputFixtures
   }
 }
 
@@ -32,5 +34,6 @@ export * as matching from './matching'
 export * as exceptions from './exceptions'
 export * as reconciliation from './reconciliation'
 export * as demoFixtures from './demo-fixtures'
+export * as realInputFixtures from './real-input-fixtures'
 export * as cliDemo from './cli-demo'
 export * as webDemo from './web-demo'
