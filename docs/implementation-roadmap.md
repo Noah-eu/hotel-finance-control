@@ -19,8 +19,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 11 | `prompts/11-cli-demo.prompt.md` | done | A local `demo:cli` command now runs the pipeline on deterministic fixture data and prints a readable reconciliation report. |
 | 12 | `prompts/12-minimal-web-demo.prompt.md` | done | A local `demo:web` command now generates a tiny browser-visible HTML demo from fixture-driven reconciliation and reporting output. |
 | 13 | `prompts/13-real-input-fixtures.prompt.md` | done | Reusable representative real-input fixtures now exist under `src/real-input-fixtures` with expected extracted and normalized outputs plus validation tests. |
-| 14 | `prompts/14-raiffeisenbank-parser.prompt.md` | next | Add deterministic extraction for Raiffeisenbank statement inputs covering OTA inflows, Comgate inflows, expenses, payroll, and suspicious/private spending. |
-| 15 | `prompts/15-fio-parser.prompt.md` | planned | Add deterministic extraction for Fio statement inputs focused on Expedia terminal payment flows. |
+| 14 | `prompts/14-raiffeisenbank-parser.prompt.md` | done | A deterministic Raiffeisenbank parser now extracts representative OTA inflows, payroll, expense, and suspicious/private-spend rows into `ExtractedRecord` outputs with tests. |
+| 15 | `prompts/15-fio-parser.prompt.md` | next | Add deterministic extraction for Fio statement inputs focused on Expedia terminal payment flows. |
 | 16 | `prompts/16-booking-parser.prompt.md` | planned | Add deterministic Booking payout/export ingestion that produces extracted records compatible with the shared normalization model. |
 | 17 | `prompts/17-comgate-parser.prompt.md` | planned | Add deterministic Comgate ingestion covering website reservations and parking payment flows. |
 | 18 | `prompts/18-invoice-receipt-ingestion.prompt.md` | planned | Prepare deterministic document ingestion contracts and the first parser path for invoices and receipts, with AI/OCR reserved as fallback. |
@@ -37,6 +37,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
 - `src/demo-fixtures`: reusable deterministic demo inputs plus expected reconciliation and reporting outputs
 - `src/real-input-fixtures`: representative deterministic raw-source fixtures plus expected extracted and normalized outputs for real hotel-finance inputs
+- `src/extraction`: deterministic Raiffeisenbank bank-statement parser wired into the extraction module
 - `src/cli-demo`: local CLI demo entrypoint and formatter built on shared demo fixtures, reconciliation, and reporting
 - `src/web-demo`: minimal browser-visible HTML demo generator built on shared demo fixtures, reconciliation, and reporting
 
@@ -53,7 +54,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 
 ## Current roadmap status
 
-Steps `01` through `13` are complete. Step `14` is the next unfinished milestone.
+Steps `01` through `14` are complete. Step `15` is the next unfinished milestone.
 
 ## Next step selection rule
 

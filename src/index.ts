@@ -29,6 +29,7 @@ export function bootstrap() {
 export type BootstrapResult = ReturnType<typeof bootstrap>
 
 export * as domain from './domain'
+export * as extraction from './extraction'
 export * as normalization from './normalization'
 export * as matching from './matching'
 export * as exceptions from './exceptions'
