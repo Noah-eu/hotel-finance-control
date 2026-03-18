@@ -11,10 +11,15 @@ describe('smoke', () => {
       name: 'extraction',
       parser: 'deterministic'
     })
+    expect(result.extraction.documentIngestionCapabilities()).toEqual({
+      mode: 'deterministic-primary',
+      ocrFallback: 'not-implemented'
+    })
     expect(result).toHaveProperty('extraction.parseBookingPayoutExport')
     expect(result).toHaveProperty('extraction.parseComgateExport')
     expect(result).toHaveProperty('extraction.parseRaiffeisenbankStatement')
     expect(result).toHaveProperty('extraction.parseFioStatement')
+    expect(result).toHaveProperty('extraction.parseInvoiceDocument')
     expect(result.normalization).toHaveProperty('name', 'normalization')
     expect(result.exceptions).toHaveProperty('detector', 'baseline')
     expect(result.reporting).toHaveProperty('renderer', 'reconciliation-report')
