@@ -42,7 +42,7 @@ Recommended usage:
 
 ## Netlify deployment
 
-The current repository already generates a static browser-visible demo via `npm run demo:web`.
+The current repository already generates a static browser-visible uploaded monthly run via `npm run demo:web`.
 
 Minimal Netlify setup for this repo:
 

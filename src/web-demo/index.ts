@@ -3,14 +3,30 @@ import { dirname, resolve } from 'node:path'
 import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
+import {
+  buildBrowserUploadedMonthlyRun,
+  type BrowserUploadedMonthlyRunResult
+} from '../upload-web'
+import { getRealInputFixture } from '../real-input-fixtures'
 
 export interface BuildWebDemoOptions {
-  fixtureKey?: DemoFixture['key']
   generatedAt?: string
   outputPath?: string
 }
 
 export interface WebDemoResult {
+  html: string
+  outputPath?: string
+  browserRun: BrowserUploadedMonthlyRunResult
+}
+
+export interface BuildFixtureWebDemoOptions {
+  fixtureKey?: DemoFixture['key']
+  generatedAt?: string
+  outputPath?: string
+}
+
+export interface FixtureWebDemoResult {
   fixture: DemoFixture
   report: ReconciliationReport
   html: string
@@ -18,6 +34,42 @@ export interface WebDemoResult {
 }
 
 export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
+  const generatedAt = options.generatedAt ?? new Date().toISOString()
+  const booking = getRealInputFixture('booking-payout-export')
+  const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+  const invoice = getRealInputFixture('invoice-document')
+
+  const browserRun = buildBrowserUploadedMonthlyRun({
+    files: [
+      {
+        name: booking.sourceDocument.fileName,
+        content: booking.rawInput.content,
+        uploadedAt: generatedAt
+      },
+      {
+        name: raiffeisen.sourceDocument.fileName,
+        content: raiffeisen.rawInput.content,
+        uploadedAt: generatedAt
+      },
+      {
+        name: invoice.sourceDocument.fileName,
+        content: invoice.rawInput.content,
+        uploadedAt: generatedAt
+      }
+    ],
+    runId: 'web-demo-uploaded-monthly-run',
+    generatedAt,
+    outputPath: options.outputPath
+  })
+
+  return {
+    html: browserRun.html,
+    outputPath: browserRun.outputPath,
+    browserRun
+  }
+}
+
+export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {
   const fixture = getDemoFixture(options.fixtureKey ?? 'matched-payout')
   const reconciliation = reconcileExtractedRecords(
     { extractedRecords: fixture.extractedRecords },
@@ -27,7 +79,7 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
     reconciliation,
     generatedAt: options.generatedAt ?? fixture.reconciliationContext.requestedAt
   })
-  const html = renderWebDemoHtml(fixture, report)
+  const html = renderFixtureWebDemoHtml(fixture, report)
 
   if (options.outputPath) {
     const resolved = resolve(options.outputPath)
@@ -45,7 +97,7 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
   return { fixture, report, html }
 }
 
-export function renderWebDemoHtml(
+export function renderFixtureWebDemoHtml(
   fixture: DemoFixture,
   report: ReconciliationReport
 ): string {
@@ -79,7 +131,7 @@ export function renderWebDemoHtml(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hotel Finance Reconciliation Demo</title>
+    <title>Hotel Finance Reconciliation Fixture Demo</title>
     <style>
       :root {
         color-scheme: light;
@@ -143,8 +195,8 @@ export function renderWebDemoHtml(
   <body>
     <main>
       <section class="hero">
-        <span class="pill">Local demo</span>
-        <h1>Hotel Finance Reconciliation Demo</h1>
+        <span class="pill">Auxiliary fixture demo</span>
+        <h1>Hotel Finance Reconciliation Fixture Demo</h1>
         <p>${escapeHtml(fixture.description)}</p>
         <p><strong>Fixture:</strong> <code>${escapeHtml(fixture.key)}</code></p>
         <p><strong>Generated at:</strong> ${escapeHtml(report.generatedAt)}</p>
