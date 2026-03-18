@@ -39,3 +39,20 @@ Recommended usage:
 1. Start from the controller prompt (`run-next-step`) in Agent mode.
 2. Let the agent inspect state, execute the next unfinished step, run tests/typecheck, then commit and push.
 3. Repeat until all numbered steps are complete.
+
+## Netlify deployment
+
+The current repository already generates a static browser-visible demo via `npm run demo:web`.
+
+Minimal Netlify setup for this repo:
+
+- Build command: `npm run demo:web`
+- Publish directory: `dist/demo`
+
+To deploy from GitHub on Netlify:
+1. Connect the `Noah-eu/hotel-finance-control` repository in Netlify.
+2. Keep the detected Node version on `20` or set it explicitly in Netlify.
+3. Use the build command `npm run demo:web`.
+4. Use the publish directory `dist/demo`.
+
+The repository includes `netlify.toml`, so Netlify should pick these settings up automatically.
