@@ -7,8 +7,13 @@ describe('smoke', () => {
     expect(result).toBeTypeOf('object')
     expect(result.domain).toHaveProperty('name', 'domain')
     expect(result.import).toHaveProperty('name', 'import')
-  expect(result.extraction).toHaveProperty('parser', 'deterministic')
-  expect(result).toHaveProperty('extraction')
+    expect(result.extraction.placeholder()).toEqual({
+      name: 'extraction',
+      parser: 'deterministic'
+    })
+    expect(result).toHaveProperty('extraction.parseBookingPayoutExport')
+    expect(result).toHaveProperty('extraction.parseRaiffeisenbankStatement')
+    expect(result).toHaveProperty('extraction.parseFioStatement')
     expect(result.normalization).toHaveProperty('name', 'normalization')
     expect(result.exceptions).toHaveProperty('detector', 'baseline')
     expect(result.reporting).toHaveProperty('renderer', 'reconciliation-report')

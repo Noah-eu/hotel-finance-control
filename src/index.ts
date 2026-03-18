@@ -14,7 +14,7 @@ export function bootstrap() {
   return {
     domain: domain.placeholder(),
     import: imp.placeholder(),
-    extraction: extraction.placeholder(),
+    extraction,
     normalization: normalization.placeholder(),
     matching: matching.placeholder(),
     exceptions: exceptions.placeholder(),
