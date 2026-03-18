@@ -1,4 +1,10 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
+import {
+  findMissingHeaders,
+  parseAmountMinor,
+  parseDelimitedRows,
+  parseIsoDate
+} from './csv-utils'
 
 export interface ParseBookingPayoutExportInput {
   sourceDocument: SourceDocument
@@ -15,25 +21,33 @@ const REQUIRED_HEADERS = [
   'propertyId'
 ]
 
+const HEADER_ALIASES = {
+  payoutDate: ['payoutDate', 'payout_date', 'date', 'datumVyplaty', 'datum'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'netAmount', 'castka', 'částka'],
+  currency: ['currency', 'mena', 'měna'],
+  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'paymentReference'],
+  reservationId: ['reservationId', 'reservation_id', 'reservation', 'bookingId'],
+  propertyId: ['propertyId', 'property_id', 'property', 'hotelId']
+} satisfies Record<string, string[]>
+
 export class BookingPayoutParser {
   parse(input: ParseBookingPayoutExportInput): ExtractedRecord[] {
-    const rows = parseCsv(input.content)
+    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
 
     if (rows.length === 0) {
       return []
     }
 
-    const headers = Object.keys(rows[0])
-    const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header))
+    const missing = findMissingHeaders(rows, REQUIRED_HEADERS)
     if (missing.length > 0) {
       throw new Error(`Booking payout export is missing required columns: ${missing.join(', ')}`)
     }
 
     return rows.map((row, index) => {
       const recordId = `booking-payout-${index + 1}`
-      const payoutDate = row.payoutDate.trim()
-      const amountMinor = Number.parseInt(row.amountMinor, 10)
-      const currency = row.currency.trim()
+      const payoutDate = parseIsoDate(row.payoutDate, 'Booking payoutDate')
+      const amountMinor = parseAmountMinor(row.amountMinor, 'Booking amountMinor')
+      const currency = row.currency.trim().toUpperCase()
       const payoutReference = row.payoutReference.trim()
       const reservationId = row.reservationId.trim()
       const propertyId = row.propertyId.trim()
@@ -66,28 +80,4 @@ const defaultBookingPayoutParser = new BookingPayoutParser()
 
 export function parseBookingPayoutExport(input: ParseBookingPayoutExportInput): ExtractedRecord[] {
   return defaultBookingPayoutParser.parse(input)
-}
-
-function parseCsv(content: string): Array<Record<string, string>> {
-  const lines = content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-  if (lines.length === 0) {
-    return []
-  }
-
-  const headers = splitCsvLine(lines[0])
-  return lines.slice(1).map((line) => {
-    const values = splitCsvLine(line)
-    return headers.reduce<Record<string, string>>((accumulator, header, index) => {
-      accumulator[header] = values[index] ?? ''
-      return accumulator
-    }, {})
-  })
-}
-
-function splitCsvLine(line: string): string[] {
-  return line.split(',').map((value) => value.trim())
 }

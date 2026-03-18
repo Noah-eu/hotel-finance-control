@@ -1,4 +1,10 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
+import {
+  findMissingHeaders,
+  parseAmountMinor,
+  parseDelimitedRows,
+  parseIsoDate
+} from './csv-utils'
 
 export interface ParseRaiffeisenbankStatementInput {
   sourceDocument: SourceDocument
@@ -16,16 +22,25 @@ const REQUIRED_HEADERS = [
   'transactionType'
 ]
 
+const HEADER_ALIASES = {
+  bookedAt: ['bookedAt', 'booked_at', 'bookingDate', 'date', 'datum'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka'],
+  currency: ['currency', 'mena', 'měna'],
+  accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet'],
+  counterparty: ['counterparty', 'counterpartyName', 'partner', 'protistrana'],
+  reference: ['reference', 'variableSymbol', 'paymentReference', 'zprava', 'poznámka'],
+  transactionType: ['transactionType', 'transaction_type', 'type', 'typTransakce', 'typ']
+} satisfies Record<string, string[]>
+
 export class RaiffeisenbankParser {
   parse(input: ParseRaiffeisenbankStatementInput): ExtractedRecord[] {
-    const rows = parseCsv(input.content)
+    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
 
     if (rows.length === 0) {
       return []
     }
 
-    const headers = Object.keys(rows[0])
-    const missing = REQUIRED_HEADERS.filter((header) => !headers.includes(header))
+  const missing = findMissingHeaders(rows, REQUIRED_HEADERS)
     if (missing.length > 0) {
       throw new Error(
         `Raiffeisenbank statement is missing required columns: ${missing.join(', ')}`
@@ -34,9 +49,9 @@ export class RaiffeisenbankParser {
 
     return rows.map((row, index) => {
       const recordId = `raif-row-${index + 1}`
-      const bookedAt = row.bookedAt.trim()
-      const amountMinor = Number.parseInt(row.amountMinor, 10)
-      const currency = row.currency.trim()
+      const bookedAt = parseIsoDate(row.bookedAt, 'Raiffeisenbank bookedAt')
+      const amountMinor = parseAmountMinor(row.amountMinor, 'Raiffeisenbank amountMinor')
+      const currency = row.currency.trim().toUpperCase()
       const accountId = row.accountId.trim()
       const counterparty = row.counterparty.trim()
       const reference = row.reference.trim()
@@ -72,28 +87,4 @@ export function parseRaiffeisenbankStatement(
   input: ParseRaiffeisenbankStatementInput
 ): ExtractedRecord[] {
   return defaultRaiffeisenbankParser.parse(input)
-}
-
-function parseCsv(content: string): Array<Record<string, string>> {
-  const lines = content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-
-  if (lines.length === 0) {
-    return []
-  }
-
-  const headers = splitCsvLine(lines[0])
-  return lines.slice(1).map((line) => {
-    const values = splitCsvLine(line)
-    return headers.reduce<Record<string, string>>((accumulator, header, index) => {
-      accumulator[header] = values[index] ?? ''
-      return accumulator
-    }, {})
-  })
-}
-
-function splitCsvLine(line: string): string[] {
-  return line.split(',').map((value) => value.trim())
 }

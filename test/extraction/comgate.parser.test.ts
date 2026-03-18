@@ -56,4 +56,28 @@ describe('parseComgateExport', () => {
       })
     ).toThrow('Comgate export is missing required columns')
   })
+
+  it('accepts aliased Comgate headers and decimal amounts without misclassifying fields', () => {
+    const fixture = getRealInputFixture('comgate-export')
+
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'datumPlatby,amount,měna,transactionReference,účelPlatby,orderId',
+        '2026-03-15 09:05:00,380.00,CZK,CG-RES-991,website-reservation,WEB-RES-991'
+      ].join('\n'),
+      extractedAt: '2026-03-18T22:00:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      id: 'comgate-row-1',
+      amountMinor: 38000,
+      occurredAt: '2026-03-15',
+      rawReference: 'CG-RES-991',
+      data: {
+        paymentPurpose: 'website-reservation',
+        reservationId: 'WEB-RES-991'
+      }
+    })
+  })
 })

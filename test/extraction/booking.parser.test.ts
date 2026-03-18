@@ -49,4 +49,28 @@ describe('parseBookingPayoutExport', () => {
       })
     ).toThrow('Booking payout export is missing required columns')
   })
+
+  it('accepts semicolon exports with aliased headers and quoted values', () => {
+    const fixture = getRealInputFixture('booking-payout-export')
+
+    const records = parseBookingPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'datumVyplaty;netAmount;měna;paymentReference;bookingId;hotelId',
+        '10.03.2026;"1250,00";czk;"PAYOUT-BOOK-20260310";RES-BOOK-8841;HOTEL-CZ-001'
+      ].join('\n'),
+      extractedAt: '2026-03-18T21:45:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      id: 'booking-payout-1',
+      amountMinor: 125000,
+      occurredAt: '2026-03-10',
+      currency: 'CZK',
+      data: {
+        reservationId: 'RES-BOOK-8841',
+        propertyId: 'HOTEL-CZ-001'
+      }
+    })
+  })
 })

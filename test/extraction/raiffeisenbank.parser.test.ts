@@ -62,4 +62,31 @@ describe('parseRaiffeisenbankStatement', () => {
       })
     ).toThrow('Raiffeisenbank statement is missing required columns')
   })
+
+  it('accepts semicolon-delimited statements with BOM, quoted cells, and localized aliases', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-statement')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        '\uFEFFdatum;částka;měna;účet;protistrana;poznámka;typ',
+        '10.03.2026;"1250,00";czk;raiffeisen-main;"Booking BV";PAYOUT-BOOK-20260310;booking-payout'
+      ].join('\n'),
+      extractedAt: '2026-03-18T21:00:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'raif-row-1',
+        amountMinor: 125000,
+        currency: 'CZK',
+        occurredAt: '2026-03-10',
+        rawReference: 'PAYOUT-BOOK-20260310',
+        data: expect.objectContaining({
+          counterparty: 'Booking BV',
+          transactionType: 'booking-payout'
+        })
+      })
+    ])
+  })
 })

@@ -51,4 +51,25 @@ describe('parseFioStatement', () => {
       })
     ).toThrow('Fio statement is missing required columns')
   })
+
+  it('accepts aliased headers, timestamps, and decimal amount formatting', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'date,amount,měna,účet,partner,paymentReference,type',
+        '2026-03-11 08:15:00,650.00,CZK,fio-expedia,EXPEDIA TERMINAL,EXP-TERM-1001,expedia-terminal'
+      ].join('\n'),
+      extractedAt: '2026-03-18T21:30:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      id: 'fio-row-1',
+      amountMinor: 65000,
+      occurredAt: '2026-03-11',
+      currency: 'CZK',
+      rawReference: 'EXP-TERM-1001'
+    })
+  })
 })

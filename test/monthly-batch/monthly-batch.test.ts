@@ -121,4 +121,54 @@ describe('runMonthlyReconciliationBatch', () => {
       }
     ])
   })
+
+  it('keeps the shared monthly-batch path deterministic for realistic parser variants', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: booking.sourceDocument,
+          content: [
+            'datumVyplaty;netAmount;měna;paymentReference;bookingId;hotelId',
+            '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310;RES-BOOK-8841;HOTEL-CZ-001'
+          ].join('\n')
+        },
+        {
+          sourceDocument: raiffeisen.sourceDocument,
+          content: [
+            '\uFEFFdatum;částka;měna;účet;protistrana;poznámka;typ',
+            '10.03.2026;1250,00;CZK;raiffeisen-main;Booking BV;PAYOUT-BOOK-20260310;booking-payout'
+          ].join('\n')
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-variant',
+        requestedAt: '2026-03-18T22:30:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-18T22:31:00.000Z'
+    })
+
+    expect(result.extractedRecords).toHaveLength(2)
+    expect(result.reconciliation.summary).toEqual({
+      normalizedTransactionCount: 2,
+      matchedGroupCount: 1,
+      exceptionCount: 0,
+      unmatchedExpectedCount: 0,
+      unmatchedActualCount: 0
+    })
+    expect(result.files).toEqual([
+      {
+        sourceDocumentId: booking.sourceDocument.id,
+        extractedRecordIds: ['booking-payout-1'],
+        extractedCount: 1
+      },
+      {
+        sourceDocumentId: raiffeisen.sourceDocument.id,
+        extractedRecordIds: ['raif-row-1'],
+        extractedCount: 1
+      }
+    ])
+  })
 })
