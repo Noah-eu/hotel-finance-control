@@ -4,10 +4,12 @@ import {
   prepareUploadedMonthlyFiles,
   runMonthlyReconciliationBatch,
   type ImportedMonthlySourceFile,
+  type MonthlyBatchResult,
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import { buildReviewScreen, type ReviewScreenData } from '../review'
+import type { ReconciliationReport } from '../reporting'
 
 export interface BuildUploadWebFlowOptions {
   generatedAt?: string
@@ -26,8 +28,13 @@ export interface BuildUploadedBatchPreviewInput {
 
 export interface UploadedBatchPreviewResult {
   importedFiles: ImportedMonthlySourceFile[]
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>
+  batch: MonthlyBatchResult
   review: ReviewScreenData
+}
+
+export interface UploadedMonthlyRunResult extends UploadedBatchPreviewResult {
+  report: ReconciliationReport
+  exports: ExportArtifactsResult
 }
 
 export interface UploadWebFlowResult {
@@ -39,6 +46,16 @@ export interface UploadWebFlowResult {
 export interface BrowserReviewScreenResult {
   html: string
   preview: UploadedBatchPreviewResult
+  outputPath?: string
+}
+
+export interface BuildUploadedMonthlyRunOptions extends BuildBrowserExportPackageOptions {
+  outputPath?: string
+}
+
+export interface BrowserUploadedMonthlyRunResult {
+  html: string
+  run: UploadedMonthlyRunResult
   outputPath?: string
 }
 
@@ -293,6 +310,21 @@ export function buildBrowserReviewScreen(
 export function buildBrowserExportPackage(
   options: BuildBrowserExportPackageOptions
 ): BrowserExportPackageResult {
+  const run = buildUploadedMonthlyRun(options)
+
+  return {
+    preview: {
+      importedFiles: run.importedFiles,
+      batch: run.batch,
+      review: run.review
+    },
+    exports: run.exports
+  }
+}
+
+export function buildUploadedMonthlyRun(
+  options: BuildBrowserExportPackageOptions
+): UploadedMonthlyRunResult {
   const preview = buildUploadedBatchPreview(options)
   const exports = buildExportArtifacts({
     batch: preview.batch,
@@ -301,8 +333,33 @@ export function buildBrowserExportPackage(
   })
 
   return {
-    preview,
+    ...preview,
+    report: preview.batch.report,
     exports
+  }
+}
+
+export function buildBrowserUploadedMonthlyRun(
+  options: BuildUploadedMonthlyRunOptions
+): BrowserUploadedMonthlyRunResult {
+  const run = buildUploadedMonthlyRun(options)
+  const html = renderBrowserUploadedMonthlyRunHtml(run)
+
+  if (options.outputPath) {
+    const resolved = resolve(options.outputPath)
+    mkdirSync(dirname(resolved), { recursive: true })
+    writeFileSync(resolved, html, 'utf8')
+
+    return {
+      html,
+      run,
+      outputPath: resolved
+    }
+  }
+
+  return {
+    html,
+    run
   }
 }
 
@@ -313,8 +370,189 @@ export function placeholder() {
     buildUploadWebFlow,
     buildUploadedBatchPreview,
     buildBrowserReviewScreen,
-    buildBrowserExportPackage
+    buildBrowserExportPackage,
+    buildUploadedMonthlyRun,
+    buildBrowserUploadedMonthlyRun
   }
+}
+
+function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): string {
+  return `<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel Finance Control – Měsíční běh z nahraných souborů</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #edf3fb;
+        color: #142033;
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+      }
+      .hero, .card {
+        background: white;
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 10px 35px rgba(20, 32, 51, 0.08);
+        margin-bottom: 20px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #eaf2ff;
+        color: #174ea6;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .summary-grid, .trace-grid, .section-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+      }
+      .metric, .trace-card, .section-panel {
+        background: #f7f9fc;
+        border-radius: 14px;
+        padding: 16px;
+      }
+      .section-panel ul,
+      .trace-card ul {
+        padding-left: 20px;
+      }
+      .section-panel h3,
+      .trace-card h3 {
+        margin-top: 0;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid #e6edf8;
+        vertical-align: top;
+      }
+      code {
+        background: #f1f4f8;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+      .hint {
+        color: #52627a;
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-left: 8px;
+      }
+      .badge.matched { background: #e7f6ec; color: #0f7a32; }
+      .badge.unmatched { background: #fff4dd; color: #946200; }
+      .badge.suspicious { background: #ffe3e8; color: #b42318; }
+      .badge.missing { background: #ede9fe; color: #6d28d9; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <span class="pill">Měsíční běh z uploadu</span>
+        <h1>Výsledek měsíčního zpracování z nahraných souborů</h1>
+        <p>Tato stránka ukazuje jeden skutečný deterministický běh nad nahranými soubory: přípravu vstupů, extrakci, normalizaci, párování, výjimky, kontrolu i exporty ze stejného sdíleného pipeline.</p>
+        <p><strong>Vygenerováno:</strong> ${escapeHtml(run.review.generatedAt)}</p>
+      </section>
+
+      <section class="card">
+        <h2>Souhrn běhu</h2>
+        <div class="summary-grid">
+          <div class="metric"><strong>${run.batch.reconciliation.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
+          <div class="metric"><strong>${run.batch.reconciliation.summary.matchedGroupCount}</strong><br />Spárované skupiny</div>
+          <div class="metric"><strong>${run.batch.reconciliation.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+          <div class="metric"><strong>${run.importedFiles.length}</strong><br />Nahrané soubory</div>
+          <div class="metric"><strong>${run.report.transactions.length}</strong><br />Řádků v reportu</div>
+          <div class="metric"><strong>${run.exports.files.length}</strong><br />Připravené exporty</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Trace nahraných souborů</h2>
+        <div class="trace-grid">
+          ${run.importedFiles.map((file) => `
+            <article class="trace-card">
+              <h3>${escapeHtml(file.sourceDocument.fileName)}</h3>
+              <p><strong>Zdroj:</strong> ${escapeHtml(file.sourceDocument.sourceSystem)}</p>
+              <p><strong>Typ:</strong> ${escapeHtml(file.sourceDocument.documentType)}</p>
+              <p><strong>Source document ID:</strong> <code>${escapeHtml(file.sourceDocument.id)}</code></p>
+              <p><strong>Extrahované záznamy:</strong> ${escapeHtml(String(findBatchFileExtractedCount(run.batch, file.sourceDocument.id)))}</p>
+            </article>
+          `).join('')}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Kontrolní sekce</h2>
+        <div class="section-grid">
+          ${renderReviewSection('Spárované položky', 'matched', run.review.matched)}
+          ${renderReviewSection('Nespárované položky', 'unmatched', run.review.unmatched)}
+          ${renderReviewSection('Podezřelé položky', 'suspicious', run.review.suspicious)}
+          ${renderReviewSection('Chybějící doklady', 'missing', run.review.missingDocuments)}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Přehled reportu</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Transakce</th>
+              <th>Zdroj</th>
+              <th>Směr</th>
+              <th>Částka v haléřích</th>
+              <th>Stav</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${run.report.transactions.map((transaction) => `
+              <tr>
+                <td><code>${escapeHtml(transaction.transactionId)}</code></td>
+                <td>${escapeHtml(transaction.source)}</td>
+                <td>${escapeHtml(transaction.direction)}</td>
+                <td>${escapeHtml(String(transaction.amountMinor))}</td>
+                <td>${escapeHtml(transaction.status)}</td>
+                <td>${escapeHtml(transaction.reference ?? '')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Exporty připravené ke stažení</h2>
+        <ul>
+          ${run.exports.files.map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong> — <code>${escapeHtml(file.fileName)}</code>${file.outputPath ? ` — ${escapeHtml(file.outputPath)}` : ''}</li>`).join('')}
+        </ul>
+        <p class="hint">Exporty vznikají ze stejného sdíleného výsledku měsíčního běhu, bez paralelního modelu nebo backendu.</p>
+      </section>
+    </main>
+  </body>
+</html>
+`
+}
+
+function findBatchFileExtractedCount(batch: MonthlyBatchResult, sourceDocumentId: string): number {
+  return batch.files.find((file) => file.sourceDocumentId === sourceDocumentId)?.extractedCount ?? 0
 }
 
 function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): string {

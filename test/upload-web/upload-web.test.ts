@@ -3,8 +3,10 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  buildBrowserUploadedMonthlyRun,
   buildBrowserExportPackage,
   buildBrowserReviewScreen,
+  buildUploadedMonthlyRun,
   buildUploadedBatchPreview,
   buildUploadWebFlow
 } from '../../src/upload-web'
@@ -149,5 +151,91 @@ describe('buildUploadWebFlow', () => {
     expect(result.exports.files).toHaveLength(3)
     expect(result.exports.files.map((file) => file.fileName)).toContain('monthly-review-export.xlsx')
     expect(existsSync(resolve(outputDir, 'review-items.csv'))).toBe(true)
+  })
+
+  it('runs one real uploaded monthly flow through preparation, review, reporting, and export handoff', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const receipt = getRealInputFixture('receipt-document')
+
+    const result = buildUploadedMonthlyRun({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-18T20:45:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-18T20:45:00.000Z'
+        },
+        {
+          name: receipt.sourceDocument.fileName,
+          content: receipt.rawInput.content,
+          uploadedAt: '2026-03-18T20:45:00.000Z'
+        }
+      ],
+      runId: 'uploaded-monthly-run',
+      generatedAt: '2026-03-18T20:45:00.000Z'
+    })
+
+    expect(result.importedFiles).toHaveLength(3)
+    expect(result.batch.files).toHaveLength(3)
+    expect(result.report.summary).toEqual(result.batch.report.summary)
+    expect(result.review.summary).toEqual(result.batch.reconciliation.summary)
+    expect(result.exports.files.map((file) => file.fileName)).toEqual([
+      'reconciliation-transactions.csv',
+      'review-items.csv',
+      'monthly-review-export.xlsx'
+    ])
+    expect(result.batch.reconciliation.normalizedTransactions.some((transaction) => transaction.id === 'txn:document:receipt-record-1')).toBe(true)
+  })
+
+  it('renders one browser-visible uploaded monthly run page and writes it to disk when requested', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const invoice = getRealInputFixture('invoice-document')
+    const outputDir = resolve(process.cwd(), 'dist/test-uploaded-monthly-run')
+    const outputPath = resolve(outputDir, 'index.html')
+
+    rmSync(outputDir, {
+      recursive: true,
+      force: true
+    })
+
+    const result = buildBrowserUploadedMonthlyRun({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-18T20:50:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-18T20:50:00.000Z'
+        },
+        {
+          name: invoice.sourceDocument.fileName,
+          content: invoice.rawInput.content,
+          uploadedAt: '2026-03-18T20:50:00.000Z'
+        }
+      ],
+      runId: 'browser-uploaded-monthly-run',
+      generatedAt: '2026-03-18T20:50:00.000Z',
+      outputDir,
+      outputPath
+    })
+
+    expect(result.run.report.transactions.length).toBeGreaterThan(0)
+    expect(result.run.exports.files).toHaveLength(3)
+    expect(result.html).toContain('Výsledek měsíčního zpracování z nahraných souborů')
+    expect(result.html).toContain('Exporty připravené ke stažení')
+    expect(result.html).toContain('Trace nahraných souborů')
+    expect(result.outputPath).toBe(outputPath)
+    expect(existsSync(outputPath)).toBe(true)
+    expect(readFileSync(outputPath, 'utf8')).toContain('jeden skutečný deterministický běh')
+    expect(existsSync(resolve(outputDir, 'monthly-review-export.xlsx'))).toBe(true)
   })
 })

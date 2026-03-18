@@ -41,12 +41,16 @@ describe('smoke', () => {
       buildUploadWebFlow: result.uploadWeb.buildUploadWebFlow,
       buildUploadedBatchPreview: result.uploadWeb.buildUploadedBatchPreview,
       buildBrowserReviewScreen: result.uploadWeb.buildBrowserReviewScreen,
-      buildBrowserExportPackage: result.uploadWeb.buildBrowserExportPackage
+      buildBrowserExportPackage: result.uploadWeb.buildBrowserExportPackage,
+      buildUploadedMonthlyRun: result.uploadWeb.buildUploadedMonthlyRun,
+      buildBrowserUploadedMonthlyRun: result.uploadWeb.buildBrowserUploadedMonthlyRun
     })
     expect(result).toHaveProperty('uploadWeb.buildUploadWebFlow')
     expect(result).toHaveProperty('uploadWeb.buildUploadedBatchPreview')
     expect(result).toHaveProperty('uploadWeb.buildBrowserReviewScreen')
     expect(result).toHaveProperty('uploadWeb.buildBrowserExportPackage')
+    expect(result).toHaveProperty('uploadWeb.buildUploadedMonthlyRun')
+    expect(result).toHaveProperty('uploadWeb.buildBrowserUploadedMonthlyRun')
     expect(result.exportArtifacts.placeholder()).toEqual({
       name: 'export',
       formats: ['csv', 'xlsx'],
