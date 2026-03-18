@@ -10,5 +10,6 @@ describe('smoke', () => {
     expect(result.normalization).toHaveProperty('name', 'normalization')
     expect(result.exceptions).toHaveProperty('detector', 'baseline')
     expect(result.reporting).toHaveProperty('renderer', 'reconciliation-report')
+    expect(result).toHaveProperty('reconciliation.pipeline', 'default')
   })
 })
