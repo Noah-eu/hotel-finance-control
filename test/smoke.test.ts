@@ -38,9 +38,11 @@ describe('smoke', () => {
     expect(result.uploadWeb.placeholder()).toEqual({
       name: 'upload-web',
       mode: 'local-static',
-      buildUploadWebFlow: result.uploadWeb.buildUploadWebFlow
+      buildUploadWebFlow: result.uploadWeb.buildUploadWebFlow,
+      buildUploadedBatchPreview: result.uploadWeb.buildUploadedBatchPreview
     })
     expect(result).toHaveProperty('uploadWeb.buildUploadWebFlow')
+    expect(result).toHaveProperty('uploadWeb.buildUploadedBatchPreview')
     expect(result).toHaveProperty('cliDemo.runCliDemo')
     expect(result).toHaveProperty('webDemo.buildWebDemo')
     expect(result).toHaveProperty('realInputFixtures.getRealInputFixture')

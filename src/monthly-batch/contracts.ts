@@ -2,6 +2,12 @@ import type { ExtractedRecord, SourceDocument } from '../domain'
 import type { ReconciliationContext, ReconciliationResult } from '../reconciliation'
 import type { ReconciliationReport } from '../reporting'
 
+export interface UploadedMonthlyFile {
+  name: string
+  content: string
+  uploadedAt: string
+}
+
 export interface ImportedMonthlySourceFile {
   sourceDocument: SourceDocument
   content: string

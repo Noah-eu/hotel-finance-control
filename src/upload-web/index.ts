@@ -1,9 +1,28 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import {
+  prepareUploadedMonthlyFiles,
+  runMonthlyReconciliationBatch,
+  type ImportedMonthlySourceFile,
+  type UploadedMonthlyFile
+} from '../monthly-batch'
+import { buildReviewScreen, type ReviewScreenData } from '../review'
 
 export interface BuildUploadWebFlowOptions {
   generatedAt?: string
   outputPath?: string
+}
+
+export interface BuildUploadedBatchPreviewInput {
+  files: UploadedMonthlyFile[]
+  runId: string
+  generatedAt: string
+}
+
+export interface UploadedBatchPreviewResult {
+  importedFiles: ImportedMonthlySourceFile[]
+  batch: ReturnType<typeof runMonthlyReconciliationBatch>
+  review: ReviewScreenData
 }
 
 export interface UploadWebFlowResult {
@@ -134,6 +153,7 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
             <label for="monthly-files">Soubory k nahrání</label>
             <input id="monthly-files" type="file" multiple />
             <p class="hint">Podporované vstupy v dalších krocích: bankovní výpisy, OTA exporty, Comgate, faktury a účtenky.</p>
+                <p class="hint">Rozpoznání typu souboru používá stejnou sdílenou přípravu jako následné zpracování v <code>monthly-batch</code>.</p>
           </div>
           <div>
             <label for="month-label">Označení měsíce</label>
@@ -182,7 +202,7 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
           '<strong>Měsíc:</strong> ' + escapeHtml(month),
           '<br /><strong>Počet souborů:</strong> ' + files.length,
           '<ul>' + files.map((file) => '<li><strong>' + escapeHtml(file.name) + '</strong> — ' + file.size + ' B</li>').join('') + '</ul>',
-          '<p class="hint">Soubory jsou připravené pro další deterministické napojení do importu a extrakce.</p>'
+          '<p class="hint">Soubory jsou připravené pro sdílený deterministický vstup do importu, extrakce a měsíčního běhu.</p>'
         ].join('');
       }
 
@@ -204,11 +224,34 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
 `
 }
 
+export function buildUploadedBatchPreview(input: BuildUploadedBatchPreviewInput): UploadedBatchPreviewResult {
+  const importedFiles = prepareUploadedMonthlyFiles(input.files)
+  const batch = runMonthlyReconciliationBatch({
+    files: importedFiles,
+    reconciliationContext: {
+      runId: input.runId,
+      requestedAt: input.generatedAt
+    },
+    reportGeneratedAt: input.generatedAt
+  })
+  const review = buildReviewScreen({
+    batch,
+    generatedAt: input.generatedAt
+  })
+
+  return {
+    importedFiles,
+    batch,
+    review
+  }
+}
+
 export function placeholder() {
   return {
     name: 'upload-web',
     mode: 'local-static',
-    buildUploadWebFlow
+    buildUploadWebFlow,
+    buildUploadedBatchPreview
   }
 }
 

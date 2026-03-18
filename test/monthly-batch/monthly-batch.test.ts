@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
-import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
+import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 
 describe('runMonthlyReconciliationBatch', () => {
   it('runs deterministic extraction, reconciliation, and reporting over representative monthly files', () => {
@@ -79,5 +79,46 @@ describe('runMonthlyReconciliationBatch', () => {
         reportGeneratedAt: '2026-03-18T22:31:00.000Z'
       })
     ).toThrow('No monthly batch parser configured')
+  })
+
+  it('prepares uploaded files into shared imported monthly source files with traceable source documents', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const invoice = getRealInputFixture('invoice-document')
+
+    const files = prepareUploadedMonthlyFiles([
+      {
+        name: booking.sourceDocument.fileName,
+        content: booking.rawInput.content,
+        uploadedAt: '2026-03-18T22:40:00.000Z'
+      },
+      {
+        name: invoice.sourceDocument.fileName,
+        content: invoice.rawInput.content,
+        uploadedAt: '2026-03-18T22:41:00.000Z'
+      }
+    ])
+
+    expect(files).toEqual([
+      {
+        sourceDocument: {
+          id: 'uploaded:booking:1:booking-payout-2026-03-csv',
+          sourceSystem: 'booking',
+          documentType: 'ota_report',
+          fileName: 'booking-payout-2026-03.csv',
+          uploadedAt: '2026-03-18T22:40:00.000Z'
+        },
+        content: booking.rawInput.content
+      },
+      {
+        sourceDocument: {
+          id: 'uploaded:invoice:2:invoice-2026-332-txt',
+          sourceSystem: 'invoice',
+          documentType: 'invoice',
+          fileName: 'invoice-2026-332.txt',
+          uploadedAt: '2026-03-18T22:41:00.000Z'
+        },
+        content: invoice.rawInput.content
+      }
+    ])
   })
 })

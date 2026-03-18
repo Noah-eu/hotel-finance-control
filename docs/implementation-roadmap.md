@@ -27,8 +27,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 19 | `prompts/19-monthly-reconciliation-batch.prompt.md` | done | A deterministic monthly reconciliation batch entry point now routes imported source files through extraction, reconciliation, and reporting with focused end-to-end tests. |
 | 20 | `prompts/20-review-screen-baseline.prompt.md` | done | A deterministic review workflow baseline now surfaces matched, unmatched, suspicious, and missing-document items from monthly reconciliation outputs with focused tests. |
 | 21 | `prompts/21-real-upload-web-flow.prompt.md` | done | A first real browser-visible upload flow now exists as a local static page with practical Czech copy, file selection, and deterministic preparation for later ingestion. |
-| 22 | `prompts/22-uploaded-file-ingestion.prompt.md` | next | Connect uploaded files into the existing monthly batch and extraction pipeline with deterministic traceability. |
-| 23 | `prompts/23-browser-review-screen.prompt.md` | planned | Add the first real browser review UI for matched, unmatched, suspicious, and missing-document items. |
+| 22 | `prompts/22-uploaded-file-ingestion.prompt.md` | done | Uploaded files now enter the shared monthly-batch and extraction pipeline through deterministic source-document preparation, traceable parser routing, and focused tests. |
+| 23 | `prompts/23-browser-review-screen.prompt.md` | next | Add the first real browser review UI for matched, unmatched, suspicious, and missing-document items. |
 | 24 | `prompts/24-csv-xlsx-export.prompt.md` | planned | Add practical CSV/XLSX export for reconciliation outputs and review items used in real monthly work. |
 | 25 | `prompts/25-parser-hardening-raiff-fio-booking-comgate.prompt.md` | planned | Harden existing deterministic parsers against real-world file variants while preserving explainability and auditability. |
 | 26 | `prompts/26-invoice-receipt-expansion.prompt.md` | planned | Expand deterministic invoice and receipt ingestion coverage before introducing any OCR or AI fallback path. |
@@ -46,6 +46,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/monthly-batch`: deterministic monthly import-to-extraction-to-reconciliation-to-report orchestration over representative real source files
 - `src/review`: deterministic review workflow surface for matched, unmatched, suspicious, and missing-document reconciliation outcomes
 - `src/upload-web`: local static browser-visible upload flow for real monthly source files, prepared for later ingestion steps
+- `src/upload-web`: local static browser-visible upload flow plus shared preparation into `monthly-batch` imported files and review-ready batch previews
 - `src/demo-fixtures`: reusable deterministic demo inputs plus expected reconciliation and reporting outputs
 - `src/real-input-fixtures`: representative deterministic raw-source fixtures plus expected extracted and normalized outputs for real hotel-finance inputs
 - `src/extraction`: deterministic Raiffeisenbank and Fio bank-statement parsers, Booking and Comgate payout/export parsers, plus deterministic document-ingestion contracts and a first invoice parser path
@@ -73,7 +74,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 
 ## Current roadmap status
 
-Steps `01` through `21` are complete. Step `22` is the next unfinished milestone.
+Steps `01` through `22` are complete. Step `23` is the next unfinished milestone.
 
 ## Next step selection rule
 

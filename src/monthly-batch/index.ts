@@ -10,7 +10,12 @@ export type {
   MonthlyBatchFileResult,
   MonthlyBatchInput,
   MonthlyBatchResult,
-  MonthlyBatchService
+  MonthlyBatchService,
+  UploadedMonthlyFile
 } from './contracts'
 
-export { DefaultMonthlyBatchService, runMonthlyReconciliationBatch } from './service'
+export {
+  DefaultMonthlyBatchService,
+  prepareUploadedMonthlyFiles,
+  runMonthlyReconciliationBatch
+} from './service'
