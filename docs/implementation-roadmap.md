@@ -26,6 +26,14 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 18 | `prompts/18-invoice-receipt-ingestion.prompt.md` | done | Deterministic document-ingestion contracts and a first invoice parser path now exist with traceable extracted outputs, focused tests, and OCR reserved as a future fallback only. |
 | 19 | `prompts/19-monthly-reconciliation-batch.prompt.md` | done | A deterministic monthly reconciliation batch entry point now routes imported source files through extraction, reconciliation, and reporting with focused end-to-end tests. |
 | 20 | `prompts/20-review-screen-baseline.prompt.md` | done | A deterministic review workflow baseline now surfaces matched, unmatched, suspicious, and missing-document items from monthly reconciliation outputs with focused tests. |
+| 21 | `prompts/21-real-upload-web-flow.prompt.md` | next | Add the first real browser-visible upload flow for user-provided files, minimal but usable, staying static/local without a fake backend. |
+| 22 | `prompts/22-uploaded-file-ingestion.prompt.md` | planned | Connect uploaded files into the existing monthly batch and extraction pipeline with deterministic traceability. |
+| 23 | `prompts/23-browser-review-screen.prompt.md` | planned | Add the first real browser review UI for matched, unmatched, suspicious, and missing-document items. |
+| 24 | `prompts/24-csv-xlsx-export.prompt.md` | planned | Add practical CSV/XLSX export for reconciliation outputs and review items used in real monthly work. |
+| 25 | `prompts/25-parser-hardening-raiff-fio-booking-comgate.prompt.md` | planned | Harden existing deterministic parsers against real-world file variants while preserving explainability and auditability. |
+| 26 | `prompts/26-invoice-receipt-expansion.prompt.md` | planned | Expand deterministic invoice and receipt ingestion coverage before introducing any OCR or AI fallback path. |
+| 27 | `prompts/27-suspicious-expense-rules.prompt.md` | planned | Add the first explicit review rules for suspicious/private expenses and missing supporting documents. |
+| 28 | `prompts/28-monthly-run-from-uploaded-files.prompt.md` | planned | Add one real end-to-end monthly processing flow using uploaded source files instead of demo fixtures. |
 
 ## Current implemented modules
 
@@ -53,10 +61,18 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 18 focuses on deterministic invoice and receipt ingestion contracts plus the first parser path, with AI/OCR only as fallback.
 - Step 19 focuses on a monthly reconciliation batch entry point over real imported files.
 - Step 20 focuses on the first real review-screen workflow layer for matched, unmatched, suspicious, and missing-document items.
+- Step 21 focuses on the first real browser-visible upload flow for user-provided files, minimal but usable, without a fake backend.
+- Step 22 focuses on connecting uploaded files into the existing monthly batch and extraction pipeline.
+- Step 23 focuses on the first browser review UI for matched, unmatched, suspicious, and missing-document items.
+- Step 24 focuses on practical CSV/XLSX export for real monthly reconciliation and review work.
+- Step 25 focuses on hardening the existing deterministic Raiffeisenbank, Fio, Booking, and Comgate parsers against real-world variants.
+- Step 26 focuses on expanding deterministic invoice and receipt ingestion coverage before any OCR/AI fallback.
+- Step 27 focuses on the first explicit suspicious/private expense and missing-document review rules.
+- Step 28 focuses on one real end-to-end monthly processing flow built from uploaded source files rather than demo fixtures.
 
 ## Current roadmap status
 
-Steps `01` through `20` are complete. There is no unfinished roadmap step currently recorded.
+Steps `01` through `20` are complete. Step `21` is the next unfinished milestone.
 
 ## Next step selection rule
 
