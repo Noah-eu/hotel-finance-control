@@ -6,6 +6,7 @@ import {
   type ImportedMonthlySourceFile,
   type UploadedMonthlyFile
 } from '../monthly-batch'
+import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import { buildReviewScreen, type ReviewScreenData } from '../review'
 
 export interface BuildUploadWebFlowOptions {
@@ -39,6 +40,15 @@ export interface BrowserReviewScreenResult {
   html: string
   preview: UploadedBatchPreviewResult
   outputPath?: string
+}
+
+export interface BuildBrowserExportPackageOptions extends BuildUploadedBatchPreviewInput {
+  outputDir?: string
+}
+
+export interface BrowserExportPackageResult {
+  preview: UploadedBatchPreviewResult
+  exports: ExportArtifactsResult
 }
 
 export function buildUploadWebFlow(options: BuildUploadWebFlowOptions = {}): UploadWebFlowResult {
@@ -280,13 +290,30 @@ export function buildBrowserReviewScreen(
   }
 }
 
+export function buildBrowserExportPackage(
+  options: BuildBrowserExportPackageOptions
+): BrowserExportPackageResult {
+  const preview = buildUploadedBatchPreview(options)
+  const exports = buildExportArtifacts({
+    batch: preview.batch,
+    review: preview.review,
+    outputDir: options.outputDir
+  })
+
+  return {
+    preview,
+    exports
+  }
+}
+
 export function placeholder() {
   return {
     name: 'upload-web',
     mode: 'local-static',
     buildUploadWebFlow,
     buildUploadedBatchPreview,
-    buildBrowserReviewScreen
+    buildBrowserReviewScreen,
+    buildBrowserExportPackage
   }
 }
 

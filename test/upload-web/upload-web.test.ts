@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  buildBrowserExportPackage,
   buildBrowserReviewScreen,
   buildUploadedBatchPreview,
   buildUploadWebFlow
@@ -114,5 +115,39 @@ describe('buildUploadWebFlow', () => {
     expect(result.outputPath).toBe(outputPath)
     expect(existsSync(outputPath)).toBe(true)
     expect(readFileSync(outputPath, 'utf8')).toContain('Kontrola měsíce')
+  })
+
+  it('builds practical CSV and XLSX browser export files from the shared uploaded batch preview flow', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const outputDir = resolve(process.cwd(), 'dist/test-browser-export')
+
+    rmSync(outputDir, {
+      recursive: true,
+      force: true
+    })
+
+    const result = buildBrowserExportPackage({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-18T20:40:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-18T20:40:00.000Z'
+        }
+      ],
+      runId: 'browser-export-run',
+      generatedAt: '2026-03-18T20:40:00.000Z',
+      outputDir
+    })
+
+    expect(result.preview.review.matched).toHaveLength(1)
+    expect(result.exports.files).toHaveLength(3)
+    expect(result.exports.files.map((file) => file.fileName)).toContain('monthly-review-export.xlsx')
+    expect(existsSync(resolve(outputDir, 'review-items.csv'))).toBe(true)
   })
 })

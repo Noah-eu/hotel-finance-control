@@ -16,5 +16,8 @@
     "tsx": "^4.19.3",
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
   }
 }
