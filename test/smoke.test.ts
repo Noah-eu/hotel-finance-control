@@ -8,6 +8,7 @@ describe('smoke', () => {
     expect(result.domain).toHaveProperty('name', 'domain')
     expect(result.import).toHaveProperty('name', 'import')
   expect(result.extraction).toHaveProperty('parser', 'deterministic')
+  expect(result).toHaveProperty('extraction')
     expect(result.normalization).toHaveProperty('name', 'normalization')
     expect(result.exceptions).toHaveProperty('detector', 'baseline')
     expect(result.reporting).toHaveProperty('renderer', 'reconciliation-report')
