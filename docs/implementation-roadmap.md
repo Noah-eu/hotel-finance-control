@@ -18,6 +18,14 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 10 | `prompts/10-demo-fixtures.prompt.md` | done | Reusable deterministic fixture inputs and expected reconciliation/report outputs now exist under `src/demo-fixtures` with validation tests. |
 | 11 | `prompts/11-cli-demo.prompt.md` | done | A local `demo:cli` command now runs the pipeline on deterministic fixture data and prints a readable reconciliation report. |
 | 12 | `prompts/12-minimal-web-demo.prompt.md` | done | A local `demo:web` command now generates a tiny browser-visible HTML demo from fixture-driven reconciliation and reporting output. |
+| 13 | `prompts/13-real-input-fixtures.prompt.md` | next | Add representative deterministic sample inputs modeled after real hotel-finance sources plus expected extracted and normalized outputs. |
+| 14 | `prompts/14-raiffeisenbank-parser.prompt.md` | planned | Add deterministic extraction for Raiffeisenbank statement inputs covering OTA inflows, Comgate inflows, expenses, payroll, and suspicious/private spending. |
+| 15 | `prompts/15-fio-parser.prompt.md` | planned | Add deterministic extraction for Fio statement inputs focused on Expedia terminal payment flows. |
+| 16 | `prompts/16-booking-parser.prompt.md` | planned | Add deterministic Booking payout/export ingestion that produces extracted records compatible with the shared normalization model. |
+| 17 | `prompts/17-comgate-parser.prompt.md` | planned | Add deterministic Comgate ingestion covering website reservations and parking payment flows. |
+| 18 | `prompts/18-invoice-receipt-ingestion.prompt.md` | planned | Prepare deterministic document ingestion contracts and the first parser path for invoices and receipts, with AI/OCR reserved as fallback. |
+| 19 | `prompts/19-monthly-reconciliation-batch.prompt.md` | planned | Add one end-to-end monthly processing entry point that runs imports, extraction, normalization, matching, exceptions, and reporting over real imported files. |
+| 20 | `prompts/20-review-screen-baseline.prompt.md` | planned | Add the first real review workflow layer for matched, unmatched, suspicious, and missing-document items. |
 
 ## Current implemented modules
 
@@ -33,13 +41,18 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 
 ## Upcoming workflow milestones
 
-- Step 10 focuses on deterministic demo fixtures: sample `ExtractedRecord[]` inputs plus expected reconciliation and reporting outputs that can support tests, demos, and local tooling.
-- Step 11 focuses on a local CLI demo entrypoint that runs the existing pipeline against fixture data and prints a readable report for manual inspection.
-- Step 12 focuses on a minimal local web demo: a tiny browser-visible layer that presents fixture-driven results without introducing a production application architecture.
+- Step 13 focuses on representative deterministic real-input fixtures that model actual hotel-finance source formats and expected parser outputs.
+- Step 14 focuses on deterministic Raiffeisenbank parsing for Booking, Airbnb, Comgate, expense, payroll, and suspicious/private bank flows.
+- Step 15 focuses on deterministic Fio parsing for Expedia terminal payment flows.
+- Step 16 focuses on deterministic Booking payout/export ingestion into extracted records.
+- Step 17 focuses on deterministic Comgate ingestion for website reservations and parking.
+- Step 18 focuses on deterministic invoice and receipt ingestion contracts plus the first parser path, with AI/OCR only as fallback.
+- Step 19 focuses on a monthly reconciliation batch entry point over real imported files.
+- Step 20 focuses on the first real review-screen workflow layer for matched, unmatched, suspicious, and missing-document items.
 
 ## Current roadmap status
 
-Steps `01` through `12` are now complete. Add the next row before using the roadmap-driven controller for another milestone.
+Steps `01` through `12` are complete. Step `13` is the next unfinished milestone.
 
 ## Next step selection rule
 
