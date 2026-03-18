@@ -83,7 +83,7 @@ export function parseDocumentAmountMinor(value: string, fieldName: string): numb
   const normalized = value.trim().replace(/\s+/g, '')
 
   if (/^-?\d+$/.test(normalized)) {
-    return Number.parseInt(normalized, 10)
+    return Number.parseInt(normalized, 10) * 100
   }
 
   const tolerant = normalized.replace(',', '.')

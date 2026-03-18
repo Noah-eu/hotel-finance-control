@@ -341,7 +341,7 @@ export const realInputFixtures: RealInputFixture[] = [
         sourceDocumentId: 'doc-invoice-2026-332' as ExtractedRecord['sourceDocumentId'],
         recordType: 'invoice-document',
         rawReference: 'INV-2026-332',
-        amountMinor: 18500,
+        amountMinor: 1850000,
         currency: 'CZK',
         occurredAt: '2026-03-19',
         data: {
@@ -350,10 +350,26 @@ export const realInputFixtures: RealInputFixture[] = [
           supplier: 'Laundry Supply s.r.o.',
           issueDate: '2026-03-19',
           dueDate: '2026-03-26',
-          amountMinor: 18500,
+          amountMinor: 1850000,
           currency: 'CZK',
           description: 'Laundry and linens'
         }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 1850000,
+        currency: 'CZK',
+        bookedAt: '2026-03-19',
+        accountId: 'document-expenses',
+        counterparty: 'Laundry Supply s.r.o.',
+        reference: 'INV-2026-332',
+        invoiceNumber: 'INV-2026-332',
+        extractedRecordIds: ['invoice-record-1'],
+        sourceDocumentIds: ['doc-invoice-2026-332' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },
@@ -383,7 +399,7 @@ export const realInputFixtures: RealInputFixture[] = [
         sourceDocumentId: 'doc-receipt-2026-03-55' as ExtractedRecord['sourceDocumentId'],
         recordType: 'receipt-document',
         rawReference: 'RCPT-2026-03-55',
-        amountMinor: 2490,
+        amountMinor: 249000,
         currency: 'CZK',
         occurredAt: '2026-03-20',
         data: {
@@ -391,11 +407,26 @@ export const realInputFixtures: RealInputFixture[] = [
           receiptNumber: 'RCPT-2026-03-55',
           merchant: 'Metro Cash & Carry',
           purchaseDate: '2026-03-20',
-          amountMinor: 2490,
+          amountMinor: 249000,
           currency: 'CZK',
           category: 'supplies',
           description: 'Cleaning materials'
         }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:receipt-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'receipt',
+        amountMinor: 249000,
+        currency: 'CZK',
+        bookedAt: '2026-03-20',
+        accountId: 'document-expenses',
+        counterparty: 'Metro Cash & Carry',
+        reference: 'RCPT-2026-03-55',
+        extractedRecordIds: ['receipt-record-1'],
+        sourceDocumentIds: ['doc-receipt-2026-03-55' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   }

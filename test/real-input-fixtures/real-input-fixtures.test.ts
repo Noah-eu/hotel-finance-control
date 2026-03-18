@@ -41,16 +41,20 @@ describe('realInputFixtures', () => {
     })
     expect(invoice.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'invoice-document',
+      amountMinor: 1850000,
       data: {
         invoiceNumber: 'INV-2026-332',
-        supplier: 'Laundry Supply s.r.o.'
+        supplier: 'Laundry Supply s.r.o.',
+        amountMinor: 1850000
       }
     })
     expect(receipt.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'receipt-document',
+      amountMinor: 249000,
       data: {
         receiptNumber: 'RCPT-2026-03-55',
-        merchant: 'Metro Cash & Carry'
+        merchant: 'Metro Cash & Carry',
+        amountMinor: 249000
       }
     })
   })
@@ -66,7 +70,17 @@ describe('realInputFixtures', () => {
       reference: 'PAYOUT-BOOK-20260310'
     })
 
+    const invoice = getRealInputFixture('invoice-document')
     const receipt = getRealInputFixture('receipt-document')
-    expect(receipt.expectedNormalizedTransactions).toBeUndefined()
+    expect(invoice.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'invoice',
+      amountMinor: 1850000,
+      accountId: 'document-expenses'
+    })
+    expect(receipt.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'receipt',
+      amountMinor: 249000,
+      accountId: 'document-expenses'
+    })
   })
 })

@@ -134,4 +134,47 @@ describe('parseInvoiceDocument', () => {
       }
     })
   })
+
+  it('converts human-readable whole-unit document totals into minor units in the shared path', () => {
+    const invoice = getRealInputFixture('invoice-document')
+    const receipt = getRealInputFixture('receipt-document')
+
+    const invoiceRecords = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-18T22:10:00.000Z'
+    })
+    const receiptRecords = parseReceiptDocument({
+      sourceDocument: receipt.sourceDocument,
+      content: receipt.rawInput.content,
+      extractedAt: '2026-03-18T22:10:00.000Z'
+    })
+
+    expect(invoiceRecords[0].amountMinor).toBe(1850000)
+    expect(receiptRecords[0].amountMinor).toBe(249000)
+    expect(parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: [
+        'Číslo faktury: INV-2026-332',
+        'Dodavatel: Laundry Supply s.r.o.',
+        'Datum vystavení: 19.03.2026',
+        'Datum splatnosti: 26/03/2026',
+        'Celkem: 185,00 CZK',
+        'Předmět plnění: Laundry and linens'
+      ].join('\n'),
+      extractedAt: '2026-03-18T22:10:00.000Z'
+    })[0].amountMinor).toBe(18500)
+    expect(parseReceiptDocument({
+      sourceDocument: receipt.sourceDocument,
+      content: [
+        'Číslo účtenky: RCPT-2026-03-55',
+        'Obchod: Metro Cash & Carry',
+        'Datum nákupu: 20.03.2026',
+        'Zaplaceno: 24.90 CZK',
+        'Kategorie: supplies',
+        'Poznámka: Cleaning materials'
+      ].join('\n'),
+      extractedAt: '2026-03-18T22:10:00.000Z'
+    })[0].amountMinor).toBe(2490)
+  })
 })

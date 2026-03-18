@@ -29,7 +29,7 @@ describe('DocumentRecordNormalizer', () => {
         id: 'txn:document:invoice-record-1',
         source: 'invoice',
         direction: 'out',
-        amountMinor: 18500,
+        amountMinor: 1850000,
         accountId: 'document-expenses',
         invoiceNumber: 'INV-2026-332'
       }),
@@ -37,7 +37,7 @@ describe('DocumentRecordNormalizer', () => {
         id: 'txn:document:receipt-record-1',
         source: 'receipt',
         direction: 'out',
-        amountMinor: 2490,
+        amountMinor: 249000,
         accountId: 'document-expenses'
       })
     ])
