@@ -14,7 +14,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 06 | `prompts/06-first-matcher.prompt.md` | done | Deterministic payout-to-bank one-to-one matcher exists with focused tests. |
 | 07 | `prompts/07-exceptions-baseline.prompt.md` | done | Baseline exception detector exists for unmatched transactions/documents and low-confidence matches. |
 | 08 | `prompts/08-reconciliation-flow.prompt.md` | done | End-to-end reconciliation orchestration exists with normalization, matching, exceptions, and summary counts. |
-| 09 | `prompts/09-reporting-export.prompt.md` | next | Reporting/export still has only a placeholder; next step should add the first minimal reporting contract and export shape without UI/DB scope. |
+| 09 | `prompts/09-reporting-export.prompt.md` | done | Reporting/export now builds a deterministic reconciliation report with summary, matches, exceptions, and transaction-level statuses. |
 
 ## Current implemented modules
 
@@ -23,7 +23,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/matching`: contracts, deterministic payout-to-bank matcher, service entrypoint
 - `src/exceptions`: baseline deterministic exception generation
 - `src/reconciliation`: end-to-end orchestration entrypoint with summary counts
-- `src/reporting`: placeholder only
+- `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
 
 ## Next step selection rule
 
@@ -35,4 +35,5 @@ After a step is completed successfully:
 1. mark that step as `done`
 2. update its notes to match the real repository state
 3. mark the following unfinished step as `next`
-4. keep all already completed steps intact unless the repo state proves they were recorded incorrectly
+4. if no unfinished step remains yet, leave all recorded steps as `done` until a new roadmap row is added
+5. keep all already completed steps intact unless the repo state proves they were recorded incorrectly
