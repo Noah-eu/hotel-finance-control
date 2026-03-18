@@ -39,10 +39,12 @@ describe('smoke', () => {
       name: 'upload-web',
       mode: 'local-static',
       buildUploadWebFlow: result.uploadWeb.buildUploadWebFlow,
-      buildUploadedBatchPreview: result.uploadWeb.buildUploadedBatchPreview
+      buildUploadedBatchPreview: result.uploadWeb.buildUploadedBatchPreview,
+      buildBrowserReviewScreen: result.uploadWeb.buildBrowserReviewScreen
     })
     expect(result).toHaveProperty('uploadWeb.buildUploadWebFlow')
     expect(result).toHaveProperty('uploadWeb.buildUploadedBatchPreview')
+    expect(result).toHaveProperty('uploadWeb.buildBrowserReviewScreen')
     expect(result).toHaveProperty('cliDemo.runCliDemo')
     expect(result).toHaveProperty('webDemo.buildWebDemo')
     expect(result).toHaveProperty('realInputFixtures.getRealInputFixture')

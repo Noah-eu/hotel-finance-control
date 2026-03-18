@@ -13,6 +13,10 @@ export interface BuildUploadWebFlowOptions {
   outputPath?: string
 }
 
+export interface BuildBrowserReviewScreenOptions extends BuildUploadedBatchPreviewInput {
+  outputPath?: string
+}
+
 export interface BuildUploadedBatchPreviewInput {
   files: UploadedMonthlyFile[]
   runId: string
@@ -28,6 +32,12 @@ export interface UploadedBatchPreviewResult {
 export interface UploadWebFlowResult {
   html: string
   generatedAt: string
+  outputPath?: string
+}
+
+export interface BrowserReviewScreenResult {
+  html: string
+  preview: UploadedBatchPreviewResult
   outputPath?: string
 }
 
@@ -152,8 +162,8 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
           <div>
             <label for="monthly-files">Soubory k nahrání</label>
             <input id="monthly-files" type="file" multiple />
-            <p class="hint">Podporované vstupy v dalších krocích: bankovní výpisy, OTA exporty, Comgate, faktury a účtenky.</p>
-                <p class="hint">Rozpoznání typu souboru používá stejnou sdílenou přípravu jako následné zpracování v <code>monthly-batch</code>.</p>
+      <p class="hint">Podporované vstupy: bankovní výpisy, OTA exporty, Comgate, faktury a účtenky.</p>
+      <p class="hint">Rozpoznání typu souboru používá stejnou sdílenou přípravu jako následné zpracování v <code>monthly-batch</code>.</p>
           </div>
           <div>
             <label for="month-label">Označení měsíce</label>
@@ -174,8 +184,8 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
       <section class="card">
         <h2>Co bude následovat</h2>
         <ul>
-          <li>V dalším kroku budou nahrané soubory napojeny do existujícího pipeline <code>monthly-batch</code> a <code>extraction</code>.</li>
-          <li>Následně přibude prohlížečová kontrolní obrazovka pro spárované, nespárované a podezřelé položky.</li>
+          <li>Nahrané soubory lze napojit do sdíleného pipeline <code>monthly-batch</code> a <code>extraction</code>.</li>
+          <li>Na stejných datech lze zobrazit prohlížečovou kontrolní obrazovku pro spárované, nespárované a podezřelé položky.</li>
           <li>Tato verze zůstává čistě lokální a bez backendu, aby byl tok souborů snadno auditovatelný.</li>
         </ul>
       </section>
@@ -246,13 +256,180 @@ export function buildUploadedBatchPreview(input: BuildUploadedBatchPreviewInput)
   }
 }
 
+export function buildBrowserReviewScreen(
+  options: BuildBrowserReviewScreenOptions
+): BrowserReviewScreenResult {
+  const preview = buildUploadedBatchPreview(options)
+  const html = renderBrowserReviewScreenHtml(preview)
+
+  if (options.outputPath) {
+    const resolved = resolve(options.outputPath)
+    mkdirSync(dirname(resolved), { recursive: true })
+    writeFileSync(resolved, html, 'utf8')
+
+    return {
+      html,
+      preview,
+      outputPath: resolved
+    }
+  }
+
+  return {
+    html,
+    preview
+  }
+}
+
 export function placeholder() {
   return {
     name: 'upload-web',
     mode: 'local-static',
     buildUploadWebFlow,
-    buildUploadedBatchPreview
+    buildUploadedBatchPreview,
+    buildBrowserReviewScreen
   }
+}
+
+function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): string {
+  const { review, batch } = preview
+
+  return `<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel Finance Control – Kontrola měsíce</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #eef3fb;
+        color: #142033;
+      }
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .hero, .card {
+        background: white;
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 10px 35px rgba(20, 32, 51, 0.08);
+        margin-bottom: 20px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #eaf2ff;
+        color: #174ea6;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+      }
+      .metric {
+        padding: 16px;
+        background: #f7f9fc;
+        border-radius: 14px;
+      }
+      .section-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .section-panel {
+        border: 1px solid #e4ebf6;
+        border-radius: 14px;
+        padding: 16px;
+        background: #fbfdff;
+      }
+      .section-panel h3 {
+        margin-top: 0;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      .empty {
+        color: #6a7891;
+      }
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-left: 8px;
+      }
+      .badge.matched { background: #e7f6ec; color: #0f7a32; }
+      .badge.unmatched { background: #fff4dd; color: #946200; }
+      .badge.suspicious { background: #ffe3e8; color: #b42318; }
+      .badge.missing { background: #ede9fe; color: #6d28d9; }
+      code {
+        background: #f1f4f8;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <span class="pill">Kontrola měsíce</span>
+        <h1>První kontrolní obrazovka měsíčního zpracování</h1>
+        <p>Tato lokální obrazovka zobrazuje stejné sdílené výsledky z uploadu, extrakce, párování a review workflow bez backendu a bez paralelního modelu.</p>
+        <p><strong>Vygenerováno:</strong> ${escapeHtml(review.generatedAt)}</p>
+      </section>
+
+      <section class="card">
+        <h2>Souhrn měsíce</h2>
+        <div class="summary-grid">
+          <div class="metric"><strong>${review.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
+          <div class="metric"><strong>${review.summary.matchedGroupCount}</strong><br />Spárované skupiny</div>
+          <div class="metric"><strong>${review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+          <div class="metric"><strong>${batch.files.length}</strong><br />Zpracované soubory</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Přehled kontrolních sekcí</h2>
+        <div class="section-grid">
+          ${renderReviewSection('Spárované položky', 'matched', review.matched)}
+          ${renderReviewSection('Nespárované položky', 'unmatched', review.unmatched)}
+          ${renderReviewSection('Podezřelé položky', 'suspicious', review.suspicious)}
+          ${renderReviewSection('Chybějící doklady', 'missing', review.missingDocuments)}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Trace souborů</h2>
+        <ul>
+          ${batch.files.map((file) => `<li><strong>${escapeHtml(file.sourceDocumentId)}</strong> — ${file.extractedCount} extrahovaných záznamů</li>`).join('')}
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
+`
+}
+
+function renderReviewSection(
+  title: string,
+  badgeClass: 'matched' | 'unmatched' | 'suspicious' | 'missing',
+  items: ReviewScreenData['matched']
+): string {
+  const body = items.length === 0
+    ? '<p class="empty">Žádné položky v této sekci.</p>'
+    : `<ul>${items.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span class="badge ${badgeClass}">${escapeHtml(item.kind)}</span><br />${escapeHtml(item.detail)}${item.transactionIds.length > 0 ? `<br /><code>${escapeHtml(item.transactionIds.join(', '))}</code>` : ''}</li>`).join('')}</ul>`
+
+  return `<section class="section-panel"><h3>${escapeHtml(title)}</h3>${body}</section>`
 }
 
 function escapeHtml(value: string): string {

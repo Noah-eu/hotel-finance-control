@@ -2,7 +2,11 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
-import { buildUploadedBatchPreview, buildUploadWebFlow } from '../../src/upload-web'
+import {
+  buildBrowserReviewScreen,
+  buildUploadedBatchPreview,
+  buildUploadWebFlow
+} from '../../src/upload-web'
 
 describe('buildUploadWebFlow', () => {
   it('renders a browser-visible local upload flow with practical Czech copy', () => {
@@ -70,5 +74,45 @@ describe('buildUploadWebFlow', () => {
     expect(result.batch.reconciliation.summary.matchedGroupCount).toBe(1)
     expect(result.batch.files).toHaveLength(2)
     expect(result.review.matched).toHaveLength(1)
+  })
+
+  it('renders a browser-visible review screen from the shared uploaded batch preview flow', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const outputDir = resolve(process.cwd(), 'dist/test-browser-review')
+    const outputPath = resolve(outputDir, 'index.html')
+
+    rmSync(outputDir, {
+      recursive: true,
+      force: true
+    })
+
+    const result = buildBrowserReviewScreen({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-18T20:35:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-18T20:35:00.000Z'
+        }
+      ],
+      runId: 'browser-review-run',
+      generatedAt: '2026-03-18T20:35:00.000Z',
+      outputPath
+    })
+
+    expect(result.preview.review.matched).toHaveLength(1)
+    expect(result.html).toContain('První kontrolní obrazovka měsíčního zpracování')
+    expect(result.html).toContain('Spárované položky')
+    expect(result.html).toContain('Nespárované položky')
+    expect(result.html).toContain('Podezřelé položky')
+    expect(result.html).toContain('Chybějící doklady')
+    expect(result.outputPath).toBe(outputPath)
+    expect(existsSync(outputPath)).toBe(true)
+    expect(readFileSync(outputPath, 'utf8')).toContain('Kontrola měsíce')
   })
 })
