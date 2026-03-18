@@ -17,7 +17,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 09 | `prompts/09-reporting-export.prompt.md` | done | Reporting/export now builds a deterministic reconciliation report with summary, matches, exceptions, and transaction-level statuses. |
 | 10 | `prompts/10-demo-fixtures.prompt.md` | done | Reusable deterministic fixture inputs and expected reconciliation/report outputs now exist under `src/demo-fixtures` with validation tests. |
 | 11 | `prompts/11-cli-demo.prompt.md` | done | A local `demo:cli` command now runs the pipeline on deterministic fixture data and prints a readable reconciliation report. |
-| 12 | `prompts/12-minimal-web-demo.prompt.md` | next | Add the first tiny browser-visible local demo layer that renders fixture-driven reconciliation output without becoming a production UI. |
+| 12 | `prompts/12-minimal-web-demo.prompt.md` | done | A local `demo:web` command now generates a tiny browser-visible HTML demo from fixture-driven reconciliation and reporting output. |
 
 ## Current implemented modules
 
@@ -29,12 +29,17 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/reporting`: minimal reconciliation report contracts and formatter built on reconciliation results
 - `src/demo-fixtures`: reusable deterministic demo inputs plus expected reconciliation and reporting outputs
 - `src/cli-demo`: local CLI demo entrypoint and formatter built on shared demo fixtures, reconciliation, and reporting
+- `src/web-demo`: minimal browser-visible HTML demo generator built on shared demo fixtures, reconciliation, and reporting
 
 ## Upcoming workflow milestones
 
 - Step 10 focuses on deterministic demo fixtures: sample `ExtractedRecord[]` inputs plus expected reconciliation and reporting outputs that can support tests, demos, and local tooling.
 - Step 11 focuses on a local CLI demo entrypoint that runs the existing pipeline against fixture data and prints a readable report for manual inspection.
 - Step 12 focuses on a minimal local web demo: a tiny browser-visible layer that presents fixture-driven results without introducing a production application architecture.
+
+## Current roadmap status
+
+Steps `01` through `12` are now complete. Add the next row before using the roadmap-driven controller for another milestone.
 
 ## Next step selection rule
 

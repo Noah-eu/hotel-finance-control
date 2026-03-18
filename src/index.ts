@@ -7,6 +7,7 @@ import * as exceptions from './exceptions'
 import * as reconciliation from './reconciliation'
 import * as reporting from './reporting'
 import * as cliDemo from './cli-demo'
+import * as webDemo from './web-demo'
 
 export function bootstrap() {
   return {
@@ -18,7 +19,8 @@ export function bootstrap() {
     exceptions: exceptions.placeholder(),
     reconciliation: reconciliation.placeholder(),
     reporting: reporting.placeholder(),
-    cliDemo
+    cliDemo,
+    webDemo
   }
 }
 
@@ -31,3 +33,4 @@ export * as exceptions from './exceptions'
 export * as reconciliation from './reconciliation'
 export * as demoFixtures from './demo-fixtures'
 export * as cliDemo from './cli-demo'
+export * as webDemo from './web-demo'
