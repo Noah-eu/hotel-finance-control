@@ -34,6 +34,10 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 26 | `prompts/26-invoice-receipt-expansion.prompt.md` | done | Deterministic document ingestion now covers realistic invoice and receipt variants through one shared parser path, a shared document normalizer, receipt routing in monthly-batch, and focused tests with clear unsupported-structure failures. |
 | 27 | `prompts/27-suspicious-expense-rules.prompt.md` | done | Shared deterministic exception rules now flag suspicious/private expense-like outflows and missing supporting documents with explicit rule codes, traceability, review/report integration, and safe exclusions for legitimate payroll-style flows. |
 | 28 | `prompts/28-monthly-run-from-uploaded-files.prompt.md` | done | Uploaded files now run through one real deterministic monthly flow in `upload-web`, producing a browser-visible monthly result, shared review/report outputs, and export handoff from the same shared modules without a backend or demo-fixture fallback. |
+| 29 | `prompts/29-web-demo-upload-integration.prompt.md` | next | Unify the browser-visible demo surface with the real uploaded monthly run from `src/upload-web`, so the visible app entrypoint reflects the real shared uploaded flow instead of a separate demo-only path. |
+| 30 | `prompts/30-czech-user-copy-pass.prompt.md` | planned | Clean up Czech user-facing copy across upload, review, monthly-run, and export surfaces while keeping internal symbols, file names, and code in English. |
+| 31 | `prompts/31-review-bucketing-hardening.prompt.md` | planned | Reduce fragile review categorization heuristics by preferring explicit shared rule codes and structured exception metadata over free-text inference where appropriate. |
+| 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | planned | Make quality-gate and controller reporting truthful and repo-relative by either adding a real lint gate or removing fake lint expectations from the workflow and user-facing reports. |
 
 ## Current implemented modules
 
@@ -51,7 +55,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - `src/real-input-fixtures`: representative deterministic raw-source fixtures plus expected extracted outputs for bank, payout, invoice, and receipt inputs, with normalized expectations where current shared normalizers apply
 - `src/extraction`: deterministic Raiffeisenbank and Fio bank-statement parsers, Booking and Comgate payout/export parsers, plus shared deterministic invoice and receipt document parsers
 - `src/cli-demo`: local CLI demo entrypoint and formatter built on shared demo fixtures, reconciliation, and reporting
-- `src/web-demo`: minimal browser-visible HTML demo generator built on shared demo fixtures, reconciliation, and reporting
+- `src/web-demo`: minimal browser-visible HTML demo generator still built on shared demo fixtures, earmarked for unification with the real uploaded monthly run flow in the next phase
 
 ## Upcoming workflow milestones
 
@@ -71,10 +75,14 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 26 focuses on expanding deterministic invoice and receipt ingestion coverage before any OCR/AI fallback.
 - Step 27 focuses on the first explicit suspicious/private expense and missing-document review rules.
 - Step 28 focuses on one real end-to-end monthly processing flow built from uploaded source files rather than demo fixtures.
+- Step 29 focuses on unifying the currently visible browser demo with the real uploaded monthly run already implemented in `src/upload-web`.
+- Step 30 focuses on a Czech user-copy cleanup pass across the upload, review, monthly-run, and export browser surfaces.
+- Step 31 focuses on hardening review bucketing to rely on explicit structured rule metadata instead of fragile free-text heuristics wherever possible.
+- Step 32 focuses on making quality-gate and controller reporting truthful and repo-relative, including resolving fake lint expectations if no real lint gate exists.
 
 ## Current roadmap status
 
-Steps `01` through `28` are complete.
+Steps `01` through `28` are complete. Step `29` is the next unfinished milestone.
 
 ## Next step selection rule
 
