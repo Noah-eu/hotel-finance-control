@@ -8,5 +8,6 @@ describe('smoke', () => {
     expect(result.domain).toHaveProperty('name', 'domain')
     expect(result.import).toHaveProperty('name', 'import')
     expect(result.normalization).toHaveProperty('name', 'normalization')
+    expect(result.exceptions).toHaveProperty('detector', 'baseline')
   })
 })
