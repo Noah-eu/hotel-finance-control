@@ -131,6 +131,32 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('const state = await browserRuntime.buildRuntimeState({')
     expect(result.html).toContain('Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.')
   })
+
+  it('replaces the visible snapshot sections with runtime-rendered prepared, review, report, and export content after start', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('id="prepared-files-section"')
+    expect(result.html).toContain('id="review-summary-section"')
+    expect(result.html).toContain('id="report-preview-body"')
+    expect(result.html).toContain('id="export-handoff-section"')
+    expect(result.html).toContain('renderRunningState(files)')
+    expect(result.html).toContain('applyVisibleRuntimeState({')
+    expect(result.html).toContain('Stav stránky: <strong>runtime běh dokončen</strong>')
+    expect(result.html).not.toContain('původní snapshot zůstává finální odpovědí')
+  })
+
+  it('surfaces runtime failures visibly instead of leaving the original demo snapshot as if nothing happened', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('renderFailedState(error)')
+    expect(result.html).toContain('Runtime běh selhal.')
+    expect(result.html).toContain('Exportní handoff není k dispozici, protože runtime běh selhal.')
+    expect(result.html).toContain('Viditelně zobrazujeme chybu místo tichého ponechání ukázkového snapshotu.')
+  })
 })
 
 describe('buildFixtureWebDemo', () => {

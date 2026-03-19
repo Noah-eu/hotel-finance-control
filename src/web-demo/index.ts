@@ -131,6 +131,34 @@ function renderOperatorWebDemoHtml(input: {
     .map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong> — <code>${escapeHtml(file.fileName)}</code></li>`)
     .join('')
 
+  const initialRuntimeState = {
+    generatedAt: input.generatedAt,
+    runId: 'web-demo-uploaded-monthly-run',
+    monthLabel: 'ukázkový snapshot',
+    preparedFiles: input.browserRun.run.importedFiles.map((file) => ({
+      fileName: file.sourceDocument.fileName,
+      sourceDocumentId: file.sourceDocument.id,
+      sourceSystem: file.sourceDocument.sourceSystem,
+      documentType: file.sourceDocument.documentType
+    })),
+    extractedRecords: input.browserRun.run.batch.files.map((fileResult) => ({
+      fileName: input.browserRun.run.importedFiles.find((file) => file.sourceDocument.id === fileResult.sourceDocumentId)?.sourceDocument.fileName ?? fileResult.sourceDocumentId,
+      extractedCount: fileResult.extractedCount,
+      extractedRecordIds: fileResult.extractedRecordIds
+    })),
+    reviewSummary: input.browserRun.run.review.summary,
+    reportTransactions: input.browserRun.run.report.transactions.slice(0, 5).map((transaction) => ({
+      transactionId: transaction.transactionId,
+      source: transaction.source,
+      amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
+      status: transaction.status
+    })),
+    exportFiles: input.browserRun.run.exports.files.map((file) => ({
+      labelCs: file.labelCs,
+      fileName: file.fileName
+    }))
+  }
+
   return `<!doctype html>
 <html lang="cs">
   <head>
@@ -279,9 +307,9 @@ function renderOperatorWebDemoHtml(input: {
         <div id="runtime-output" class="operator-panel runtime-output">
           <p class="hint">Měsíční workflow čeká na skutečně vybrané soubory a měsíc operátora.</p>
         </div>
-        <div class="operator-panel">
+        <div id="runtime-stage-banner" class="operator-panel">
           <h3>Aktuální testovatelný stav v prohlížeči</h3>
-          <p class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
+          <p id="runtime-stage-copy" class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
           <div class="summary-grid">
             <div class="metric"><strong>${input.browserRun.run.importedFiles.length}</strong><br />Ukázkové nahrané soubory</div>
             <div class="metric"><strong>${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
@@ -294,14 +322,20 @@ function renderOperatorWebDemoHtml(input: {
       <section class="card">
         <h2>Příprava, kontrola a report v jednom pohledu</h2>
         <div class="operator-grid">
-          <section class="metric">
+          <section id="prepared-files-section" class="metric" data-runtime-phase="placeholder">
             <h3>Připravené soubory a trasování</h3>
-            <ul>${preparedFiles}</ul>
+            <div id="prepared-files-content">
+              <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
+              <ul>${preparedFiles}</ul>
+            </div>
           </section>
-          <section class="metric">
+          <section id="review-summary-section" class="metric" data-runtime-phase="placeholder">
             <h3>Kontrolní přehled</h3>
-            <ul>${reviewSummaryItems}</ul>
-            <p class="hint">Viditelný přehled vychází z téhož sdíleného výsledku jako detailní review a reporting.</p>
+            <div id="review-summary-content">
+              <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
+              <ul>${reviewSummaryItems}</ul>
+              <p class="hint">Viditelný přehled vychází z téhož sdíleného výsledku jako detailní review a reporting.</p>
+            </div>
           </section>
         </div>
         <p class="hint">Částky jsou v hlavním vstupu zobrazené jako české koruny tam, kde se operátor rozhoduje nad výsledkem.</p>
@@ -314,14 +348,17 @@ function renderOperatorWebDemoHtml(input: {
               <th>Stav</th>
             </tr>
           </thead>
-          <tbody>${reportRows}</tbody>
+          <tbody id="report-preview-body" data-runtime-phase="placeholder">${reportRows}</tbody>
         </table>
       </section>
 
-      <section class="card">
+      <section id="export-handoff-section" class="card" data-runtime-phase="placeholder">
         <h2>Exportní handoff</h2>
-        <ul>${exportItems}</ul>
-        <p class="hint">Exporty vznikají z téhož sdíleného výsledku jako kontrolní sekce a report.</p>
+        <div id="export-handoff-content">
+          <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
+          <ul>${exportItems}</ul>
+          <p class="hint">Exporty vznikají z téhož sdíleného výsledku jako kontrolní sekce a report.</p>
+        </div>
         <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
       </section>
     </main>
@@ -332,7 +369,16 @@ function renderOperatorWebDemoHtml(input: {
       const monthInput = document.getElementById('month-label');
       const button = document.getElementById('prepare-upload');
       const runtimeOutput = document.getElementById('runtime-output');
+  const runtimeStageCopy = document.getElementById('runtime-stage-copy');
+  const preparedFilesSection = document.getElementById('prepared-files-section');
+  const preparedFilesContent = document.getElementById('prepared-files-content');
+  const reviewSummarySection = document.getElementById('review-summary-section');
+  const reviewSummaryContent = document.getElementById('review-summary-content');
+  const reportPreviewBody = document.getElementById('report-preview-body');
+  const exportHandoffSection = document.getElementById('export-handoff-section');
+  const exportHandoffContent = document.getElementById('export-handoff-content');
       const generatedAt = ${JSON.stringify(input.generatedAt)};
+  const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
       let browserRuntime;
 
       function escapeHtml(value) {
@@ -344,23 +390,119 @@ function renderOperatorWebDemoHtml(input: {
           .replace(/'/g, '&#39;');
       }
 
-      function renderMainRuntimeState(state) {
+      function buildPreparedFilesMarkup(state) {
         const preparedFiles = state.preparedFiles.length === 0
           ? '<li>Žádné připravené soubory.</li>'
           : state.preparedFiles.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType) + '</span><br /><code>' + escapeHtml(file.sourceDocumentId) + '</code></li>').join('');
 
+        const extractedRecords = state.extractedRecords.length === 0
+          ? '<li>Žádné extrahované záznamy.</li>'
+          : state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span><br />' + (file.extractedRecordIds.length > 0 ? '<code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Bez ID extrahovaných záznamů.</span>') + '</li>').join('');
+
+        return [
+          '<p class="hint">Tato část po spuštění zobrazuje skutečný runtime výsledek místo původního snapshotu.</p>',
+          '<ul>' + preparedFiles + '</ul>',
+          '<h4>Extrahované záznamy</h4>',
+          '<ul>' + extractedRecords + '</ul>'
+        ].join('');
+      }
+
+      function buildReviewSummaryMarkup(state) {
+        const reviewSummaryItems = [
+          ['Spárované položky', state.reviewSections.matched.length],
+          ['Nespárované položky', state.reviewSections.unmatched.length],
+          ['Podezřelé položky', state.reviewSections.suspicious.length],
+          ['Chybějící doklady', state.reviewSections.missingDocuments.length]
+        ].map((entry) => '<li><strong>' + escapeHtml(entry[0]) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>').join('');
+
+        return [
+          '<p class="hint">Viditelný přehled je po spuštění přepsaný skutečným výsledkem sdíleného runtime běhu.</p>',
+          '<ul>' + reviewSummaryItems + '</ul>',
+          '<p class="hint">Souhrn kontroly: ' + escapeHtml(String(state.reviewSummary.exceptionCount)) + ' položek ke kontrole.</p>'
+        ].join('');
+      }
+
+      function buildReportRowsMarkup(state) {
+        if (state.reportTransactions.length === 0) {
+          return '<tr><td colspan="4"><span class="hint">Runtime běh zatím nevygeneroval žádné transakce pro náhled reportu.</span></td></tr>';
+        }
+
+        return state.reportTransactions.map((transaction) => [
+          '<tr>',
+          '<td><code>' + escapeHtml(transaction.transactionId) + '</code></td>',
+          '<td>' + escapeHtml(transaction.source) + '</td>',
+          '<td><span class="amount">' + escapeHtml(transaction.amount) + '</span></td>',
+          '<td>' + escapeHtml(transaction.status) + '</td>',
+          '</tr>'
+        ].join('')).join('');
+      }
+
+      function buildExportMarkup(state) {
         const exports = state.exportFiles.length === 0
           ? '<li>Žádné exporty.</li>'
           : state.exportFiles.map((file) => '<li><strong>' + escapeHtml(file.labelCs) + '</strong> — <code>' + escapeHtml(file.fileName) + '</code></li>').join('');
 
         return [
+          '<p class="hint">Exportní handoff je po spuštění přepsaný skutečným runtime výsledkem.</p>',
+          '<ul>' + exports + '</ul>',
+          '<p class="hint">Run ID: <code>' + escapeHtml(state.runId) + '</code></p>'
+        ].join('');
+      }
+
+      function renderMainRuntimeState(state) {
+        return [
           '<h3>Výsledek spuštěného browser workflow</h3>',
           '<p><strong>Měsíc:</strong> ' + escapeHtml(state.monthLabel) + '</p>',
           '<p><strong>Run ID:</strong> <code>' + escapeHtml(state.runId) + '</code></p>',
-          '<ul>' + preparedFiles + '</ul>',
-          '<p class="hint">Kontrola: ' + state.reviewSummary.exceptionCount + ' položek ke kontrole, exporty: ' + state.exportFiles.length + '.</p>',
-          '<ul>' + exports + '</ul>'
+          '<p><strong>Vygenerováno:</strong> ' + escapeHtml(state.generatedAt) + '</p>',
+          '<p class="hint">Viditelné sekce stránky byly nahrazené skutečným runtime výsledkem ze sdíleného browser toku.</p>'
         ].join('');
+      }
+
+      function applyVisibleRuntimeState(state, phase) {
+        preparedFilesSection.setAttribute('data-runtime-phase', phase);
+        reviewSummarySection.setAttribute('data-runtime-phase', phase);
+        reportPreviewBody.setAttribute('data-runtime-phase', phase);
+        exportHandoffSection.setAttribute('data-runtime-phase', phase);
+
+        preparedFilesContent.innerHTML = buildPreparedFilesMarkup(state);
+        reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(state);
+        reportPreviewBody.innerHTML = buildReportRowsMarkup(state);
+        exportHandoffContent.innerHTML = buildExportMarkup(state);
+      }
+
+      function renderRunningState(files) {
+        const fileNames = files.length === 0
+          ? '<li>Žádné soubory.</li>'
+          : files.map((file) => '<li><strong>' + escapeHtml(file.name) + '</strong></li>').join('');
+
+        preparedFilesSection.setAttribute('data-runtime-phase', 'running');
+        reviewSummarySection.setAttribute('data-runtime-phase', 'running');
+        reportPreviewBody.setAttribute('data-runtime-phase', 'running');
+        exportHandoffSection.setAttribute('data-runtime-phase', 'running');
+
+        preparedFilesContent.innerHTML = '<p class="hint">Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.</p><ul>' + fileNames + '</ul>';
+        reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
+        reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Report preview se právě nahrazuje runtime výsledkem…</span></td></tr>';
+        exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff se právě připravuje ze stejného runtime výsledku…</p>';
+      }
+
+      function renderFailedState(error) {
+        const message = escapeHtml(error instanceof Error ? error.message : String(error));
+
+        preparedFilesSection.setAttribute('data-runtime-phase', 'failed');
+        reviewSummarySection.setAttribute('data-runtime-phase', 'failed');
+        reportPreviewBody.setAttribute('data-runtime-phase', 'failed');
+        exportHandoffSection.setAttribute('data-runtime-phase', 'failed');
+
+        preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
+        reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
+        reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Runtime běh selhal: ' + message + '</span></td></tr>';
+        exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
+      }
+
+      function renderInitialVisibleState() {
+        applyVisibleRuntimeState(initialRuntimeState, 'placeholder');
       }
 
       async function startMainWorkflow() {
@@ -372,27 +514,60 @@ function renderOperatorWebDemoHtml(input: {
           return;
         }
 
+        runtimeStageCopy.innerHTML = 'Stav stránky: <strong>běh právě probíhá</strong>. Původní ukázkový snapshot se teď nahrazuje skutečným výsledkem vybraných souborů.';
+        renderRunningState(files);
+
         if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
           browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
         }
 
         if (!browserRuntime) {
           runtimeOutput.innerHTML = '<p class="hint">Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.</p>';
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime ještě není připravený</strong>. Viditelný výsledek zatím zůstává ve výchozím ukázkovém stavu.';
+          renderInitialVisibleState();
           return;
         }
 
-        const state = await browserRuntime.buildRuntimeState({
-          files,
-          month: monthInput.value,
-          generatedAt
-        });
+        try {
+          const state = await browserRuntime.buildRuntimeState({
+            files,
+            month: monthInput.value,
+            generatedAt
+          });
 
-        runtimeOutput.innerHTML = renderMainRuntimeState(state);
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime běh dokončen</strong>. Všechny viditelné sekce teď ukazují skutečný výsledek sdíleného browser workflow.';
+          applyVisibleRuntimeState({
+            ...state,
+            reportTransactions: ${JSON.stringify(input.browserRun.run.report.transactions.slice(0, 1))}.slice(0, 0)
+          }, 'completed');
+          applyVisibleRuntimeState({
+            generatedAt: state.generatedAt,
+            runId: state.runId,
+            monthLabel: state.monthLabel,
+            preparedFiles: state.preparedFiles,
+            extractedRecords: state.extractedRecords,
+            reviewSummary: state.reviewSummary,
+            reviewSections: state.reviewSections,
+            reportTransactions: (state.reportTransactions || []),
+            exportFiles: state.exportFiles
+          }, 'completed');
+          runtimeOutput.innerHTML = renderMainRuntimeState(state);
+        } catch (error) {
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime běh selhal</strong>. Viditelně zobrazujeme chybu místo tichého ponechání ukázkového snapshotu.';
+          renderFailedState(error);
+          runtimeOutput.innerHTML = [
+            '<h3>Výsledek spuštěného browser workflow</h3>',
+            '<p><strong>Runtime běh selhal.</strong></p>',
+            '<p class="hint">' + escapeHtml(error instanceof Error ? error.message : String(error)) + '</p>'
+          ].join('');
+        }
       }
 
       button.addEventListener('click', () => {
         void startMainWorkflow();
       });
+
+      renderInitialVisibleState();
     </script>
   </body>
 </html>
