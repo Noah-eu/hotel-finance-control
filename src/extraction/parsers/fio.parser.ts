@@ -17,19 +17,34 @@ const REQUIRED_HEADERS = [
   'amountMinor',
   'currency',
   'accountId',
-  'counterparty',
-  'reference',
-  'transactionType'
+  'counterparty'
 ]
 
 const HEADER_ALIASES = {
-  bookedAt: ['bookedAt', 'booked_at', 'date', 'datum', 'paidAt'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka'],
-  currency: ['currency', 'mena', 'měna'],
-  accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet'],
-  counterparty: ['counterparty', 'counterpartyName', 'partner', 'protistrana'],
-  reference: ['reference', 'paymentReference', 'variableSymbol', 'zprava', 'poznámka'],
-  transactionType: ['transactionType', 'transaction_type', 'type', 'typTransakce', 'typ']
+  bookedAt: ['bookedAt', 'booked_at', 'date', 'datum', 'paidAt', 'datumZaúčtování', 'datumZauctovani'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'zaúčtovanáČástka', 'zauctovanaCastka'],
+  currency: ['currency', 'mena', 'měna', 'měnaÚčtu', 'menaUctu'],
+  accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet', 'čísloÚčtu', 'cisloUctu'],
+  counterparty: [
+    'counterparty',
+    'counterpartyName',
+    'partner',
+    'protistrana',
+    'názevProtiúčtu',
+    'nazevProtiuctu',
+    'protiúčet',
+    'protiucet'
+  ],
+  reference: [
+    'reference',
+    'paymentReference',
+    'variableSymbol',
+    'zprava',
+    'poznámka',
+    'zprávaProPříjemce',
+    'zpravaProPrijemce'
+  ],
+  transactionType: ['transactionType', 'transaction_type', 'type', 'typTransakce', 'typ', 'typPohybu']
 } satisfies Record<string, string[]>
 
 export class FioParser {
@@ -52,8 +67,8 @@ export class FioParser {
       const currency = row.currency.trim().toUpperCase()
       const accountId = row.accountId.trim()
       const counterparty = row.counterparty.trim()
-      const reference = row.reference.trim()
-      const transactionType = row.transactionType.trim()
+  const reference = row.reference?.trim() ?? ''
+  const transactionType = row.transactionType?.trim() ?? 'bank-transaction'
 
       return {
         id: recordId,

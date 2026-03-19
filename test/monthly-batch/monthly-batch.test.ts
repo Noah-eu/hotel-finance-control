@@ -260,6 +260,43 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared[0]?.sourceDocument.id).toBe('uploaded:bank:1:pohyby-5599955956-202603191023-csv')
   })
 
+  it('runs a real localized Fio upload shape through the shared monthly-batch parser stage', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_5599955956_202603191023.csv',
+        content: [
+          'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
+          '19.03.2026;5599955956/2010;19.03.2026;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T15:05:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-real-fio-localized-upload',
+        requestedAt: '2026-03-19T15:05:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T15:06:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([1])
+    expect(result.extractedRecords[0]).toMatchObject({
+      id: 'fio-row-1',
+      amountMinor: 154000,
+      currency: 'CZK',
+      occurredAt: '2026-03-19',
+      data: {
+        sourceSystem: 'bank',
+        accountId: '5599955956/2010',
+        counterparty: 'Comgate a.s.',
+        reference: 'Platba rezervace WEB-1001',
+        transactionType: 'Bezhotovostní příjem'
+      }
+    })
+  })
+
   it('classifies a generic-filename Raiffeisenbank CSV by its Czech bank headers', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {

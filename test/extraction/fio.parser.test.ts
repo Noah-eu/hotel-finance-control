@@ -72,4 +72,51 @@ describe('parseFioStatement', () => {
       rawReference: 'EXP-TERM-1001'
     })
   })
+
+  it('maps representative localized Fio Czech headers into canonical parser fields', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
+        '19.03.2026;5599955956/2010;19.03.2026;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001'
+      ].join('\n'),
+      extractedAt: '2026-03-19T15:00:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'fio-row-1',
+        amountMinor: 154000,
+        currency: 'CZK',
+        occurredAt: '2026-03-19',
+        rawReference: 'Platba rezervace WEB-1001',
+        data: expect.objectContaining({
+          bookedAt: '2026-03-19',
+          amountMinor: 154000,
+          currency: 'CZK',
+          accountId: '5599955956/2010',
+          counterparty: 'Comgate a.s.',
+          reference: 'Platba rezervace WEB-1001',
+          transactionType: 'Bezhotovostní příjem'
+        })
+      })
+    ])
+  })
+
+  it('keeps failure explicit when a localized Fio export still lacks a deterministic counterparty field', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    expect(() =>
+      parseFioStatement({
+        sourceDocument: fixture.sourceDocument,
+        content: [
+          'Datum zaúčtování;Zaúčtovaná částka;Měna účtu;Číslo účtu',
+          '19.03.2026;1540,00;CZK;5599955956/2010'
+        ].join('\n'),
+        extractedAt: '2026-03-19T15:00:00.000Z'
+      })
+    ).toThrow('Fio statement is missing required columns: counterparty')
+  })
 })
