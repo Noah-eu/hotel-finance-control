@@ -76,6 +76,7 @@ export class RaiffeisenbankParser {
         occurredAt: bookedAt,
         data: {
           sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank',
           bookedAt,
           amountMinor,
           currency,

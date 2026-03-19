@@ -18,6 +18,8 @@ describe('parseFioStatement', () => {
       recordType: 'bank-transaction',
       rawReference: 'EXP-TERM-1001',
       data: {
+        sourceSystem: 'bank',
+        bankParserVariant: 'fio',
         transactionType: 'expedia-terminal',
         accountId: 'fio-expedia'
       }
@@ -93,6 +95,8 @@ describe('parseFioStatement', () => {
         occurredAt: '2026-03-19',
         rawReference: 'Platba rezervace WEB-1001',
         data: expect.objectContaining({
+          sourceSystem: 'bank',
+          bankParserVariant: 'fio',
           bookedAt: '2026-03-19',
           amountMinor: 154000,
           currency: 'CZK',

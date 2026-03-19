@@ -18,6 +18,8 @@ describe('parseRaiffeisenbankStatement', () => {
       recordType: 'bank-transaction',
       rawReference: 'PAYOUT-BOOK-20260310',
       data: {
+        sourceSystem: 'bank',
+        bankParserVariant: 'raiffeisenbank',
         transactionType: 'booking-payout',
         accountId: 'raiffeisen-main'
       }
@@ -83,6 +85,8 @@ describe('parseRaiffeisenbankStatement', () => {
         occurredAt: '2026-03-10',
         rawReference: 'PAYOUT-BOOK-20260310',
         data: expect.objectContaining({
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank',
           counterparty: 'Booking BV',
           transactionType: 'booking-payout'
         })
@@ -113,6 +117,8 @@ describe('parseRaiffeisenbankStatement', () => {
         occurredAt: '2026-03-19T06:23:00',
         rawReference: 'Booking BV',
         data: expect.objectContaining({
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank',
           accountId: '5500123456',
           counterparty: '5500/1234',
           reference: 'Booking BV',

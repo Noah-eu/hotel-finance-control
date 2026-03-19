@@ -91,6 +91,7 @@ export class FioParser {
         occurredAt: bookedAt,
         data: {
           sourceSystem: 'bank',
+          bankParserVariant: 'fio',
           bookedAt,
           amountMinor,
           currency,

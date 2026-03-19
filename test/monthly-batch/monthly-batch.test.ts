@@ -306,6 +306,7 @@ describe('runMonthlyReconciliationBatch', () => {
       occurredAt: '2026-03-19',
       data: {
         sourceSystem: 'bank',
+        bankParserVariant: 'fio',
         accountId: '5599955956/2010',
         counterparty: 'Comgate a.s.',
         reference: 'Platba rezervace WEB-1001',
@@ -372,6 +373,7 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
     expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 84000])
     expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'fio-row-2'])
+    expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'fio'])
   })
 
   it('classifies the Pohyby na účtu Fio variant from deterministic content even with a generic filename', () => {
@@ -447,6 +449,7 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
     expect(result.files.map((file) => file.extractedCount)).toEqual([6])
     expect(result.extractedRecords[0]?.id).toBe('raif-row-1')
+    expect(result.extractedRecords[0]?.data.bankParserVariant).toBe('raiffeisenbank')
   })
 
   it('runs the current real Fio and Raiffeisenbank bank CSV shapes through the shared bank-transaction pipeline', () => {
@@ -481,6 +484,7 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.files.map((file) => file.extractedCount)).toEqual([1, 1])
     expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'raif-row-1'])
     expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 125000])
+    expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'raiffeisenbank'])
   })
 
   it('classifies a real Comgate export from its deterministic headers instead of generic content mentions', () => {

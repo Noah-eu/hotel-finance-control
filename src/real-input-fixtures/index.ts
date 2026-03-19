@@ -91,6 +91,7 @@ export const realInputFixtures: RealInputFixture[] = [
         occurredAt: '2026-03-10',
         data: {
           sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank',
           bookedAt: '2026-03-10',
           amountMinor: 125000,
           currency: 'CZK',
@@ -110,6 +111,7 @@ export const realInputFixtures: RealInputFixture[] = [
         occurredAt: '2026-03-18',
         data: {
           sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank',
           bookedAt: '2026-03-18',
           amountMinor: -55000,
           currency: 'CZK',
@@ -129,6 +131,7 @@ export const realInputFixtures: RealInputFixture[] = [
         occurredAt: '2026-03-21',
         data: {
           sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank',
           bookedAt: '2026-03-21',
           amountMinor: -2400,
           currency: 'CZK',
@@ -196,6 +199,7 @@ export const realInputFixtures: RealInputFixture[] = [
         occurredAt: '2026-03-11',
         data: {
           sourceSystem: 'bank',
+          bankParserVariant: 'fio',
           bookedAt: '2026-03-11',
           amountMinor: 65000,
           currency: 'CZK',
