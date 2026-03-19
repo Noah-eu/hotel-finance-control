@@ -24,6 +24,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('monthly-batch')
     expect(result.html).toContain('Zatím nebyly vybrány žádné soubory.')
     expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
+    expect(result.html).toContain('buildRuntimeStateFromSelectedFiles')
   })
 
   it('builds a runtime browser upload state from real selected files through the shared monthly flow', () => {
@@ -69,31 +70,18 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
-  it('renders the upload page with runtime-selected-file guidance and traceable shared runtime state', () => {
-    const booking = getRealInputFixture('booking-payout-export')
-    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
-
+  it('renders the upload page without baked-in runtime results and with selected-file-driven adapter logic', () => {
     const result = buildUploadWebFlow({
-      generatedAt: '2026-03-19T10:15:00.000Z',
-      runtimeDemoFiles: [
-        {
-          name: booking.sourceDocument.fileName,
-          content: booking.rawInput.content,
-          uploadedAt: '2026-03-19T10:15:00.000Z'
-        },
-        {
-          name: raiffeisen.sourceDocument.fileName,
-          content: raiffeisen.rawInput.content,
-          uploadedAt: '2026-03-19T10:15:00.000Z'
-        }
-      ]
+      generatedAt: '2026-03-19T10:15:00.000Z'
     })
 
     expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
     expect(result.html).toContain('skutečně vybrané soubory')
-    expect(result.html).toContain('booking-payout-2026-03.csv')
-    expect(result.html).toContain('uploaded:booking:1:booking-payout-2026-03-csv')
-    expect(result.html).toContain('Export handoff')
+    expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
+    expect(result.html).toContain('uploadedAt')
+    expect(result.html).toContain('buildRuntimeStateFromSelectedFiles')
+    expect(result.html).not.toContain('booking-payout-2026-03.csv')
+    expect(result.html).not.toContain('monthly-review-export.xlsx')
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {

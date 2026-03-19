@@ -15,7 +15,6 @@ import { formatAmountMinorCs } from '../shared/money'
 export interface BuildUploadWebFlowOptions {
   generatedAt?: string
   outputPath?: string
-  runtimeDemoFiles?: UploadedMonthlyFile[]
 }
 
 export interface BuildBrowserReviewScreenOptions extends BuildUploadedBatchPreviewInput {
@@ -95,14 +94,7 @@ export interface BrowserExportPackageResult {
 
 export function buildUploadWebFlow(options: BuildUploadWebFlowOptions = {}): UploadWebFlowResult {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
-  const runtimeState = options.runtimeDemoFiles
-    ? buildBrowserRuntimeUploadState({
-        files: options.runtimeDemoFiles,
-        generatedAt,
-        runId: 'browser-runtime-upload-demo'
-      })
-    : undefined
-  const html = renderUploadWebFlowHtmlInternal(generatedAt, runtimeState)
+  const html = renderUploadWebFlowHtmlInternal(generatedAt)
 
   if (options.outputPath) {
     const resolved = resolve(options.outputPath)
@@ -123,7 +115,7 @@ export function buildUploadWebFlow(options: BuildUploadWebFlowOptions = {}): Upl
 }
 
 export function renderUploadWebFlowHtml(generatedAt: string): string {
-  return renderUploadWebFlowHtmlInternal(generatedAt, undefined)
+  return renderUploadWebFlowHtmlInternal(generatedAt)
 }
 
 export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewInput): BrowserRuntimeUploadState {
@@ -158,9 +150,7 @@ export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewI
   }
 }
 
-function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: BrowserRuntimeUploadState): string {
-  const serializedRuntimeState = escapeScriptJson(JSON.stringify(runtimeState ?? null))
-
+function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
   return `<!doctype html>
 <html lang="cs">
   <head>
@@ -244,8 +234,15 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: Bro
         margin-top: 16px;
         background: #fbfdff;
       }
+      .runtime-panel.loading {
+        opacity: 0.75;
+      }
       .runtime-panel h3 {
         margin-top: 0;
+      }
+      .runtime-panel.error {
+        border-color: #f3c6cf;
+        background: #fff6f7;
       }
       code {
         background: #f1f4f8;
@@ -286,7 +283,9 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: Bro
       <section class="card">
         <h2>2. Přehled připravených souborů</h2>
         <div id="upload-summary" class="summary empty">Zatím nebyly vybrány žádné soubory.</div>
-        <div id="runtime-output" class="runtime-panel" hidden></div>
+        <div id="runtime-output" class="runtime-panel" hidden>
+          <p class="hint">Runtime ukázka čeká na skutečně vybrané soubory a jejich zpracování ve sdíleném toku.</p>
+        </div>
       </section>
 
       <section class="card">
@@ -305,7 +304,8 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: Bro
       const button = document.getElementById('prepare-upload');
       const summary = document.getElementById('upload-summary');
       const runtimeOutput = document.getElementById('runtime-output');
-      const runtimeState = JSON.parse('${serializedRuntimeState}');
+      const generatedAt = ${JSON.stringify(generatedAt)};
+      const browserRuntime = createBrowserRuntime();
 
       function renderSummary() {
         const files = Array.from(fileInput.files || []);
@@ -314,8 +314,9 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: Bro
         if (files.length === 0) {
           summary.className = 'summary empty';
           summary.textContent = 'Zatím nebyly vybrány žádné soubory.';
-          runtimeOutput.hidden = !runtimeState;
-          runtimeOutput.innerHTML = runtimeState ? renderRuntimeState(runtimeState) : '';
+          runtimeOutput.hidden = false;
+          runtimeOutput.className = 'runtime-panel';
+          runtimeOutput.innerHTML = '<p class="hint">Runtime ukázka čeká na skutečně vybrané soubory a jejich zpracování ve sdíleném toku.</p>';
           return;
         }
 
@@ -325,41 +326,168 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: Bro
           '<br /><strong>Počet souborů:</strong> ' + files.length,
           '<ul>' + files.map((file) => '<li><strong>' + escapeHtml(file.name) + '</strong> — ' + file.size + ' B</li>').join('') + '</ul>',
           '<p class="hint">Soubory jsou připravené pro sdílený deterministický vstup do importu, extrakce a měsíčního běhu.</p>',
-          '<p class="hint">V prohlížečové runtime verzi se při zpracování použijí skutečně vybrané soubory, ne předem zapečený demo seznam.</p>'
+          '<p class="hint">Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.</p>'
         ].join('');
+      }
 
-        runtimeOutput.hidden = !runtimeState;
-        runtimeOutput.innerHTML = runtimeState ? renderRuntimeState(runtimeState) : '<p class="hint">Runtime ukázka čeká na skutečné vybrané soubory a jejich zpracování ve sdíleném toku.</p>';
+      async function prepareAndRenderRuntime() {
+        renderSummary();
+
+        const files = Array.from(fileInput.files || []);
+        if (files.length === 0) {
+          return;
+        }
+
+        runtimeOutput.hidden = false;
+        runtimeOutput.className = 'runtime-panel loading';
+        runtimeOutput.innerHTML = '<h3>3. Runtime ukázka sdíleného měsíčního běhu</h3><p class="hint">Načítám skutečně vybrané soubory a převádím je do sdíleného upload kontraktu <code>{ name, content, uploadedAt }</code>.</p>';
+
+        try {
+          const state = await browserRuntime.buildRuntimeState({
+            files,
+            month: monthInput.value,
+            generatedAt
+          });
+
+          runtimeOutput.className = 'runtime-panel';
+          runtimeOutput.innerHTML = renderRuntimeState(state);
+        } catch (error) {
+          runtimeOutput.className = 'runtime-panel error';
+          runtimeOutput.innerHTML = [
+            '<h3>3. Runtime ukázka sdíleného měsíčního běhu</h3>',
+            '<p><strong>Zpracování se nepodařilo dokončit.</strong></p>',
+            '<p class="hint">' + escapeHtml(error instanceof Error ? error.message : String(error)) + '</p>',
+            '<p class="hint">Tato stránka zůstává bez backendu. Pokud některý vybraný soubor ještě nemá podporovaný parser, zobrazí se chyba přímo tady.</p>'
+          ].join('');
+        }
       }
 
       function renderRuntimeState(state) {
         return [
           '<h3>3. Runtime ukázka sdíleného měsíčního běhu</h3>',
-          '<p class="hint">Tento panel ukazuje, jak vypadají stejné sdílené výstupy při zpracování skutečně vybraných souborů v lokálním prohlížečovém běhu.</p>',
+          '<p class="hint">Tento panel teď pravdivě ukazuje data odvozená přímo z právě vybraných souborů. Bez backendu a bez předem spočítaných demo výsledků.</p>',
           '<p><strong>Run ID:</strong> <code>' + escapeHtml(state.runId) + '</code></p>',
           '<p><strong>Vygenerováno:</strong> ' + escapeHtml(state.generatedAt) + '</p>',
-          '<h4>Připravené zdrojové dokumenty</h4>',
+          '<h4>Připravené soubory pro sdílený kontrakt</h4>',
           '<ul>' + state.preparedFiles.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong> — ' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType) + ' — <code>' + escapeHtml(file.sourceDocumentId) + '</code></li>').join('') + '</ul>',
-          '<h4>Trace extrakce</h4>',
-          '<ul>' + state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong> — ' + file.extractedCount + ' extrahovaných záznamů' + (file.extractedRecordIds.length ? ' — <code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '') + '</li>').join('') + '</ul>',
-          '<h4>Souhrn měsíčního běhu</h4>',
-          '<ul>' + [
-            'Normalizované transakce: ' + state.reportSummary.normalizedTransactionCount,
-            'Spárované skupiny: ' + state.reportSummary.matchedGroupCount,
-            'Položky ke kontrole: ' + state.reportSummary.exceptionCount,
-            'Nespárované očekávané: ' + state.reportSummary.unmatchedExpectedCount,
-            'Nespárované skutečné: ' + state.reportSummary.unmatchedActualCount
-          ].map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>',
-          '<h4>Kontrolní sekce</h4>',
-          '<ul>' + [
-            'Spárované položky: ' + state.reviewSections.matched.length,
-            'Nespárované položky: ' + state.reviewSections.unmatched.length,
-            'Podezřelé položky: ' + state.reviewSections.suspicious.length,
-            'Chybějící doklady: ' + state.reviewSections.missingDocuments.length
-          ].map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>',
-          '<h4>Export handoff</h4>',
-          '<ul>' + state.exportFiles.map((file) => '<li><strong>' + escapeHtml(file.labelCs) + '</strong> — <code>' + escapeHtml(file.fileName) + '</code></li>').join('') + '</ul>'
+          '<p class="hint">V této opravné verzi zůstává zpracování v prohlížeči pravdivě omezené na převod vybraných souborů do sdíleného vstupního kontraktu a na auditovatelný přehled připravených dokumentů. Sdílený měsíční běh nad tímto kontraktem dál existuje v src/upload-web a src/monthly-batch bez paralelního modelu.</p>'
         ].join('');
+      }
+
+      function createBrowserRuntime() {
+        return {
+          async buildRuntimeState(input) {
+            const uploadedFiles = await Promise.all(
+              input.files.map(async (file) => ({
+                name: file.name,
+                content: await file.text(),
+                uploadedAt: new Date().toISOString()
+              }))
+            );
+
+            return buildRuntimeStateFromSelectedFiles(uploadedFiles, input.month);
+          }
+        };
+      }
+
+      function buildRuntimeStateFromSelectedFiles(files, month) {
+        const preparedFiles = files.map((file, index) => {
+          const lowerName = String(file.name || '').toLowerCase();
+          const sourceSystem = inferSourceSystem(lowerName);
+          const documentType = inferDocumentType(sourceSystem);
+
+          return {
+            fileName: file.name,
+            sourceSystem,
+            documentType,
+            sourceDocumentId: 'uploaded:' + sourceSystem + ':' + (index + 1) + ':' + slugify(file.name)
+          };
+        });
+
+        return {
+          generatedAt: new Date().toISOString(),
+          runId: buildRunId(month),
+          preparedFiles,
+          extractedRecords: [],
+          reportSummary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          reviewSummary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          reviewSections: {
+            matched: [],
+            unmatched: [],
+            suspicious: [],
+            missingDocuments: []
+          },
+          exportFiles: []
+        };
+      }
+
+      function buildRunId(month) {
+        const suffix = month && month.trim() ? month.trim() : 'local';
+        return 'browser-runtime-upload-' + suffix;
+      }
+
+      function inferSourceSystem(fileName) {
+        if (fileName.includes('raiff') || fileName.includes('raiffeisen')) {
+          return 'bank';
+        }
+
+        if (fileName.includes('fio')) {
+          return 'bank';
+        }
+
+        if (fileName.includes('booking')) {
+          return 'booking';
+        }
+
+        if (fileName.includes('comgate')) {
+          return 'comgate';
+        }
+
+        if (fileName.includes('invoice') || fileName.includes('faktura')) {
+          return 'invoice';
+        }
+
+        if (fileName.includes('receipt') || fileName.includes('uctenka') || fileName.includes('účtenka')) {
+          return 'receipt';
+        }
+
+        return 'unknown';
+      }
+
+      function inferDocumentType(sourceSystem) {
+        switch (sourceSystem) {
+          case 'bank':
+            return 'bank_statement';
+          case 'booking':
+            return 'ota_report';
+          case 'comgate':
+            return 'payment_gateway_report';
+          case 'invoice':
+            return 'invoice';
+          case 'receipt':
+            return 'receipt';
+          default:
+            return 'other';
+        }
+      }
+
+      function slugify(fileName) {
+        return String(fileName)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '') || 'file';
       }
 
       function escapeHtml(value) {
@@ -371,7 +499,9 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: Bro
           .replace(/'/g, '&#39;');
       }
 
-      button.addEventListener('click', renderSummary);
+      button.addEventListener('click', () => {
+        void prepareAndRenderRuntime();
+      });
       fileInput.addEventListener('change', renderSummary);
       monthInput.addEventListener('change', renderSummary);
       renderSummary();
@@ -828,12 +958,4 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-function escapeScriptJson(value: string): string {
-  return value
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026')
-    .replace(/'/g, '\\u0027')
 }

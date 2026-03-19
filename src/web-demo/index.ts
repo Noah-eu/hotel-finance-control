@@ -66,7 +66,6 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
   })
   const uploadFlow = buildUploadWebFlow({
     generatedAt,
-    runtimeDemoFiles,
     outputPath: options.outputPath
   })
 
