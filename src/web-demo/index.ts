@@ -8,6 +8,7 @@ import {
   type BrowserUploadedMonthlyRunResult
 } from '../upload-web'
 import { getRealInputFixture } from '../real-input-fixtures'
+import { formatAmountMinorCs } from '../shared/money'
 
 export interface BuildWebDemoOptions {
   generatedAt?: string
@@ -119,7 +120,7 @@ export function renderFixtureWebDemoHtml(
         <td>${escapeHtml(transaction.transactionId)}</td>
         <td>${escapeHtml(transaction.source)}</td>
         <td>${escapeHtml(transaction.direction)}</td>
-        <td>${transaction.amountMinor}</td>
+        <td>${escapeHtml(formatAmountMinorCs(transaction.amountMinor, transaction.currency))}</td>
         <td>${escapeHtml(transaction.currency)}</td>
         <td>${escapeHtml(transaction.bookedAt)}</td>
         <td>${escapeHtml(transaction.status)}</td>

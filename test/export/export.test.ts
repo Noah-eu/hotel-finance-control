@@ -41,11 +41,15 @@ describe('buildExportArtifacts', () => {
     expect(typeof transactionsCsv.content).toBe('string')
     expect(String(transactionsCsv.content)).toContain('ID transakce')
     expect(String(transactionsCsv.content)).toContain('txn:payout:booking-payout-1')
+  expect(String(transactionsCsv.content)).toContain('Částka')
+  expect(String(transactionsCsv.content)).toContain('1 250,00 Kč')
 
     const workbookFile = result.files[2]
     const workbook = XLSX.read(Buffer.from(workbookFile.content as Uint8Array), { type: 'buffer' })
     expect(workbook.SheetNames).toEqual(['Transakce', 'Kontrola', 'Souhrn'])
     expect(workbook.Sheets.Transakce.A1.v).toBe('ID transakce')
+  expect(workbook.Sheets.Transakce.D1.v).toBe('Částka')
+  expect(workbook.Sheets.Transakce.D2.v).toBe('1 250,00 Kč')
   })
 
   it('writes actual CSV and XLSX files to disk when outputDir is provided', () => {
@@ -84,6 +88,7 @@ describe('buildExportArtifacts', () => {
     const paths = result.files.map((file) => file.outputPath)
     expect(paths.every((path) => path && existsSync(path))).toBe(true)
     expect(readFileSync(resolve(outputDir, 'reconciliation-transactions.csv'), 'utf8')).toContain('Zdrojové dokumenty')
+    expect(readFileSync(resolve(outputDir, 'reconciliation-transactions.csv'), 'utf8')).toContain('1 250,00 Kč')
     expect(readFileSync(resolve(outputDir, 'review-items.csv'), 'utf8')).toContain('Chybějící doklady')
     expect(readFileSync(resolve(outputDir, 'monthly-review-export.xlsx')).subarray(0, 2).toString()).toBe('PK')
   })

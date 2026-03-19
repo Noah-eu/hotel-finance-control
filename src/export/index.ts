@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import * as XLSX from 'xlsx'
 import type { MonthlyBatchResult } from '../monthly-batch'
 import type { ReviewScreenData } from '../review'
+import { formatAmountMinorCs } from '../shared/money'
 
 export interface ExportArtifactsInput {
   batch: MonthlyBatchResult
@@ -63,7 +64,7 @@ function buildReconciliationTransactionsCsv(batch: MonthlyBatchResult): ExportFi
     'ID transakce',
     'Zdroj',
     'Směr',
-    'Částka v haléřích',
+    'Částka',
     'Měna',
     'Datum zaúčtování',
     'Reference',
@@ -78,7 +79,7 @@ function buildReconciliationTransactionsCsv(batch: MonthlyBatchResult): ExportFi
       transaction.id,
       transaction.source,
       transaction.direction,
-      String(transaction.amountMinor),
+  formatAmountMinorCs(transaction.amountMinor, transaction.currency),
       transaction.currency,
       transaction.bookedAt,
       transaction.reference ?? '',
@@ -140,7 +141,7 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
       'ID transakce': transaction.id,
       Zdroj: transaction.source,
       Směr: transaction.direction,
-      'Částka v haléřích': transaction.amountMinor,
+      'Částka': formatAmountMinorCs(transaction.amountMinor, transaction.currency),
       Měna: transaction.currency,
       'Datum zaúčtování': transaction.bookedAt,
       Reference: transaction.reference ?? '',

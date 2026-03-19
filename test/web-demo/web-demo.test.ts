@@ -15,7 +15,8 @@ describe('buildWebDemo', () => {
   expect(result.html).toContain('booking-payout-2026-03.csv')
   expect(result.html).toContain('raiffeisen-2026-03.csv')
   expect(result.html).toContain('invoice-2026-332.txt')
-  expect(result.browserRun.run.review.summary.exceptionCount).toBeGreaterThan(0)
+    expect(result.html).toContain('1 250,00 Kč')
+    expect(result.browserRun.run.review.summary.exceptionCount).toBeGreaterThan(0)
   })
 
   it('writes the generated demo HTML to disk when outputPath is provided', () => {
@@ -45,6 +46,7 @@ describe('buildFixtureWebDemo', () => {
 
     expect(result.html).toContain('Pomocná ukázka párování nad fixture daty')
     expect(result.html).toContain('Pomocná ukázka fixture')
+    expect(result.html).toContain('1 250,00 Kč')
     expect(result.fixture.key).toBe('matched-payout')
   })
 })

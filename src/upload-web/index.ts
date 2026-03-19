@@ -10,6 +10,7 @@ import {
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import { buildReviewScreen, type ReviewScreenData } from '../review'
 import type { ReconciliationReport } from '../reporting'
+import { formatAmountMinorCs } from '../shared/money'
 
 export interface BuildUploadWebFlowOptions {
   generatedAt?: string
@@ -518,7 +519,7 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
               <th>Transakce</th>
               <th>Zdroj</th>
               <th>Směr</th>
-              <th>Částka v haléřích</th>
+              <th>Částka</th>
               <th>Stav</th>
               <th>Reference</th>
             </tr>
@@ -529,7 +530,7 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
                 <td><code>${escapeHtml(transaction.transactionId)}</code></td>
                 <td>${escapeHtml(transaction.source)}</td>
                 <td>${escapeHtml(transaction.direction)}</td>
-                <td>${escapeHtml(String(transaction.amountMinor))}</td>
+                <td>${escapeHtml(formatAmountMinorCs(transaction.amountMinor, transaction.currency))}</td>
                 <td>${escapeHtml(transaction.status)}</td>
                 <td>${escapeHtml(transaction.reference ?? '')}</td>
               </tr>
