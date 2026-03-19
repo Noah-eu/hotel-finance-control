@@ -1,6 +1,7 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
   findMissingHeaders,
+  getAccountIdFromFileName,
   parseAmountMinor,
   parseDelimitedRows,
   parseIsoDate
@@ -51,7 +52,14 @@ const HEADER_ALIASES = {
 
 export class FioParser {
   parse(input: ParseFioStatementInput): ExtractedRecord[] {
-    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
+    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES }).map((row) => {
+      const fallbackAccountId = getAccountIdFromFileName(input.sourceDocument.fileName)
+
+      return {
+        ...row,
+        accountId: row.accountId || fallbackAccountId || ''
+      }
+    }) as Array<Record<string, string>>
 
     if (rows.length === 0) {
       return []
@@ -69,8 +77,8 @@ export class FioParser {
       const currency = row.currency.trim().toUpperCase()
       const accountId = row.accountId.trim()
       const counterparty = row.counterparty.trim()
-  const reference = row.reference?.trim() ?? ''
-  const transactionType = row.transactionType?.trim() ?? 'bank-transaction'
+  const reference = row.reference?.trim() || ''
+    const transactionType = row.transactionType?.trim() ?? 'bank-transaction'
 
       return {
         id: recordId,

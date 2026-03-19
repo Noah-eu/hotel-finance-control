@@ -89,4 +89,36 @@ describe('parseRaiffeisenbankStatement', () => {
       })
     ])
   })
+
+  it('parses the current real localized Raiffeisenbank CSV shape with filename-derived accountId fallback', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-statement')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: {
+        ...fixture.sourceDocument,
+        fileName: 'Pohyby_5500123456_20260319.csv'
+      },
+      content: [
+        '\uFEFF"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+        '19.03.2026 06:23;1250,00;CZK;5500/1234;5500;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+      ].join('\n'),
+      extractedAt: '2026-03-19T20:00:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'raif-row-1',
+        amountMinor: 125000,
+        currency: 'CZK',
+        occurredAt: '2026-03-19T06:23:00',
+        rawReference: 'Booking BV',
+        data: expect.objectContaining({
+          accountId: '5500123456',
+          counterparty: '5500/1234',
+          reference: 'Booking BV',
+          transactionType: 'Příchozí platba'
+        })
+      })
+    ])
+  })
 })

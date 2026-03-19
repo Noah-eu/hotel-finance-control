@@ -4,6 +4,13 @@ interface ParseDelimitedRowsOptions {
   canonicalHeaders?: CanonicalHeaderMap
 }
 
+export function getAccountIdFromFileName(fileName: string): string | undefined {
+  const normalized = normalizeCell(fileName)
+  const match = /(?:^|[^\d])(\d{6,10}\/\d{4}|\d{6,10})(?:[^\d]|$)/.exec(normalized)
+
+  return match?.[1]
+}
+
 export class DeterministicParserError extends Error {
   constructor(message: string) {
     super(message)

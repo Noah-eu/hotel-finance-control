@@ -1,6 +1,7 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
   findMissingHeaders,
+  getAccountIdFromFileName,
   parseAmountMinor,
   parseDelimitedRows,
   parseIsoDate
@@ -24,17 +25,24 @@ const REQUIRED_HEADERS = [
 
 const HEADER_ALIASES = {
   bookedAt: ['bookedAt', 'booked_at', 'bookingDate', 'date', 'datum'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'objem'],
   currency: ['currency', 'mena', 'měna'],
   accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet'],
-  counterparty: ['counterparty', 'counterpartyName', 'partner', 'protistrana'],
-  reference: ['reference', 'variableSymbol', 'paymentReference', 'zprava', 'poznámka'],
+  counterparty: ['counterparty', 'counterpartyName', 'partner', 'protistrana', 'protiúčet', 'protiucet'],
+  reference: ['reference', 'variableSymbol', 'paymentReference', 'zprava', 'poznámka', 'zprávaProPříjemce', 'zpravaProPrijemce'],
   transactionType: ['transactionType', 'transaction_type', 'type', 'typTransakce', 'typ']
 } satisfies Record<string, string[]>
 
 export class RaiffeisenbankParser {
   parse(input: ParseRaiffeisenbankStatementInput): ExtractedRecord[] {
-    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
+    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES }).map((row) => {
+      const fallbackAccountId = getAccountIdFromFileName(input.sourceDocument.fileName)
+
+      return {
+        ...row,
+        accountId: row.accountId || fallbackAccountId || ''
+      }
+    }) as Array<Record<string, string>>
 
     if (rows.length === 0) {
       return []
