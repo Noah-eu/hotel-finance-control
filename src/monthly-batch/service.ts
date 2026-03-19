@@ -140,6 +140,8 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
 
   if (hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
     || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
     || matchesAnyHeaderSignature(normalizedHeaderSample, [
       'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
     ])) {
@@ -232,6 +234,8 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   if (
     hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
     || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
     || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
     || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])
     || matchesAnyHeaderSignature(normalizedHeaderSample, [
@@ -272,10 +276,10 @@ function hasAllHeaderFields(headerFields: string[], requiredFields: string[]): b
 function getNormalizedHeaderSample(content: string): string {
   return content
     .trim()
-    .toLowerCase()
     .replace(/^\ufeff/, '')
     .split(/\r?\n/)
     .slice(0, 4)
+    .map((line) => normalizeHeaderLine(line))
     .join('\n')
 }
 
@@ -290,10 +294,26 @@ function getNormalizedHeaderFields(content: string): string[] {
   }
 
   return headerLine
-    .toLowerCase()
+    .replace(/^\ufeff/, '')
     .split(/[;,]/)
-    .map((field) => field.trim())
+    .map((field) => normalizeHeaderField(field))
     .filter(Boolean)
+}
+
+function normalizeHeaderLine(value: string): string {
+  return value
+    .replace(/^\ufeff/, '')
+    .split(/[;,]/)
+    .map((field) => normalizeHeaderField(field))
+    .join(',')
+}
+
+function normalizeHeaderField(value: string): string {
+  return value
+    .trim()
+    .replace(/^"|"$/g, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
 }
 
 function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): SourceDocument['documentType'] {

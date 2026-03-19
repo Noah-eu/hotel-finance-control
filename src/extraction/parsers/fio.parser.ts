@@ -22,7 +22,7 @@ const REQUIRED_HEADERS = [
 
 const HEADER_ALIASES = {
   bookedAt: ['bookedAt', 'booked_at', 'date', 'datum', 'paidAt', 'datumZaúčtování', 'datumZauctovani'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'zaúčtovanáČástka', 'zauctovanaCastka'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'zaúčtovanáČástka', 'zauctovanaCastka', 'objem'],
   currency: ['currency', 'mena', 'měna', 'měnaÚčtu', 'menaUctu'],
   accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet', 'čísloÚčtu', 'cisloUctu'],
   counterparty: [
@@ -32,6 +32,8 @@ const HEADER_ALIASES = {
     'protistrana',
     'názevProtiúčtu',
     'nazevProtiuctu',
+    'čísloProtiúčtu',
+    'cisloProtiuctu',
     'protiúčet',
     'protiucet'
   ],

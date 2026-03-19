@@ -260,6 +260,23 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared[0]?.sourceDocument.id).toBe('uploaded:bank:1:pohyby-5599955956-202603191023-csv')
   })
 
+  it('classifies a Pohyby_na_uctu-style Fio export as bank instead of unknown', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+        content: [
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T18:15:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+    expect(prepared[0]?.sourceDocument.id).toBe('uploaded:bank:1:pohyby-na-uctu-8888997777-20260301-20260319-csv')
+  })
+
   it('runs a real localized Fio upload shape through the shared monthly-batch parser stage', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {
@@ -324,6 +341,52 @@ describe('runMonthlyReconciliationBatch', () => {
       '2026-03-19T06:23:00',
       '2026-03-19T06:23:00'
     ])
+  })
+
+  it('runs the Pohyby_na_uctu Fio export variant through the shared monthly-batch path', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+        content: [
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001',
+          '19.03.2026 7:15;840,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2002'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T18:16:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-fio-pohyby-na-uctu-upload',
+        requestedAt: '2026-03-19T18:16:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T18:17:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([2])
+    expect(result.extractedRecords.map((record) => record.occurredAt)).toEqual([
+      '2026-03-19T06:23:00',
+      '2026-03-19T07:15:00'
+    ])
+    expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 84000])
+  })
+
+  it('classifies the Pohyby na účtu Fio variant from deterministic content even with a generic filename', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: [
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T18:18:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
   })
 
   it('classifies a generic-filename Raiffeisenbank CSV by its Czech bank headers', () => {

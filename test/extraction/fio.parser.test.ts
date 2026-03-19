@@ -124,6 +124,34 @@ describe('parseFioStatement', () => {
     ])
   })
 
+  it('maps the Pohyby na účtu Fio export variant into canonical parser fields', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+        '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+      ].join('\n'),
+      extractedAt: '2026-03-19T18:10:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'fio-row-1',
+        amountMinor: 154000,
+        currency: 'CZK',
+        occurredAt: '2026-03-19T06:23:00',
+        rawReference: 'Platba rezervace WEB-2001',
+        data: expect.objectContaining({
+          accountId: '8888997777/2010',
+          counterparty: 'Comgate a.s.',
+          reference: 'Platba rezervace WEB-2001'
+        })
+      })
+    ])
+  })
+
   it('keeps failure explicit when a localized Fio export still lacks a deterministic counterparty field', () => {
     const fixture = getRealInputFixture('fio-statement')
 
