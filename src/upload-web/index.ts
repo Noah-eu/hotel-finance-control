@@ -169,6 +169,7 @@ export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewI
 
 interface BrowserRuntimeFixtureFile {
   name: string
+  contentFingerprint: string
   sourceSystem: string
   documentType: string
   sourceDocumentId: string
@@ -176,7 +177,9 @@ interface BrowserRuntimeFixtureFile {
   extractedRecordIds: string[]
 }
 
-interface BrowserRuntimeFixtureState {
+interface BrowserRuntimeFixtureDataset {
+  key: string
+  files: BrowserRuntimeFixtureFile[]
   reportSummary: BrowserRuntimeUploadState['reportSummary']
   reviewSummary: BrowserRuntimeUploadState['reviewSummary']
   reviewSections: BrowserRuntimeUploadState['reviewSections']
@@ -186,15 +189,22 @@ interface BrowserRuntimeFixtureState {
 
 export function buildBrowserRuntimeFixtureScript(input: BuildUploadedBatchPreviewInput): string {
   const state = buildBrowserRuntimeUploadState(input)
-  return buildBrowserRuntimeFixtureScriptFromState(state)
+  return buildBrowserRuntimeFixtureScriptFromState(state, input.files)
 }
 
 export function buildBrowserRuntimeFixtureScriptFromState(
-  state: BrowserRuntimeUploadState
+  state: BrowserRuntimeUploadState,
+  files?: UploadedMonthlyFile[]
 ): string {
+  const runtimeFiles = files ?? state.preparedFiles.map((file) => ({
+    name: file.fileName,
+    content: '',
+    uploadedAt: state.generatedAt
+  }))
 
   const fixtureFiles: BrowserRuntimeFixtureFile[] = state.preparedFiles.map((file, index) => ({
     name: file.fileName,
+    contentFingerprint: createContentFingerprint(runtimeFiles[index]?.content ?? ''),
     sourceSystem: file.sourceSystem,
     documentType: file.documentType,
     sourceDocumentId: file.sourceDocumentId,
@@ -202,7 +212,9 @@ export function buildBrowserRuntimeFixtureScriptFromState(
     extractedRecordIds: state.extractedRecords[index]?.extractedRecordIds ?? []
   }))
 
-  const fixtureState: BrowserRuntimeFixtureState = {
+  const fixtureDataset: BrowserRuntimeFixtureDataset = {
+    key: buildFixtureDatasetKey(fixtureFiles),
+    files: fixtureFiles,
     reportSummary: state.reportSummary,
     reviewSummary: state.reviewSummary,
     reviewSections: state.reviewSections,
@@ -212,8 +224,7 @@ export function buildBrowserRuntimeFixtureScriptFromState(
 
   return `
 function createBrowserRuntimeFixture() {
-  const fixtureFiles = ${JSON.stringify(fixtureFiles)};
-  const fixtureState = ${JSON.stringify(fixtureState)};
+  const fixtureDatasets = [${JSON.stringify(fixtureDataset)}];
 
   function buildRunId(month) {
     const suffix = month && month.trim() ? month.trim() : 'local';
@@ -293,9 +304,29 @@ function createBrowserRuntimeFixture() {
       .replace(/^-+|-+$/g, '') || 'file';
   }
 
+  function createContentFingerprint(content) {
+    return String(content || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 500);
+  }
+
+  function buildDatasetKey(files) {
+    return files
+      .map((file) => [escapeComparable(file.name), file.contentFingerprint].join('::'))
+      .sort()
+      .join('||');
+  }
+
+  function findDataset(files) {
+    const datasetKey = buildDatasetKey(files);
+    return fixtureDatasets.find((dataset) => dataset.key === datasetKey);
+  }
+
   function matchFixture(fileName, sourceSystem, documentType) {
     const comparableName = escapeComparable(fileName);
-    return fixtureFiles.find((file) => {
+    const allFiles = fixtureDatasets.flatMap((dataset) => dataset.files);
+    return allFiles.find((file) => {
       return escapeComparable(file.name) === comparableName
         || (file.sourceSystem === sourceSystem && file.documentType === documentType && comparableName.includes(escapeComparable(file.name).replace(/\.[^.]+$/, '')))
     });
@@ -303,10 +334,19 @@ function createBrowserRuntimeFixture() {
 
   function buildRuntimeState(input) {
     const month = input.month && input.month.trim() ? input.month.trim() : 'neuvedeno';
+    const filesWithFingerprint = input.files.map((file) => ({
+      name: file.name,
+      contentFingerprint: createContentFingerprint(file.content)
+    }));
+    const matchedDataset = findDataset(filesWithFingerprint);
+
     const preparedFiles = input.files.map((file, index) => {
       const sourceSystem = inferSourceSystem(file.name);
       const documentType = inferDocumentType(sourceSystem);
-      const fixtureMatch = matchFixture(file.name, sourceSystem, documentType);
+      const fixtureMatch = matchedDataset?.files.find((candidate) => {
+        return escapeComparable(candidate.name) === escapeComparable(file.name)
+          && candidate.contentFingerprint === createContentFingerprint(file.content);
+      }) ?? matchFixture(file.name, sourceSystem, documentType);
 
       return {
         fileName: file.name,
@@ -333,11 +373,41 @@ function createBrowserRuntimeFixture() {
         extractedCount: file.extractedCount,
         extractedRecordIds: file.extractedRecordIds
       })),
-      supportedExpenseLinks: fixtureState.supportedExpenseLinks,
-      reportSummary: fixtureState.reportSummary,
-      reviewSummary: fixtureState.reviewSummary,
-      reviewSections: fixtureState.reviewSections,
-      exportFiles: fixtureState.exportFiles
+      supportedExpenseLinks: matchedDataset?.supportedExpenseLinks ?? [],
+      reportSummary: matchedDataset?.reportSummary ?? {
+        normalizedTransactionCount: preparedFiles.reduce((sum, file) => sum + file.extractedCount, 0),
+        matchedGroupCount: 0,
+        exceptionCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0,
+        unmatchedExpectedCount: 0,
+        unmatchedActualCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0
+      },
+      reviewSummary: matchedDataset?.reviewSummary ?? {
+        normalizedTransactionCount: preparedFiles.reduce((sum, file) => sum + file.extractedCount, 0),
+        matchedGroupCount: 0,
+        exceptionCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0,
+        unmatchedExpectedCount: 0,
+        unmatchedActualCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0
+      },
+      reviewSections: matchedDataset?.reviewSections ?? {
+        matched: [],
+        unmatched: preparedFiles.some((file) => file.extractedCount === 0)
+          ? [{
+              id: 'browser-runtime-unmatched',
+              kind: 'unmatched',
+              title: 'Nespárované nebo nepodporované vstupy',
+              detail: 'Vybraný obsah souboru zatím v browser-only adaptéru neodpovídá známému sdílenému datasetu, proto je výsledek označen jako částečný náhled.',
+              transactionIds: [],
+              sourceDocumentIds: preparedFiles.map((file) => file.sourceDocumentId),
+              severity: 'medium'
+            }]
+          : [],
+        suspicious: [],
+        missingDocuments: []
+      },
+      exportFiles: matchedDataset?.exportFiles ?? [{
+        labelCs: 'Export kontrolních položek',
+        fileName: 'review-items.csv'
+      }]
     };
   }
 
@@ -360,6 +430,20 @@ function createBrowserRuntimeFixture() {
   };
 }
 `
+}
+
+function buildFixtureDatasetKey(files: BrowserRuntimeFixtureFile[]): string {
+  return files
+    .map((file) => [file.name.trim().toLowerCase(), file.contentFingerprint].join('::'))
+    .sort()
+    .join('||')
+}
+
+function createContentFingerprint(content: string): string {
+  return String(content)
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 500)
 }
 
 function renderUploadWebFlowHtmlInternal(generatedAt: string): string {

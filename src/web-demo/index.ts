@@ -135,7 +135,15 @@ function renderOperatorWebDemoHtml(input: {
       labelCs: file.labelCs,
       fileName: file.fileName
     }))
-  })
+  }, input.browserRun.run.importedFiles.map((file, index) => ({
+    name: file.sourceDocument.fileName,
+    content: index === 0
+      ? bookingFixtureContent()
+      : index === 1
+        ? bankFixtureContent()
+        : invoiceFixtureContent(),
+    uploadedAt: input.generatedAt
+  })))
 
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
@@ -422,6 +430,18 @@ function renderOperatorWebDemoHtml(input: {
   </body>
 </html>
 `
+}
+
+function bookingFixtureContent(): string {
+  return getRealInputFixture('booking-payout-export').rawInput.content
+}
+
+function bankFixtureContent(): string {
+  return getRealInputFixture('raiffeisenbank-statement').rawInput.content
+}
+
+function invoiceFixtureContent(): string {
+  return getRealInputFixture('invoice-document').rawInput.content
 }
 
 export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {

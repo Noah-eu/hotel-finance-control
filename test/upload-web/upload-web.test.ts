@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  buildBrowserRuntimeFixtureScript,
   buildBrowserRuntimeUploadState,
   buildBrowserUploadedMonthlyRun,
   buildBrowserExportPackage,
@@ -85,6 +86,61 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('createBrowserRuntimeFixture')
     expect(result.html).toContain('booking-payout-2026-03.csv')
     expect(result.html).toContain('monthly-review-export.xlsx')
+    expect(result.html).toContain('contentFingerprint')
+    expect(result.html).toContain('findDataset(files)')
+  })
+
+  it('changes browser runtime summary data when selected file content no longer matches the known fixture dataset', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const invoice = getRealInputFixture('invoice-document')
+
+    const baseline = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        },
+        {
+          name: invoice.sourceDocument.fileName,
+          content: invoice.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload',
+      generatedAt: '2026-03-19T10:00:00.000Z'
+    })
+
+    const changed = buildBrowserRuntimeFixtureScript({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content.replace('confirmed', 'confirmed-updated'),
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        },
+        {
+          name: invoice.sourceDocument.fileName,
+          content: invoice.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload',
+      generatedAt: '2026-03-19T10:00:00.000Z'
+    })
+
+    expect(baseline.reportSummary.matchedGroupCount).toBeGreaterThan(0)
+    expect(changed).toContain('Vybraný obsah souboru zatím v browser-only adaptéru neodpovídá známému sdílenému datasetu')
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {

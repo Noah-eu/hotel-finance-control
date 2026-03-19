@@ -19,6 +19,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('const browserRuntime = createBrowserRuntimeFixture();')
     expect(result.html).toContain("button.addEventListener('click'")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
+  expect(result.html).toContain('contentFingerprint')
     expect(result.html).toContain('Sekvence měsíčního běhu')
     expect(result.html).toContain('Příprava, kontrola a report v jednom pohledu')
     expect(result.html).toContain('Exportní handoff')
@@ -47,6 +48,16 @@ describe('buildWebDemo', () => {
     expect(readFileSync(outputPath, 'utf8')).toContain('Soubory k nahrání')
     expect(readFileSync(outputPath, 'utf8')).toContain('Spustit přípravu a měsíční workflow')
     expect(readFileSync(outputPath, 'utf8')).toContain('createBrowserRuntimeFixture')
+  })
+
+  it('embeds a content-aware runtime adapter so changed selected file content can change the visible result', () => {
+    const result = buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('findDataset(files)')
+    expect(result.html).toContain('createContentFingerprint(content)')
+    expect(result.html).toContain('Vybraný obsah souboru zatím v browser-only adaptéru neodpovídá známému sdílenému datasetu')
   })
 })
 
