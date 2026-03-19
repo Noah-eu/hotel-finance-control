@@ -41,7 +41,7 @@ describe('buildReviewScreen', () => {
     expect(review.matched[0].title).toContain('Spárovaná skupina')
     expect(review.matched[0].detail).toContain('Jistota')
     expect(review.suspicious.some((item) => item.title.includes('suspicious_private_expense'))).toBe(true)
-    expect(review.missingDocuments.some((item) => item.detail.includes('no supporting invoice or receipt'))).toBe(true)
+  expect(review.missingDocuments.some((item) => item.detail.includes('no structured supporting invoice or receipt match'))).toBe(true)
     expect(review.suspicious.some((item) => item.severity === 'high' || item.detail.length > 0)).toBe(true)
     expect(review.missingDocuments.some((item) => item.kind === 'missing-document' && item.title.startsWith('Chybějící doklad pro'))).toBe(true)
   })
@@ -127,6 +127,7 @@ describe('buildReviewScreen', () => {
             suspiciousByRule,
             missingByRule
           ],
+          supportedExpenseLinks: [],
           normalization: {
             warnings: [],
             trace: []
@@ -159,6 +160,7 @@ describe('buildReviewScreen', () => {
           },
           matches: [],
           exceptions: [],
+          supportedExpenseLinks: [],
           transactions: []
         }
       }
@@ -190,6 +192,7 @@ describe('buildReviewScreen', () => {
           matching: buildMatchingResult(),
           matchGroups: [],
           exceptionCases: [unmatchedDocument],
+          supportedExpenseLinks: [],
           normalization: {
             warnings: [],
             trace: []
@@ -217,6 +220,7 @@ describe('buildReviewScreen', () => {
           },
           matches: [],
           exceptions: [],
+          supportedExpenseLinks: [],
           transactions: []
         }
       }

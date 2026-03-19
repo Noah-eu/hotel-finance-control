@@ -28,7 +28,17 @@ export interface ReconciliationReport {
     severity: string
     explanation: string
     relatedTransactionIds: string[]
+    relatedExtractedRecordIds: string[]
+    relatedSourceDocumentIds: string[]
     recommendedNextStep?: string
+  }>
+  supportedExpenseLinks: Array<{
+    expenseTransactionId: string
+    supportTransactionId: string
+    matchScore: number
+    reasons: string[]
+    supportSourceDocumentIds: string[]
+    supportExtractedRecordIds: string[]
   }>
   transactions: ReconciliationReportEntry[]
 }
@@ -65,7 +75,17 @@ export function buildReconciliationReport(
       severity: exceptionCase.severity,
       explanation: exceptionCase.explanation,
       relatedTransactionIds: exceptionCase.relatedTransactionIds,
+      relatedExtractedRecordIds: exceptionCase.relatedExtractedRecordIds,
+      relatedSourceDocumentIds: exceptionCase.relatedSourceDocumentIds,
       recommendedNextStep: exceptionCase.recommendedNextStep
+    })),
+    supportedExpenseLinks: (input.reconciliation.supportedExpenseLinks ?? []).map((link) => ({
+      expenseTransactionId: link.expenseTransactionId,
+      supportTransactionId: link.supportTransactionId,
+      matchScore: link.matchScore,
+      reasons: link.reasons,
+      supportSourceDocumentIds: link.supportSourceDocumentIds,
+      supportExtractedRecordIds: link.supportExtractedRecordIds
     })),
     transactions: input.reconciliation.normalizedTransactions.map((transaction) => ({
       transactionId: transaction.id,

@@ -226,17 +226,23 @@ export const demoFixtures: DemoFixture[] = [
         {
           exceptionCaseId: 'exc:txn:txn:payout:payout-demo-2',
           type: 'unmatched_transaction',
+          ruleCode: undefined,
           severity: 'medium',
           explanation: 'Expected incoming transaction could not be matched to an actual bank movement.',
           relatedTransactionIds: ['txn:payout:payout-demo-2'],
+          relatedExtractedRecordIds: ['payout-demo-2'],
+          relatedSourceDocumentIds: ['doc-payout-demo-2'],
           recommendedNextStep: 'Review transaction classification and collect supporting documents.'
         },
         {
           exceptionCaseId: 'exc:txn:txn:bank:bank-demo-2',
           type: 'unmatched_transaction',
+          ruleCode: undefined,
           severity: 'medium',
           explanation: 'Incoming bank transaction could not be matched to an expected payout.',
           relatedTransactionIds: ['txn:bank:bank-demo-2'],
+          relatedExtractedRecordIds: ['bank-demo-2'],
+          relatedSourceDocumentIds: ['doc-bank-demo-2'],
           recommendedNextStep: 'Review transaction classification and collect supporting documents.'
         }
       ],

@@ -87,6 +87,7 @@ function reconciliationResult(overrides: Partial<ReconciliationResult> = {}): Re
         createdAt: '2026-03-18T14:00:00.000Z'
       }
     ],
+    supportedExpenseLinks: [],
     normalization: {
       warnings: [],
       trace: []

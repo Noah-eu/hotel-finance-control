@@ -3,6 +3,15 @@ import type { MatchingResult } from '../matching'
 import type { NormalizationResult } from '../normalization'
 import type { ExceptionCase, ExtractedRecord, MatchGroup, NormalizedTransaction } from '../domain/types'
 
+export interface SupportedExpenseLink {
+  expenseTransactionId: NormalizedTransaction['id']
+  supportTransactionId: NormalizedTransaction['id']
+  matchScore: number
+  reasons: string[]
+  supportSourceDocumentIds: NormalizedTransaction['sourceDocumentIds']
+  supportExtractedRecordIds: NormalizedTransaction['extractedRecordIds']
+}
+
 export interface ReconciliationInput {
   extractedRecords: ExtractedRecord[]
 }
@@ -26,6 +35,7 @@ export interface ReconciliationResult {
   matching: MatchingResult
   matchGroups: MatchGroup[]
   exceptionCases: ExceptionCase[]
+  supportedExpenseLinks: SupportedExpenseLink[]
   normalization: Pick<NormalizationResult, 'warnings' | 'trace'>
   exceptions: ExceptionDetectionResult
   summary: ReconciliationSummary

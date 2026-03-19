@@ -63,10 +63,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     .map((exceptionCase) => toReviewItem(exceptionCase, 'suspicious'))
 
   const missingDocuments = categorizedExceptionCases.missingDocuments
-    .map((exceptionCase) => ({
-      ...toReviewItem(exceptionCase, 'missing-document'),
-      title: `Chybějící doklad pro ${exceptionCase.relatedTransactionIds[0] ?? exceptionCase.id}`
-    }))
+    .map((exceptionCase) => toMissingDocumentReviewItem(input.batch, exceptionCase))
 
   return {
     generatedAt: input.generatedAt,
@@ -143,4 +140,28 @@ function collectSourceDocumentIds(batch: MonthlyBatchResult, transactionIds: str
   }
 
   return [...ids]
+}
+
+function toMissingDocumentReviewItem(
+  batch: MonthlyBatchResult,
+  exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number]
+): ReviewSectionItem {
+  const base = toReviewItem(exceptionCase, 'missing-document')
+  const transactionId = exceptionCase.relatedTransactionIds[0]
+  const transaction = transactionId
+    ? batch.reconciliation.normalizedTransactions.find((item) => item.id === transactionId)
+    : undefined
+
+  const hints = [
+    transaction?.counterparty ? `Protiúčastník: ${transaction.counterparty}` : undefined,
+    transaction?.reference ? `Reference: ${transaction.reference}` : undefined,
+    transaction ? `Částka: ${transaction.amountMinor} ${transaction.currency}` : undefined,
+    transaction ? `Datum: ${transaction.bookedAt}` : undefined
+  ].filter(Boolean)
+
+  return {
+    ...base,
+    title: `Chybějící doklad pro ${transactionId ?? exceptionCase.id}`,
+    detail: hints.length > 0 ? `${base.detail} ${hints.join(' • ')}` : base.detail
+  }
 }

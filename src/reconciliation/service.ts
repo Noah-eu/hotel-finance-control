@@ -7,6 +7,7 @@ import type {
   ReconciliationContext,
   ReconciliationInput,
   ReconciliationResult,
+  SupportedExpenseLink,
   ReconciliationService
 } from './contracts'
 
@@ -18,6 +19,8 @@ const SAFE_OUTFLOW_SOURCES = new Set(['invoice', 'receipt'])
 const SAFE_OUTFLOW_COUNTERPARTY_PATTERNS = [/payroll/i]
 const SUSPICIOUS_REFERENCE_PATTERNS = [/personal/i, /private/i]
 const SUSPICIOUS_COUNTERPARTY_PATTERNS = [/electro world/i]
+const SUPPORT_LINK_MIN_SCORE = 4
+const SUPPORT_LINK_MAX_DAY_DISTANCE = 7
 
 export class DefaultReconciliationService implements ReconciliationService {
   reconcile(input: ReconciliationInput, context: ReconciliationContext): ReconciliationResult {
@@ -38,10 +41,18 @@ export class DefaultReconciliationService implements ReconciliationService {
     const matching = matchTransactions({ expected, actual }, matchingContext)
     const matchedIds = new Set(matching.matchGroups.flatMap((group) => group.transactionIds))
     const lowConfidenceThreshold = context.lowConfidenceThreshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD
+    const supportedExpenseLinks = linkSupportedExpenses(normalization.transactions)
+    const supportedExpenseIds = new Set(supportedExpenseLinks.map((link) => link.expenseTransactionId))
 
     const exceptions = detectExceptions(
       {
-        unmatchedTransactions: buildUnmatchedTransactionExceptions(normalization.transactions, matching, matchedIds),
+        unmatchedTransactions: buildUnmatchedTransactionExceptions(
+          normalization.transactions,
+          matching,
+          matchedIds,
+          supportedExpenseLinks,
+          supportedExpenseIds
+        ),
         lowConfidenceMatches: matching.matchGroups
           .filter((group) => group.confidence < lowConfidenceThreshold)
           .map((matchGroup) => ({ matchGroup, threshold: lowConfidenceThreshold }))
@@ -57,6 +68,7 @@ export class DefaultReconciliationService implements ReconciliationService {
       matching,
       matchGroups: matching.matchGroups,
       exceptionCases: exceptions.cases,
+      supportedExpenseLinks,
       normalization: {
         warnings: normalization.warnings,
         trace: normalization.trace
@@ -93,26 +105,25 @@ function isActualTransaction(transaction: NormalizedTransaction): boolean {
 function buildUnmatchedTransactionExceptions(
   transactions: NormalizedTransaction[],
   matching: ReconciliationResult['matching'],
-  matchedIds: Set<NormalizedTransaction['id']>
+  matchedIds: Set<NormalizedTransaction['id']>,
+  supportedExpenseLinks: SupportedExpenseLink[],
+  supportedExpenseIds: Set<NormalizedTransaction['id']>
 ) {
   return transactions
     .filter((transaction) => !matchedIds.has(transaction.id))
-    .map((transaction) => buildUnmatchedExceptionRule(transaction, matching.matchGroups, transactions))
+    .filter((transaction) => transaction.direction !== 'out' || !supportedExpenseIds.has(transaction.id))
+    .map((transaction) =>
+      buildUnmatchedExceptionRule(transaction, matching.matchGroups, transactions, supportedExpenseLinks)
+    )
 }
 
 function buildUnmatchedExceptionRule(
   transaction: NormalizedTransaction,
   matchGroups: MatchGroup[],
-  transactions: NormalizedTransaction[]
+  transactions: NormalizedTransaction[],
+  supportedExpenseLinks: SupportedExpenseLink[]
 ) {
-  const supportingDocuments = transactions.filter(
-    (candidate) =>
-      candidate.direction === 'out'
-      && candidate.sourceDocumentIds.some((sourceDocumentId) =>
-        transaction.sourceDocumentIds.includes(sourceDocumentId)
-      )
-      && DOCUMENT_SOURCE_SET.has(candidate.source)
-  )
+  const supportLink = supportedExpenseLinks.find((link) => link.expenseTransactionId === transaction.id)
 
   if (transaction.direction === 'out' && isSuspiciousExpense(transaction)) {
     return {
@@ -127,11 +138,11 @@ function buildUnmatchedExceptionRule(
     }
   }
 
-  if (transaction.direction === 'out' && shouldFlagMissingSupportingDocument(transaction, supportingDocuments)) {
+  if (transaction.direction === 'out' && shouldFlagMissingSupportingDocument(transaction, supportLink)) {
     return {
       transactionId: transaction.id,
       ruleCode: MISSING_SUPPORTING_DOCUMENT_RULE_CODE,
-      reason: 'Outgoing expense-like transaction has no supporting invoice or receipt in the current monthly batch.',
+      reason: buildMissingSupportingDocumentReason(transaction),
       severity: 'high' as const,
       sourceDocumentIds: transaction.sourceDocumentIds,
       extractedRecordIds: transaction.extractedRecordIds,
@@ -172,13 +183,13 @@ function buildUnmatchedReason(
 
 function shouldFlagMissingSupportingDocument(
   transaction: NormalizedTransaction,
-  supportingDocuments: NormalizedTransaction[]
+  supportLink?: SupportedExpenseLink
 ): boolean {
   if (SAFE_OUTFLOW_SOURCES.has(transaction.source)) {
     return false
   }
 
-  if (supportingDocuments.length > 0) {
+  if (supportLink) {
     return false
   }
 
@@ -187,6 +198,135 @@ function shouldFlagMissingSupportingDocument(
   }
 
   return transaction.direction === 'out'
+}
+
+function buildMissingSupportingDocumentReason(transaction: NormalizedTransaction): string {
+  const hints = [
+    transaction.counterparty ? `protiúčastník "${transaction.counterparty}"` : undefined,
+    transaction.reference ? `reference "${transaction.reference}"` : undefined,
+    `částka ${transaction.amountMinor} ${transaction.currency}`,
+    `datum ${transaction.bookedAt}`
+  ].filter(Boolean)
+
+  return `Outgoing expense-like transaction has no structured supporting invoice or receipt match in the current monthly batch (${hints.join(', ')}).`
+}
+
+function linkSupportedExpenses(transactions: NormalizedTransaction[]): SupportedExpenseLink[] {
+  const expenseCandidates = transactions.filter((transaction) =>
+    transaction.direction === 'out'
+    && transaction.source === 'bank'
+    && !isKnownLegitimateOutflow(transaction)
+    && !isSuspiciousExpense(transaction)
+  )
+  const supportCandidates = transactions.filter((transaction) =>
+    transaction.direction === 'out' && DOCUMENT_SOURCE_SET.has(transaction.source)
+  )
+
+  const links: SupportedExpenseLink[] = []
+  const usedSupportIds = new Set<NormalizedTransaction['id']>()
+
+  for (const expense of expenseCandidates) {
+    const candidates = supportCandidates
+      .filter((support) => !usedSupportIds.has(support.id))
+      .map((support) => evaluateSupportLink(expense, support))
+      .filter((candidate): candidate is SupportedExpenseLink => candidate !== null)
+      .sort((left, right) => right.matchScore - left.matchScore)
+
+    const winner = candidates[0]
+    if (!winner) {
+      continue
+    }
+
+    usedSupportIds.add(winner.supportTransactionId)
+    links.push(winner)
+  }
+
+  return links
+}
+
+function evaluateSupportLink(
+  expense: NormalizedTransaction,
+  support: NormalizedTransaction
+): SupportedExpenseLink | null {
+  const reasons: string[] = []
+  let score = 0
+
+  if (expense.currency === support.currency) {
+    score += 1
+    reasons.push(`currency:${expense.currency}`)
+  } else {
+    return null
+  }
+
+  if (expense.amountMinor === support.amountMinor) {
+    score += 2
+    reasons.push(`amountExact:${expense.amountMinor}`)
+  } else {
+    return null
+  }
+
+  const dayDistance = calculateDayDistance(expense.bookedAt, support.bookedAt)
+  if (dayDistance <= SUPPORT_LINK_MAX_DAY_DISTANCE) {
+    score += dayDistance === 0 ? 2 : 1
+    reasons.push(`dateDistance:${dayDistance}`)
+  } else {
+    return null
+  }
+
+  const counterpartyMatch = normalizedContains(expense.counterparty, support.counterparty)
+    || normalizedContains(expense.counterparty, support.reference)
+    || normalizedContains(expense.reference, support.counterparty)
+
+  if (counterpartyMatch) {
+    score += 2
+    reasons.push('counterpartyAligned')
+  }
+
+  const referenceMatch = normalizedContains(expense.reference, support.reference)
+    || normalizedContains(expense.reference, support.invoiceNumber)
+
+  if (referenceMatch) {
+    score += 2
+    reasons.push('referenceAligned')
+  }
+
+  if (!counterpartyMatch && !referenceMatch) {
+    return null
+  }
+
+  if (score < SUPPORT_LINK_MIN_SCORE) {
+    return null
+  }
+
+  return {
+    expenseTransactionId: expense.id,
+    supportTransactionId: support.id,
+    matchScore: score,
+    reasons,
+    supportSourceDocumentIds: support.sourceDocumentIds,
+    supportExtractedRecordIds: support.extractedRecordIds
+  }
+}
+
+function calculateDayDistance(left: string, right: string): number {
+  const leftDate = new Date(`${left}T00:00:00Z`)
+  const rightDate = new Date(`${right}T00:00:00Z`)
+  return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function normalizeComparable(value?: string): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function normalizedContains(left?: string, right?: string): boolean {
+  const normalizedLeft = normalizeComparable(left)
+  const normalizedRight = normalizeComparable(right)
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false
+  }
+
+  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)
 }
 
 function isKnownLegitimateOutflow(transaction: NormalizedTransaction): boolean {

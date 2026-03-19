@@ -330,6 +330,45 @@ describe('runMonthlyReconciliationBatch', () => {
     })
   })
 
+  it('reduces false missing-document flags when a matching invoice is present in the same monthly batch', () => {
+    const invoice = getRealInputFixture('invoice-document')
+
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'doc-bank-expense-supported' as never,
+            sourceSystem: 'bank',
+            documentType: 'bank_statement',
+            fileName: 'raiffeisen-expense-supported.csv',
+            uploadedAt: '2026-03-19T11:10:00.000Z'
+          },
+          content: [
+            'bookedAt,amountMinor,currency,accountId,counterparty,reference,transactionType',
+            '2026-03-20,-1850000,CZK,raiffeisen-main,Laundry Supply s.r.o.,INV-2026-332,expense'
+          ].join('\n')
+        },
+        {
+          sourceDocument: invoice.sourceDocument,
+          content: invoice.rawInput.content
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-supported-expense',
+        requestedAt: '2026-03-19T11:10:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T11:11:00.000Z'
+    })
+
+    expect(result.reconciliation.supportedExpenseLinks).toHaveLength(1)
+    expect(result.reconciliation.supportedExpenseLinks[0]).toMatchObject({
+      expenseTransactionId: 'txn:bank:raif-row-1',
+      supportTransactionId: 'txn:document:invoice-record-1'
+    })
+    expect(result.report.exceptions.some((item) => item.ruleCode === 'missing_supporting_document')).toBe(false)
+    expect(result.reconciliation.exceptionCases.some((item) => item.ruleCode === 'missing_supporting_document')).toBe(false)
+  })
+
   it('avoids over-flagging known legitimate payroll outflows as missing-document or suspicious expenses', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
 
