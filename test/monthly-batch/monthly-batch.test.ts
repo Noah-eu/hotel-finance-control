@@ -520,6 +520,41 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'raiffeisenbank'])
   })
 
+  it('runs the exact quoted localized RB export shape through the shared monthly-batch path with the confirmed Fio file', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+        content: [
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T21:10:00.000Z'
+      },
+      {
+        name: 'Pohyby_5599955956_202603191023.csv',
+        content: [
+          '\uFEFF"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+          '"19.03.2026 06:23";"1 540,00";"CZK";"1234567890";"2010";"PAYOUT-BOOK-20260310";"Booking BV";"Příchozí platba"'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T21:11:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-quoted-real-rb-shape',
+        requestedAt: '2026-03-19T21:11:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T21:12:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([1, 1])
+    expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'raif-row-1'])
+    expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'raiffeisenbank'])
+    expect(result.extractedRecords[1]?.data.counterparty).toBe('1234567890/2010')
+  })
+
   it('classifies a real Comgate export from its deterministic headers instead of generic content mentions', () => {
     const comgate = getRealInputFixture('comgate-export')
 
