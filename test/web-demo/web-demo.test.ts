@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
@@ -17,7 +17,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Označení měsíce')
     expect(result.html).toContain('id="month-label"')
     expect(result.html).toContain('Spustit přípravu a měsíční workflow')
-  expect(result.html).toContain('let browserRuntime;')
+    expect(result.html).toContain('let browserRuntime;')
     expect(result.html).toContain("button.addEventListener('click'")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
     expect(result.html).toContain('Sekvence měsíčního běhu')
@@ -37,7 +37,7 @@ describe('buildWebDemo', () => {
       force: true
     })
 
-  const result = await buildWebDemo({
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z',
       outputPath
     })
@@ -167,6 +167,60 @@ describe('buildWebDemo', () => {
 
     expect(result.runtimeAssetPath).toBe(runtimeAssetPath)
     expect(readFileSync(outputPath, 'utf8')).toContain(`import(${JSON.stringify(runtimeAssetPath)})`)
+  })
+
+  it('builds and inspects the real emitted browser runtime asset with the current localized Raiffeisenbank parser logic', async () => {
+    const outputPath = resolve('dist/test-web-demo-runtime-inspection/index.html')
+    rmSync(resolve('dist/test-web-demo-runtime-inspection'), {
+      recursive: true,
+      force: true
+    })
+
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-19T19:00:00.000Z',
+      outputPath
+    })
+
+    const runtimeAssetPath = result.runtimeAssetPath
+    expect(runtimeAssetPath).toBeTruthy()
+
+    const assetOnDisk = resolve('dist/test-web-demo-runtime-inspection', runtimeAssetPath!.slice(2))
+    const runtimeAsset = readFileSync(assetOnDisk, 'utf8')
+
+    expect(runtimeAsset).toContain('raiffeisenbank')
+    expect(runtimeAsset).toContain('zpravaProPrijemce')
+    expect(runtimeAsset).toContain('parseRaiffeisenbankStatement')
+    expect(runtimeAsset).toContain('missing required columns')
+    expect(runtimeAsset).toContain('protiucet')
+    expect(runtimeAsset).toContain('objem')
+    expect(runtimeAsset).toContain('mena')
+    expect(runtimeAsset).toContain('datum')
+    expect(runtimeAsset).toContain('bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype')
+  })
+
+  it('keeps only the currently emitted hashed browser runtime asset in static demo output', async () => {
+    const outputPath = resolve('dist/test-web-demo-clean-assets/index.html')
+    const outputDir = resolve('dist/test-web-demo-clean-assets')
+    rmSync(outputDir, {
+      recursive: true,
+      force: true
+    })
+
+    const first = await buildWebDemo({
+      generatedAt: '2026-03-19T19:00:00.000Z',
+      outputPath
+    })
+
+    const second = await buildWebDemo({
+      generatedAt: '2026-03-19T19:00:00.000Z',
+      outputPath
+    })
+
+    const dirEntries = readdirSync(outputDir).filter((entry) => /^browser-runtime\.[a-f0-9]{12}\.js$/.test(entry))
+
+    expect(readFileSync(outputPath, 'utf8')).toContain(`import(${JSON.stringify(second.runtimeAssetPath)})`)
+    expect(first.runtimeAssetPath).toBe(second.runtimeAssetPath)
+    expect(dirEntries).toEqual([second.runtimeAssetPath!.slice(2)])
   })
 
   it('changes the emitted runtime asset path deterministically when the bundle content changes', async () => {

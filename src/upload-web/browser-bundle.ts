@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +22,11 @@ export async function emitBrowserRuntimeBundle(
   const temporaryRuntimeAssetPath = resolve(outputDir, 'browser-runtime.tmp.js')
 
   mkdirSync(outputDir, { recursive: true })
+  for (const existingEntry of readdirSync(outputDir)) {
+    if (/^browser-runtime\.[a-f0-9]{12}\.js$/.test(existingEntry)) {
+      rmSync(resolve(outputDir, existingEntry), { force: true })
+    }
+  }
 
   await build({
     entryPoints: [browserRuntimeEntryPath],
@@ -40,8 +45,6 @@ export async function emitBrowserRuntimeBundle(
   const contentHash = createHash('sha256').update(runtimeContent).digest('hex').slice(0, 12)
   const finalRuntimeAssetPath = resolve(outputDir, `browser-runtime.${contentHash}.js`)
 
-  rmSync(finalRuntimeAssetPath, { force: true })
-  rmSync(resolve(outputDir, 'browser-runtime.js'), { force: true })
   rmSync(resolve(outputDir, 'browser-runtime.tmp.js'), { force: true })
 
   mkdirSync(dirname(finalRuntimeAssetPath), { recursive: true })
