@@ -56,7 +56,7 @@ describe('buildWebDemo', () => {
 
     expect(result.html).toContain('__hotelFinanceCreateBrowserRuntime')
     expect(result.html).toContain('__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles')
-    expect(result.html).not.toContain('const runtimeState =')
+    expect(result.html).toContain('const runtimeState =')
     expect(result.html).not.toContain('JSON.stringify(mainRuntimeState)')
     expect(result.html).not.toContain('findDataset(files)')
     expect(result.html).not.toContain('contentFingerprint')
@@ -68,8 +68,8 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('return window.__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles(input);')
-    expect(result.html).not.toContain('preparedFiles: runtimeState.preparedFiles.map')
-    expect(result.html).not.toContain('extractedRecords: runtimeState.extractedRecords.map')
+    expect(result.html).toContain('preparedFiles: runtimeState.preparedFiles.map')
+    expect(result.html).toContain('extractedRecords: runtimeState.extractedRecords.map')
   })
 
   it('does not inject a serialized precomputed main runtime result object into the visible page', () => {
@@ -78,7 +78,17 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).not.toContain('mainRuntimeState')
-    expect(result.html).not.toContain('supportedExpenseLinks":[{"expenseTransactionId"')
+    expect(result.html).not.toContain('Sdílený browser runtime builder není v této statické stránce přímo serializovaný')
+  })
+
+  it('embeds an executable shared upload-web runtime implementation instead of a throwing placeholder', () => {
+    const result = buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('window.__hotelFinanceSharedUploadWebRuntime = {')
+    expect(result.html).toContain('async buildBrowserRuntimeStateFromUploadedFiles(input)')
+    expect(result.html).not.toContain('throw new Error(\'Sdílený browser runtime builder není v této statické stránce přímo serializovaný')
   })
 })
 

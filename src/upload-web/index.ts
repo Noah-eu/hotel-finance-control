@@ -231,6 +231,34 @@ export function renderBrowserRuntimeClientBootstrap(): string {
     `
 }
 
+export function renderSharedUploadWebRuntimeBridgeFromState(
+  state: BrowserRuntimeUploadState
+): string {
+  return `
+      window.__hotelFinanceSharedUploadWebRuntime = {
+        async buildBrowserRuntimeStateFromUploadedFiles(input) {
+          const runtimeState = ${JSON.stringify(state)};
+
+          return {
+            ...runtimeState,
+            runId: input.runId,
+            monthLabel: input.runId === 'browser-runtime-upload-local'
+              ? 'neuvedeno'
+              : input.runId.replace('browser-runtime-upload-', ''),
+            preparedFiles: runtimeState.preparedFiles.map((file, index) => ({
+              ...file,
+              fileName: input.files[index]?.name ?? file.fileName
+            })),
+            extractedRecords: runtimeState.extractedRecords.map((file, index) => ({
+              ...file,
+              fileName: input.files[index]?.name ?? file.fileName
+            }))
+          };
+        }
+      };
+    `
+}
+
 function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
   return `<!doctype html>
 <html lang="cs">
@@ -444,6 +472,12 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
     <script>
       window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
         throw new Error('Browser runtime bridge není v této statické HTML verzi připojený. Spusťte tuto funkci přes sdílený TypeScript runtime.');
+      };
+
+      window.__hotelFinanceSharedUploadWebRuntime = {
+        buildBrowserRuntimeStateFromUploadedFiles(input) {
+          throw new Error('Sdílený upload-web browser runtime bridge není v této statické HTML verzi připojený.');
+        }
       };
 
 ${renderBrowserRuntimeClientBootstrap()}
