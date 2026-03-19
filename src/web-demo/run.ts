@@ -1,6 +1,6 @@
 import { buildWebDemo } from './index'
 
-const result = buildWebDemo({
+const result = await buildWebDemo({
   outputPath: 'dist/demo/index.html'
 })
 

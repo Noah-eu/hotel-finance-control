@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 
 describe('buildWebDemo', () => {
-  it('renders the uploaded monthly browser flow into browser-visible HTML', () => {
-    const result = buildWebDemo({
+  it('renders the uploaded monthly browser flow into browser-visible HTML', async () => {
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
@@ -29,14 +29,14 @@ describe('buildWebDemo', () => {
     expect(result.browserRun.run.review.summary.exceptionCount).toBeGreaterThan(0)
   })
 
-  it('writes the generated demo HTML to disk when outputPath is provided', () => {
+  it('writes the generated demo HTML to disk when outputPath is provided', async () => {
     const outputPath = resolve('dist/test-web-demo/index.html')
     rmSync(resolve('dist/test-web-demo'), {
       recursive: true,
       force: true
     })
 
-    const result = buildWebDemo({
+  const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z',
       outputPath
     })
@@ -49,12 +49,17 @@ describe('buildWebDemo', () => {
     expect(readFileSync(outputPath, 'utf8')).toContain('__hotelFinanceCreateBrowserRuntime')
     expect(readFileSync(outputPath, 'utf8')).toContain('import("./browser-runtime.js")')
     expect(existsSync(resolve('dist/test-web-demo/browser-runtime.js'))).toBe(true)
-    expect(existsSync(resolve('dist/test-web-demo/browser-runtime-entry.js'))).toBe(true)
-    expect(existsSync(resolve('dist/test-web-demo/upload-web-shared.js'))).toBe(true)
+    const runtimeAsset = readFileSync(resolve('dist/test-web-demo/browser-runtime.js'), 'utf8')
+  expect(runtimeAsset).not.toContain('estimateExtractedCount(')
+    expect(runtimeAsset).not.toContain('buildReviewSections(')
+    expect(runtimeAsset).not.toContain('buildSupportedExpenseLinks(')
+    expect(runtimeAsset).toContain('runMonthlyReconciliationBatch')
+    expect(runtimeAsset).toContain('buildReviewScreen')
+    expect(runtimeAsset).toContain('buildExportArtifacts')
   })
 
-  it('uses the explicit browser runtime creator instead of fixture dataset matching', () => {
-    const result = buildWebDemo({
+  it('uses the explicit browser runtime creator instead of fixture dataset matching', async () => {
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
@@ -67,8 +72,8 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('estimateExceptionCount(')
   })
 
-  it('reuses the shared upload-web runtime builder path instead of baking demo runtime summaries into the page', () => {
-    const result = buildWebDemo({
+  it('reuses the shared upload-web runtime builder path instead of baking demo runtime summaries into the page', async () => {
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
@@ -77,8 +82,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('window.__hotelFinanceCreateBrowserRuntime = module.createBrowserRuntime;')
   })
 
-  it('does not inject a serialized precomputed main runtime result object into the visible page', () => {
-    const result = buildWebDemo({
+  it('does not inject a serialized precomputed main runtime result object into the visible page', async () => {
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
@@ -87,8 +92,8 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('window.__hotelFinanceSharedUploadWebRuntime = {')
   })
 
-  it('loads an executable shared upload-web runtime module instead of HTML-string heuristic simulation', () => {
-    const result = buildWebDemo({
+  it('loads an executable shared upload-web runtime module instead of HTML-string heuristic simulation', async () => {
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
@@ -98,8 +103,27 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('buildReviewSections(preparedFiles, files, unsupportedFiles)')
   })
 
-  it('keeps the start action on the main page tied to the shared runtime module path', () => {
-    const result = buildWebDemo({
+  it('backs demo output with shared runtime modules instead of hand-written synthetic asset strings', async () => {
+    const outputPath = resolve('dist/test-web-demo-runtime/index.html')
+    rmSync(resolve('dist/test-web-demo-runtime'), {
+      recursive: true,
+      force: true
+    })
+
+    await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z',
+      outputPath
+    })
+
+    const runtimeAsset = readFileSync(resolve('dist/test-web-demo-runtime/browser-runtime.js'), 'utf8')
+
+    expect(runtimeAsset).toContain('buildBrowserRuntimeStateFromSelectedFiles')
+    expect(runtimeAsset).toContain('createBrowserRuntime')
+    expect(runtimeAsset).not.toContain('Export kontrolních položek')
+  })
+
+  it('keeps the start action on the main page tied to the shared runtime module path', async () => {
+    const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 

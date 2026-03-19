@@ -1,8 +1,5 @@
-import {
-  buildBrowserRuntimeUploadState,
-  type BrowserRuntimeInputFile,
-  type BrowserRuntimeUploadState
-} from './index.js'
+import type { BrowserRuntimeInputFile, BrowserRuntimeUploadState } from './index.js'
+import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state.js'
 
 export interface BrowserRuntimeBridge {
   buildRuntimeState(input: {
@@ -25,7 +22,7 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
     }))
   )
 
-  return buildBrowserRuntimeUploadState({
+  return buildBrowserRuntimeUploadStateFromFiles({
     files: uploadedFiles,
     runId: buildBrowserRuntimeRunId(input.month),
     generatedAt: input.generatedAt

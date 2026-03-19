@@ -132,7 +132,7 @@ describe('buildUploadWebFlow', () => {
 
     const changed = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
-        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content.replace('Booking B.V.', 'Booking B.V. CZ')),
+  createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content.replace('PAYOUT-BOOK-20260310', 'PAYOUT-BOOK-20260399')),
         createRuntimeFile(raiffeisen.sourceDocument.fileName, raiffeisen.rawInput.content),
         createRuntimeFile(invoice.sourceDocument.fileName, invoice.rawInput.content)
       ],
@@ -143,7 +143,8 @@ describe('buildUploadWebFlow', () => {
     expect(baseline.reportSummary.matchedGroupCount).toBeGreaterThan(0)
     expect(changed.reportSummary.matchedGroupCount).toBe(baseline.reportSummary.matchedGroupCount)
     expect(changed.preparedFiles[0].sourceDocumentId).toBe(baseline.preparedFiles[0].sourceDocumentId)
-    expect(changed.reviewSections.matched).toEqual(baseline.reviewSections.matched)
+    expect(changed.reviewSections.matched[0]?.detail).not.toBe(baseline.reviewSections.matched[0]?.detail)
+    expect(changed.exportFiles).toEqual(baseline.exportFiles)
   })
 
   it('does not depend on fixture lookup strings in the browser runtime API', async () => {

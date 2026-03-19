@@ -37,7 +37,7 @@ export interface FixtureWebDemoResult {
   outputPath?: string
 }
 
-export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
+export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<WebDemoResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
   const booking = getRealInputFixture('booking-payout-export')
   const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
@@ -78,7 +78,7 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
     const resolved = resolve(options.outputPath)
     mkdirSync(dirname(resolved), { recursive: true })
     writeFileSync(resolved, html, 'utf8')
-    emitBrowserRuntimeAssets(resolved)
+  await emitBrowserRuntimeAssets(resolved)
 
     return {
       html,
