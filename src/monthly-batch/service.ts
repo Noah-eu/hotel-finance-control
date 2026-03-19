@@ -124,6 +124,19 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
   const normalizedFileName = fileName.toLowerCase()
   const headerFields = getNormalizedHeaderFields(content)
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
+  const isCanonicalBankHeader = matchesAnyHeaderSignature(normalizedHeaderSample, [
+    'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
+  ])
+  const isFioSpecificHeader =
+    hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
+    || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
+  const isRaiffeisenbankSpecificHeader =
+    (hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'název protiúčtu', 'protiúčet', 'typ'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ']))
+    && !hasAnyHeaderFields(headerFields, ['číslo protiúčtu', 'název protiúčtu', 'cislo protiuctu', 'nazev protiuctu'])
 
   if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
     return 'raiffeisenbank'
@@ -133,19 +146,16 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
     return 'fio'
   }
 
-  if (hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])) {
+  if (isCanonicalBankHeader) {
     return 'raiffeisenbank'
   }
 
-  if (hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
-    || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
-    || matchesAnyHeaderSignature(normalizedHeaderSample, [
-      'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
-    ])) {
+  if (isFioSpecificHeader) {
     return 'fio'
+  }
+
+  if (isRaiffeisenbankSpecificHeader) {
+    return 'raiffeisenbank'
   }
 
   return 'unknown'
@@ -271,6 +281,10 @@ function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): 
 
 function hasAllHeaderFields(headerFields: string[], requiredFields: string[]): boolean {
   return requiredFields.every((field) => headerFields.includes(field))
+}
+
+function hasAnyHeaderFields(headerFields: string[], candidateFields: string[]): boolean {
+  return candidateFields.some((field) => headerFields.includes(field))
 }
 
 function getNormalizedHeaderSample(content: string): string {

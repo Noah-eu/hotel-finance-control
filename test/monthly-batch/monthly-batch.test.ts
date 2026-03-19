@@ -371,6 +371,7 @@ describe('runMonthlyReconciliationBatch', () => {
       '2026-03-19T07:15:00'
     ])
     expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 84000])
+    expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'fio-row-2'])
   })
 
   it('classifies the Pohyby na účtu Fio variant from deterministic content even with a generic filename', () => {
@@ -421,6 +422,31 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
     expect(prepared[0]?.sourceDocument.id).toBe('uploaded:bank:1:statement-csv')
+  })
+
+  it('routes a real Raiffeisenbank-style generic bank file to the Raiffeisenbank parser', () => {
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: raiffeisen.rawInput.content,
+        uploadedAt: '2026-03-19T19:00:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-raiffeisen-generic-routing',
+        requestedAt: '2026-03-19T19:00:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T19:01:00.000Z'
+    })
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(result.files.map((file) => file.extractedCount)).toEqual([6])
+    expect(result.extractedRecords[0]?.id).toBe('raif-row-1')
   })
 
   it('classifies a real Comgate export from its deterministic headers instead of generic content mentions', () => {
