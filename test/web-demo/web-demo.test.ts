@@ -183,18 +183,25 @@ describe('buildWebDemo', () => {
 
     const runtimeAssetPath = result.runtimeAssetPath
     expect(runtimeAssetPath).toBeTruthy()
+    expect(readFileSync(outputPath, 'utf8')).toContain(`import(${JSON.stringify(runtimeAssetPath)})`)
 
     const assetOnDisk = resolve('dist/test-web-demo-runtime-inspection', runtimeAssetPath!.slice(2))
     const runtimeAsset = readFileSync(assetOnDisk, 'utf8')
 
     expect(runtimeAsset).toContain('raiffeisenbank')
-    expect(runtimeAsset).toContain('zpravaProPrijemce')
     expect(runtimeAsset).toContain('parseRaiffeisenbankStatement')
     expect(runtimeAsset).toContain('missing required columns')
+    expect(runtimeAsset).toContain('datum", "objem", "m\\u011Bna", "proti\\xFA\\u010Det", "typ"')
+    expect(runtimeAsset).toContain('datum", "objem", "mena", "protiucet", "typ"')
+    expect(runtimeAsset).toContain('bookedAt: ["bookedAt", "booked_at", "bookingDate", "date", "datum"]')
+    expect(runtimeAsset).toContain('amountMinor: ["amountMinor", "amount_minor", "amount", "castka", "\\u010D\\xE1stka", "objem"]')
+    expect(runtimeAsset).toContain('currency: ["currency", "mena", "m\\u011Bna"]')
     expect(runtimeAsset).toContain('protiucet')
     expect(runtimeAsset).toContain('objem')
     expect(runtimeAsset).toContain('mena')
     expect(runtimeAsset).toContain('datum')
+    expect(runtimeAsset).toContain('zpravaProPrijemce')
+    expect(runtimeAsset).toContain('pozn\\xE1mka')
     expect(runtimeAsset).toContain('bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype')
   })
 
