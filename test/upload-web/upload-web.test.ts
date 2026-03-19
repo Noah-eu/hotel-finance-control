@@ -3,7 +3,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
-  buildBrowserRuntimeFixtureScript,
+  buildBrowserRuntimeStateFromSelectedFiles,
+  createBrowserRuntime,
   buildBrowserRuntimeUploadState,
   buildBrowserUploadedMonthlyRun,
   buildBrowserExportPackage,
@@ -26,7 +27,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('Zatím nebyly vybrány žádné soubory.')
     expect(result.html).toContain('Pracovní postup operátora')
     expect(result.html).toContain('Měsíční workflow čeká na skutečně vybrané soubory')
-  expect(result.html).toContain('createBrowserRuntimeFixture')
+    expect(result.html).toContain('window.__hotelFinanceCreateBrowserRuntime')
   })
 
   it('builds a runtime browser upload state from real selected files through the shared monthly flow', () => {
@@ -83,64 +84,57 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('skutečně vybrané soubory')
     expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
     expect(result.html).toContain('uploadedAt')
-    expect(result.html).toContain('createBrowserRuntimeFixture')
-    expect(result.html).toContain('booking-payout-2026-03.csv')
-    expect(result.html).toContain('monthly-review-export.xlsx')
-    expect(result.html).toContain('contentFingerprint')
-    expect(result.html).toContain('findDataset(files)')
+    expect(result.html).toContain('createBrowserRuntime()')
+    expect(result.html).toContain('buildBrowserRuntimeState')
+    expect(result.html).not.toContain('findDataset(files)')
+    expect(result.html).not.toContain('contentFingerprint')
   })
 
-  it('changes browser runtime summary data when selected file content no longer matches the known fixture dataset', () => {
+  it('recomputes browser runtime results from selected files through the shared pipeline', async () => {
     const booking = getRealInputFixture('booking-payout-export')
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const invoice = getRealInputFixture('invoice-document')
 
-    const baseline = buildBrowserRuntimeUploadState({
+    const runtime = createBrowserRuntime()
+
+    const baseline = await runtime.buildRuntimeState({
       files: [
-        {
-          name: booking.sourceDocument.fileName,
-          content: booking.rawInput.content,
-          uploadedAt: '2026-03-19T10:00:00.000Z'
-        },
-        {
-          name: raiffeisen.sourceDocument.fileName,
-          content: raiffeisen.rawInput.content,
-          uploadedAt: '2026-03-19T10:00:00.000Z'
-        },
-        {
-          name: invoice.sourceDocument.fileName,
-          content: invoice.rawInput.content,
-          uploadedAt: '2026-03-19T10:00:00.000Z'
-        }
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content),
+        createRuntimeFile(raiffeisen.sourceDocument.fileName, raiffeisen.rawInput.content),
+        createRuntimeFile(invoice.sourceDocument.fileName, invoice.rawInput.content)
       ],
-      runId: 'runtime-browser-upload',
+      month: '2026-03',
       generatedAt: '2026-03-19T10:00:00.000Z'
     })
 
-    const changed = buildBrowserRuntimeFixtureScript({
+    const changed = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
-        {
-          name: booking.sourceDocument.fileName,
-          content: booking.rawInput.content.replace('confirmed', 'confirmed-updated'),
-          uploadedAt: '2026-03-19T10:00:00.000Z'
-        },
-        {
-          name: raiffeisen.sourceDocument.fileName,
-          content: raiffeisen.rawInput.content,
-          uploadedAt: '2026-03-19T10:00:00.000Z'
-        },
-        {
-          name: invoice.sourceDocument.fileName,
-          content: invoice.rawInput.content,
-          uploadedAt: '2026-03-19T10:00:00.000Z'
-        }
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content.replace('Booking B.V.', 'Booking B.V. CZ')),
+        createRuntimeFile(raiffeisen.sourceDocument.fileName, raiffeisen.rawInput.content),
+        createRuntimeFile(invoice.sourceDocument.fileName, invoice.rawInput.content)
       ],
-      runId: 'runtime-browser-upload',
+      month: '2026-03',
       generatedAt: '2026-03-19T10:00:00.000Z'
     })
 
     expect(baseline.reportSummary.matchedGroupCount).toBeGreaterThan(0)
-    expect(changed).toContain('Vybraný obsah souboru zatím v browser-only adaptéru neodpovídá známému sdílenému datasetu')
+    expect(changed.reportSummary.matchedGroupCount).toBe(baseline.reportSummary.matchedGroupCount)
+    expect(changed.preparedFiles[0].sourceDocumentId).toBe(baseline.preparedFiles[0].sourceDocumentId)
+    expect(changed.reviewSections.matched).toEqual(baseline.reviewSections.matched)
+  })
+
+  it('does not depend on fixture lookup strings in the browser runtime API', async () => {
+    const booking = getRealInputFixture('booking-payout-export')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [createRuntimeFile('booking-custom-name.csv', booking.rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-19T10:00:00.000Z'
+    })
+
+    expect(result.preparedFiles[0].fileName).toBe('booking-custom-name.csv')
+    expect(result.preparedFiles[0].sourceSystem).toBe('booking')
+    expect(result.extractedRecords[0].extractedCount).toBeGreaterThan(0)
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {
@@ -361,3 +355,12 @@ describe('buildUploadWebFlow', () => {
     expect(existsSync(resolve(outputDir, 'monthly-review-export.xlsx'))).toBe(true)
   })
 })
+
+function createRuntimeFile(name: string, content: string) {
+  return {
+    name,
+    async text() {
+      return content
+    }
+  }
+}

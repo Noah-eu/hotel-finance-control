@@ -10,7 +10,6 @@ import {
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import { buildReviewScreen, type ReviewScreenData } from '../review'
 import type { ReconciliationReport } from '../reporting'
-import { getRealInputFixture } from '../real-input-fixtures'
 import { formatAmountMinorCs } from '../shared/money'
 
 export interface BuildUploadWebFlowOptions {
@@ -167,283 +166,69 @@ export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewI
   }
 }
 
-interface BrowserRuntimeFixtureFile {
+export interface BrowserRuntimeInputFile {
   name: string
-  contentFingerprint: string
-  sourceSystem: string
-  documentType: string
-  sourceDocumentId: string
-  extractedCount: number
-  extractedRecordIds: string[]
+  text?: () => Promise<string>
 }
 
-interface BrowserRuntimeFixtureDataset {
-  key: string
-  files: BrowserRuntimeFixtureFile[]
-  reportSummary: BrowserRuntimeUploadState['reportSummary']
-  reviewSummary: BrowserRuntimeUploadState['reviewSummary']
-  reviewSections: BrowserRuntimeUploadState['reviewSections']
-  exportFiles: BrowserRuntimeUploadState['exportFiles']
-  supportedExpenseLinks: BrowserRuntimeUploadState['supportedExpenseLinks']
+export interface BrowserRuntimeBuilder {
+  buildRuntimeState(input: {
+    files: BrowserRuntimeInputFile[]
+    month?: string
+    generatedAt: string
+  }): Promise<BrowserRuntimeUploadState>
 }
 
-export function buildBrowserRuntimeFixtureScript(input: BuildUploadedBatchPreviewInput): string {
-  const state = buildBrowserRuntimeUploadState(input)
-  return buildBrowserRuntimeFixtureScriptFromState(state, input.files)
-}
-
-export function buildBrowserRuntimeFixtureScriptFromState(
-  state: BrowserRuntimeUploadState,
-  files?: UploadedMonthlyFile[]
-): string {
-  const runtimeFiles = files ?? state.preparedFiles.map((file) => ({
-    name: file.fileName,
-    content: '',
-    uploadedAt: state.generatedAt
-  }))
-
-  const fixtureFiles: BrowserRuntimeFixtureFile[] = state.preparedFiles.map((file, index) => ({
-    name: file.fileName,
-    contentFingerprint: createContentFingerprint(runtimeFiles[index]?.content ?? ''),
-    sourceSystem: file.sourceSystem,
-    documentType: file.documentType,
-    sourceDocumentId: file.sourceDocumentId,
-    extractedCount: state.extractedRecords[index]?.extractedCount ?? 0,
-    extractedRecordIds: state.extractedRecords[index]?.extractedRecordIds ?? []
-  }))
-
-  const fixtureDataset: BrowserRuntimeFixtureDataset = {
-    key: buildFixtureDatasetKey(fixtureFiles),
-    files: fixtureFiles,
-    reportSummary: state.reportSummary,
-    reviewSummary: state.reviewSummary,
-    reviewSections: state.reviewSections,
-    exportFiles: state.exportFiles,
-    supportedExpenseLinks: state.supportedExpenseLinks
-  }
-
-  return `
-function createBrowserRuntimeFixture() {
-  const fixtureDatasets = [${JSON.stringify(fixtureDataset)}];
-
-  function buildRunId(month) {
-    const suffix = month && month.trim() ? month.trim() : 'local';
-    return 'browser-runtime-upload-' + suffix;
-  }
-
-  function escapeComparable(value) {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '');
-  }
-
-  function inferSourceSystem(fileName) {
-    const lowerName = escapeComparable(fileName);
-
-    if (lowerName.includes('raiff') || lowerName.includes('raiffeisen') || lowerName.includes('fio')) {
-      return 'bank';
-    }
-
-    if (lowerName.includes('booking')) {
-      return 'booking';
-    }
-
-    if (lowerName.includes('comgate')) {
-      return 'comgate';
-    }
-
-    if (lowerName.includes('expedia')) {
-      return 'expedia';
-    }
-
-    if (lowerName.includes('airbnb')) {
-      return 'airbnb';
-    }
-
-    if (lowerName.includes('previo')) {
-      return 'previo';
-    }
-
-    if (lowerName.includes('invoice') || lowerName.includes('faktura')) {
-      return 'invoice';
-    }
-
-    if (lowerName.includes('receipt') || lowerName.includes('uctenka') || lowerName.includes('uctenky') || lowerName.includes('účtenka')) {
-      return 'receipt';
-    }
-
-    return 'other';
-  }
-
-  function inferDocumentType(sourceSystem) {
-    switch (sourceSystem) {
-      case 'bank':
-        return 'bank_statement';
-      case 'booking':
-      case 'expedia':
-      case 'airbnb':
-      case 'previo':
-        return 'ota_report';
-      case 'comgate':
-        return 'payment_gateway_report';
-      case 'invoice':
-        return 'invoice';
-      case 'receipt':
-        return 'receipt';
-      default:
-        return 'other';
-    }
-  }
-
-  function slugify(fileName) {
-    return String(fileName)
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'file';
-  }
-
-  function createContentFingerprint(content) {
-    return String(content || '')
-      .trim()
-      .replace(/\s+/g, ' ')
-      .slice(0, 500);
-  }
-
-  function buildDatasetKey(files) {
-    return files
-      .map((file) => [escapeComparable(file.name), file.contentFingerprint].join('::'))
-      .sort()
-      .join('||');
-  }
-
-  function findDataset(files) {
-    const datasetKey = buildDatasetKey(files);
-    return fixtureDatasets.find((dataset) => dataset.key === datasetKey);
-  }
-
-  function matchFixture(fileName, sourceSystem, documentType) {
-    const comparableName = escapeComparable(fileName);
-    const allFiles = fixtureDatasets.flatMap((dataset) => dataset.files);
-    return allFiles.find((file) => {
-      return escapeComparable(file.name) === comparableName
-        || (file.sourceSystem === sourceSystem && file.documentType === documentType && comparableName.includes(escapeComparable(file.name).replace(/\.[^.]+$/, '')))
-    });
-  }
-
-  function buildRuntimeState(input) {
-    const month = input.month && input.month.trim() ? input.month.trim() : 'neuvedeno';
-    const filesWithFingerprint = input.files.map((file) => ({
+export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
+  files: BrowserRuntimeInputFile[]
+  month?: string
+  generatedAt: string
+}): Promise<BrowserRuntimeUploadState> {
+  const uploadedFiles = await Promise.all(
+    input.files.map(async (file) => ({
       name: file.name,
-      contentFingerprint: createContentFingerprint(file.content)
-    }));
-    const matchedDataset = findDataset(filesWithFingerprint);
+      content: typeof file.text === 'function' ? await file.text() : '',
+      uploadedAt: input.generatedAt
+    }))
+  )
 
-    const preparedFiles = input.files.map((file, index) => {
-      const sourceSystem = inferSourceSystem(file.name);
-      const documentType = inferDocumentType(sourceSystem);
-      const fixtureMatch = matchedDataset?.files.find((candidate) => {
-        return escapeComparable(candidate.name) === escapeComparable(file.name)
-          && candidate.contentFingerprint === createContentFingerprint(file.content);
-      }) ?? matchFixture(file.name, sourceSystem, documentType);
+  return buildBrowserRuntimeUploadState({
+    files: uploadedFiles,
+    runId: buildBrowserRuntimeRunId(input.month),
+    generatedAt: input.generatedAt
+  })
+}
 
-      return {
-        fileName: file.name,
-        sourceSystem,
-        documentType,
-        sourceDocumentId: fixtureMatch ? fixtureMatch.sourceDocumentId : 'uploaded:' + sourceSystem + ':' + (index + 1) + ':' + slugify(file.name),
-        extractedCount: fixtureMatch ? fixtureMatch.extractedCount : 0,
-        extractedRecordIds: fixtureMatch ? fixtureMatch.extractedRecordIds : []
-      };
-    });
-
-    return {
-      generatedAt: input.generatedAt,
-      runId: buildRunId(input.month),
-      monthLabel: month,
-      preparedFiles: preparedFiles.map((file) => ({
-        fileName: file.fileName,
-        sourceDocumentId: file.sourceDocumentId,
-        sourceSystem: file.sourceSystem,
-        documentType: file.documentType
-      })),
-      extractedRecords: preparedFiles.map((file) => ({
-        fileName: file.fileName,
-        extractedCount: file.extractedCount,
-        extractedRecordIds: file.extractedRecordIds
-      })),
-      supportedExpenseLinks: matchedDataset?.supportedExpenseLinks ?? [],
-      reportSummary: matchedDataset?.reportSummary ?? {
-        normalizedTransactionCount: preparedFiles.reduce((sum, file) => sum + file.extractedCount, 0),
-        matchedGroupCount: 0,
-        exceptionCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0,
-        unmatchedExpectedCount: 0,
-        unmatchedActualCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0
-      },
-      reviewSummary: matchedDataset?.reviewSummary ?? {
-        normalizedTransactionCount: preparedFiles.reduce((sum, file) => sum + file.extractedCount, 0),
-        matchedGroupCount: 0,
-        exceptionCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0,
-        unmatchedExpectedCount: 0,
-        unmatchedActualCount: preparedFiles.some((file) => file.extractedCount === 0) ? 1 : 0
-      },
-      reviewSections: matchedDataset?.reviewSections ?? {
-        matched: [],
-        unmatched: preparedFiles.some((file) => file.extractedCount === 0)
-          ? [{
-              id: 'browser-runtime-unmatched',
-              kind: 'unmatched',
-              title: 'Nespárované nebo nepodporované vstupy',
-              detail: 'Vybraný obsah souboru zatím v browser-only adaptéru neodpovídá známému sdílenému datasetu, proto je výsledek označen jako částečný náhled.',
-              transactionIds: [],
-              sourceDocumentIds: preparedFiles.map((file) => file.sourceDocumentId),
-              severity: 'medium'
-            }]
-          : [],
-        suspicious: [],
-        missingDocuments: []
-      },
-      exportFiles: matchedDataset?.exportFiles ?? [{
-        labelCs: 'Export kontrolních položek',
-        fileName: 'review-items.csv'
-      }]
-    };
-  }
-
+export function createBrowserRuntime(): BrowserRuntimeBuilder {
   return {
-    async buildRuntimeState(input) {
-      const uploadedFiles = await Promise.all(
-        input.files.map(async (file) => ({
-          name: file.name,
-          content: typeof file.text === 'function' ? await file.text() : '',
-          uploadedAt: input.generatedAt
-        }))
-      );
-
-      return buildRuntimeState({
-        files: uploadedFiles,
-        month: input.month,
-        generatedAt: input.generatedAt
-      });
+    buildRuntimeState(input) {
+      return buildBrowserRuntimeStateFromSelectedFiles(input)
     }
-  };
-}
-`
+  }
 }
 
-function buildFixtureDatasetKey(files: BrowserRuntimeFixtureFile[]): string {
-  return files
-    .map((file) => [file.name.trim().toLowerCase(), file.contentFingerprint].join('::'))
-    .sort()
-    .join('||')
-}
+export function renderBrowserRuntimeClientBootstrap(): string {
+  return `
+      window.__hotelFinanceCreateBrowserRuntime = function createBrowserRuntime() {
+        return {
+          async buildRuntimeState(input) {
+            const uploadedFiles = await Promise.all(
+              Array.from(input.files || []).map(async (file) => ({
+                name: file.name,
+                content: typeof file.text === 'function' ? await file.text() : '',
+                uploadedAt: input.generatedAt
+              }))
+            );
 
-function createContentFingerprint(content: string): string {
-  return String(content)
-    .trim()
-    .replace(/\s+/g, ' ')
-    .slice(0, 500)
+            return window.__hotelFinanceBuildBrowserRuntimeState({
+              files: uploadedFiles,
+              runId: 'browser-runtime-upload-' + ((input.month && input.month.trim()) ? input.month.trim() : 'local'),
+              generatedAt: input.generatedAt
+            });
+          }
+        };
+      };
+    `
 }
 
 function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
@@ -657,6 +442,12 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
     </main>
 
     <script>
+      window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
+        throw new Error('Browser runtime bridge není v této statické HTML verzi připojený. Spusťte tuto funkci přes sdílený TypeScript runtime.');
+      };
+
+${renderBrowserRuntimeClientBootstrap()}
+
       const fileInput = document.getElementById('monthly-files');
       const monthInput = document.getElementById('month-label');
       const button = document.getElementById('prepare-upload');
@@ -746,37 +537,6 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
         ].join('');
       }
 
-      ${buildBrowserRuntimeFixtureScriptFromState(buildBrowserRuntimeUploadState({
-        files: [
-          {
-            name: 'booking-payout-2026-03.csv',
-            content: getFixtureRuntimeContent('booking-payout-2026-03.csv'),
-            uploadedAt: generatedAt
-          },
-          {
-            name: 'raiffeisen-2026-03.csv',
-            content: getFixtureRuntimeContent('raiffeisen-2026-03.csv'),
-            uploadedAt: generatedAt
-          },
-          {
-            name: 'invoice-2026-332.txt',
-            content: getFixtureRuntimeContent('invoice-2026-332.txt'),
-            uploadedAt: generatedAt
-          }
-        ],
-        runId: 'browser-runtime-upload-fixture',
-        generatedAt
-      }))}
-
-      function createBrowserRuntime() {
-        return createBrowserRuntimeFixture();
-      }
-
-      function buildRunId(month) {
-        const suffix = month && month.trim() ? month.trim() : 'local';
-        return 'browser-runtime-upload-' + suffix;
-      }
-
       function escapeHtml(value) {
         return String(value)
           .replace(/&/g, '&amp;')
@@ -796,6 +556,11 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
   </body>
 </html>
 `
+}
+
+function buildBrowserRuntimeRunId(month?: string): string {
+  const suffix = month && month.trim() ? month.trim() : 'local'
+  return `browser-runtime-upload-${suffix}`
 }
 
 function renderRuntimeReviewSection(sections: BrowserRuntimeUploadState['reviewSections']): string {
@@ -851,19 +616,6 @@ function deriveMonthLabel(runId: string): string {
 
   const suffix = runId.slice(prefix.length)
   return suffix === 'local' ? 'neuvedeno' : suffix
-}
-
-function getFixtureRuntimeContent(fileName: string): string {
-  switch (fileName) {
-    case 'booking-payout-2026-03.csv':
-      return getRealInputFixture('booking-payout-export').rawInput.content
-    case 'raiffeisen-2026-03.csv':
-      return getRealInputFixture('raiffeisenbank-statement').rawInput.content
-    case 'invoice-2026-332.txt':
-      return getRealInputFixture('invoice-document').rawInput.content
-    default:
-      return ''
-  }
 }
 
 export function buildUploadedBatchPreview(input: BuildUploadedBatchPreviewInput): UploadedBatchPreviewResult {

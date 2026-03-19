@@ -4,7 +4,8 @@ import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
-  buildBrowserRuntimeFixtureScriptFromState,
+  createBrowserRuntime,
+  renderBrowserRuntimeClientBootstrap,
   buildBrowserUploadedMonthlyRun,
   buildUploadWebFlow,
   type BrowserUploadedMonthlyRunResult
@@ -97,54 +98,6 @@ function renderOperatorWebDemoHtml(input: {
   browserRun: BrowserUploadedMonthlyRunResult
   outputPath?: string
 }): string {
-  const browserRuntimeScript = buildBrowserRuntimeFixtureScriptFromState({
-    generatedAt: input.generatedAt,
-    runId: 'web-demo-uploaded-monthly-run',
-    monthLabel: 'neuvedeno',
-    preparedFiles: input.browserRun.run.importedFiles.map((file) => ({
-      fileName: file.sourceDocument.fileName,
-      sourceDocumentId: file.sourceDocument.id,
-      sourceSystem: file.sourceDocument.sourceSystem,
-      documentType: file.sourceDocument.documentType
-    })),
-    extractedRecords: input.browserRun.run.importedFiles.map((file) => {
-      const batchFile = input.browserRun.run.batch.files.find((entry) => entry.sourceDocumentId === file.sourceDocument.id)
-
-      return {
-        fileName: file.sourceDocument.fileName,
-        extractedCount: batchFile?.extractedCount ?? 0,
-        extractedRecordIds: batchFile?.extractedRecordIds ?? []
-      }
-    }),
-    supportedExpenseLinks: input.browserRun.run.report.supportedExpenseLinks.map((link) => ({
-      expenseTransactionId: link.expenseTransactionId,
-      supportTransactionId: link.supportTransactionId,
-      supportSourceDocumentIds: link.supportSourceDocumentIds,
-      matchScore: link.matchScore,
-      reasons: link.reasons
-    })),
-    reportSummary: input.browserRun.run.report.summary,
-    reviewSummary: input.browserRun.run.review.summary,
-    reviewSections: {
-      matched: input.browserRun.run.review.matched,
-      unmatched: input.browserRun.run.review.unmatched,
-      suspicious: input.browserRun.run.review.suspicious,
-      missingDocuments: input.browserRun.run.review.missingDocuments
-    },
-    exportFiles: input.browserRun.run.exports.files.map((file) => ({
-      labelCs: file.labelCs,
-      fileName: file.fileName
-    }))
-  }, input.browserRun.run.importedFiles.map((file, index) => ({
-    name: file.sourceDocument.fileName,
-    content: index === 0
-      ? bookingFixtureContent()
-      : index === 1
-        ? bankFixtureContent()
-        : invoiceFixtureContent(),
-    uploadedAt: input.generatedAt
-  })))
-
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -368,14 +321,22 @@ function renderOperatorWebDemoHtml(input: {
       </section>
     </main>
     <script>
-      ${browserRuntimeScript}
+      window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
+        const fileReaders = (input.files || []).map((file) => ({
+          name: file.name,
+          text: async () => file.content
+        }));
+
+        return ${'await Promise.resolve(null)'};
+      };
+${renderBrowserRuntimeClientBootstrap()}
 
       const fileInput = document.getElementById('monthly-files');
       const monthInput = document.getElementById('month-label');
       const button = document.getElementById('prepare-upload');
       const runtimeOutput = document.getElementById('runtime-output');
       const generatedAt = ${JSON.stringify(input.generatedAt)};
-      const browserRuntime = createBrowserRuntimeFixture();
+  const browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
 
       function escapeHtml(value) {
         return String(value)
@@ -430,18 +391,6 @@ function renderOperatorWebDemoHtml(input: {
   </body>
 </html>
 `
-}
-
-function bookingFixtureContent(): string {
-  return getRealInputFixture('booking-payout-export').rawInput.content
-}
-
-function bankFixtureContent(): string {
-  return getRealInputFixture('raiffeisenbank-statement').rawInput.content
-}
-
-function invoiceFixtureContent(): string {
-  return getRealInputFixture('invoice-document').rawInput.content
 }
 
 export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {
