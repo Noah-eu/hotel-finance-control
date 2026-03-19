@@ -122,6 +122,7 @@ function selectParser(sourceDocument: SourceDocument, content: string): Parser {
 
 function inferBankParserVariant(fileName: string, content: string): 'raiffeisenbank' | 'fio' | 'unknown' {
   const normalizedFileName = fileName.toLowerCase()
+  const headerFields = getNormalizedHeaderFields(content)
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
 
   if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
@@ -132,22 +133,16 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
     return 'fio'
   }
 
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'datum;objem;měna;protiúčet;typ',
-    'datum;objem;mena;protiucet;typ',
-    'datum,objem,měna,protiúčet,typ',
-    'datum,objem,mena,protiucet,typ'
-  ])) {
+  if (hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])) {
     return 'raiffeisenbank'
   }
 
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'datum provedení;datum zaúčtování;zaúčtovaná částka;měna účtu',
-    'datum provedeni;datum zauctovani;zauctovana castka;mena uctu',
-    'datum provedení,datum zaúčtování,zaúčtovaná částka,měna účtu',
-    'datum provedeni,datum zauctovani,zauctovana castka,mena uctu',
-    'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
-  ])) {
+  if (hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
+    || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
+    || matchesAnyHeaderSignature(normalizedHeaderSample, [
+      'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
+    ])) {
     return 'fio'
   }
 
@@ -228,24 +223,23 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
 function inferSourceSystemFromContent(content: string): SourceDocument['sourceSystem'] {
   const normalizedContent = content.trim().toLowerCase()
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
+  const headerFields = getNormalizedHeaderFields(content)
 
   if (!normalizedHeaderSample) {
     return 'unknown'
   }
 
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'datum provedení;datum zaúčtování;zaúčtovaná částka;měna účtu',
-    'datum provedeni;datum zauctovani;zauctovana castka;mena uctu',
-    'datum provedení,datum zaúčtování,zaúčtovaná částka,měna účtu',
-    'datum provedeni,datum zauctovani,zauctovana castka,mena uctu',
-    'datum;objem;měna;protiúčet;typ',
-    'datum;objem;mena;protiucet;typ',
-    'datum,objem,měna,protiúčet,typ',
-    'datum,objem,mena,protiucet,typ',
-    'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
-    'datum;částka;měna;účet;protistrana;poznámka;typ',
-    'date;amount;currency;account;counterparty;message;type'
-  ])) {
+  if (
+    hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
+    || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])
+    || matchesAnyHeaderSignature(normalizedHeaderSample, [
+      'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
+      'datum;částka;měna;účet;protistrana;poznámka;typ',
+      'date;amount;currency;account;counterparty;message;type'
+    ])
+  ) {
     return 'bank'
   }
 
@@ -271,6 +265,10 @@ function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): 
   return candidates.some((candidate) => headerSample.includes(candidate))
 }
 
+function hasAllHeaderFields(headerFields: string[], requiredFields: string[]): boolean {
+  return requiredFields.every((field) => headerFields.includes(field))
+}
+
 function getNormalizedHeaderSample(content: string): string {
   return content
     .trim()
@@ -279,6 +277,23 @@ function getNormalizedHeaderSample(content: string): string {
     .split(/\r?\n/)
     .slice(0, 4)
     .join('\n')
+}
+
+function getNormalizedHeaderFields(content: string): string[] {
+  const headerLine = content
+    .trim()
+    .replace(/^\ufeff/, '')
+    .split(/\r?\n/)[0]
+
+  if (!headerLine) {
+    return []
+  }
+
+  return headerLine
+    .toLowerCase()
+    .split(/[;,]/)
+    .map((field) => field.trim())
+    .filter(Boolean)
 }
 
 function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): SourceDocument['documentType'] {

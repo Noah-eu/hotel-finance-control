@@ -242,6 +242,24 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
   })
 
+  it('classifies a real Fio-style header with extra intermediate columns as bank and routes it as Fio', () => {
+    const fioWithExtraColumns = [
+      'Datum provedení;Kód banky;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Zůstatek;Měna účtu;Název protiúčtu',
+      '19.03.2026;2010;19.03.2026;Bezhotovostní příjem;1540,00;25000,00;CZK;Comgate a.s.'
+    ].join('\n')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_5599955956_202603191023.csv',
+        content: fioWithExtraColumns,
+        uploadedAt: '2026-03-19T12:05:30.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.id).toBe('uploaded:bank:1:pohyby-5599955956-202603191023-csv')
+  })
+
   it('classifies a generic-filename Raiffeisenbank CSV by its Czech bank headers', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {
@@ -256,6 +274,24 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
     expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+  })
+
+  it('classifies a real Raiffeisenbank-style header with extra intermediate columns as bank and routes it as Raiffeisenbank', () => {
+    const raiffeisenWithExtraColumns = [
+      'Datum;Číslo účtu;Objem;Měna;Název protiúčtu;Protiúčet;Zpráva;Typ',
+      '19.03.2026;123456789/5500;1250,00;CZK;Booking BV;5500/1234;PAYOUT-BOOK-20260310;Příchozí platba'
+    ].join('\n')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: raiffeisenWithExtraColumns,
+        uploadedAt: '2026-03-19T12:06:30.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.id).toBe('uploaded:bank:1:statement-csv')
   })
 
   it('classifies a real Comgate export from its deterministic headers instead of generic content mentions', () => {
