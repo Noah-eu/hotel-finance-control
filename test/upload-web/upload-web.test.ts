@@ -86,8 +86,31 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('uploadedAt')
     expect(result.html).toContain('createBrowserRuntime()')
     expect(result.html).toContain('buildBrowserRuntimeState')
+    expect(result.html).not.toContain('Promise.resolve(null)')
     expect(result.html).not.toContain('findDataset(files)')
     expect(result.html).not.toContain('contentFingerprint')
+  })
+
+  it('creates a real structured runtime state through the shared runtime builder', async () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content),
+        createRuntimeFile(raiffeisen.sourceDocument.fileName, raiffeisen.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-19T10:00:00.000Z'
+    })
+
+    expect(result.preparedFiles.length).toBe(2)
+    expect(result.extractedRecords.length).toBe(2)
+    expect(result.reviewSummary).toBeDefined()
+    expect(result.reviewSections).toBeDefined()
+    expect(result.reportSummary).toBeDefined()
+    expect(result.exportFiles.length).toBeGreaterThan(0)
+    expect(result.supportedExpenseLinks).toBeDefined()
   })
 
   it('recomputes browser runtime results from selected files through the shared pipeline', async () => {

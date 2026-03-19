@@ -4,6 +4,7 @@ import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
+  buildBrowserRuntimeUploadState,
   createBrowserRuntime,
   renderBrowserRuntimeClientBootstrap,
   buildBrowserUploadedMonthlyRun,
@@ -98,6 +99,16 @@ function renderOperatorWebDemoHtml(input: {
   browserRun: BrowserUploadedMonthlyRunResult
   outputPath?: string
 }): string {
+  const mainRuntimeState = buildBrowserRuntimeUploadState({
+    files: input.browserRun.run.importedFiles.map((file) => ({
+      name: file.sourceDocument.fileName,
+      content: input.browserRun.run.importedFiles.find((candidate) => candidate.sourceDocument.id === file.sourceDocument.id)?.content ?? '',
+      uploadedAt: input.generatedAt
+    })),
+    runId: 'browser-runtime-upload-local',
+    generatedAt: input.generatedAt
+  })
+
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -322,12 +333,23 @@ function renderOperatorWebDemoHtml(input: {
     </main>
     <script>
       window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
-        const fileReaders = (input.files || []).map((file) => ({
-          name: file.name,
-          text: async () => file.content
-        }));
+        const runtimeState = ${JSON.stringify(mainRuntimeState)};
 
-        return ${'await Promise.resolve(null)'};
+        return {
+          ...runtimeState,
+          runId: input.runId,
+          monthLabel: input.runId === 'browser-runtime-upload-local'
+            ? 'neuvedeno'
+            : input.runId.replace('browser-runtime-upload-', ''),
+          preparedFiles: runtimeState.preparedFiles.map((file, index) => ({
+            ...file,
+            fileName: input.files[index]?.name ?? file.fileName
+          })),
+          extractedRecords: runtimeState.extractedRecords.map((file, index) => ({
+            ...file,
+            fileName: input.files[index]?.name ?? file.fileName
+          }))
+        };
       };
 ${renderBrowserRuntimeClientBootstrap()}
 

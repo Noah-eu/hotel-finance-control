@@ -16,7 +16,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Označení měsíce')
     expect(result.html).toContain('id="month-label"')
     expect(result.html).toContain('Spustit přípravu a měsíční workflow')
-  expect(result.html).toContain('const browserRuntime = window.__hotelFinanceCreateBrowserRuntime();')
+    expect(result.html).toContain('const browserRuntime = window.__hotelFinanceCreateBrowserRuntime();')
     expect(result.html).toContain("button.addEventListener('click'")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
     expect(result.html).toContain('Sekvence měsíčního běhu')
@@ -55,8 +55,23 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('__hotelFinanceCreateBrowserRuntime')
+    expect(result.html).toContain('const runtimeState =')
+    expect(result.html).not.toContain('Promise.resolve(null)')
     expect(result.html).not.toContain('findDataset(files)')
     expect(result.html).not.toContain('contentFingerprint')
+  })
+
+  it('embeds a bridge that returns a real structured runtime state for the start action path', () => {
+    const result = buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('preparedFiles: runtimeState.preparedFiles.map')
+    expect(result.html).toContain('extractedRecords: runtimeState.extractedRecords.map')
+    expect(result.html).toContain('reviewSummary')
+    expect(result.html).toContain('reportSummary')
+    expect(result.html).toContain('supportedExpenseLinks')
+    expect(result.html).toContain('exportFiles')
   })
 })
 
