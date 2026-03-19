@@ -5,6 +5,7 @@ import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
   buildBrowserUploadedMonthlyRun,
+  buildUploadWebFlow,
   type BrowserUploadedMonthlyRunResult
 } from '../upload-web'
 import { getRealInputFixture } from '../real-input-fixtures'
@@ -39,33 +40,39 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
   const booking = getRealInputFixture('booking-payout-export')
   const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
   const invoice = getRealInputFixture('invoice-document')
+  const runtimeDemoFiles = [
+    {
+      name: booking.sourceDocument.fileName,
+      content: booking.rawInput.content,
+      uploadedAt: generatedAt
+    },
+    {
+      name: raiffeisen.sourceDocument.fileName,
+      content: raiffeisen.rawInput.content,
+      uploadedAt: generatedAt
+    },
+    {
+      name: invoice.sourceDocument.fileName,
+      content: invoice.rawInput.content,
+      uploadedAt: generatedAt
+    }
+  ]
 
   const browserRun = buildBrowserUploadedMonthlyRun({
-    files: [
-      {
-        name: booking.sourceDocument.fileName,
-        content: booking.rawInput.content,
-        uploadedAt: generatedAt
-      },
-      {
-        name: raiffeisen.sourceDocument.fileName,
-        content: raiffeisen.rawInput.content,
-        uploadedAt: generatedAt
-      },
-      {
-        name: invoice.sourceDocument.fileName,
-        content: invoice.rawInput.content,
-        uploadedAt: generatedAt
-      }
-    ],
+    files: runtimeDemoFiles,
     runId: 'web-demo-uploaded-monthly-run',
     generatedAt,
+    outputPath: undefined
+  })
+  const uploadFlow = buildUploadWebFlow({
+    generatedAt,
+    runtimeDemoFiles,
     outputPath: options.outputPath
   })
 
   return {
-    html: browserRun.html,
-    outputPath: browserRun.outputPath,
+    html: uploadFlow.html,
+    outputPath: uploadFlow.outputPath,
     browserRun
   }
 }

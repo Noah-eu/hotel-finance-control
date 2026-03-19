@@ -10,12 +10,15 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('<!doctype html>')
-  expect(result.html).toContain('Výsledek měsíčního zpracování z nahraných souborů')
-  expect(result.html).toContain('Souhrn běhu')
-  expect(result.html).toContain('booking-payout-2026-03.csv')
-  expect(result.html).toContain('raiffeisen-2026-03.csv')
-  expect(result.html).toContain('invoice-2026-332.txt')
-    expect(result.html).toContain('1 250,00 Kč')
+    expect(result.html).toContain('Hotel Finance Control – nahrání měsíčních souborů')
+    expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
+    expect(result.html).toContain('booking-payout-2026-03.csv')
+    expect(result.html).toContain('raiffeisen-2026-03.csv')
+    expect(result.html).toContain('invoice-2026-332.txt')
+    expect(result.html).toContain('uploaded:booking:1:booking-payout-2026-03-csv')
+    expect(result.html).toContain('"matchedGroupCount":1')
+    expect(result.html).toContain('"fileName":"monthly-review-export.xlsx"')
+    expect(result.html).toContain('monthly-review-export.xlsx')
     expect(result.browserRun.run.review.summary.exceptionCount).toBeGreaterThan(0)
   })
 
@@ -33,7 +36,7 @@ describe('buildWebDemo', () => {
 
     expect(result.outputPath).toBe(outputPath)
     expect(existsSync(outputPath)).toBe(true)
-  expect(readFileSync(outputPath, 'utf8')).toContain('Výsledek měsíčního zpracování z nahraných souborů')
+    expect(readFileSync(outputPath, 'utf8')).toContain('Runtime ukázka sdíleného měsíčního běhu')
   })
 })
 

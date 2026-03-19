@@ -38,8 +38,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 30 | `prompts/30-czech-user-copy-pass.prompt.md` | done | Visible browser upload, review, monthly-run, export, and auxiliary fixture-demo copy is now consistently practical Czech, while internal English symbols, file names, and traceable identifiers remain unchanged. |
 | 31 | `prompts/31-review-bucketing-hardening.prompt.md` | done | Review bucketing now prefers shared structured exception metadata (`ruleCode` and exception `type`) over free-text explanation matching, keeping suspicious, missing-document, unmatched, and uploaded-document buckets deterministic and traceable. |
 | 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | done | Controller and workflow guidance now report only commands actually run, use exact repo-relative changed-file summaries, and avoid fake lint claims because the repo currently exposes real test and typecheck gates but no lint script. |
-| 33 | `prompts/33-browser-real-file-runtime-upload.prompt.md` | next | Move the visible browser flow from generated/upload assumptions toward real runtime handling of operator-selected files, while staying inside the shared local modular architecture and keeping traceability explicit. |
-| 34 | `prompts/34-additional-source-systems-expedia-airbnb-previo.prompt.md` | planned | Add deterministic representative source coverage for Expedia, Airbnb, and Previo through the shared extraction, normalization, matching, review, and reporting flow. |
+| 33 | `prompts/33-browser-real-file-runtime-upload.prompt.md` | done | The visible browser entrypoint now surfaces a runtime-oriented selected-file flow built on shared upload-web and monthly-batch modules, exposing deterministic prepared-file, extraction, review, report, and export trace state without a backend or parallel browser-only pipeline. |
+| 34 | `prompts/34-additional-source-systems-expedia-airbnb-previo.prompt.md` | next | Add deterministic representative source coverage for Expedia, Airbnb, and Previo through the shared extraction, normalization, matching, review, and reporting flow. |
 | 35 | `prompts/35-document-linking-and-support-coverage-hardening.prompt.md` | planned | Harden support-document linking between expense-like bank outflows and invoice/receipt evidence using shared deterministic ingestion, reconciliation, and review logic only. |
 | 36 | `prompts/36-monthly-operator-ux-pass.prompt.md` | planned | Improve the operator-facing monthly browser workflow for real usage while preserving Czech copy, traceability, auditability, and the shared modular-monolith boundaries. |
 
@@ -83,14 +83,14 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 30 completed a Czech user-copy cleanup pass across the upload, review, monthly-run, export, and auxiliary fixture-demo browser surfaces.
 - Step 31 hardened review bucketing to rely on explicit structured rule metadata instead of fragile free-text heuristics wherever possible.
 - Step 32 made quality-gate and controller reporting truthful and repo-relative, removing fake lint expectations because the repo currently exposes real test and typecheck gates but no lint script.
-- Step 33 focuses on real browser runtime handling of operator-selected files in the existing local upload/monthly workflow without introducing a backend or parallel processing path.
+- Step 33 completed a real browser runtime selected-file flow in the visible upload entrypoint, keeping the shared monthly-batch, review, reporting, and export path explicit and traceable without introducing a backend or parallel processing path.
 - Step 34 focuses on deterministic practical source-system coverage for Expedia, Airbnb, and Previo through the shared extraction and reconciliation pipeline.
 - Step 35 focuses on hardening support-document linking between bank outflows and invoice/receipt evidence using shared structured reconciliation and review logic.
 - Step 36 focuses on a practical operator UX pass across the monthly browser workflow while preserving Czech copy, traceability, and architectural boundaries.
 
 ## Current roadmap status
 
-Steps `01` through `32` are complete. Step `33` is the next unfinished milestone.
+Steps `01` through `33` are complete. Step `34` is the next unfinished milestone.
 
 ## Next step selection rule
 

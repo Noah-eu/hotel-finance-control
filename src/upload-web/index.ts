@@ -15,6 +15,7 @@ import { formatAmountMinorCs } from '../shared/money'
 export interface BuildUploadWebFlowOptions {
   generatedAt?: string
   outputPath?: string
+  runtimeDemoFiles?: UploadedMonthlyFile[]
 }
 
 export interface BuildBrowserReviewScreenOptions extends BuildUploadedBatchPreviewInput {
@@ -44,6 +45,29 @@ export interface UploadWebFlowResult {
   outputPath?: string
 }
 
+export interface BrowserRuntimeUploadState {
+  generatedAt: string
+  runId: string
+  preparedFiles: Array<{
+    fileName: string
+    sourceDocumentId: string
+    sourceSystem: string
+    documentType: string
+  }>
+  extractedRecords: Array<{
+    fileName: string
+    extractedCount: number
+    extractedRecordIds: string[]
+  }>
+  reportSummary: UploadedMonthlyRunResult['report']['summary']
+  reviewSummary: ReviewScreenData['summary']
+  reviewSections: Pick<ReviewScreenData, 'matched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
+  exportFiles: Array<{
+    labelCs: string
+    fileName: string
+  }>
+}
+
 export interface BrowserReviewScreenResult {
   html: string
   preview: UploadedBatchPreviewResult
@@ -71,7 +95,14 @@ export interface BrowserExportPackageResult {
 
 export function buildUploadWebFlow(options: BuildUploadWebFlowOptions = {}): UploadWebFlowResult {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
-  const html = renderUploadWebFlowHtml(generatedAt)
+  const runtimeState = options.runtimeDemoFiles
+    ? buildBrowserRuntimeUploadState({
+        files: options.runtimeDemoFiles,
+        generatedAt,
+        runId: 'browser-runtime-upload-demo'
+      })
+    : undefined
+  const html = renderUploadWebFlowHtmlInternal(generatedAt, runtimeState)
 
   if (options.outputPath) {
     const resolved = resolve(options.outputPath)
@@ -92,6 +123,44 @@ export function buildUploadWebFlow(options: BuildUploadWebFlowOptions = {}): Upl
 }
 
 export function renderUploadWebFlowHtml(generatedAt: string): string {
+  return renderUploadWebFlowHtmlInternal(generatedAt, undefined)
+}
+
+export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewInput): BrowserRuntimeUploadState {
+  const run = buildUploadedMonthlyRun(input)
+
+  return {
+    generatedAt: input.generatedAt,
+    runId: input.runId,
+    preparedFiles: run.importedFiles.map((file) => ({
+      fileName: file.sourceDocument.fileName,
+      sourceDocumentId: file.sourceDocument.id,
+      sourceSystem: file.sourceDocument.sourceSystem,
+      documentType: file.sourceDocument.documentType
+    })),
+    extractedRecords: run.importedFiles.map((file) => ({
+      fileName: file.sourceDocument.fileName,
+      extractedCount: findBatchFileExtractedCount(run.batch, file.sourceDocument.id),
+      extractedRecordIds: findBatchFileExtractedIds(run.batch, file.sourceDocument.id)
+    })),
+    reportSummary: run.report.summary,
+    reviewSummary: run.review.summary,
+    reviewSections: {
+      matched: run.review.matched,
+      unmatched: run.review.unmatched,
+      suspicious: run.review.suspicious,
+      missingDocuments: run.review.missingDocuments
+    },
+    exportFiles: run.exports.files.map((file) => ({
+      labelCs: file.labelCs,
+      fileName: file.fileName
+    }))
+  }
+}
+
+function renderUploadWebFlowHtmlInternal(generatedAt: string, runtimeState?: BrowserRuntimeUploadState): string {
+  const serializedRuntimeState = escapeScriptJson(JSON.stringify(runtimeState ?? null))
+
   return `<!doctype html>
 <html lang="cs">
   <head>
@@ -168,6 +237,16 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
       .summary.empty {
         color: #6a7891;
       }
+      .runtime-panel {
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        padding: 16px;
+        margin-top: 16px;
+        background: #fbfdff;
+      }
+      .runtime-panel h3 {
+        margin-top: 0;
+      }
       code {
         background: #f1f4f8;
         padding: 2px 6px;
@@ -207,6 +286,7 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
       <section class="card">
         <h2>2. Přehled připravených souborů</h2>
         <div id="upload-summary" class="summary empty">Zatím nebyly vybrány žádné soubory.</div>
+        <div id="runtime-output" class="runtime-panel" hidden></div>
       </section>
 
       <section class="card">
@@ -224,6 +304,8 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
       const monthInput = document.getElementById('month-label');
       const button = document.getElementById('prepare-upload');
       const summary = document.getElementById('upload-summary');
+      const runtimeOutput = document.getElementById('runtime-output');
+      const runtimeState = JSON.parse('${serializedRuntimeState}');
 
       function renderSummary() {
         const files = Array.from(fileInput.files || []);
@@ -232,6 +314,8 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
         if (files.length === 0) {
           summary.className = 'summary empty';
           summary.textContent = 'Zatím nebyly vybrány žádné soubory.';
+          runtimeOutput.hidden = !runtimeState;
+          runtimeOutput.innerHTML = runtimeState ? renderRuntimeState(runtimeState) : '';
           return;
         }
 
@@ -240,7 +324,41 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
           '<strong>Měsíc:</strong> ' + escapeHtml(month),
           '<br /><strong>Počet souborů:</strong> ' + files.length,
           '<ul>' + files.map((file) => '<li><strong>' + escapeHtml(file.name) + '</strong> — ' + file.size + ' B</li>').join('') + '</ul>',
-          '<p class="hint">Soubory jsou připravené pro sdílený deterministický vstup do importu, extrakce a měsíčního běhu.</p>'
+          '<p class="hint">Soubory jsou připravené pro sdílený deterministický vstup do importu, extrakce a měsíčního běhu.</p>',
+          '<p class="hint">V prohlížečové runtime verzi se při zpracování použijí skutečně vybrané soubory, ne předem zapečený demo seznam.</p>'
+        ].join('');
+
+        runtimeOutput.hidden = !runtimeState;
+        runtimeOutput.innerHTML = runtimeState ? renderRuntimeState(runtimeState) : '<p class="hint">Runtime ukázka čeká na skutečné vybrané soubory a jejich zpracování ve sdíleném toku.</p>';
+      }
+
+      function renderRuntimeState(state) {
+        return [
+          '<h3>3. Runtime ukázka sdíleného měsíčního běhu</h3>',
+          '<p class="hint">Tento panel ukazuje, jak vypadají stejné sdílené výstupy při zpracování skutečně vybraných souborů v lokálním prohlížečovém běhu.</p>',
+          '<p><strong>Run ID:</strong> <code>' + escapeHtml(state.runId) + '</code></p>',
+          '<p><strong>Vygenerováno:</strong> ' + escapeHtml(state.generatedAt) + '</p>',
+          '<h4>Připravené zdrojové dokumenty</h4>',
+          '<ul>' + state.preparedFiles.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong> — ' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType) + ' — <code>' + escapeHtml(file.sourceDocumentId) + '</code></li>').join('') + '</ul>',
+          '<h4>Trace extrakce</h4>',
+          '<ul>' + state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong> — ' + file.extractedCount + ' extrahovaných záznamů' + (file.extractedRecordIds.length ? ' — <code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '') + '</li>').join('') + '</ul>',
+          '<h4>Souhrn měsíčního běhu</h4>',
+          '<ul>' + [
+            'Normalizované transakce: ' + state.reportSummary.normalizedTransactionCount,
+            'Spárované skupiny: ' + state.reportSummary.matchedGroupCount,
+            'Položky ke kontrole: ' + state.reportSummary.exceptionCount,
+            'Nespárované očekávané: ' + state.reportSummary.unmatchedExpectedCount,
+            'Nespárované skutečné: ' + state.reportSummary.unmatchedActualCount
+          ].map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>',
+          '<h4>Kontrolní sekce</h4>',
+          '<ul>' + [
+            'Spárované položky: ' + state.reviewSections.matched.length,
+            'Nespárované položky: ' + state.reviewSections.unmatched.length,
+            'Podezřelé položky: ' + state.reviewSections.suspicious.length,
+            'Chybějící doklady: ' + state.reviewSections.missingDocuments.length
+          ].map((line) => '<li>' + escapeHtml(line) + '</li>').join('') + '</ul>',
+          '<h4>Export handoff</h4>',
+          '<ul>' + state.exportFiles.map((file) => '<li><strong>' + escapeHtml(file.labelCs) + '</strong> — <code>' + escapeHtml(file.fileName) + '</code></li>').join('') + '</ul>'
         ].join('');
       }
 
@@ -256,6 +374,7 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
       button.addEventListener('click', renderSummary);
       fileInput.addEventListener('change', renderSummary);
       monthInput.addEventListener('change', renderSummary);
+      renderSummary();
     </script>
   </body>
 </html>
@@ -556,6 +675,10 @@ function findBatchFileExtractedCount(batch: MonthlyBatchResult, sourceDocumentId
   return batch.files.find((file) => file.sourceDocumentId === sourceDocumentId)?.extractedCount ?? 0
 }
 
+function findBatchFileExtractedIds(batch: MonthlyBatchResult, sourceDocumentId: string): string[] {
+  return batch.files.find((file) => file.sourceDocumentId === sourceDocumentId)?.extractedRecordIds ?? []
+}
+
 function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): string {
   const { review, batch } = preview
 
@@ -705,4 +828,12 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function escapeScriptJson(value: string): string {
+  return value
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/'/g, '\\u0027')
 }

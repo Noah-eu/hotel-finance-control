@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  buildBrowserRuntimeUploadState,
   buildBrowserUploadedMonthlyRun,
   buildBrowserExportPackage,
   buildBrowserReviewScreen,
@@ -22,6 +23,77 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('Připravit soubory ke zpracování')
     expect(result.html).toContain('monthly-batch')
     expect(result.html).toContain('Zatím nebyly vybrány žádné soubory.')
+    expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
+  })
+
+  it('builds a runtime browser upload state from real selected files through the shared monthly flow', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const invoice = getRealInputFixture('invoice-document')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        },
+        {
+          name: invoice.sourceDocument.fileName,
+          content: invoice.rawInput.content,
+          uploadedAt: '2026-03-19T10:00:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload',
+      generatedAt: '2026-03-19T10:00:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(3)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'booking-payout-2026-03.csv',
+      sourceSystem: 'booking',
+      documentType: 'ota_report'
+    })
+    expect(result.extractedRecords.some((file) => file.extractedCount > 0)).toBe(true)
+    expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
+    expect(result.reviewSections.matched.length).toBeGreaterThan(0)
+    expect(result.exportFiles.map((file) => file.fileName)).toEqual([
+      'reconciliation-transactions.csv',
+      'review-items.csv',
+      'monthly-review-export.xlsx'
+    ])
+  })
+
+  it('renders the upload page with runtime-selected-file guidance and traceable shared runtime state', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+
+    const result = buildUploadWebFlow({
+      generatedAt: '2026-03-19T10:15:00.000Z',
+      runtimeDemoFiles: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-19T10:15:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-19T10:15:00.000Z'
+        }
+      ]
+    })
+
+    expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
+    expect(result.html).toContain('skutečně vybrané soubory')
+    expect(result.html).toContain('booking-payout-2026-03.csv')
+    expect(result.html).toContain('uploaded:booking:1:booking-payout-2026-03-csv')
+    expect(result.html).toContain('Export handoff')
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {
