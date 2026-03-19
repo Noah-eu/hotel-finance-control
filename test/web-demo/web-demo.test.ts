@@ -2,6 +2,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
+import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
 
 describe('buildWebDemo', () => {
   it('renders the uploaded monthly browser flow into browser-visible HTML', async () => {
@@ -42,15 +43,17 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.outputPath).toBe(outputPath)
+    expect(result.runtimeAssetPath).toMatch(/^\.\/browser-runtime\.[a-f0-9]{12}\.js$/)
     expect(existsSync(outputPath)).toBe(true)
     expect(readFileSync(outputPath, 'utf8')).toContain('Praktické spuštění měsíčního workflow')
     expect(readFileSync(outputPath, 'utf8')).toContain('Soubory k nahrání')
     expect(readFileSync(outputPath, 'utf8')).toContain('Spustit přípravu a měsíční workflow')
     expect(readFileSync(outputPath, 'utf8')).toContain('__hotelFinanceCreateBrowserRuntime')
-    expect(readFileSync(outputPath, 'utf8')).toContain('import("./browser-runtime.js")')
-    expect(existsSync(resolve('dist/test-web-demo/browser-runtime.js'))).toBe(true)
-    const runtimeAsset = readFileSync(resolve('dist/test-web-demo/browser-runtime.js'), 'utf8')
-  expect(runtimeAsset).not.toContain('estimateExtractedCount(')
+    expect(readFileSync(outputPath, 'utf8')).toContain(`import(${JSON.stringify(result.runtimeAssetPath)})`)
+    expect(readFileSync(outputPath, 'utf8')).not.toContain('import("./browser-runtime.js")')
+    expect(existsSync(resolve('dist/test-web-demo', result.runtimeAssetPath!.slice(2)))).toBe(true)
+    const runtimeAsset = readFileSync(resolve('dist/test-web-demo', result.runtimeAssetPath!.slice(2)), 'utf8')
+    expect(runtimeAsset).not.toContain('estimateExtractedCount(')
     expect(runtimeAsset).not.toContain('buildReviewSections(')
     expect(runtimeAsset).not.toContain('buildSupportedExpenseLinks(')
     expect(runtimeAsset).toContain('runMonthlyReconciliationBatch')
@@ -65,7 +68,7 @@ describe('buildWebDemo', () => {
 
     expect(result.html).toContain('__hotelFinanceCreateBrowserRuntime')
     expect(result.html).toContain('import("./browser-runtime.js")')
-  expect(result.html).not.toContain("/src/upload-web/browser-runtime.ts")
+    expect(result.html).not.toContain('/src/upload-web/browser-runtime.ts')
     expect(result.html).not.toContain('inferSourceSystem(')
     expect(result.html).not.toContain('estimateExtractedCount(')
     expect(result.html).not.toContain('estimateMatchedGroupCount(')
@@ -115,11 +118,72 @@ describe('buildWebDemo', () => {
       outputPath
     })
 
-    const runtimeAsset = readFileSync(resolve('dist/test-web-demo-runtime/browser-runtime.js'), 'utf8')
+    const html = readFileSync(outputPath, 'utf8')
+    const runtimeAssetMatch = html.match(/import\("(\.\/browser-runtime\.[a-f0-9]{12}\.js)"\)/)
+
+    expect(runtimeAssetMatch?.[1]).toBeTruthy()
+
+    const runtimeAsset = readFileSync(resolve('dist/test-web-demo-runtime', runtimeAssetMatch![1].slice(2)), 'utf8')
 
     expect(runtimeAsset).toContain('buildBrowserRuntimeStateFromSelectedFiles')
     expect(runtimeAsset).toContain('createBrowserRuntime')
     expect(runtimeAsset).not.toContain('Export kontrolních položek')
+  })
+
+  it('does not keep the generated main page pinned to a permanently stable browser-runtime.js asset path', async () => {
+    const outputPath = resolve('dist/test-web-demo-cache-busting/index.html')
+    rmSync(resolve('dist/test-web-demo-cache-busting'), {
+      recursive: true,
+      force: true
+    })
+
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z',
+      outputPath
+    })
+
+    expect(result.runtimeAssetPath).toMatch(/^\.\/browser-runtime\.[a-f0-9]{12}\.js$/)
+    expect(result.runtimeAssetPath).not.toBe('./browser-runtime.js')
+    expect(readFileSync(outputPath, 'utf8')).not.toContain('import("./browser-runtime.js")')
+  })
+
+  it('uses the exact emitted runtime asset path returned by the bundling step', async () => {
+    const outputPath = resolve('dist/test-web-demo-bundler-reference/index.html')
+    rmSync(resolve('dist/test-web-demo-bundler-reference'), {
+      recursive: true,
+      force: true
+    })
+
+    const { runtimeAssetPath } = await emitBrowserRuntimeBundle(outputPath)
+    rmSync(resolve('dist/test-web-demo-bundler-reference'), {
+      recursive: true,
+      force: true
+    })
+
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z',
+      outputPath
+    })
+
+    expect(result.runtimeAssetPath).toBe(runtimeAssetPath)
+    expect(readFileSync(outputPath, 'utf8')).toContain(`import(${JSON.stringify(runtimeAssetPath)})`)
+  })
+
+  it('changes the emitted runtime asset path deterministically when the bundle content changes', async () => {
+    const outputPath = resolve('dist/test-web-demo-bundle-hash/index.html')
+    rmSync(resolve('dist/test-web-demo-bundle-hash'), {
+      recursive: true,
+      force: true
+    })
+
+    const first = await emitBrowserRuntimeBundle(outputPath)
+    const second = await emitBrowserRuntimeBundle(outputPath, {
+      banner: '/* cache-bust-test: changed-content */'
+    })
+
+    expect(first.runtimeAssetPath).toMatch(/^\.\/browser-runtime\.[a-f0-9]{12}\.js$/)
+    expect(second.runtimeAssetPath).toMatch(/^\.\/browser-runtime\.[a-f0-9]{12}\.js$/)
+    expect(second.runtimeAssetPath).not.toBe(first.runtimeAssetPath)
   })
 
   it('keeps the start action on the main page tied to the shared runtime module path', async () => {

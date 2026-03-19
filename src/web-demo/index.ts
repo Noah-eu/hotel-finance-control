@@ -21,6 +21,7 @@ export interface BuildWebDemoOptions {
 export interface WebDemoResult {
   html: string
   outputPath?: string
+  runtimeAssetPath?: string
   browserRun: BrowserUploadedMonthlyRunResult
 }
 
@@ -67,25 +68,32 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
     outputPath: undefined
   })
   const uploadFlow = buildUploadWebFlow({ generatedAt })
-  const html = renderOperatorWebDemoHtml({
-    generatedAt,
-    uploadFlowHtml: uploadFlow.html,
-    browserRun,
-    outputPath: options.outputPath
-  })
-
   if (options.outputPath) {
     const resolved = resolve(options.outputPath)
     mkdirSync(dirname(resolved), { recursive: true })
+    const [runtimeAssetPath] = await emitBrowserRuntimeAssets(resolved)
+    const html = renderOperatorWebDemoHtml({
+      generatedAt,
+      uploadFlowHtml: uploadFlow.html,
+      browserRun,
+      runtimeAssetPath
+    })
     writeFileSync(resolved, html, 'utf8')
-  await emitBrowserRuntimeAssets(resolved)
 
     return {
       html,
       outputPath: resolved,
+      runtimeAssetPath,
       browserRun
     }
   }
+
+  const html = renderOperatorWebDemoHtml({
+    generatedAt,
+    uploadFlowHtml: uploadFlow.html,
+    browserRun,
+    runtimeAssetPath: './browser-runtime.js'
+  })
 
   return {
     html,
@@ -97,12 +105,8 @@ function renderOperatorWebDemoHtml(input: {
   generatedAt: string
   uploadFlowHtml: string
   browserRun: BrowserUploadedMonthlyRunResult
-  outputPath?: string
+  runtimeAssetPath: string
 }): string {
-  const runtimeAssetPath = input.outputPath
-    ? `./${basename(resolve(dirname(input.outputPath), 'browser-runtime.js'))}`
-    : './browser-runtime.js'
-
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -363,7 +367,7 @@ function renderOperatorWebDemoHtml(input: {
       </section>
     </main>
     <script>
-      ${renderBrowserRuntimeClientBootstrap(runtimeAssetPath)}
+      ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
 
       const fileInput = document.getElementById('monthly-files');
       const monthInput = document.getElementById('month-label');
