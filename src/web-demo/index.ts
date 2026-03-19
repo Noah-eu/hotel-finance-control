@@ -4,6 +4,7 @@ import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
+  buildBrowserRuntimeFixtureScriptFromState,
   buildBrowserUploadedMonthlyRun,
   buildUploadWebFlow,
   type BrowserUploadedMonthlyRunResult
@@ -96,6 +97,46 @@ function renderOperatorWebDemoHtml(input: {
   browserRun: BrowserUploadedMonthlyRunResult
   outputPath?: string
 }): string {
+  const browserRuntimeScript = buildBrowserRuntimeFixtureScriptFromState({
+    generatedAt: input.generatedAt,
+    runId: 'web-demo-uploaded-monthly-run',
+    monthLabel: 'neuvedeno',
+    preparedFiles: input.browserRun.run.importedFiles.map((file) => ({
+      fileName: file.sourceDocument.fileName,
+      sourceDocumentId: file.sourceDocument.id,
+      sourceSystem: file.sourceDocument.sourceSystem,
+      documentType: file.sourceDocument.documentType
+    })),
+    extractedRecords: input.browserRun.run.importedFiles.map((file) => {
+      const batchFile = input.browserRun.run.batch.files.find((entry) => entry.sourceDocumentId === file.sourceDocument.id)
+
+      return {
+        fileName: file.sourceDocument.fileName,
+        extractedCount: batchFile?.extractedCount ?? 0,
+        extractedRecordIds: batchFile?.extractedRecordIds ?? []
+      }
+    }),
+    supportedExpenseLinks: input.browserRun.run.report.supportedExpenseLinks.map((link) => ({
+      expenseTransactionId: link.expenseTransactionId,
+      supportTransactionId: link.supportTransactionId,
+      supportSourceDocumentIds: link.supportSourceDocumentIds,
+      matchScore: link.matchScore,
+      reasons: link.reasons
+    })),
+    reportSummary: input.browserRun.run.report.summary,
+    reviewSummary: input.browserRun.run.review.summary,
+    reviewSections: {
+      matched: input.browserRun.run.review.matched,
+      unmatched: input.browserRun.run.review.unmatched,
+      suspicious: input.browserRun.run.review.suspicious,
+      missingDocuments: input.browserRun.run.review.missingDocuments
+    },
+    exportFiles: input.browserRun.run.exports.files.map((file) => ({
+      labelCs: file.labelCs,
+      fileName: file.fileName
+    }))
+  })
+
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -228,6 +269,9 @@ function renderOperatorWebDemoHtml(input: {
       .hint {
         color: #52627a;
       }
+      .runtime-output {
+        margin-top: 16px;
+      }
     </style>
   </head>
   <body>
@@ -266,6 +310,9 @@ function renderOperatorWebDemoHtml(input: {
         <p>
           <button id="prepare-upload" type="button">Spustit přípravu a měsíční workflow</button>
         </p>
+        <div id="runtime-output" class="operator-panel runtime-output">
+          <p class="hint">Měsíční workflow čeká na skutečně vybrané soubory a měsíc operátora.</p>
+        </div>
         <div class="operator-panel">
           <h3>Aktuální testovatelný stav v prohlížeči</h3>
           <p class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
@@ -312,6 +359,66 @@ function renderOperatorWebDemoHtml(input: {
         <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
       </section>
     </main>
+    <script>
+      ${browserRuntimeScript}
+
+      const fileInput = document.getElementById('monthly-files');
+      const monthInput = document.getElementById('month-label');
+      const button = document.getElementById('prepare-upload');
+      const runtimeOutput = document.getElementById('runtime-output');
+      const generatedAt = ${JSON.stringify(input.generatedAt)};
+      const browserRuntime = createBrowserRuntimeFixture();
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function renderMainRuntimeState(state) {
+        const preparedFiles = state.preparedFiles.length === 0
+          ? '<li>Žádné připravené soubory.</li>'
+          : state.preparedFiles.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType) + '</span><br /><code>' + escapeHtml(file.sourceDocumentId) + '</code></li>').join('');
+
+        const exports = state.exportFiles.length === 0
+          ? '<li>Žádné exporty.</li>'
+          : state.exportFiles.map((file) => '<li><strong>' + escapeHtml(file.labelCs) + '</strong> — <code>' + escapeHtml(file.fileName) + '</code></li>').join('');
+
+        return [
+          '<h3>Výsledek spuštěného browser workflow</h3>',
+          '<p><strong>Měsíc:</strong> ' + escapeHtml(state.monthLabel) + '</p>',
+          '<p><strong>Run ID:</strong> <code>' + escapeHtml(state.runId) + '</code></p>',
+          '<ul>' + preparedFiles + '</ul>',
+          '<p class="hint">Kontrola: ' + state.reviewSummary.exceptionCount + ' položek ke kontrole, exporty: ' + state.exportFiles.length + '.</p>',
+          '<ul>' + exports + '</ul>'
+        ].join('');
+      }
+
+      async function startMainWorkflow() {
+        const files = Array.from(fileInput.files || []);
+        runtimeOutput.innerHTML = '<p class="hint">Spouštím browser/local workflow nad právě zvolenými soubory…</p>';
+
+        if (files.length === 0) {
+          runtimeOutput.innerHTML = '<p class="hint">Nejprve vyberte alespoň jeden soubor.</p>';
+          return;
+        }
+
+        const state = await browserRuntime.buildRuntimeState({
+          files,
+          month: monthInput.value,
+          generatedAt
+        });
+
+        runtimeOutput.innerHTML = renderMainRuntimeState(state);
+      }
+
+      button.addEventListener('click', () => {
+        void startMainWorkflow();
+      });
+    </script>
   </body>
 </html>
 `

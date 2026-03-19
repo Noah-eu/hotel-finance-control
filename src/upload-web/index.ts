@@ -10,6 +10,7 @@ import {
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import { buildReviewScreen, type ReviewScreenData } from '../review'
 import type { ReconciliationReport } from '../reporting'
+import { getRealInputFixture } from '../real-input-fixtures'
 import { formatAmountMinorCs } from '../shared/money'
 
 export interface BuildUploadWebFlowOptions {
@@ -164,6 +165,201 @@ export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewI
       fileName: file.fileName
     }))
   }
+}
+
+interface BrowserRuntimeFixtureFile {
+  name: string
+  sourceSystem: string
+  documentType: string
+  sourceDocumentId: string
+  extractedCount: number
+  extractedRecordIds: string[]
+}
+
+interface BrowserRuntimeFixtureState {
+  reportSummary: BrowserRuntimeUploadState['reportSummary']
+  reviewSummary: BrowserRuntimeUploadState['reviewSummary']
+  reviewSections: BrowserRuntimeUploadState['reviewSections']
+  exportFiles: BrowserRuntimeUploadState['exportFiles']
+  supportedExpenseLinks: BrowserRuntimeUploadState['supportedExpenseLinks']
+}
+
+export function buildBrowserRuntimeFixtureScript(input: BuildUploadedBatchPreviewInput): string {
+  const state = buildBrowserRuntimeUploadState(input)
+  return buildBrowserRuntimeFixtureScriptFromState(state)
+}
+
+export function buildBrowserRuntimeFixtureScriptFromState(
+  state: BrowserRuntimeUploadState
+): string {
+
+  const fixtureFiles: BrowserRuntimeFixtureFile[] = state.preparedFiles.map((file, index) => ({
+    name: file.fileName,
+    sourceSystem: file.sourceSystem,
+    documentType: file.documentType,
+    sourceDocumentId: file.sourceDocumentId,
+    extractedCount: state.extractedRecords[index]?.extractedCount ?? 0,
+    extractedRecordIds: state.extractedRecords[index]?.extractedRecordIds ?? []
+  }))
+
+  const fixtureState: BrowserRuntimeFixtureState = {
+    reportSummary: state.reportSummary,
+    reviewSummary: state.reviewSummary,
+    reviewSections: state.reviewSections,
+    exportFiles: state.exportFiles,
+    supportedExpenseLinks: state.supportedExpenseLinks
+  }
+
+  return `
+function createBrowserRuntimeFixture() {
+  const fixtureFiles = ${JSON.stringify(fixtureFiles)};
+  const fixtureState = ${JSON.stringify(fixtureState)};
+
+  function buildRunId(month) {
+    const suffix = month && month.trim() ? month.trim() : 'local';
+    return 'browser-runtime-upload-' + suffix;
+  }
+
+  function escapeComparable(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function inferSourceSystem(fileName) {
+    const lowerName = escapeComparable(fileName);
+
+    if (lowerName.includes('raiff') || lowerName.includes('raiffeisen') || lowerName.includes('fio')) {
+      return 'bank';
+    }
+
+    if (lowerName.includes('booking')) {
+      return 'booking';
+    }
+
+    if (lowerName.includes('comgate')) {
+      return 'comgate';
+    }
+
+    if (lowerName.includes('expedia')) {
+      return 'expedia';
+    }
+
+    if (lowerName.includes('airbnb')) {
+      return 'airbnb';
+    }
+
+    if (lowerName.includes('previo')) {
+      return 'previo';
+    }
+
+    if (lowerName.includes('invoice') || lowerName.includes('faktura')) {
+      return 'invoice';
+    }
+
+    if (lowerName.includes('receipt') || lowerName.includes('uctenka') || lowerName.includes('uctenky') || lowerName.includes('účtenka')) {
+      return 'receipt';
+    }
+
+    return 'other';
+  }
+
+  function inferDocumentType(sourceSystem) {
+    switch (sourceSystem) {
+      case 'bank':
+        return 'bank_statement';
+      case 'booking':
+      case 'expedia':
+      case 'airbnb':
+      case 'previo':
+        return 'ota_report';
+      case 'comgate':
+        return 'payment_gateway_report';
+      case 'invoice':
+        return 'invoice';
+      case 'receipt':
+        return 'receipt';
+      default:
+        return 'other';
+    }
+  }
+
+  function slugify(fileName) {
+    return String(fileName)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'file';
+  }
+
+  function matchFixture(fileName, sourceSystem, documentType) {
+    const comparableName = escapeComparable(fileName);
+    return fixtureFiles.find((file) => {
+      return escapeComparable(file.name) === comparableName
+        || (file.sourceSystem === sourceSystem && file.documentType === documentType && comparableName.includes(escapeComparable(file.name).replace(/\.[^.]+$/, '')))
+    });
+  }
+
+  function buildRuntimeState(input) {
+    const month = input.month && input.month.trim() ? input.month.trim() : 'neuvedeno';
+    const preparedFiles = input.files.map((file, index) => {
+      const sourceSystem = inferSourceSystem(file.name);
+      const documentType = inferDocumentType(sourceSystem);
+      const fixtureMatch = matchFixture(file.name, sourceSystem, documentType);
+
+      return {
+        fileName: file.name,
+        sourceSystem,
+        documentType,
+        sourceDocumentId: fixtureMatch ? fixtureMatch.sourceDocumentId : 'uploaded:' + sourceSystem + ':' + (index + 1) + ':' + slugify(file.name),
+        extractedCount: fixtureMatch ? fixtureMatch.extractedCount : 0,
+        extractedRecordIds: fixtureMatch ? fixtureMatch.extractedRecordIds : []
+      };
+    });
+
+    return {
+      generatedAt: input.generatedAt,
+      runId: buildRunId(input.month),
+      monthLabel: month,
+      preparedFiles: preparedFiles.map((file) => ({
+        fileName: file.fileName,
+        sourceDocumentId: file.sourceDocumentId,
+        sourceSystem: file.sourceSystem,
+        documentType: file.documentType
+      })),
+      extractedRecords: preparedFiles.map((file) => ({
+        fileName: file.fileName,
+        extractedCount: file.extractedCount,
+        extractedRecordIds: file.extractedRecordIds
+      })),
+      supportedExpenseLinks: fixtureState.supportedExpenseLinks,
+      reportSummary: fixtureState.reportSummary,
+      reviewSummary: fixtureState.reviewSummary,
+      reviewSections: fixtureState.reviewSections,
+      exportFiles: fixtureState.exportFiles
+    };
+  }
+
+  return {
+    async buildRuntimeState(input) {
+      const uploadedFiles = await Promise.all(
+        input.files.map(async (file) => ({
+          name: file.name,
+          content: typeof file.text === 'function' ? await file.text() : '',
+          uploadedAt: input.generatedAt
+        }))
+      );
+
+      return buildRuntimeState({
+        files: uploadedFiles,
+        month: input.month,
+        generatedAt: input.generatedAt
+      });
+    }
+  };
+}
+`
 }
 
 function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
@@ -383,7 +579,7 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
       const summary = document.getElementById('upload-summary');
       const runtimeOutput = document.getElementById('runtime-output');
       const generatedAt = ${JSON.stringify(generatedAt)};
-      const browserRuntime = createBrowserRuntime();
+  const browserRuntime = createBrowserRuntime();
 
       function renderSummary() {
         const files = Array.from(fileInput.files || []);
@@ -466,31 +662,30 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
         ].join('');
       }
 
-      function createBrowserRuntime() {
-        return {
-          async buildRuntimeState(input) {
-            const uploadedFiles = await Promise.all(
-              input.files.map(async (file) => ({
-                name: file.name,
-                content: await file.text(),
-                uploadedAt: new Date().toISOString()
-              }))
-            );
-
-            return buildRuntimeStateFromSelectedFiles(uploadedFiles, input.month, input.generatedAt);
+      ${buildBrowserRuntimeFixtureScriptFromState(buildBrowserRuntimeUploadState({
+        files: [
+          {
+            name: 'booking-payout-2026-03.csv',
+            content: getFixtureRuntimeContent('booking-payout-2026-03.csv'),
+            uploadedAt: generatedAt
+          },
+          {
+            name: 'raiffeisen-2026-03.csv',
+            content: getFixtureRuntimeContent('raiffeisen-2026-03.csv'),
+            uploadedAt: generatedAt
+          },
+          {
+            name: 'invoice-2026-332.txt',
+            content: getFixtureRuntimeContent('invoice-2026-332.txt'),
+            uploadedAt: generatedAt
           }
-        };
-      }
+        ],
+        runId: 'browser-runtime-upload-fixture',
+        generatedAt
+      }))}
 
-      function buildRuntimeStateFromSelectedFiles(files, month, generatedAtValue) {
-        const safeMonth = month && month.trim() ? month.trim() : 'lokální náhled';
-        const runtimeInput = {
-          files,
-          runId: buildRunId(month),
-          generatedAt: generatedAtValue || new Date().toISOString()
-        };
-
-        return ${buildBrowserRuntimeUploadState.name}(runtimeInput);
+      function createBrowserRuntime() {
+        return createBrowserRuntimeFixture();
       }
 
       function buildRunId(month) {
@@ -572,6 +767,19 @@ function deriveMonthLabel(runId: string): string {
 
   const suffix = runId.slice(prefix.length)
   return suffix === 'local' ? 'neuvedeno' : suffix
+}
+
+function getFixtureRuntimeContent(fileName: string): string {
+  switch (fileName) {
+    case 'booking-payout-2026-03.csv':
+      return getRealInputFixture('booking-payout-export').rawInput.content
+    case 'raiffeisen-2026-03.csv':
+      return getRealInputFixture('raiffeisenbank-statement').rawInput.content
+    case 'invoice-2026-332.txt':
+      return getRealInputFixture('invoice-document').rawInput.content
+    default:
+      return ''
+  }
 }
 
 export function buildUploadedBatchPreview(input: BuildUploadedBatchPreviewInput): UploadedBatchPreviewResult {

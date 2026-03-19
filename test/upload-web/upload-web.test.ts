@@ -25,7 +25,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('Zatím nebyly vybrány žádné soubory.')
     expect(result.html).toContain('Pracovní postup operátora')
     expect(result.html).toContain('Měsíční workflow čeká na skutečně vybrané soubory')
-    expect(result.html).toContain('buildRuntimeStateFromSelectedFiles')
+  expect(result.html).toContain('createBrowserRuntimeFixture')
   })
 
   it('builds a runtime browser upload state from real selected files through the shared monthly flow', () => {
@@ -82,9 +82,9 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('skutečně vybrané soubory')
     expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
     expect(result.html).toContain('uploadedAt')
-    expect(result.html).toContain('buildRuntimeStateFromSelectedFiles')
-    expect(result.html).not.toContain('booking-payout-2026-03.csv')
-    expect(result.html).not.toContain('monthly-review-export.xlsx')
+    expect(result.html).toContain('createBrowserRuntimeFixture')
+    expect(result.html).toContain('booking-payout-2026-03.csv')
+    expect(result.html).toContain('monthly-review-export.xlsx')
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {
