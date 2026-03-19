@@ -224,6 +224,55 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('keeps a Fio bank CSV classified as bank when transaction rows mention Comgate a.s.', () => {
+    const fioWithComgateCounterparty = [
+      'Datum provedení;Datum zaúčtování;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
+      '19.03.2026;19.03.2026;1540,00;CZK;Comgate a.s.;Platba kartou rezervace'
+    ].join('\n')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: fioWithComgateCounterparty,
+        uploadedAt: '2026-03-19T12:05:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+  })
+
+  it('classifies a generic-filename Raiffeisenbank CSV by its Czech bank headers', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: [
+          'Datum;Objem;Měna;Protiúčet;Typ',
+          '19.03.2026;1250,00;CZK;5500/1234;Příchozí platba'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T12:06:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+  })
+
+  it('classifies a real Comgate export from its deterministic headers instead of generic content mentions', () => {
+    const comgate = getRealInputFixture('comgate-export')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'provider.csv',
+        content: comgate.rawInput.content,
+        uploadedAt: '2026-03-19T12:07:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('comgate')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('payment_gateway_report')
+  })
+
   it('routes generic uploaded filenames to the correct shared parser based on deterministic content signatures', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const fio = getRealInputFixture('fio-statement')

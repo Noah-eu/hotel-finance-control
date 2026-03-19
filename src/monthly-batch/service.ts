@@ -122,11 +122,7 @@ function selectParser(sourceDocument: SourceDocument, content: string): Parser {
 
 function inferBankParserVariant(fileName: string, content: string): 'raiffeisenbank' | 'fio' | 'unknown' {
   const normalizedFileName = fileName.toLowerCase()
-  const normalizedContent = content.trim().toLowerCase()
-  const firstLines = normalizedContent
-    .split(/\r?\n/)
-    .slice(0, 4)
-    .join('\n')
+  const normalizedHeaderSample = getNormalizedHeaderSample(content)
 
   if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
     return 'raiffeisenbank'
@@ -136,11 +132,22 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
     return 'fio'
   }
 
-  if (firstLines.includes('raiffeisen-main') || normalizedContent.includes('booking bv') || normalizedContent.includes('airbnb payout')) {
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+    'datum;objem;měna;protiúčet;typ',
+    'datum;objem;mena;protiucet;typ',
+    'datum,objem,měna,protiúčet,typ',
+    'datum,objem,mena,protiucet,typ'
+  ])) {
     return 'raiffeisenbank'
   }
 
-  if (firstLines.includes('fio-expedia') || normalizedContent.includes('expedia terminal')) {
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+    'datum provedení;datum zaúčtování;zaúčtovaná částka;měna účtu',
+    'datum provedeni;datum zauctovani;zauctovana castka;mena uctu',
+    'datum provedení,datum zaúčtování,zaúčtovaná částka,měna účtu',
+    'datum provedeni,datum zauctovani,zauctovana castka,mena uctu',
+    'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
+  ])) {
     return 'fio'
   }
 
@@ -220,40 +227,37 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
 
 function inferSourceSystemFromContent(content: string): SourceDocument['sourceSystem'] {
   const normalizedContent = content.trim().toLowerCase()
-  const firstLines = normalizedContent
-    .split(/\r?\n/)
-    .slice(0, 4)
-    .join('\n')
+  const normalizedHeaderSample = getNormalizedHeaderSample(content)
 
-  if (!firstLines) {
+  if (!normalizedHeaderSample) {
     return 'unknown'
   }
 
-  if (matchesAnyHeaderSignature(firstLines, [
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+    'datum provedení;datum zaúčtování;zaúčtovaná částka;měna účtu',
+    'datum provedeni;datum zauctovani;zauctovana castka;mena uctu',
+    'datum provedení,datum zaúčtování,zaúčtovaná částka,měna účtu',
+    'datum provedeni,datum zauctovani,zauctovana castka,mena uctu',
+    'datum;objem;měna;protiúčet;typ',
+    'datum;objem;mena;protiucet;typ',
+    'datum,objem,měna,protiúčet,typ',
+    'datum,objem,mena,protiucet,typ',
     'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
     'datum;částka;měna;účet;protistrana;poznámka;typ',
     'date;amount;currency;account;counterparty;message;type'
   ])) {
-    if (firstLines.includes('fio-expedia') || normalizedContent.includes('expedia terminal')) {
-      return 'bank'
-    }
-
-    if (firstLines.includes('raiffeisen-main') || normalizedContent.includes('booking bv') || normalizedContent.includes('airbnb payout')) {
-      return 'bank'
-    }
-
     return 'bank'
   }
 
-  if (matchesAnyHeaderSignature(firstLines, [
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
     'identifier;payoutdate;amountminor;currency;status;paymentmethod;merchant',
     'transactionid,payoutdate,amountminor,currency,paymentreference,paymenttype',
     'paidat,amountminor,currency,reference,paymentpurpose,reservationid'
-  ]) || normalizedContent.includes('comgate')) {
+  ])) {
     return 'comgate'
   }
 
-  if (matchesAnyHeaderSignature(firstLines, [
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
     'payoutdate,amountminor,currency,payoutreference,reservationid,propertyid',
     'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid'
   ]) && normalizedContent.includes('payout-book')) {
@@ -265,6 +269,16 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
 
 function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {
   return candidates.some((candidate) => headerSample.includes(candidate))
+}
+
+function getNormalizedHeaderSample(content: string): string {
+  return content
+    .trim()
+    .toLowerCase()
+    .replace(/^\ufeff/, '')
+    .split(/\r?\n/)
+    .slice(0, 4)
+    .join('\n')
 }
 
 function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): SourceDocument['documentType'] {
