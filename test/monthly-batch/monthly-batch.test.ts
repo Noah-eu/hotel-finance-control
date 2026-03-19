@@ -180,6 +180,104 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('infers shared uploaded source systems from deterministic CSV content even when filenames are generic', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const fio = getRealInputFixture('fio-statement')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const comgate = getRealInputFixture('comgate-export')
+
+    const files = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: fio.rawInput.content,
+        uploadedAt: '2026-03-19T12:00:00.000Z'
+      },
+      {
+        name: 'bank.csv',
+        content: raiffeisen.rawInput.content,
+        uploadedAt: '2026-03-19T12:01:00.000Z'
+      },
+      {
+        name: 'provider.csv',
+        content: comgate.rawInput.content,
+        uploadedAt: '2026-03-19T12:02:00.000Z'
+      },
+      {
+        name: 'report.csv',
+        content: booking.rawInput.content,
+        uploadedAt: '2026-03-19T12:03:00.000Z'
+      }
+    ])
+
+    expect(files.map((file) => file.sourceDocument.sourceSystem)).toEqual([
+      'bank',
+      'bank',
+      'comgate',
+      'booking'
+    ])
+
+    expect(files.map((file) => file.sourceDocument.documentType)).toEqual([
+      'bank_statement',
+      'bank_statement',
+      'payment_gateway_report',
+      'ota_report'
+    ])
+  })
+
+  it('routes generic uploaded filenames to the correct shared parser based on deterministic content signatures', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const fio = getRealInputFixture('fio-statement')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const comgate = getRealInputFixture('comgate-export')
+
+    const preparedFiles = prepareUploadedMonthlyFiles([
+      {
+        name: 'statement.csv',
+        content: fio.rawInput.content,
+        uploadedAt: '2026-03-19T12:00:00.000Z'
+      },
+      {
+        name: 'bank.csv',
+        content: raiffeisen.rawInput.content,
+        uploadedAt: '2026-03-19T12:01:00.000Z'
+      },
+      {
+        name: 'gateway.csv',
+        content: comgate.rawInput.content,
+        uploadedAt: '2026-03-19T12:02:00.000Z'
+      },
+      {
+        name: 'payout.csv',
+        content: booking.rawInput.content,
+        uploadedAt: '2026-03-19T12:03:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: preparedFiles,
+      reconciliationContext: {
+        runId: 'monthly-run-generic-upload-names',
+        requestedAt: '2026-03-19T12:10:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T12:10:30.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([2, 6, 2, 1])
+    expect(result.reconciliation.normalizedTransactions.map((transaction) => transaction.source)).toEqual([
+      'bank',
+      'bank',
+      'bank',
+      'bank',
+      'bank',
+      'bank',
+      'bank',
+      'bank',
+      'comgate',
+      'comgate',
+      'booking'
+    ])
+  })
+
   it('runs added Airbnb, Expedia, and Previo files through the shared monthly-batch path with traceability intact', () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const expedia = getRealInputFixture('expedia-payout-export')

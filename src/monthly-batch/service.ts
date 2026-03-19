@@ -29,7 +29,7 @@ type Parser = (input: {
 export class DefaultMonthlyBatchService implements MonthlyBatchService {
   run(input: MonthlyBatchInput): MonthlyBatchResult {
     const files = input.files.map((file) => {
-      const parser = selectParser(file.sourceDocument)
+      const parser = selectParser(file.sourceDocument, file.content)
       const extractedRecords = parser({
         sourceDocument: file.sourceDocument,
         content: file.content,
@@ -78,12 +78,12 @@ export function prepareUploadedMonthlyFiles(files: UploadedMonthlyFile[]): Impor
   }))
 }
 
-function selectParser(sourceDocument: SourceDocument): Parser {
-  if (sourceDocument.sourceSystem === 'bank' && sourceDocument.fileName.includes('raiffeisen')) {
+function selectParser(sourceDocument: SourceDocument, content: string): Parser {
+  if (sourceDocument.sourceSystem === 'bank' && inferBankParserVariant(sourceDocument.fileName, content) === 'raiffeisenbank') {
     return parseRaiffeisenbankStatement
   }
 
-  if (sourceDocument.sourceSystem === 'bank' && sourceDocument.fileName.includes('fio')) {
+  if (sourceDocument.sourceSystem === 'bank' && inferBankParserVariant(sourceDocument.fileName, content) === 'fio') {
     return parseFioStatement
   }
 
@@ -120,10 +120,40 @@ function selectParser(sourceDocument: SourceDocument): Parser {
   )
 }
 
+function inferBankParserVariant(fileName: string, content: string): 'raiffeisenbank' | 'fio' | 'unknown' {
+  const normalizedFileName = fileName.toLowerCase()
+  const normalizedContent = content.trim().toLowerCase()
+  const firstLines = normalizedContent
+    .split(/\r?\n/)
+    .slice(0, 4)
+    .join('\n')
+
+  if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
+    return 'raiffeisenbank'
+  }
+
+  if (normalizedFileName.includes('fio')) {
+    return 'fio'
+  }
+
+  if (firstLines.includes('raiffeisen-main') || normalizedContent.includes('booking bv') || normalizedContent.includes('airbnb payout')) {
+    return 'raiffeisenbank'
+  }
+
+  if (firstLines.includes('fio-expedia') || normalizedContent.includes('expedia terminal')) {
+    return 'fio'
+  }
+
+  return 'unknown'
+}
+
 function buildSourceDocument(file: UploadedMonthlyFile, index: number): SourceDocument {
   const fileName = file.name.trim()
   const normalized = fileName.toLowerCase()
-  const sourceSystem = inferSourceSystem(normalized)
+  const sourceSystem = inferUploadedSourceSystem({
+    fileName: normalized,
+    content: file.content
+  })
   const documentType = inferDocumentType(sourceSystem)
 
   return {
@@ -135,7 +165,20 @@ function buildSourceDocument(file: UploadedMonthlyFile, index: number): SourceDo
   }
 }
 
-function inferSourceSystem(fileName: string): SourceDocument['sourceSystem'] {
+function inferUploadedSourceSystem(input: {
+  fileName: string
+  content: string
+}): SourceDocument['sourceSystem'] {
+  const byFileName = inferSourceSystemFromFileName(input.fileName)
+
+  if (byFileName !== 'unknown') {
+    return byFileName
+  }
+
+  return inferSourceSystemFromContent(input.content)
+}
+
+function inferSourceSystemFromFileName(fileName: string): SourceDocument['sourceSystem'] {
   if (fileName.includes('raiff') || fileName.includes('raiffeisen')) {
     return 'bank'
   }
@@ -173,6 +216,55 @@ function inferSourceSystem(fileName: string): SourceDocument['sourceSystem'] {
   }
 
   return 'unknown'
+}
+
+function inferSourceSystemFromContent(content: string): SourceDocument['sourceSystem'] {
+  const normalizedContent = content.trim().toLowerCase()
+  const firstLines = normalizedContent
+    .split(/\r?\n/)
+    .slice(0, 4)
+    .join('\n')
+
+  if (!firstLines) {
+    return 'unknown'
+  }
+
+  if (matchesAnyHeaderSignature(firstLines, [
+    'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
+    'datum;částka;měna;účet;protistrana;poznámka;typ',
+    'date;amount;currency;account;counterparty;message;type'
+  ])) {
+    if (firstLines.includes('fio-expedia') || normalizedContent.includes('expedia terminal')) {
+      return 'bank'
+    }
+
+    if (firstLines.includes('raiffeisen-main') || normalizedContent.includes('booking bv') || normalizedContent.includes('airbnb payout')) {
+      return 'bank'
+    }
+
+    return 'bank'
+  }
+
+  if (matchesAnyHeaderSignature(firstLines, [
+    'identifier;payoutdate;amountminor;currency;status;paymentmethod;merchant',
+    'transactionid,payoutdate,amountminor,currency,paymentreference,paymenttype',
+    'paidat,amountminor,currency,reference,paymentpurpose,reservationid'
+  ]) || normalizedContent.includes('comgate')) {
+    return 'comgate'
+  }
+
+  if (matchesAnyHeaderSignature(firstLines, [
+    'payoutdate,amountminor,currency,payoutreference,reservationid,propertyid',
+    'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid'
+  ]) && normalizedContent.includes('payout-book')) {
+    return 'booking'
+  }
+
+  return 'unknown'
+}
+
+function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {
+  return candidates.some((candidate) => headerSample.includes(candidate))
 }
 
 function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): SourceDocument['documentType'] {
