@@ -16,7 +16,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Označení měsíce')
     expect(result.html).toContain('id="month-label"')
     expect(result.html).toContain('Spustit přípravu a měsíční workflow')
-    expect(result.html).toContain('const browserRuntime = window.__hotelFinanceCreateBrowserRuntime();')
+  expect(result.html).toContain('let browserRuntime;')
     expect(result.html).toContain("button.addEventListener('click'")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
     expect(result.html).toContain('Sekvence měsíčního běhu')
@@ -55,12 +55,11 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('__hotelFinanceCreateBrowserRuntime')
-    expect(result.html).toContain('__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles')
-    expect(result.html).toContain('const preparedFiles = files.map')
-    expect(result.html).not.toContain('JSON.stringify(mainRuntimeState)')
-    expect(result.html).not.toContain('const runtimeState =')
-    expect(result.html).not.toContain('findDataset(files)')
-    expect(result.html).not.toContain('contentFingerprint')
+    expect(result.html).toContain("import('/src/upload-web/browser-runtime.ts')")
+    expect(result.html).not.toContain('inferSourceSystem(')
+    expect(result.html).not.toContain('estimateExtractedCount(')
+    expect(result.html).not.toContain('estimateMatchedGroupCount(')
+    expect(result.html).not.toContain('estimateExceptionCount(')
   })
 
   it('reuses the shared upload-web runtime builder path instead of baking demo runtime summaries into the page', () => {
@@ -68,9 +67,9 @@ describe('buildWebDemo', () => {
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
-    expect(result.html).toContain('return window.__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles(input);')
-    expect(result.html).toContain('preparedFiles: preparedFiles.map')
-    expect(result.html).toContain('extractedRecords: preparedFiles.map')
+    expect(result.html).toContain('return runtime.buildRuntimeState({')
+    expect(result.html).toContain('files: (input.files || []).map((file) => ({')
+    expect(result.html).toContain('window.__hotelFinanceCreateBrowserRuntime = module.createBrowserRuntime;')
   })
 
   it('does not inject a serialized precomputed main runtime result object into the visible page', () => {
@@ -79,20 +78,28 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).not.toContain('mainRuntimeState')
-    expect(result.html).not.toContain('Sdílený browser runtime builder není v této statické stránce přímo serializovaný')
     expect(result.html).not.toContain('JSON.stringify(state)')
+    expect(result.html).not.toContain('window.__hotelFinanceSharedUploadWebRuntime = {')
   })
 
-  it('embeds an executable shared upload-web runtime implementation instead of a throwing placeholder', () => {
+  it('loads an executable shared upload-web runtime module instead of HTML-string heuristic simulation', () => {
     const result = buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
-    expect(result.html).toContain('window.__hotelFinanceSharedUploadWebRuntime = {')
-    expect(result.html).toContain('async buildBrowserRuntimeStateFromUploadedFiles(input)')
-    expect(result.html).not.toContain('throw new Error(\'Sdílený browser runtime builder není v této statické stránce přímo serializovaný')
-    expect(result.html).toContain('buildSupportedExpenseLinks(files, preparedFiles)')
-    expect(result.html).toContain('buildReviewSections(preparedFiles, files, unsupportedFiles)')
+    expect(result.html).toContain("import('/src/upload-web/browser-runtime.ts')")
+    expect(result.html).toContain('module.createBrowserRuntime')
+    expect(result.html).not.toContain('buildSupportedExpenseLinks(files, preparedFiles)')
+    expect(result.html).not.toContain('buildReviewSections(preparedFiles, files, unsupportedFiles)')
+  })
+
+  it('keeps the start action on the main page tied to the shared runtime module path', () => {
+    const result = buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === \'function\')')
+    expect(result.html).toContain('const state = await browserRuntime.buildRuntimeState({')
   })
 })
 

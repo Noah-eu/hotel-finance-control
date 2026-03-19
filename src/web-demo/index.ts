@@ -5,7 +5,6 @@ import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
   renderBrowserRuntimeClientBootstrap,
-  renderSharedUploadWebRuntimeBridge,
   buildBrowserUploadedMonthlyRun,
   buildUploadWebFlow,
   type BrowserUploadedMonthlyRunResult
@@ -321,18 +320,14 @@ function renderOperatorWebDemoHtml(input: {
       </section>
     </main>
     <script>
-      window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
-        return window.__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles(input);
-      };
-${renderSharedUploadWebRuntimeBridge()}
-${renderBrowserRuntimeClientBootstrap()}
+      ${renderBrowserRuntimeClientBootstrap()}
 
       const fileInput = document.getElementById('monthly-files');
       const monthInput = document.getElementById('month-label');
       const button = document.getElementById('prepare-upload');
       const runtimeOutput = document.getElementById('runtime-output');
       const generatedAt = ${JSON.stringify(input.generatedAt)};
-  const browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
+      let browserRuntime;
 
       function escapeHtml(value) {
         return String(value)
@@ -368,6 +363,15 @@ ${renderBrowserRuntimeClientBootstrap()}
 
         if (files.length === 0) {
           runtimeOutput.innerHTML = '<p class="hint">Nejprve vyberte alespoň jeden soubor.</p>';
+          return;
+        }
+
+        if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
+          browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
+        }
+
+        if (!browserRuntime) {
+          runtimeOutput.innerHTML = '<p class="hint">Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.</p>';
           return;
         }
 
