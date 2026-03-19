@@ -96,6 +96,10 @@ function renderOperatorWebDemoHtml(input: {
   browserRun: BrowserUploadedMonthlyRunResult
   outputPath?: string
 }): string {
+  const preparedFiles = input.browserRun.run.importedFiles
+    .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
+    .join('')
+
   const reportRows = input.browserRun.run.report.transactions
     .slice(0, 5)
     .map((transaction) => `
@@ -105,6 +109,15 @@ function renderOperatorWebDemoHtml(input: {
         <td><span class="amount">${escapeHtml(formatAmountMinorCs(transaction.amountMinor, transaction.currency))}</span></td>
         <td>${escapeHtml(transaction.status)}</td>
       </tr>`)
+    .join('')
+
+  const reviewSummaryItems = [
+    ['Spárované položky', input.browserRun.run.review.matched.length],
+    ['Nespárované položky', input.browserRun.run.review.unmatched.length],
+    ['Podezřelé položky', input.browserRun.run.review.suspicious.length],
+    ['Chybějící doklady', input.browserRun.run.review.missingDocuments.length]
+  ]
+    .map(([label, count]) => `<li><strong>${escapeHtml(String(label))}:</strong> ${escapeHtml(String(count))}</li>`)
     .join('')
 
   const exportItems = input.browserRun.run.exports.files
@@ -153,6 +166,11 @@ function renderOperatorWebDemoHtml(input: {
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 12px;
       }
+      .input-grid, .operator-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
       .metric, .flow-item {
         background: #f7f9fc;
         border-radius: 14px;
@@ -166,6 +184,25 @@ function renderOperatorWebDemoHtml(input: {
         width: 100%;
         border-collapse: collapse;
       }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+      input[type="file"],
+      input[type="month"] {
+        width: 100%;
+      }
+      button {
+        border: 0;
+        border-radius: 12px;
+        background: #174ea6;
+        color: white;
+        font-size: 15px;
+        font-weight: 700;
+        padding: 12px 18px;
+        cursor: pointer;
+      }
       th, td {
         text-align: left;
         padding: 10px 8px;
@@ -174,11 +211,10 @@ function renderOperatorWebDemoHtml(input: {
       .amount {
         font-weight: 700;
       }
-      iframe {
-        width: 100%;
-        min-height: 950px;
-        border: 0;
-        border-radius: 16px;
+      .operator-panel {
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        padding: 16px;
         background: #fbfdff;
       }
       code {
@@ -214,17 +250,47 @@ function renderOperatorWebDemoHtml(input: {
       </section>
 
       <section class="card">
-        <h2>Souhrn připraveného běhu</h2>
-        <div class="summary-grid">
-          <div class="metric"><strong>${input.browserRun.run.importedFiles.length}</strong><br />Nahrané soubory</div>
-          <div class="metric"><strong>${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
-          <div class="metric"><strong>${input.browserRun.run.review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
-          <div class="metric"><strong>${input.browserRun.run.exports.files.length}</strong><br />Připravené exporty</div>
+        <h2>Praktické spuštění měsíčního workflow</h2>
+        <div class="input-grid">
+          <div>
+            <label for="monthly-files">Soubory k nahrání</label>
+            <input id="monthly-files" type="file" multiple />
+            <p class="hint">Vyberte bankovní výpisy, OTA exporty, platební brány, faktury a účtenky za jeden měsíc.</p>
+          </div>
+          <div>
+            <label for="month-label">Označení měsíce</label>
+            <input id="month-label" type="month" />
+            <p class="hint">Např. <code>2026-03</code> pro březen 2026.</p>
+          </div>
+        </div>
+        <p>
+          <button id="prepare-upload" type="button">Spustit přípravu a měsíční workflow</button>
+        </p>
+        <div class="operator-panel">
+          <h3>Aktuální testovatelný stav v prohlížeči</h3>
+          <p class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
+          <div class="summary-grid">
+            <div class="metric"><strong>${input.browserRun.run.importedFiles.length}</strong><br />Ukázkové nahrané soubory</div>
+            <div class="metric"><strong>${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
+            <div class="metric"><strong>${input.browserRun.run.review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+            <div class="metric"><strong>${input.browserRun.run.exports.files.length}</strong><br />Připravené exporty</div>
+          </div>
         </div>
       </section>
 
       <section class="card">
-        <h2>Krátký náhled reportu</h2>
+        <h2>Příprava, kontrola a report v jednom pohledu</h2>
+        <div class="operator-grid">
+          <section class="metric">
+            <h3>Připravené soubory a trasování</h3>
+            <ul>${preparedFiles}</ul>
+          </section>
+          <section class="metric">
+            <h3>Kontrolní přehled</h3>
+            <ul>${reviewSummaryItems}</ul>
+            <p class="hint">Viditelný přehled vychází z téhož sdíleného výsledku jako detailní review a reporting.</p>
+          </section>
+        </div>
         <p class="hint">Částky jsou v hlavním vstupu zobrazené jako české koruny tam, kde se operátor rozhoduje nad výsledkem.</p>
         <table>
           <thead>
@@ -243,12 +309,7 @@ function renderOperatorWebDemoHtml(input: {
         <h2>Exportní handoff</h2>
         <ul>${exportItems}</ul>
         <p class="hint">Exporty vznikají z téhož sdíleného výsledku jako kontrolní sekce a report.</p>
-      </section>
-
-      <section class="card">
-        <h2>Interaktivní lokální workflow</h2>
-        <p class="hint">Níže je stejná lokální upload obrazovka pro skutečný výběr souborů v prohlížeči. Bez backendu, bez fake persistence a bez paralelního UI modelu.</p>
-        <iframe title="Lokální upload workflow" srcdoc=${JSON.stringify(input.uploadFlowHtml)}></iframe>
+        <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
       </section>
     </main>
   </body>
