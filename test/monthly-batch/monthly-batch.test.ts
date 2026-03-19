@@ -482,8 +482,9 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(result.files.map((file) => file.extractedCount)).toEqual([1, 1])
     expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'raif-row-1'])
-  expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 154000])
+    expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 154000])
     expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'raiffeisenbank'])
+    expect(result.extractedRecords[1]?.rawReference).toBe('PAYOUT-BOOK-20260310')
   })
 
   it('does not swap the two confirmed real bank files in parser IDs or attribution', () => {

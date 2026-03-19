@@ -115,13 +115,13 @@ describe('parseRaiffeisenbankStatement', () => {
         amountMinor: 125000,
         currency: 'CZK',
         occurredAt: '2026-03-19T06:23:00',
-        rawReference: 'Booking BV',
+        rawReference: 'PAYOUT-BOOK-20260310',
         data: expect.objectContaining({
           sourceSystem: 'bank',
           bankParserVariant: 'raiffeisenbank',
           accountId: '5500123456',
           counterparty: '5500/1234',
-          reference: 'Booking BV',
+          reference: 'PAYOUT-BOOK-20260310',
           transactionType: 'Příchozí platba'
         })
       })
