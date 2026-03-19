@@ -37,8 +37,15 @@ Use the prompt system in `prompts/` to run implementation in small, consistent s
 
 Recommended usage:
 1. Start from the controller prompt (`run-next-step`) in Agent mode.
-2. Let the agent inspect state, execute the next unfinished step, run tests/typecheck, then commit and push.
+2. Let the agent inspect state, execute the next unfinished step, run the real validation commands available in the repo, report only the commands actually run using repo-relative file paths, then commit and push.
 3. Repeat until all numbered steps are complete.
+
+## Truthful quality-gate reporting
+
+- The repository currently provides real `npm test` and `npm run typecheck` gates.
+- There is currently no `npm run lint` script.
+- Workflow and final reports should mention only commands that were actually run.
+- Changed-file summaries should use exact repo-relative paths.
 
 ## Netlify deployment
 

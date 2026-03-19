@@ -37,7 +37,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 29 | `prompts/29-web-demo-upload-integration.prompt.md` | done | The browser-visible entrypoint in `src/web-demo` now wraps the real uploaded monthly run from `src/upload-web`, while the old fixture demo remains available only as an explicit auxiliary/dev-only helper. |
 | 30 | `prompts/30-czech-user-copy-pass.prompt.md` | done | Visible browser upload, review, monthly-run, export, and auxiliary fixture-demo copy is now consistently practical Czech, while internal English symbols, file names, and traceable identifiers remain unchanged. |
 | 31 | `prompts/31-review-bucketing-hardening.prompt.md` | done | Review bucketing now prefers shared structured exception metadata (`ruleCode` and exception `type`) over free-text explanation matching, keeping suspicious, missing-document, unmatched, and uploaded-document buckets deterministic and traceable. |
-| 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | next | Make quality-gate and controller reporting truthful and repo-relative by either adding a real lint gate or removing fake lint expectations from the workflow and user-facing reports. |
+| 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | done | Controller and workflow guidance now report only commands actually run, use exact repo-relative changed-file summaries, and avoid fake lint claims because the repo currently exposes real test and typecheck gates but no lint script. |
 
 ## Current implemented modules
 
@@ -78,11 +78,11 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 29 unified the currently visible browser demo with the real uploaded monthly run already implemented in `src/upload-web`.
 - Step 30 completed a Czech user-copy cleanup pass across the upload, review, monthly-run, export, and auxiliary fixture-demo browser surfaces.
 - Step 31 hardened review bucketing to rely on explicit structured rule metadata instead of fragile free-text heuristics wherever possible.
-- Step 32 focuses on making quality-gate and controller reporting truthful and repo-relative, including resolving fake lint expectations if no real lint gate exists.
+- Step 32 made quality-gate and controller reporting truthful and repo-relative, removing fake lint expectations because the repo currently exposes real test and typecheck gates but no lint script.
 
 ## Current roadmap status
 
-Steps `01` through `31` are complete. Step `32` is the next unfinished milestone.
+Steps `01` through `32` are complete.
 
 ## Next step selection rule
 

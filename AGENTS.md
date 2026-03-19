@@ -18,5 +18,7 @@ Only interrupt execution when:
 Always finish by:
 - running npm test
 - running npm run typecheck
+- reporting only commands actually run and only real quality gates that exist in the repo
+- using exact repo-relative file paths in changed-file summaries
 - committing changes
 - pushing changes
