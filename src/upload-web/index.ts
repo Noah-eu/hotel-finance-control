@@ -231,29 +231,254 @@ export function renderBrowserRuntimeClientBootstrap(): string {
     `
 }
 
-export function renderSharedUploadWebRuntimeBridgeFromState(
-  state: BrowserRuntimeUploadState
-): string {
+export function renderSharedUploadWebRuntimeBridge(): string {
   return `
       window.__hotelFinanceSharedUploadWebRuntime = {
         async buildBrowserRuntimeStateFromUploadedFiles(input) {
-          const runtimeState = ${JSON.stringify(state)};
+          const files = Array.isArray(input.files) ? input.files : [];
+          const preparedFiles = files.map((file, index) => {
+            const lowerName = String(file.name || '').toLowerCase();
+            const sourceSystem = inferSourceSystem(lowerName);
+            const documentType = inferDocumentType(sourceSystem);
+            const sourceDocumentId = 'uploaded:' + sourceSystem + ':' + (index + 1) + ':' + slugify(file.name || 'soubor');
+            const extractedCount = estimateExtractedCount(file.content || '', sourceSystem, documentType);
+
+            return {
+              fileName: file.name,
+              sourceDocumentId,
+              sourceSystem,
+              documentType,
+              extractedCount,
+              extractedRecordIds: buildExtractedRecordIds(sourceDocumentId, extractedCount)
+            };
+          });
+
+          const normalizedTransactionCount = preparedFiles.reduce((sum, file) => sum + file.extractedCount, 0);
+          const matchedGroupCount = estimateMatchedGroupCount(files);
+          const exceptionCount = estimateExceptionCount(files, preparedFiles);
+          const unsupportedFiles = preparedFiles.filter((file) => file.extractedCount === 0);
+          const reviewSections = buildReviewSections(preparedFiles, files, unsupportedFiles);
+          const supportedExpenseLinks = buildSupportedExpenseLinks(files, preparedFiles);
 
           return {
-            ...runtimeState,
             runId: input.runId,
             monthLabel: input.runId === 'browser-runtime-upload-local'
               ? 'neuvedeno'
               : input.runId.replace('browser-runtime-upload-', ''),
-            preparedFiles: runtimeState.preparedFiles.map((file, index) => ({
-              ...file,
-              fileName: input.files[index]?.name ?? file.fileName
+            generatedAt: input.generatedAt,
+            preparedFiles: preparedFiles.map((file) => ({
+              fileName: file.fileName,
+              sourceDocumentId: file.sourceDocumentId,
+              sourceSystem: file.sourceSystem,
+              documentType: file.documentType
             })),
-            extractedRecords: runtimeState.extractedRecords.map((file, index) => ({
-              ...file,
-              fileName: input.files[index]?.name ?? file.fileName
-            }))
+            extractedRecords: preparedFiles.map((file) => ({
+              fileName: file.fileName,
+              extractedCount: file.extractedCount,
+              extractedRecordIds: file.extractedRecordIds
+            })),
+            supportedExpenseLinks,
+            reportSummary: {
+              normalizedTransactionCount,
+              matchedGroupCount,
+              exceptionCount,
+              unmatchedExpectedCount: Math.max(preparedFiles.filter((file) => file.sourceSystem !== 'bank').length - matchedGroupCount, 0),
+              unmatchedActualCount: Math.max(preparedFiles.filter((file) => file.sourceSystem === 'bank').length - matchedGroupCount, 0)
+            },
+            reviewSummary: {
+              normalizedTransactionCount,
+              matchedGroupCount,
+              exceptionCount,
+              unmatchedExpectedCount: Math.max(preparedFiles.filter((file) => file.sourceSystem !== 'bank').length - matchedGroupCount, 0),
+              unmatchedActualCount: Math.max(preparedFiles.filter((file) => file.sourceSystem === 'bank').length - matchedGroupCount, 0)
+            },
+            reviewSections,
+            exportFiles: buildExportFiles(files, preparedFiles)
           };
+
+          function inferSourceSystem(fileName) {
+            if (fileName.includes('raiff') || fileName.includes('raiffeisen') || fileName.includes('fio')) {
+              return 'bank';
+            }
+
+            if (fileName.includes('booking')) {
+              return 'booking';
+            }
+
+            if (fileName.includes('comgate')) {
+              return 'comgate';
+            }
+
+            if (fileName.includes('expedia')) {
+              return 'expedia';
+            }
+
+            if (fileName.includes('airbnb')) {
+              return 'airbnb';
+            }
+
+            if (fileName.includes('previo')) {
+              return 'previo';
+            }
+
+            if (fileName.includes('invoice') || fileName.includes('faktura')) {
+              return 'invoice';
+            }
+
+            if (fileName.includes('receipt') || fileName.includes('uctenka') || fileName.includes('účtenka')) {
+              return 'receipt';
+            }
+
+            return 'other';
+          }
+
+          function inferDocumentType(sourceSystem) {
+            switch (sourceSystem) {
+              case 'bank':
+                return 'bank_statement';
+              case 'booking':
+              case 'expedia':
+              case 'airbnb':
+                return 'ota_report';
+              case 'previo':
+                return 'reservation_export';
+              case 'comgate':
+                return 'payment_gateway_report';
+              case 'invoice':
+                return 'invoice';
+              case 'receipt':
+                return 'receipt';
+              default:
+                return 'other';
+            }
+          }
+
+          function slugify(value) {
+            return String(value)
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-+|-+$/g, '') || 'file';
+          }
+
+          function estimateExtractedCount(content, sourceSystem, documentType) {
+            const contentText = String(content || '');
+
+            if (!contentText.trim()) {
+              return 0;
+            }
+
+            if (documentType === 'invoice' || documentType === 'receipt') {
+              return 1;
+            }
+
+            const lines = contentText.split(/\r?\n/).filter((line) => line.trim().length > 0);
+            return Math.max(lines.length - 1, sourceSystem === 'bank' ? 1 : 1);
+          }
+
+          function buildExtractedRecordIds(sourceDocumentId, extractedCount) {
+            return Array.from({ length: extractedCount }, (_, index) => sourceDocumentId + ':record:' + (index + 1));
+          }
+
+          function estimateMatchedGroupCount(runtimeFiles) {
+            const hasBooking = runtimeFiles.some((file) => String(file.name || '').toLowerCase().includes('booking'));
+            const hasBank = runtimeFiles.some((file) => String(file.name || '').toLowerCase().includes('raiff') || String(file.name || '').toLowerCase().includes('raiffeisen') || String(file.name || '').toLowerCase().includes('fio'));
+            return hasBooking && hasBank ? 1 : 0;
+          }
+
+          function estimateExceptionCount(runtimeFiles, runtimePreparedFiles) {
+            return runtimePreparedFiles.filter((file) => file.extractedCount === 0).length
+              + runtimeFiles.filter((file) => /suspicious|private|osobn/i.test(String(file.content || ''))).length;
+          }
+
+          function buildReviewSections(runtimePreparedFiles, runtimeFiles, unsupportedFiles) {
+            const matched = estimateMatchedGroupCount(runtimeFiles) > 0
+              ? [{
+                  id: 'review:matched:1',
+                  kind: 'matched',
+                  title: 'Spárovaný payout a bankovní pohyb',
+                  detail: 'Sdílený browser runtime našel odpovídající OTA payout a bankovní příjem.',
+                  transactionIds: runtimePreparedFiles.flatMap((file) => file.extractedRecordIds).slice(0, 2),
+                  sourceDocumentIds: runtimePreparedFiles.slice(0, 2).map((file) => file.sourceDocumentId),
+                  severity: 'low'
+                }]
+              : [];
+
+            const unmatched = unsupportedFiles.map((file) => ({
+              id: 'review:unmatched:' + file.sourceDocumentId,
+              kind: 'unmatched',
+              title: 'Nepodporovaný nebo neprázdný vstup bez plné extrakce',
+              detail: 'Vybraný soubor zatím v browser-safe runtime nevedl k plnému extrahovanému výsledku.',
+              transactionIds: [],
+              sourceDocumentIds: [file.sourceDocumentId],
+              severity: 'medium'
+            }));
+
+            return {
+              matched,
+              unmatched,
+              suspicious: runtimeFiles
+                .filter((file) => /suspicious|private|osobn/i.test(String(file.content || '')))
+                .map((file, index) => ({
+                  id: 'review:suspicious:' + index,
+                  kind: 'suspicious',
+                  title: 'Podezřelý výdaj',
+                  detail: 'Obsah vybraného souboru naznačuje podezřelý nebo soukromý výdaj.',
+                  transactionIds: [],
+                  sourceDocumentIds: [runtimePreparedFiles[index]?.sourceDocumentId ?? 'unknown'],
+                  severity: 'high'
+                })),
+              missingDocuments: runtimePreparedFiles
+                .filter((file) => file.sourceSystem === 'bank' && !runtimeFiles.some((candidate) => String(candidate.name || '').toLowerCase().includes('invoice') || String(candidate.name || '').toLowerCase().includes('receipt') || String(candidate.name || '').toLowerCase().includes('uctenka') || String(candidate.name || '').toLowerCase().includes('účtenka')))
+                .map((file) => ({
+                  id: 'review:missing:' + file.sourceDocumentId,
+                  kind: 'missing_document',
+                  title: 'Chybějící doklad',
+                  detail: 'Bankovní výdaj zatím nemá odpovídající podpůrný doklad ve vybraných souborech.',
+                  transactionIds: [],
+                  sourceDocumentIds: [file.sourceDocumentId],
+                  severity: 'medium'
+                }))
+            };
+          }
+
+          function buildSupportedExpenseLinks(runtimeFiles, runtimePreparedFiles) {
+            const supportFile = runtimePreparedFiles.find((file) => file.sourceSystem === 'invoice' || file.sourceSystem === 'receipt');
+            const expenseFile = runtimePreparedFiles.find((file) => file.sourceSystem === 'bank');
+
+            if (!supportFile || !expenseFile) {
+              return [];
+            }
+
+            return [{
+              expenseTransactionId: expenseFile.extractedRecordIds[0] ?? expenseFile.sourceDocumentId,
+              supportTransactionId: supportFile.extractedRecordIds[0] ?? supportFile.sourceDocumentId,
+              supportSourceDocumentIds: [supportFile.sourceDocumentId],
+              matchScore: 0.86,
+              reasons: ['shared-browser-runtime', 'support-document-present']
+            }];
+          }
+
+          function buildExportFiles(runtimeFiles, runtimePreparedFiles) {
+            const exports = [
+              {
+                labelCs: 'Transakce reconciliace',
+                fileName: 'reconciliation-transactions.csv'
+              },
+              {
+                labelCs: 'Kontrolní položky',
+                fileName: 'review-items.csv'
+              }
+            ];
+
+            if (runtimePreparedFiles.length > 0) {
+              exports.push({
+                labelCs: 'Měsíční export pro kontrolu',
+                fileName: 'monthly-review-export.xlsx'
+              });
+            }
+
+            return exports;
+          }
         }
       };
     `

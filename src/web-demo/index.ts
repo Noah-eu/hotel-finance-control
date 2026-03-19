@@ -4,9 +4,8 @@ import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
-  buildBrowserRuntimeUploadState,
   renderBrowserRuntimeClientBootstrap,
-  renderSharedUploadWebRuntimeBridgeFromState,
+  renderSharedUploadWebRuntimeBridge,
   buildBrowserUploadedMonthlyRun,
   buildUploadWebFlow,
   type BrowserUploadedMonthlyRunResult
@@ -99,16 +98,6 @@ function renderOperatorWebDemoHtml(input: {
   browserRun: BrowserUploadedMonthlyRunResult
   outputPath?: string
 }): string {
-  const sharedRuntimeState = buildBrowserRuntimeUploadState({
-    files: input.browserRun.run.importedFiles.map((file) => ({
-      name: file.sourceDocument.fileName,
-      content: file.content,
-      uploadedAt: input.generatedAt
-    })),
-    runId: 'browser-runtime-upload-local',
-    generatedAt: input.generatedAt
-  })
-
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -335,7 +324,7 @@ function renderOperatorWebDemoHtml(input: {
       window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
         return window.__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles(input);
       };
-${renderSharedUploadWebRuntimeBridgeFromState(sharedRuntimeState)}
+${renderSharedUploadWebRuntimeBridge()}
 ${renderBrowserRuntimeClientBootstrap()}
 
       const fileInput = document.getElementById('monthly-files');
