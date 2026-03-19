@@ -47,6 +47,10 @@ describe('buildWebDemo', () => {
     expect(readFileSync(outputPath, 'utf8')).toContain('Soubory k nahrání')
     expect(readFileSync(outputPath, 'utf8')).toContain('Spustit přípravu a měsíční workflow')
     expect(readFileSync(outputPath, 'utf8')).toContain('__hotelFinanceCreateBrowserRuntime')
+    expect(readFileSync(outputPath, 'utf8')).toContain('import("./browser-runtime.js")')
+    expect(existsSync(resolve('dist/test-web-demo/browser-runtime.js'))).toBe(true)
+    expect(existsSync(resolve('dist/test-web-demo/browser-runtime-entry.js'))).toBe(true)
+    expect(existsSync(resolve('dist/test-web-demo/upload-web-shared.js'))).toBe(true)
   })
 
   it('uses the explicit browser runtime creator instead of fixture dataset matching', () => {
@@ -55,7 +59,8 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('__hotelFinanceCreateBrowserRuntime')
-    expect(result.html).toContain("import('/src/upload-web/browser-runtime.ts')")
+    expect(result.html).toContain('import("./browser-runtime.js")')
+  expect(result.html).not.toContain("/src/upload-web/browser-runtime.ts")
     expect(result.html).not.toContain('inferSourceSystem(')
     expect(result.html).not.toContain('estimateExtractedCount(')
     expect(result.html).not.toContain('estimateMatchedGroupCount(')
@@ -87,7 +92,7 @@ describe('buildWebDemo', () => {
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
-    expect(result.html).toContain("import('/src/upload-web/browser-runtime.ts')")
+    expect(result.html).toContain('import("./browser-runtime.js")')
     expect(result.html).toContain('module.createBrowserRuntime')
     expect(result.html).not.toContain('buildSupportedExpenseLinks(files, preparedFiles)')
     expect(result.html).not.toContain('buildReviewSections(preparedFiles, files, unsupportedFiles)')
@@ -100,6 +105,7 @@ describe('buildWebDemo', () => {
 
     expect(result.html).toContain('if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === \'function\')')
     expect(result.html).toContain('const state = await browserRuntime.buildRuntimeState({')
+    expect(result.html).toContain('Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.')
   })
 })
 

@@ -1,9 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
 import { buildReconciliationReport, type ReconciliationReport } from '../reporting'
 import {
+  emitBrowserRuntimeAssets,
   renderBrowserRuntimeClientBootstrap,
   buildBrowserUploadedMonthlyRun,
   buildUploadWebFlow,
@@ -77,6 +78,7 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
     const resolved = resolve(options.outputPath)
     mkdirSync(dirname(resolved), { recursive: true })
     writeFileSync(resolved, html, 'utf8')
+    emitBrowserRuntimeAssets(resolved)
 
     return {
       html,
@@ -97,6 +99,10 @@ function renderOperatorWebDemoHtml(input: {
   browserRun: BrowserUploadedMonthlyRunResult
   outputPath?: string
 }): string {
+  const runtimeAssetPath = input.outputPath
+    ? `./${basename(resolve(dirname(input.outputPath), 'browser-runtime.js'))}`
+    : './browser-runtime.js'
+
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -320,7 +326,7 @@ function renderOperatorWebDemoHtml(input: {
       </section>
     </main>
     <script>
-      ${renderBrowserRuntimeClientBootstrap()}
+      ${renderBrowserRuntimeClientBootstrap(runtimeAssetPath)}
 
       const fileInput = document.getElementById('monthly-files');
       const monthInput = document.getElementById('month-label');
