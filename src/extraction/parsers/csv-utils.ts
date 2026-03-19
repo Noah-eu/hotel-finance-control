@@ -105,9 +105,13 @@ export function normalizeCell(value: string): string {
   return value.replace(/^\uFEFF/, '').trim()
 }
 
+export function normalizeHeaderCell(value: string): string {
+  return normalizeCell(value).replace(/^"|"$/g, '')
+}
+
 function mapHeaders(rawHeaders: string[], canonicalHeaders?: CanonicalHeaderMap): string[] {
   if (!canonicalHeaders) {
-    return rawHeaders.map((header) => normalizeCell(header))
+    return rawHeaders.map((header) => normalizeHeaderCell(header))
   }
 
   return rawHeaders.map((header) => {
@@ -119,12 +123,12 @@ function mapHeaders(rawHeaders: string[], canonicalHeaders?: CanonicalHeaderMap)
       }
     }
 
-    return normalizeCell(header)
+    return normalizeHeaderCell(header)
   })
 }
 
 function normalizeHeaderKey(value: string): string {
-  return normalizeCell(value)
+  return normalizeHeaderCell(value)
     .toLowerCase()
     .replace(/[ _-]+/g, '')
 }
