@@ -29,6 +29,7 @@ const HEADER_ALIASES = {
   currency: ['currency', 'mena', 'měna'],
   accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet'],
   counterparty: ['counterparty', 'counterpartyName', 'partner', 'protistrana', 'protiúčet', 'protiucet'],
+  counterpartyBankCode: ['counterpartyBankCode', 'bankCode', 'kódBanky', 'kodBanky'],
   reference: ['reference', 'variableSymbol', 'paymentReference', 'zprávaProPříjemce', 'zpravaProPrijemce', 'zprava', 'poznámka'],
   transactionType: ['transactionType', 'transaction_type', 'type', 'typTransakce', 'typ']
 } satisfies Record<string, string[]>
@@ -43,7 +44,7 @@ export class RaiffeisenbankParser {
         amountMinor: firstPresent(row, HEADER_ALIASES.amountMinor),
         currency: firstPresent(row, HEADER_ALIASES.currency),
         accountId: firstPresent(row, HEADER_ALIASES.accountId) || fallbackAccountId || '',
-        counterparty: firstPresent(row, HEADER_ALIASES.counterparty),
+        counterparty: resolveCounterparty(row),
         reference: firstPresent(row, HEADER_ALIASES.reference),
         transactionType: firstPresent(row, HEADER_ALIASES.transactionType)
       }
@@ -109,6 +110,17 @@ function firstPresent(row: Record<string, string>, aliases: string[]): string {
   }
 
   return ''
+}
+
+function resolveCounterparty(row: Record<string, string>): string {
+  const account = firstPresent(row, HEADER_ALIASES.counterparty)
+  const bankCode = firstPresent(row, HEADER_ALIASES.counterpartyBankCode)
+
+  if (account && bankCode && !account.includes('/')) {
+    return `${account}/${bankCode}`
+  }
+
+  return account
 }
 
 function normalizeHeaderKey(value: string): string {

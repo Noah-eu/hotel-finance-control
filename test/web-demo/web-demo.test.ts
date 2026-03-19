@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
+import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
 
 describe('buildWebDemo', () => {
   it('renders the uploaded monthly browser flow into browser-visible HTML', async () => {
@@ -281,6 +282,33 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Runtime běh selhal.')
     expect(result.html).toContain('Exportní handoff není k dispozici, protože runtime běh selhal.')
     expect(result.html).toContain('Viditelně zobrazujeme chybu místo tichého ponechání ukázkového snapshotu.')
+  })
+
+  it('runs the two current real bank files through the shared browser runtime without parser failure', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+          text: async () => [
+            '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          text: async () => [
+            '"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+            '19.03.2026 06:23;1540,00;CZK;1234567890;2010;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+          ].join('\n')
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-19T20:20:00.000Z'
+    })
+
+    expect(state.extractedRecords.map((file) => file.extractedCount)).toEqual([1, 1])
+    expect(state.extractedRecords.map((file) => file.extractedRecordIds)).toEqual([['fio-row-1'], ['raif-row-1']])
+    expect(state.preparedFiles.map((file) => file.sourceSystem)).toEqual(['bank', 'bank'])
   })
 })
 
