@@ -280,10 +280,10 @@ describe('runMonthlyReconciliationBatch', () => {
   it('runs a real localized Fio upload shape through the shared monthly-batch parser stage', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {
-        name: 'Pohyby_5599955956_202603191023.csv',
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
         content: [
-          'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
-          '19.03.2026;5599955956/2010;19.03.2026;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001'
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
         ].join('\n'),
         uploadedAt: '2026-03-19T15:05:00.000Z'
       }
@@ -303,14 +303,13 @@ describe('runMonthlyReconciliationBatch', () => {
       id: 'fio-row-1',
       amountMinor: 154000,
       currency: 'CZK',
-      occurredAt: '2026-03-19',
+      occurredAt: '2026-03-19T06:23:00',
       data: {
         sourceSystem: 'bank',
         bankParserVariant: 'fio',
-        accountId: '5599955956/2010',
+        accountId: '8888997777/2010',
         counterparty: 'Comgate a.s.',
-        reference: 'Platba rezervace WEB-1001',
-        transactionType: 'Bezhotovostní příjem'
+        reference: 'Platba rezervace WEB-2001'
       }
     })
   })
@@ -318,11 +317,11 @@ describe('runMonthlyReconciliationBatch', () => {
   it('runs a localized Fio upload with Czech bookedAt datetime values through the shared monthly-batch path', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {
-        name: 'Pohyby_5599955956_202603191023.csv',
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
         content: [
-          'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
-          '19.03.2026 05:55;5599955956/2010;19.03.2026 06:23;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001',
-          '19.03.2026 07:10;5599955956/2010;19.03.2026 6:23;Bezhotovostní příjem;840,00;CZK;Comgate a.s.;Platba rezervace WEB-1002'
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001',
+          '19.03.2026 7:15;840,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2002'
         ].join('\n'),
         uploadedAt: '2026-03-19T17:35:00.000Z'
       }
@@ -340,7 +339,7 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.files.map((file) => file.extractedCount)).toEqual([2])
     expect(result.extractedRecords.map((record) => record.occurredAt)).toEqual([
       '2026-03-19T06:23:00',
-      '2026-03-19T06:23:00'
+      '2026-03-19T07:15:00'
     ])
   })
 
@@ -455,18 +454,18 @@ describe('runMonthlyReconciliationBatch', () => {
   it('runs the current real Fio and Raiffeisenbank bank CSV shapes through the shared bank-transaction pipeline', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {
-        name: 'Pohyby_5599955956_202603191023.csv',
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
         content: [
-          'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
-          '19.03.2026 05:55;5599955956/2010;19.03.2026 06:23;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001'
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
         ].join('\n'),
         uploadedAt: '2026-03-19T20:10:00.000Z'
       },
       {
-        name: 'Pohyby_5500123456_20260319.csv',
+        name: 'Pohyby_5599955956_202603191023.csv',
         content: [
-          '\uFEFF"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
-          '19.03.2026 06:23;1250,00;CZK;5500/1234;5500;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+          'Datum;Objem;Měna;Protiúčet;Kód banky;Zpráva pro příjemce;Poznámka;Typ',
+          '19.03.2026 06:23;1540,00;CZK;5500/1234;5500;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
         ].join('\n'),
         uploadedAt: '2026-03-19T20:11:00.000Z'
       }
@@ -483,7 +482,40 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(result.files.map((file) => file.extractedCount)).toEqual([1, 1])
     expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'raif-row-1'])
-    expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 125000])
+  expect(result.extractedRecords.map((record) => record.amountMinor)).toEqual([154000, 154000])
+    expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'raiffeisenbank'])
+  })
+
+  it('does not swap the two confirmed real bank files in parser IDs or attribution', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+        content: [
+          '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T21:00:00.000Z'
+      },
+      {
+        name: 'Pohyby_5599955956_202603191023.csv',
+        content: [
+          '\uFEFF"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+          '19.03.2026 06:23;1250,00;CZK;5500/1234;5500;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T21:01:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-confirmed-real-bank-anti-swap',
+        requestedAt: '2026-03-19T21:01:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T21:02:00.000Z'
+    })
+
+    expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1', 'raif-row-1'])
     expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio', 'raiffeisenbank'])
   })
 
