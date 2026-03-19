@@ -74,6 +74,12 @@ export function parseIsoDate(value: string, fieldName: string): string {
     return normalized
   }
 
+  const dayFirstDateTimeMatch = /^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})$/.exec(normalized)
+  if (dayFirstDateTimeMatch) {
+    const [, day, month, year, hour, minute] = dayFirstDateTimeMatch
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:00`
+  }
+
   const dayFirstMatch = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(normalized)
   if (dayFirstMatch) {
     const [, day, month, year] = dayFirstMatch

@@ -105,6 +105,25 @@ describe('parseFioStatement', () => {
     ])
   })
 
+  it('accepts localized Fio Czech bookedAt datetime values and normalizes them consistently', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
+        '19.03.2026 05:55;5599955956/2010;19.03.2026 06:23;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001',
+        '19.03.2026 07:10;5599955956/2010;19.03.2026 6:23;Bezhotovostní příjem;840,00;CZK;Comgate a.s.;Platba rezervace WEB-1002'
+      ].join('\n'),
+      extractedAt: '2026-03-19T17:30:00.000Z'
+    })
+
+    expect(records.map((record) => record.occurredAt)).toEqual([
+      '2026-03-19T06:23:00',
+      '2026-03-19T06:23:00'
+    ])
+  })
+
   it('keeps failure explicit when a localized Fio export still lacks a deterministic counterparty field', () => {
     const fixture = getRealInputFixture('fio-statement')
 
@@ -118,5 +137,20 @@ describe('parseFioStatement', () => {
         extractedAt: '2026-03-19T15:00:00.000Z'
       })
     ).toThrow('Fio statement is missing required columns: counterparty')
+  })
+
+  it('keeps failure explicit for unsupported localized Fio bookedAt formats', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    expect(() =>
+      parseFioStatement({
+        sourceDocument: fixture.sourceDocument,
+        content: [
+          'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu',
+          '2026/03/19 05:55;5599955956/2010;2026/03/19 06:23;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.'
+        ].join('\n'),
+        extractedAt: '2026-03-19T17:30:00.000Z'
+      })
+    ).toThrow('Fio bookedAt has unsupported date format: 2026/03/19 06:23')
   })
 })

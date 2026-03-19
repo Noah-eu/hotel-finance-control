@@ -297,6 +297,35 @@ describe('runMonthlyReconciliationBatch', () => {
     })
   })
 
+  it('runs a localized Fio upload with Czech bookedAt datetime values through the shared monthly-batch path', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_5599955956_202603191023.csv',
+        content: [
+          'Datum provedení;Číslo účtu;Datum zaúčtování;Typ pohybu;Zaúčtovaná částka;Měna účtu;Název protiúčtu;Zpráva pro příjemce',
+          '19.03.2026 05:55;5599955956/2010;19.03.2026 06:23;Bezhotovostní příjem;1540,00;CZK;Comgate a.s.;Platba rezervace WEB-1001',
+          '19.03.2026 07:10;5599955956/2010;19.03.2026 6:23;Bezhotovostní příjem;840,00;CZK;Comgate a.s.;Platba rezervace WEB-1002'
+        ].join('\n'),
+        uploadedAt: '2026-03-19T17:35:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-fio-localized-datetime-upload',
+        requestedAt: '2026-03-19T17:35:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T17:36:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([2])
+    expect(result.extractedRecords.map((record) => record.occurredAt)).toEqual([
+      '2026-03-19T06:23:00',
+      '2026-03-19T06:23:00'
+    ])
+  })
+
   it('classifies a generic-filename Raiffeisenbank CSV by its Czech bank headers', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {
