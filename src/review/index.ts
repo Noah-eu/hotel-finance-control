@@ -26,6 +26,27 @@ export interface BuildReviewScreenInput {
 }
 
 export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenData {
+  const categorizedExceptionCases = input.batch.reconciliation.exceptionCases.reduce(
+    (accumulator, exceptionCase) => {
+      const bucket = classifyReviewBucket(exceptionCase)
+
+      if (bucket === 'missing-document') {
+        accumulator.missingDocuments.push(exceptionCase)
+      } else if (bucket === 'suspicious') {
+        accumulator.suspicious.push(exceptionCase)
+      } else {
+        accumulator.unmatched.push(exceptionCase)
+      }
+
+      return accumulator
+    },
+    {
+      unmatched: [] as MonthlyBatchResult['reconciliation']['exceptionCases'],
+      suspicious: [] as MonthlyBatchResult['reconciliation']['exceptionCases'],
+      missingDocuments: [] as MonthlyBatchResult['reconciliation']['exceptionCases']
+    }
+  )
+
   const matched = input.batch.report.matches.map((match) => ({
     id: match.matchGroupId,
     kind: 'matched' as const,
@@ -35,18 +56,13 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     sourceDocumentIds: collectSourceDocumentIds(input.batch, match.transactionIds)
   }))
 
-  const unmatched = input.batch.reconciliation.exceptionCases
-    .filter((exceptionCase) => exceptionCase.type === 'unmatched_transaction')
-    .filter((exceptionCase) => !isMissingDocument(exceptionCase, input.batch))
-    .filter((exceptionCase) => !isSuspicious(exceptionCase))
+  const unmatched = categorizedExceptionCases.unmatched
     .map((exceptionCase) => toReviewItem(exceptionCase, 'unmatched'))
 
-  const suspicious = input.batch.reconciliation.exceptionCases
-    .filter((exceptionCase) => isSuspicious(exceptionCase))
+  const suspicious = categorizedExceptionCases.suspicious
     .map((exceptionCase) => toReviewItem(exceptionCase, 'suspicious'))
 
-  const missingDocuments = input.batch.reconciliation.exceptionCases
-    .filter((exceptionCase) => isMissingDocument(exceptionCase, input.batch))
+  const missingDocuments = categorizedExceptionCases.missingDocuments
     .map((exceptionCase) => ({
       ...toReviewItem(exceptionCase, 'missing-document'),
       title: `Chybějící doklad pro ${exceptionCase.relatedTransactionIds[0] ?? exceptionCase.id}`
@@ -98,29 +114,22 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
   }
 }
 
-function isSuspicious(exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number]): boolean {
-  return exceptionCase.ruleCode === 'suspicious_private_expense'
-    || exceptionCase.explanation.toLowerCase().includes('requires review')
-    || exceptionCase.explanation.toLowerCase().includes('suspicious')
-    || exceptionCase.severity === 'high'
-}
-
-function isMissingDocument(
-  exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
-  batch: MonthlyBatchResult
-): boolean {
+function classifyReviewBucket(
+  exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number]
+): Exclude<ReviewSectionItem['kind'], 'matched'> {
   if (exceptionCase.ruleCode === 'missing_supporting_document') {
-    return true
+    return 'missing-document'
   }
 
-  if (exceptionCase.explanation.includes('supporting invoice or receipt')) {
-    return true
+  if (exceptionCase.ruleCode === 'suspicious_private_expense') {
+    return 'suspicious'
   }
 
-  return exceptionCase.relatedTransactionIds.some((transactionId) => {
-    const transaction = batch.reconciliation.normalizedTransactions.find((item) => item.id === transactionId)
-    return transaction?.direction === 'out'
-  })
+  if (exceptionCase.type === 'unmatched_document') {
+    return 'missing-document'
+  }
+
+  return 'unmatched'
 }
 
 function collectSourceDocumentIds(batch: MonthlyBatchResult, transactionIds: string[]): string[] {

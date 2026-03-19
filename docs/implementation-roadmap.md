@@ -36,8 +36,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 28 | `prompts/28-monthly-run-from-uploaded-files.prompt.md` | done | Uploaded files now run through one real deterministic monthly flow in `upload-web`, producing a browser-visible monthly result, shared review/report outputs, and export handoff from the same shared modules without a backend or demo-fixture fallback. |
 | 29 | `prompts/29-web-demo-upload-integration.prompt.md` | done | The browser-visible entrypoint in `src/web-demo` now wraps the real uploaded monthly run from `src/upload-web`, while the old fixture demo remains available only as an explicit auxiliary/dev-only helper. |
 | 30 | `prompts/30-czech-user-copy-pass.prompt.md` | done | Visible browser upload, review, monthly-run, export, and auxiliary fixture-demo copy is now consistently practical Czech, while internal English symbols, file names, and traceable identifiers remain unchanged. |
-| 31 | `prompts/31-review-bucketing-hardening.prompt.md` | next | Reduce fragile review categorization heuristics by preferring explicit shared rule codes and structured exception metadata over free-text inference where appropriate. |
-| 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | planned | Make quality-gate and controller reporting truthful and repo-relative by either adding a real lint gate or removing fake lint expectations from the workflow and user-facing reports. |
+| 31 | `prompts/31-review-bucketing-hardening.prompt.md` | done | Review bucketing now prefers shared structured exception metadata (`ruleCode` and exception `type`) over free-text explanation matching, keeping suspicious, missing-document, unmatched, and uploaded-document buckets deterministic and traceable. |
+| 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | next | Make quality-gate and controller reporting truthful and repo-relative by either adding a real lint gate or removing fake lint expectations from the workflow and user-facing reports. |
 
 ## Current implemented modules
 
@@ -77,12 +77,12 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 28 focuses on one real end-to-end monthly processing flow built from uploaded source files rather than demo fixtures.
 - Step 29 unified the currently visible browser demo with the real uploaded monthly run already implemented in `src/upload-web`.
 - Step 30 completed a Czech user-copy cleanup pass across the upload, review, monthly-run, export, and auxiliary fixture-demo browser surfaces.
-- Step 31 focuses on hardening review bucketing to rely on explicit structured rule metadata instead of fragile free-text heuristics wherever possible.
+- Step 31 hardened review bucketing to rely on explicit structured rule metadata instead of fragile free-text heuristics wherever possible.
 - Step 32 focuses on making quality-gate and controller reporting truthful and repo-relative, including resolving fake lint expectations if no real lint gate exists.
 
 ## Current roadmap status
 
-Steps `01` through `30` are complete. Step `31` is the next unfinished milestone.
+Steps `01` through `31` are complete. Step `32` is the next unfinished milestone.
 
 ## Next step selection rule
 
