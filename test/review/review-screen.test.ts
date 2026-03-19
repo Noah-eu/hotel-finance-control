@@ -36,10 +36,12 @@ describe('buildReviewScreen', () => {
     expect(review.matched[0]).toMatchObject({
       kind: 'matched'
     })
+    expect(review.matched[0].title).toContain('Spárovaná skupina')
+    expect(review.matched[0].detail).toContain('Jistota')
     expect(review.suspicious.some((item) => item.title.includes('suspicious_private_expense'))).toBe(true)
     expect(review.missingDocuments.some((item) => item.detail.includes('no supporting invoice or receipt'))).toBe(true)
     expect(review.suspicious.some((item) => item.severity === 'high' || item.detail.length > 0)).toBe(true)
-    expect(review.missingDocuments.some((item) => item.kind === 'missing-document' && item.title.startsWith('Missing document for'))).toBe(true)
+    expect(review.missingDocuments.some((item) => item.kind === 'missing-document' && item.title.startsWith('Chybějící doklad pro'))).toBe(true)
   })
 
   it('keeps matched items separate from exception-driven review buckets', () => {

@@ -43,8 +43,8 @@ describe('buildFixtureWebDemo', () => {
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
-    expect(result.html).toContain('Hotel Finance Reconciliation Fixture Demo')
-    expect(result.html).toContain('Auxiliary fixture demo')
+    expect(result.html).toContain('Pomocná ukázka párování nad fixture daty')
+    expect(result.html).toContain('Pomocná ukázka fixture')
     expect(result.fixture.key).toBe('matched-payout')
   })
 })

@@ -102,13 +102,13 @@ export function renderFixtureWebDemoHtml(
   report: ReconciliationReport
 ): string {
   const matchItems = report.matches.length === 0
-    ? '<li>None</li>'
+    ? '<li>Žádné položky</li>'
     : report.matches
-        .map((match) => `<li><strong>${escapeHtml(match.matchGroupId)}</strong> — ${escapeHtml(match.transactionIds.join(' ↔ '))} — confidence ${match.confidence.toFixed(2)}</li>`)
+        .map((match) => `<li><strong>${escapeHtml(match.matchGroupId)}</strong> — ${escapeHtml(match.transactionIds.join(' ↔ '))} — jistota ${match.confidence.toFixed(2)}</li>`)
         .join('')
 
   const exceptionItems = report.exceptions.length === 0
-    ? '<li>None</li>'
+    ? '<li>Žádné položky</li>'
     : report.exceptions
         .map((exceptionCase) => `<li><strong>${escapeHtml(exceptionCase.exceptionCaseId)}</strong> — ${escapeHtml(exceptionCase.explanation)}</li>`)
         .join('')
@@ -127,11 +127,11 @@ export function renderFixtureWebDemoHtml(
     .join('')
 
   return `<!doctype html>
-<html lang="en">
+<html lang="cs">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hotel Finance Reconciliation Fixture Demo</title>
+  <title>Hotel Finance Control – Pomocná ukázka fixture</title>
     <style>
       :root {
         color-scheme: light;
@@ -195,46 +195,46 @@ export function renderFixtureWebDemoHtml(
   <body>
     <main>
       <section class="hero">
-        <span class="pill">Auxiliary fixture demo</span>
-        <h1>Hotel Finance Reconciliation Fixture Demo</h1>
+        <span class="pill">Pomocná ukázka fixture</span>
+        <h1>Pomocná ukázka párování nad fixture daty</h1>
         <p>${escapeHtml(fixture.description)}</p>
         <p><strong>Fixture:</strong> <code>${escapeHtml(fixture.key)}</code></p>
-        <p><strong>Generated at:</strong> ${escapeHtml(report.generatedAt)}</p>
+        <p><strong>Vygenerováno:</strong> ${escapeHtml(report.generatedAt)}</p>
       </section>
 
       <section class="card">
-        <h2>Summary</h2>
+        <h2>Souhrn</h2>
         <div class="summary-grid">
-          <div class="metric"><strong>${report.summary.normalizedTransactionCount}</strong><br />Normalized transactions</div>
-          <div class="metric"><strong>${report.summary.matchedGroupCount}</strong><br />Matched groups</div>
-          <div class="metric"><strong>${report.summary.exceptionCount}</strong><br />Exception cases</div>
-          <div class="metric"><strong>${report.summary.unmatchedExpectedCount}</strong><br />Unmatched expected</div>
-          <div class="metric"><strong>${report.summary.unmatchedActualCount}</strong><br />Unmatched actual</div>
+          <div class="metric"><strong>${report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
+          <div class="metric"><strong>${report.summary.matchedGroupCount}</strong><br />Spárované skupiny</div>
+          <div class="metric"><strong>${report.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+          <div class="metric"><strong>${report.summary.unmatchedExpectedCount}</strong><br />Nespárované očekávané</div>
+          <div class="metric"><strong>${report.summary.unmatchedActualCount}</strong><br />Nespárované skutečné</div>
         </div>
       </section>
 
       <section class="card">
-        <h2>Matches</h2>
+        <h2>Spárování</h2>
         <ul>${matchItems}</ul>
       </section>
 
       <section class="card">
-        <h2>Exceptions</h2>
+        <h2>Výjimky</h2>
         <ul>${exceptionItems}</ul>
       </section>
 
       <section class="card">
-        <h2>Transactions</h2>
+        <h2>Transakce</h2>
         <table>
           <thead>
             <tr>
               <th>ID</th>
-              <th>Source</th>
-              <th>Direction</th>
-              <th>Amount</th>
-              <th>Currency</th>
-              <th>Booked at</th>
-              <th>Status</th>
+              <th>Zdroj</th>
+              <th>Směr</th>
+              <th>Částka</th>
+              <th>Měna</th>
+              <th>Zaúčtováno</th>
+              <th>Stav</th>
             </tr>
           </thead>
           <tbody>${transactionRows}</tbody>

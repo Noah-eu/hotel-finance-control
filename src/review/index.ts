@@ -29,8 +29,8 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   const matched = input.batch.report.matches.map((match) => ({
     id: match.matchGroupId,
     kind: 'matched' as const,
-    title: `Matched group ${match.matchGroupId}`,
-    detail: `${match.reason} Confidence ${(match.confidence * 100).toFixed(0)}%.`,
+    title: `Spárovaná skupina ${match.matchGroupId}`,
+    detail: `${match.reason} Jistota ${(match.confidence * 100).toFixed(0)} %.`,
     transactionIds: match.transactionIds,
     sourceDocumentIds: collectSourceDocumentIds(input.batch, match.transactionIds)
   }))
@@ -49,7 +49,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     .filter((exceptionCase) => isMissingDocument(exceptionCase, input.batch))
     .map((exceptionCase) => ({
       ...toReviewItem(exceptionCase, 'missing-document'),
-      title: `Missing document for ${exceptionCase.relatedTransactionIds[0] ?? exceptionCase.id}`
+      title: `Chybějící doklad pro ${exceptionCase.relatedTransactionIds[0] ?? exceptionCase.id}`
     }))
 
   return {
@@ -88,13 +88,13 @@ function toReviewItem(
 function toTitle(kind: ReviewSectionItem['kind']): string {
   switch (kind) {
     case 'matched':
-      return 'Matched'
+      return 'Spárováno'
     case 'unmatched':
-      return 'Unmatched'
+      return 'Nespárováno'
     case 'suspicious':
-      return 'Suspicious'
+      return 'Podezřelé'
     case 'missing-document':
-      return 'Missing document'
+      return 'Chybějící doklad'
   }
 }
 

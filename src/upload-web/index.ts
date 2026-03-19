@@ -177,7 +177,7 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
   <body>
     <main>
       <section class="hero">
-        <span class="pill">Místní upload</span>
+  <span class="pill">Místní nahrání</span>
         <h1>Hotel Finance Control – nahrání měsíčních souborů</h1>
         <p>Tato první verze umožňuje nahrát skutečné měsíční soubory přímo v prohlížeči, zkontrolovat jejich přehled a připravit je pro další deterministické zpracování.</p>
         <p><strong>Vygenerováno:</strong> ${escapeHtml(generatedAt)}</p>
@@ -469,7 +469,7 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
       <section class="hero">
         <span class="pill">Měsíční běh z uploadu</span>
         <h1>Výsledek měsíčního zpracování z nahraných souborů</h1>
-        <p>Tato stránka ukazuje jeden skutečný deterministický běh nad nahranými soubory: přípravu vstupů, extrakci, normalizaci, párování, výjimky, kontrolu i exporty ze stejného sdíleného pipeline.</p>
+  <p>Tato stránka ukazuje jeden skutečný deterministický běh nad nahranými soubory: přípravu vstupů, extrakci, normalizaci, párování, výjimky, kontrolu i exporty ze stejného sdíleného postupu.</p>
         <p><strong>Vygenerováno:</strong> ${escapeHtml(run.review.generatedAt)}</p>
       </section>
 
@@ -486,14 +486,14 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
       </section>
 
       <section class="card">
-        <h2>Trace nahraných souborů</h2>
+  <h2>Trasování nahraných souborů</h2>
         <div class="trace-grid">
           ${run.importedFiles.map((file) => `
             <article class="trace-card">
               <h3>${escapeHtml(file.sourceDocument.fileName)}</h3>
               <p><strong>Zdroj:</strong> ${escapeHtml(file.sourceDocument.sourceSystem)}</p>
               <p><strong>Typ:</strong> ${escapeHtml(file.sourceDocument.documentType)}</p>
-              <p><strong>Source document ID:</strong> <code>${escapeHtml(file.sourceDocument.id)}</code></p>
+              <p><strong>ID zdrojového dokumentu:</strong> <code>${escapeHtml(file.sourceDocument.id)}</code></p>
               <p><strong>Extrahované záznamy:</strong> ${escapeHtml(String(findBatchFileExtractedCount(run.batch, file.sourceDocument.id)))}</p>
             </article>
           `).join('')}
@@ -543,7 +543,7 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
         <ul>
           ${run.exports.files.map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong> — <code>${escapeHtml(file.fileName)}</code>${file.outputPath ? ` — ${escapeHtml(file.outputPath)}` : ''}</li>`).join('')}
         </ul>
-        <p class="hint">Exporty vznikají ze stejného sdíleného výsledku měsíčního běhu, bez paralelního modelu nebo backendu.</p>
+  <p class="hint">Exporty vznikají ze stejného sdíleného výsledku měsíčního běhu, bez paralelního modelu nebo serverové vrstvy.</p>
       </section>
     </main>
   </body>
@@ -649,7 +649,7 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
       <section class="hero">
         <span class="pill">Kontrola měsíce</span>
         <h1>První kontrolní obrazovka měsíčního zpracování</h1>
-        <p>Tato lokální obrazovka zobrazuje stejné sdílené výsledky z uploadu, extrakce, párování a review workflow bez backendu a bez paralelního modelu.</p>
+  <p>Tato lokální obrazovka zobrazuje stejné sdílené výsledky z nahrání, extrakce, párování a kontrolního workflow bez serverové vrstvy a bez paralelního modelu.</p>
         <p><strong>Vygenerováno:</strong> ${escapeHtml(review.generatedAt)}</p>
       </section>
 
@@ -674,7 +674,7 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
       </section>
 
       <section class="card">
-        <h2>Trace souborů</h2>
+  <h2>Trasování souborů</h2>
         <ul>
           ${batch.files.map((file) => `<li><strong>${escapeHtml(file.sourceDocumentId)}</strong> — ${file.extractedCount} extrahovaných záznamů</li>`).join('')}
         </ul>

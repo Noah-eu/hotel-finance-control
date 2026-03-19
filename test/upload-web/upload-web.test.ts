@@ -232,7 +232,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.run.exports.files).toHaveLength(3)
     expect(result.html).toContain('Výsledek měsíčního zpracování z nahraných souborů')
     expect(result.html).toContain('Exporty připravené ke stažení')
-    expect(result.html).toContain('Trace nahraných souborů')
+  expect(result.html).toContain('Trasování nahraných souborů')
     expect(result.outputPath).toBe(outputPath)
     expect(existsSync(outputPath)).toBe(true)
     expect(readFileSync(outputPath, 'utf8')).toContain('jeden skutečný deterministický běh')
