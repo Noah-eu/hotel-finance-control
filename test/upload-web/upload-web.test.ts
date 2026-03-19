@@ -23,7 +23,8 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('Připravit soubory ke zpracování')
     expect(result.html).toContain('monthly-batch')
     expect(result.html).toContain('Zatím nebyly vybrány žádné soubory.')
-    expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
+    expect(result.html).toContain('Pracovní postup operátora')
+    expect(result.html).toContain('Měsíční workflow čeká na skutečně vybrané soubory')
     expect(result.html).toContain('buildRuntimeStateFromSelectedFiles')
   })
 
@@ -60,9 +61,11 @@ describe('buildUploadWebFlow', () => {
       sourceSystem: 'booking',
       documentType: 'ota_report'
     })
+  expect(result.monthLabel).toBe('neuvedeno')
     expect(result.extractedRecords.some((file) => file.extractedCount > 0)).toBe(true)
     expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
     expect(result.reviewSections.matched.length).toBeGreaterThan(0)
+    expect(result.supportedExpenseLinks.length).toBeGreaterThanOrEqual(0)
     expect(result.exportFiles.map((file) => file.fileName)).toEqual([
       'reconciliation-transactions.csv',
       'review-items.csv',
@@ -75,7 +78,7 @@ describe('buildUploadWebFlow', () => {
       generatedAt: '2026-03-19T10:15:00.000Z'
     })
 
-    expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
+  expect(result.html).toContain('Pracovní postup operátora')
     expect(result.html).toContain('skutečně vybrané soubory')
     expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
     expect(result.html).toContain('uploadedAt')
@@ -295,6 +298,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('Trasování nahraných souborů')
     expect(result.html).toContain('Částka')
     expect(result.html).toContain('1 250,00 Kč')
+  expect(result.html).toContain('Chybějící doklady')
     expect(result.outputPath).toBe(outputPath)
     expect(existsSync(outputPath)).toBe(true)
     expect(readFileSync(outputPath, 'utf8')).toContain('jeden skutečný deterministický běh')

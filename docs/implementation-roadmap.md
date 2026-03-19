@@ -41,7 +41,7 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 33 | `prompts/33-browser-real-file-runtime-upload.prompt.md` | done | The visible browser entrypoint now truthfully derives its runtime-visible state from the files the operator selects in the browser, using a thin local adapter into the shared upload contract and avoiding precomputed baked-in processing claims, backend work, or a parallel browser-only reconciliation model. |
 | 34 | `prompts/34-additional-source-systems-expedia-airbnb-previo.prompt.md` | done | Deterministic Expedia, Airbnb, and Previo source coverage now runs through the shared extraction, normalization, monthly-batch, reconciliation, review, reporting, and export path with clear unsupported-variant failures and focused tests. |
 | 35 | `prompts/35-document-linking-and-support-coverage-hardening.prompt.md` | done | Deterministic support-document linking now reduces false missing-document flags by linking expense-like bank outflows to invoice/receipt evidence through shared structured reconciliation logic with explainable trace data and focused tests. |
-| 36 | `prompts/36-monthly-operator-ux-pass.prompt.md` | next | Improve the operator-facing monthly browser workflow for real usage while preserving Czech copy, traceability, auditability, and the shared modular-monolith boundaries. |
+| 36 | `prompts/36-monthly-operator-ux-pass.prompt.md` | done | The visible browser entry now foregrounds the real operator monthly flow across upload selection, shared preparation, review/report preview, support-trace visibility, and export handoff with practical Czech copy and direct CZK display in relevant surfaces. |
 
 ## Current implemented modules
 
@@ -86,11 +86,11 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 33 now truthfully reflects the files actually selected in the browser, using a thin local adapter into the shared upload contract while leaving the shared monthly-batch and uploaded monthly run path explicit, traceable, and free of backend or parallel-browser-only processing claims.
 - Step 34 added deterministic practical source-system coverage for Expedia, Airbnb, and Previo through the shared extraction, normalization, monthly-batch, reconciliation, review, reporting, and export pipeline without introducing a parallel path.
 - Step 35 hardened deterministic support-document linking between expense-like bank outflows and invoice/receipt evidence using the shared ingestion, normalization, reconciliation, exceptions, review, reporting, and export flow with explainable trace outputs.
-- Step 36 focuses on a practical operator UX pass across the monthly browser workflow while preserving Czech copy, traceability, and architectural boundaries.
+- Step 36 completed a practical operator UX pass across the monthly browser workflow, making the visible browser entry align with the real shared upload, review, reporting, and export flow while preserving Czech copy, traceability, and architectural boundaries.
 
 ## Current roadmap status
 
-Steps `01` through `35` are complete. Step `36` is the next unfinished milestone.
+Steps `01` through `36` are complete.
 
 ## Next step selection rule
 

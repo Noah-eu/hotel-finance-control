@@ -64,16 +64,196 @@ export function buildWebDemo(options: BuildWebDemoOptions = {}): WebDemoResult {
     generatedAt,
     outputPath: undefined
   })
-  const uploadFlow = buildUploadWebFlow({
+  const uploadFlow = buildUploadWebFlow({ generatedAt })
+  const html = renderOperatorWebDemoHtml({
     generatedAt,
+    uploadFlowHtml: uploadFlow.html,
+    browserRun,
     outputPath: options.outputPath
   })
 
+  if (options.outputPath) {
+    const resolved = resolve(options.outputPath)
+    mkdirSync(dirname(resolved), { recursive: true })
+    writeFileSync(resolved, html, 'utf8')
+
+    return {
+      html,
+      outputPath: resolved,
+      browserRun
+    }
+  }
+
   return {
-    html: uploadFlow.html,
-    outputPath: uploadFlow.outputPath,
+    html,
     browserRun
   }
+}
+
+function renderOperatorWebDemoHtml(input: {
+  generatedAt: string
+  uploadFlowHtml: string
+  browserRun: BrowserUploadedMonthlyRunResult
+  outputPath?: string
+}): string {
+  const reportRows = input.browserRun.run.report.transactions
+    .slice(0, 5)
+    .map((transaction) => `
+      <tr>
+        <td><code>${escapeHtml(transaction.transactionId)}</code></td>
+        <td>${escapeHtml(transaction.source)}</td>
+        <td><span class="amount">${escapeHtml(formatAmountMinorCs(transaction.amountMinor, transaction.currency))}</span></td>
+        <td>${escapeHtml(transaction.status)}</td>
+      </tr>`)
+    .join('')
+
+  const exportItems = input.browserRun.run.exports.files
+    .map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong> — <code>${escapeHtml(file.fileName)}</code></li>`)
+    .join('')
+
+  return `<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel Finance Control – Operátorský měsíční běh</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #f3f6fb;
+        color: #142033;
+      }
+      main {
+        max-width: 1240px;
+        margin: 0 auto;
+      }
+      .hero, .card {
+        background: white;
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 10px 35px rgba(20, 32, 51, 0.08);
+        margin-bottom: 20px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: #eaf2ff;
+        color: #174ea6;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .summary-grid, .flow-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+      .metric, .flow-item {
+        background: #f7f9fc;
+        border-radius: 14px;
+        padding: 16px;
+      }
+      .flow-item strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid #e6ebf2;
+      }
+      .amount {
+        font-weight: 700;
+      }
+      iframe {
+        width: 100%;
+        min-height: 950px;
+        border: 0;
+        border-radius: 16px;
+        background: #fbfdff;
+      }
+      code {
+        background: #f1f4f8;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      .hint {
+        color: #52627a;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <span class="pill">Viditelný operátorský vstup</span>
+        <h1>Hotel Finance Control – měsíční workflow pro operátora</h1>
+        <p>Hlavní viditelný vstup teď odpovídá reálným možnostem současného browser/runtime režimu: operátor vybírá soubory, spouští sdílený měsíční běh, kontroluje výsledek, čte náhled reportu a předává exporty.</p>
+        <p><strong>Vygenerováno:</strong> ${escapeHtml(input.generatedAt)}</p>
+      </section>
+
+      <section class="card">
+        <h2>Sekvence měsíčního běhu</h2>
+        <div class="flow-grid">
+          <div class="flow-item"><strong>1. Výběr souborů</strong><span class="hint">Skutečné měsíční soubory vybrané v prohlížeči.</span></div>
+          <div class="flow-item"><strong>2. Příprava a trasování</strong><span class="hint">Sdílené ID dokumentů, extrahovaných záznamů a souborových zdrojů.</span></div>
+          <div class="flow-item"><strong>3. Kontrola operátora</strong><span class="hint">Spárované, nespárované, podezřelé položky a chybějící doklady.</span></div>
+          <div class="flow-item"><strong>4. Report a export</strong><span class="hint">Stejný výsledek pro náhled reportu i exportní handoff.</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Souhrn připraveného běhu</h2>
+        <div class="summary-grid">
+          <div class="metric"><strong>${input.browserRun.run.importedFiles.length}</strong><br />Nahrané soubory</div>
+          <div class="metric"><strong>${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
+          <div class="metric"><strong>${input.browserRun.run.review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+          <div class="metric"><strong>${input.browserRun.run.exports.files.length}</strong><br />Připravené exporty</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Krátký náhled reportu</h2>
+        <p class="hint">Částky jsou v hlavním vstupu zobrazené jako české koruny tam, kde se operátor rozhoduje nad výsledkem.</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Transakce</th>
+              <th>Zdroj</th>
+              <th>Částka</th>
+              <th>Stav</th>
+            </tr>
+          </thead>
+          <tbody>${reportRows}</tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Exportní handoff</h2>
+        <ul>${exportItems}</ul>
+        <p class="hint">Exporty vznikají z téhož sdíleného výsledku jako kontrolní sekce a report.</p>
+      </section>
+
+      <section class="card">
+        <h2>Interaktivní lokální workflow</h2>
+        <p class="hint">Níže je stejná lokální upload obrazovka pro skutečný výběr souborů v prohlížeči. Bez backendu, bez fake persistence a bez paralelního UI modelu.</p>
+        <iframe title="Lokální upload workflow" srcdoc=${JSON.stringify(input.uploadFlowHtml)}></iframe>
+      </section>
+    </main>
+  </body>
+</html>
+`
 }
 
 export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {

@@ -10,12 +10,13 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('<!doctype html>')
-    expect(result.html).toContain('Hotel Finance Control – nahrání měsíčních souborů')
-    expect(result.html).toContain('Runtime ukázka sdíleného měsíčního běhu')
-    expect(result.html).toContain('buildRuntimeStateFromSelectedFiles')
-    expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
-    expect(result.html).not.toContain('booking-payout-2026-03.csv')
-    expect(result.html).not.toContain('monthly-review-export.xlsx')
+    expect(result.html).toContain('Hotel Finance Control – měsíční workflow pro operátora')
+    expect(result.html).toContain('Sekvence měsíčního běhu')
+    expect(result.html).toContain('Krátký náhled reportu')
+    expect(result.html).toContain('Exportní handoff')
+    expect(result.html).toContain('1 250,00 Kč')
+    expect(result.html).toContain('monthly-review-export.xlsx')
+    expect(result.html).toContain('Lokální upload workflow')
     expect(result.browserRun.run.review.summary.exceptionCount).toBeGreaterThan(0)
   })
 
@@ -33,8 +34,8 @@ describe('buildWebDemo', () => {
 
     expect(result.outputPath).toBe(outputPath)
     expect(existsSync(outputPath)).toBe(true)
-    expect(readFileSync(outputPath, 'utf8')).toContain('Runtime ukázka sdíleného měsíčního běhu')
-    expect(readFileSync(outputPath, 'utf8')).not.toContain('booking-payout-2026-03.csv')
+    expect(readFileSync(outputPath, 'utf8')).toContain('Interaktivní lokální workflow')
+    expect(readFileSync(outputPath, 'utf8')).toContain('Připravit soubory ke zpracování')
   })
 })
 
