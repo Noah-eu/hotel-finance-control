@@ -55,23 +55,30 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('__hotelFinanceCreateBrowserRuntime')
-    expect(result.html).toContain('const runtimeState =')
-    expect(result.html).not.toContain('Promise.resolve(null)')
+    expect(result.html).toContain('__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles')
+    expect(result.html).not.toContain('const runtimeState =')
+    expect(result.html).not.toContain('JSON.stringify(mainRuntimeState)')
     expect(result.html).not.toContain('findDataset(files)')
     expect(result.html).not.toContain('contentFingerprint')
   })
 
-  it('embeds a bridge that returns a real structured runtime state for the start action path', () => {
+  it('reuses the shared upload-web runtime builder path instead of baking demo runtime summaries into the page', () => {
     const result = buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
-    expect(result.html).toContain('preparedFiles: runtimeState.preparedFiles.map')
-    expect(result.html).toContain('extractedRecords: runtimeState.extractedRecords.map')
-    expect(result.html).toContain('reviewSummary')
-    expect(result.html).toContain('reportSummary')
-    expect(result.html).toContain('supportedExpenseLinks')
-    expect(result.html).toContain('exportFiles')
+    expect(result.html).toContain('return window.__hotelFinanceSharedUploadWebRuntime.buildBrowserRuntimeStateFromUploadedFiles(input);')
+    expect(result.html).not.toContain('preparedFiles: runtimeState.preparedFiles.map')
+    expect(result.html).not.toContain('extractedRecords: runtimeState.extractedRecords.map')
+  })
+
+  it('does not inject a serialized precomputed main runtime result object into the visible page', () => {
+    const result = buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).not.toContain('mainRuntimeState')
+    expect(result.html).not.toContain('supportedExpenseLinks":[{"expenseTransactionId"')
   })
 })
 
