@@ -39,8 +39,8 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 | 31 | `prompts/31-review-bucketing-hardening.prompt.md` | done | Review bucketing now prefers shared structured exception metadata (`ruleCode` and exception `type`) over free-text explanation matching, keeping suspicious, missing-document, unmatched, and uploaded-document buckets deterministic and traceable. |
 | 32 | `prompts/32-quality-gates-and-controller-truthfulness.prompt.md` | done | Controller and workflow guidance now report only commands actually run, use exact repo-relative changed-file summaries, and avoid fake lint claims because the repo currently exposes real test and typecheck gates but no lint script. |
 | 33 | `prompts/33-browser-real-file-runtime-upload.prompt.md` | done | The visible browser entrypoint now truthfully derives its runtime-visible state from the files the operator selects in the browser, using a thin local adapter into the shared upload contract and avoiding precomputed baked-in processing claims, backend work, or a parallel browser-only reconciliation model. |
-| 34 | `prompts/34-additional-source-systems-expedia-airbnb-previo.prompt.md` | next | Add deterministic representative source coverage for Expedia, Airbnb, and Previo through the shared extraction, normalization, matching, review, and reporting flow. |
-| 35 | `prompts/35-document-linking-and-support-coverage-hardening.prompt.md` | planned | Harden support-document linking between expense-like bank outflows and invoice/receipt evidence using shared deterministic ingestion, reconciliation, and review logic only. |
+| 34 | `prompts/34-additional-source-systems-expedia-airbnb-previo.prompt.md` | done | Deterministic Expedia, Airbnb, and Previo source coverage now runs through the shared extraction, normalization, monthly-batch, reconciliation, review, reporting, and export path with clear unsupported-variant failures and focused tests. |
+| 35 | `prompts/35-document-linking-and-support-coverage-hardening.prompt.md` | next | Harden support-document linking between expense-like bank outflows and invoice/receipt evidence using shared deterministic ingestion, reconciliation, and review logic only. |
 | 36 | `prompts/36-monthly-operator-ux-pass.prompt.md` | planned | Improve the operator-facing monthly browser workflow for real usage while preserving Czech copy, traceability, auditability, and the shared modular-monolith boundaries. |
 
 ## Current implemented modules
@@ -84,13 +84,13 @@ This roadmap tracks the repo's implementation milestones in prompt order and rec
 - Step 31 hardened review bucketing to rely on explicit structured rule metadata instead of fragile free-text heuristics wherever possible.
 - Step 32 made quality-gate and controller reporting truthful and repo-relative, removing fake lint expectations because the repo currently exposes real test and typecheck gates but no lint script.
 - Step 33 now truthfully reflects the files actually selected in the browser, using a thin local adapter into the shared upload contract while leaving the shared monthly-batch and uploaded monthly run path explicit, traceable, and free of backend or parallel-browser-only processing claims.
-- Step 34 focuses on deterministic practical source-system coverage for Expedia, Airbnb, and Previo through the shared extraction and reconciliation pipeline.
+- Step 34 added deterministic practical source-system coverage for Expedia, Airbnb, and Previo through the shared extraction, normalization, monthly-batch, reconciliation, review, reporting, and export pipeline without introducing a parallel path.
 - Step 35 focuses on hardening support-document linking between bank outflows and invoice/receipt evidence using shared structured reconciliation and review logic.
 - Step 36 focuses on a practical operator UX pass across the monthly browser workflow while preserving Czech copy, traceability, and architectural boundaries.
 
 ## Current roadmap status
 
-Steps `01` through `33` are complete. Step `34` is the next unfinished milestone.
+Steps `01` through `34` are complete. Step `35` is the next unfinished milestone.
 
 ## Next step selection rule
 

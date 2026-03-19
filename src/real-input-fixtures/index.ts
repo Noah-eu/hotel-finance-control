@@ -5,6 +5,9 @@ export interface RealInputFixture {
     | 'raiffeisenbank-statement'
     | 'fio-statement'
     | 'booking-payout-export'
+    | 'airbnb-payout-export'
+    | 'expedia-payout-export'
+    | 'previo-reservation-export'
     | 'comgate-export'
     | 'invoice-document'
   | 'receipt-document'
@@ -254,6 +257,166 @@ export const realInputFixtures: RealInputFixture[] = [
         reservationId: 'RES-BOOK-8841',
         extractedRecordIds: ['booking-payout-1'],
         sourceDocumentIds: ['doc-booking-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'airbnb-payout-export',
+    description: 'Representative Airbnb payout export with payout reference, confirmation code, and listing linkage.',
+    sourceDocument: sourceDocument({
+      id: 'doc-airbnb-payout-2026-03' as SourceDocument['id'],
+      sourceSystem: 'airbnb',
+      documentType: 'ota_report',
+      fileName: 'airbnb-payout-2026-03.csv'
+    }),
+    rawInput: {
+      format: 'csv',
+      content: [
+        'payoutDate,amountMinor,currency,payoutReference,reservationId,listingId',
+        '2026-03-12,98000,CZK,AIRBNB-20260312,HMA4TR9,LISTING-CZ-11'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'airbnb-payout-1',
+        sourceDocumentId: 'doc-airbnb-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'AIRBNB-20260312',
+        amountMinor: 98000,
+        currency: 'CZK',
+        occurredAt: '2026-03-12',
+        data: {
+          platform: 'airbnb',
+          bookedAt: '2026-03-12',
+          amountMinor: 98000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'AIRBNB-20260312',
+          reservationId: 'HMA4TR9',
+          propertyId: 'LISTING-CZ-11',
+          listingId: 'LISTING-CZ-11'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:payout:airbnb-payout-1' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'airbnb',
+        amountMinor: 98000,
+        currency: 'CZK',
+        bookedAt: '2026-03-12',
+        accountId: 'expected-payouts',
+        reference: 'AIRBNB-20260312',
+        reservationId: 'HMA4TR9',
+        extractedRecordIds: ['airbnb-payout-1'],
+        sourceDocumentIds: ['doc-airbnb-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'expedia-payout-export',
+    description: 'Representative Expedia payout export with itinerary reference and property linkage.',
+    sourceDocument: sourceDocument({
+      id: 'doc-expedia-payout-2026-03' as SourceDocument['id'],
+      sourceSystem: 'expedia',
+      documentType: 'ota_report',
+      fileName: 'expedia-payout-2026-03.csv'
+    }),
+    rawInput: {
+      format: 'csv',
+      content: [
+        'payoutDate,amountMinor,currency,payoutReference,reservationId,propertyId',
+        '2026-03-11,65000,CZK,EXP-TERM-1001,EXP-RES-1001,HOTEL-CZ-001'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'expedia-payout-1',
+        sourceDocumentId: 'doc-expedia-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'EXP-TERM-1001',
+        amountMinor: 65000,
+        currency: 'CZK',
+        occurredAt: '2026-03-11',
+        data: {
+          platform: 'expedia',
+          bookedAt: '2026-03-11',
+          amountMinor: 65000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'EXP-TERM-1001',
+          reservationId: 'EXP-RES-1001',
+          propertyId: 'HOTEL-CZ-001'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:payout:expedia-payout-1' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'expedia',
+        amountMinor: 65000,
+        currency: 'CZK',
+        bookedAt: '2026-03-11',
+        accountId: 'expected-payouts',
+        reference: 'EXP-TERM-1001',
+        reservationId: 'EXP-RES-1001',
+        extractedRecordIds: ['expedia-payout-1'],
+        sourceDocumentIds: ['doc-expedia-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'previo-reservation-export',
+    description: 'Representative Previo reservation export for direct reservation expectations on the shared payout-line path.',
+    sourceDocument: sourceDocument({
+      id: 'doc-previo-reservations-2026-03' as SourceDocument['id'],
+      sourceSystem: 'previo',
+      documentType: 'reservation_export',
+      fileName: 'previo-reservations-2026-03.csv'
+    }),
+    rawInput: {
+      format: 'csv',
+      content: [
+        'stayDate,amountMinor,currency,reservationReference,reservationId,propertyId',
+        '2026-03-14,42000,CZK,PREVIO-20260314,PREVIO-8841,HOTEL-CZ-001'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'previo-reservation-1',
+        sourceDocumentId: 'doc-previo-reservations-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'PREVIO-20260314',
+        amountMinor: 42000,
+        currency: 'CZK',
+        occurredAt: '2026-03-14',
+        data: {
+          platform: 'previo',
+          bookedAt: '2026-03-14',
+          amountMinor: 42000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'PREVIO-20260314',
+          reservationId: 'PREVIO-8841',
+          propertyId: 'HOTEL-CZ-001'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:payout:previo-reservation-1' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'previo',
+        amountMinor: 42000,
+        currency: 'CZK',
+        bookedAt: '2026-03-14',
+        accountId: 'expected-payouts',
+        reference: 'PREVIO-20260314',
+        reservationId: 'PREVIO-8841',
+        extractedRecordIds: ['previo-reservation-1'],
+        sourceDocumentIds: ['doc-previo-reservations-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

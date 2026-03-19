@@ -7,6 +7,9 @@ describe('realInputFixtures', () => {
       'raiffeisenbank-statement',
       'fio-statement',
       'booking-payout-export',
+      'airbnb-payout-export',
+      'expedia-payout-export',
+      'previo-reservation-export',
       'comgate-export',
       'invoice-document',
       'receipt-document'
@@ -22,6 +25,9 @@ describe('realInputFixtures', () => {
   it('keeps representative extracted outputs aligned with downstream contracts', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const booking = getRealInputFixture('booking-payout-export')
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const previo = getRealInputFixture('previo-reservation-export')
     const invoice = getRealInputFixture('invoice-document')
   const receipt = getRealInputFixture('receipt-document')
 
@@ -37,6 +43,27 @@ describe('realInputFixtures', () => {
       data: {
         platform: 'booking',
         reservationId: 'RES-BOOK-8841'
+      }
+    })
+    expect(airbnb.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'payout-line',
+      data: {
+        platform: 'airbnb',
+        reservationId: 'HMA4TR9'
+      }
+    })
+    expect(expedia.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'payout-line',
+      data: {
+        platform: 'expedia',
+        reservationId: 'EXP-RES-1001'
+      }
+    })
+    expect(previo.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'payout-line',
+      data: {
+        platform: 'previo',
+        reservationId: 'PREVIO-8841'
       }
     })
     expect(invoice.expectedExtractedRecords[0]).toMatchObject({
@@ -62,12 +89,30 @@ describe('realInputFixtures', () => {
   it('includes normalized expectations where current deterministic normalizers already apply', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const booking = getRealInputFixture('booking-payout-export')
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const previo = getRealInputFixture('previo-reservation-export')
 
     expect(raiffeisen.expectedNormalizedTransactions).toBeDefined()
     expect(booking.expectedNormalizedTransactions).toBeDefined()
+    expect(airbnb.expectedNormalizedTransactions).toBeDefined()
+    expect(expedia.expectedNormalizedTransactions).toBeDefined()
+    expect(previo.expectedNormalizedTransactions).toBeDefined()
     expect(booking.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'booking',
       reference: 'PAYOUT-BOOK-20260310'
+    })
+    expect(airbnb.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'airbnb',
+      reference: 'AIRBNB-20260312'
+    })
+    expect(expedia.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'expedia',
+      reference: 'EXP-TERM-1001'
+    })
+    expect(previo.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'previo',
+      reference: 'PREVIO-20260314'
     })
 
     const invoice = getRealInputFixture('invoice-document')

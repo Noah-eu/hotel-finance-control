@@ -8,7 +8,8 @@ const PLATFORM_TO_SOURCE: Record<string, SourceSystem> = {
   booking: 'booking',
   airbnb: 'airbnb',
   expedia: 'expedia',
-  comgate: 'comgate'
+  comgate: 'comgate',
+  previo: 'previo'
 }
 
 function makeTransactionId(recordId: string): TransactionId {

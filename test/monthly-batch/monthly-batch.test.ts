@@ -93,6 +93,9 @@ describe('runMonthlyReconciliationBatch', () => {
 
   it('prepares uploaded files into shared imported monthly source files with traceable source documents', () => {
     const booking = getRealInputFixture('booking-payout-export')
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const previo = getRealInputFixture('previo-reservation-export')
     const invoice = getRealInputFixture('invoice-document')
 
     const files = prepareUploadedMonthlyFiles([
@@ -100,6 +103,21 @@ describe('runMonthlyReconciliationBatch', () => {
         name: booking.sourceDocument.fileName,
         content: booking.rawInput.content,
         uploadedAt: '2026-03-18T22:40:00.000Z'
+      },
+      {
+        name: airbnb.sourceDocument.fileName,
+        content: airbnb.rawInput.content,
+        uploadedAt: '2026-03-18T22:40:30.000Z'
+      },
+      {
+        name: expedia.sourceDocument.fileName,
+        content: expedia.rawInput.content,
+        uploadedAt: '2026-03-18T22:40:45.000Z'
+      },
+      {
+        name: previo.sourceDocument.fileName,
+        content: previo.rawInput.content,
+        uploadedAt: '2026-03-18T22:40:50.000Z'
       },
       {
         name: invoice.sourceDocument.fileName,
@@ -121,7 +139,37 @@ describe('runMonthlyReconciliationBatch', () => {
       },
       {
         sourceDocument: {
-          id: 'uploaded:invoice:2:invoice-2026-332-txt',
+          id: 'uploaded:airbnb:2:airbnb-payout-2026-03-csv',
+          sourceSystem: 'airbnb',
+          documentType: 'ota_report',
+          fileName: 'airbnb-payout-2026-03.csv',
+          uploadedAt: '2026-03-18T22:40:30.000Z'
+        },
+        content: airbnb.rawInput.content
+      },
+      {
+        sourceDocument: {
+          id: 'uploaded:expedia:3:expedia-payout-2026-03-csv',
+          sourceSystem: 'expedia',
+          documentType: 'ota_report',
+          fileName: 'expedia-payout-2026-03.csv',
+          uploadedAt: '2026-03-18T22:40:45.000Z'
+        },
+        content: expedia.rawInput.content
+      },
+      {
+        sourceDocument: {
+          id: 'uploaded:previo:4:previo-reservations-2026-03-csv',
+          sourceSystem: 'previo',
+          documentType: 'reservation_export',
+          fileName: 'previo-reservations-2026-03.csv',
+          uploadedAt: '2026-03-18T22:40:50.000Z'
+        },
+        content: previo.rawInput.content
+      },
+      {
+        sourceDocument: {
+          id: 'uploaded:invoice:5:invoice-2026-332-txt',
           sourceSystem: 'invoice',
           documentType: 'invoice',
           fileName: 'invoice-2026-332.txt',
@@ -129,6 +177,52 @@ describe('runMonthlyReconciliationBatch', () => {
         },
         content: invoice.rawInput.content
       }
+    ])
+  })
+
+  it('runs added Airbnb, Expedia, and Previo files through the shared monthly-batch path with traceability intact', () => {
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const previo = getRealInputFixture('previo-reservation-export')
+
+    const result = runMonthlyReconciliationBatch({
+      files: [airbnb, expedia, previo].map((fixture) => ({
+        sourceDocument: fixture.sourceDocument,
+        content: fixture.rawInput.content
+      })),
+      reconciliationContext: {
+        runId: 'monthly-run-step-34',
+        requestedAt: '2026-03-19T10:45:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-19T10:46:00.000Z'
+    })
+
+    expect(result.files).toEqual([
+      {
+        sourceDocumentId: airbnb.sourceDocument.id,
+        extractedRecordIds: ['airbnb-payout-1'],
+        extractedCount: 1
+      },
+      {
+        sourceDocumentId: expedia.sourceDocument.id,
+        extractedRecordIds: ['expedia-payout-1'],
+        extractedCount: 1
+      },
+      {
+        sourceDocumentId: previo.sourceDocument.id,
+        extractedRecordIds: ['previo-reservation-1'],
+        extractedCount: 1
+      }
+    ])
+    expect(result.extractedRecords.map((record) => record.sourceDocumentId)).toEqual([
+      airbnb.sourceDocument.id,
+      expedia.sourceDocument.id,
+      previo.sourceDocument.id
+    ])
+    expect(result.reconciliation.normalizedTransactions.map((transaction) => transaction.source)).toEqual([
+      'airbnb',
+      'expedia',
+      'previo'
     ])
   })
 

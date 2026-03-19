@@ -1,9 +1,12 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
+  parseAirbnbPayoutExport,
   parseBookingPayoutExport,
   parseComgateExport,
+  parseExpediaPayoutExport,
   parseFioStatement,
   parseInvoiceDocument,
+  parsePrevioReservationExport,
   parseReceiptDocument,
   parseRaiffeisenbankStatement
 } from '../extraction'
@@ -88,6 +91,18 @@ function selectParser(sourceDocument: SourceDocument): Parser {
     return parseBookingPayoutExport
   }
 
+  if (sourceDocument.sourceSystem === 'airbnb') {
+    return parseAirbnbPayoutExport
+  }
+
+  if (sourceDocument.sourceSystem === 'expedia') {
+    return parseExpediaPayoutExport
+  }
+
+  if (sourceDocument.sourceSystem === 'previo') {
+    return parsePrevioReservationExport
+  }
+
   if (sourceDocument.sourceSystem === 'comgate') {
     return parseComgateExport
   }
@@ -133,6 +148,18 @@ function inferSourceSystem(fileName: string): SourceDocument['sourceSystem'] {
     return 'booking'
   }
 
+  if (fileName.includes('airbnb')) {
+    return 'airbnb'
+  }
+
+  if (fileName.includes('expedia')) {
+    return 'expedia'
+  }
+
+  if (fileName.includes('previo')) {
+    return 'previo'
+  }
+
   if (fileName.includes('comgate')) {
     return 'comgate'
   }
@@ -153,7 +180,11 @@ function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): Source
     case 'bank':
       return 'bank_statement'
     case 'booking':
+    case 'airbnb':
+    case 'expedia':
       return 'ota_report'
+    case 'previo':
+      return 'reservation_export'
     case 'comgate':
       return 'payment_gateway_report'
     case 'invoice':
