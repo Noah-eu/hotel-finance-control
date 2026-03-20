@@ -277,6 +277,18 @@ function renderOperatorWebDemoHtml(input: {
       .runtime-output {
         margin-top: 16px;
       }
+      details.debug-details {
+        margin-top: 8px;
+      }
+      details.debug-details summary {
+        cursor: pointer;
+        color: #52627a;
+        font-size: 13px;
+      }
+      .debug-meta {
+        margin-top: 8px;
+        padding-left: 4px;
+      }
     </style>
   </head>
   <body>
@@ -408,7 +420,21 @@ function renderOperatorWebDemoHtml(input: {
 
         const extractedRecords = state.extractedRecords.length === 0
           ? '<li>Žádné extrahované záznamy.</li>'
-          : state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span><br />' + (file.extractedRecordIds.length > 0 ? '<span class="hint">Technické ID záznamů:</span><br /><code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Bez ID extrahovaných záznamů.</span>') + (file.parserDebugLabel ? '<br /><span class="hint">Technický parser/export: ' + escapeHtml(file.parserDebugLabel) + '</span>' : '') + '</li>').join('');
+          : state.extractedRecords.map((file) => {
+            const hasDebugMeta = file.extractedRecordIds.length > 0 || Boolean(file.parserDebugLabel);
+            const debugBlock = !hasDebugMeta
+              ? ''
+              : '<details class="debug-details"><summary>Technické ladicí údaje (debug)</summary><div class="debug-meta">'
+                + (file.parserDebugLabel
+                  ? '<div><span class="hint">Technický tvar exportu (debug): </span><code>' + escapeHtml(file.parserDebugLabel) + '</code></div>'
+                  : '')
+                + (file.extractedRecordIds.length > 0
+                  ? '<div><span class="hint">Technická ID extrahovaných záznamů (debug): </span><code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code></div>'
+                  : '<div><span class="hint">Technická ID extrahovaných záznamů (debug): nejsou k dispozici.</span></div>')
+                + '</div></details>';
+
+            return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span>' + debugBlock + '</li>';
+          }).join('');
 
         return [
           '<p class="hint">Tato část po spuštění zobrazuje skutečný runtime výsledek místo původního snapshotu.</p>',

@@ -346,8 +346,10 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('Účet:')
-    expect(result.html).toContain('Technický parser/export:')
-    expect(result.html).toContain('Technické ID záznamů:')
+    expect(result.html).toContain('Technické ladicí údaje (debug)')
+    expect(result.html).toContain('Technický tvar exportu (debug):')
+    expect(result.html).toContain('Technická ID extrahovaných záznamů (debug):')
+    expect(result.html).not.toContain('Technický parser/export:')
   })
 })
 
