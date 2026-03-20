@@ -24,6 +24,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Sekvence měsíčního běhu')
     expect(result.html).toContain('Příprava, kontrola a report v jednom pohledu')
     expect(result.html).toContain('Exportní handoff')
+    expect(result.html).toContain('Booking.com payout')
     expect(result.html).toContain('1 250,00 Kč')
     expect(result.html).toContain('monthly-review-export.xlsx')
     expect(result.html).not.toContain('<iframe')
@@ -346,6 +347,8 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('Účet:')
+    expect(result.html).toContain('Bankovní pohyb')
+    expect(result.html).toContain('Booking.com payout')
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
     expect(result.html).not.toContain('Technický tvar exportu (debug):')
     expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
@@ -353,6 +356,43 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('fio-row-1')
     expect(result.html).not.toContain('raif-row-1,')
     expect(result.html).not.toContain('raif-row-1</code></div></details>')
+  })
+
+  it('shows a human-readable transaction preview for the current bank-only runtime state in default mode', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          text: async () => [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+          text: async () => [
+            '"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+            '19.03.2026 06:23;1540,00;CZK;1234567890;2010;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+          ].join('\n')
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T09:10:00.000Z'
+    })
+
+    expect(state.extractedRecords.length).toBeGreaterThan(0)
+
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('Bankovní pohyb')
+    expect(result.html).toContain('Booking.com payout')
+    expect(result.html).toContain('<td>bank</td>')
+    expect(result.html).toContain('matched')
+    expect(result.html).toContain("'<td><strong>' + escapeHtml(transaction.labelCs || 'Transakce') + '</strong></td>'")
+    expect(result.html).not.toContain('Technické ladicí údaje (debug)')
+    expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
   })
 
   it('keeps truthful account attribution in the extracted runtime state for the two current bank files', async () => {

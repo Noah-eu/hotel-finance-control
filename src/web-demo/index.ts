@@ -167,6 +167,7 @@ function renderOperatorWebDemoHtml(input: {
     reviewSummary: input.browserRun.run.review.summary,
     reportTransactions: input.browserRun.run.report.transactions.slice(0, 5).map((transaction) => ({
       transactionId: transaction.transactionId,
+      labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source),
       source: transaction.source,
       amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
       status: transaction.status
@@ -463,7 +464,7 @@ ${input.debugMode ? `
 
         return state.reportTransactions.map((transaction) => [
           '<tr>',
-          '<td><code>' + escapeHtml(transaction.transactionId) + '</code></td>',
+          '<td><strong>' + escapeHtml(transaction.labelCs || 'Transakce') + '</strong></td>',
           '<td>' + escapeHtml(transaction.source) + '</td>',
           '<td><span class="amount">' + escapeHtml(transaction.amount) + '</span></td>',
           '<td>' + escapeHtml(transaction.status) + '</td>',
@@ -581,7 +582,10 @@ ${input.debugMode ? `
             extractedRecords: state.extractedRecords,
             reviewSummary: state.reviewSummary,
             reviewSections: state.reviewSections,
-            reportTransactions: (state.reportTransactions || []),
+            reportTransactions: (state.reportTransactions || []).map((transaction) => ({
+              ...transaction,
+              labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)
+            })),
             exportFiles: state.exportFiles
           }, 'completed');
           runtimeOutput.innerHTML = renderMainRuntimeState(state);
@@ -639,6 +643,32 @@ function buildDebugExtractedRecordsMarkupFunctionSource(): string {
           return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span>' + debugBlock + '</li>';
         }).join('');
       }`
+}
+
+function buildVisibleTransactionLabel(transactionId: string, source: string): string {
+  const normalizedSource = source.toLowerCase()
+
+  if (normalizedSource === 'booking') {
+    return 'Booking.com payout'
+  }
+
+  if (normalizedSource === 'bank') {
+    return 'Bankovní pohyb'
+  }
+
+  if (normalizedSource === 'invoice') {
+    return 'Faktura'
+  }
+
+  if (normalizedSource === 'receipt') {
+    return 'Účtenka'
+  }
+
+  if (transactionId.startsWith('txn:payout:')) {
+    return 'Výplatní transakce'
+  }
+
+  return 'Transakce měsíčního běhu'
 }
 
 function fileNameFromSourceDocumentId(
