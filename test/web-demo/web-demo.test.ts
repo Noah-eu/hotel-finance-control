@@ -435,6 +435,34 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('<details class="debug-details">')
     expect(result.html).toContain('raif-row-1')
   })
+
+  it('keeps the combined bank and Booking browser demo coherent and business-facing in default mode', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-20T11:40:00.000Z'
+    })
+
+    expect(result.browserRun.run.importedFiles).toHaveLength(3)
+    expect(result.browserRun.run.importedFiles.map((file) => file.sourceDocument.sourceSystem)).toEqual([
+      'booking',
+      'bank',
+      'invoice'
+    ])
+    expect(result.browserRun.run.batch.files).toHaveLength(3)
+    expect(result.browserRun.run.batch.files.map((file) => file.extractedCount)).toEqual([1, 6, 1])
+    expect(result.html).toContain('booking / ota_report')
+    expect(result.html).toContain('bank / bank_statement')
+    expect(result.html).toContain('Účet:')
+    expect(result.html).toContain('Booking.com payout')
+    expect(result.html).toContain('Bankovní pohyb')
+    expect(result.html).toContain('Spárované položky:')
+    expect(result.html).toContain('Položky ke kontrole')
+    expect(result.html).not.toContain('Technické ladicí údaje (debug)')
+    expect(result.html).not.toContain('Technický tvar exportu (debug):')
+    expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
+    expect(result.html).not.toContain('<details class="debug-details">')
+    expect(result.html).not.toContain('raif-row-1,')
+    expect(result.html).not.toContain('fio-row-1,')
+  })
 })
 
 describe('buildFixtureWebDemo', () => {

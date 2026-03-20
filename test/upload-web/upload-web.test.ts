@@ -63,7 +63,7 @@ describe('buildUploadWebFlow', () => {
       sourceSystem: 'booking',
       documentType: 'ota_report'
     })
-  expect(result.monthLabel).toBe('neuvedeno')
+    expect(result.monthLabel).toBe('neuvedeno')
     expect(result.extractedRecords.some((file) => file.extractedCount > 0)).toBe(true)
     expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
     expect(result.reviewSections.matched.length).toBeGreaterThan(0)
@@ -80,7 +80,7 @@ describe('buildUploadWebFlow', () => {
       generatedAt: '2026-03-19T10:15:00.000Z'
     })
 
-  expect(result.html).toContain('Pracovní postup operátora')
+    expect(result.html).toContain('Pracovní postup operátora')
     expect(result.html).toContain('skutečně vybrané soubory')
     expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
     expect(result.html).toContain('uploadedAt')
@@ -132,7 +132,7 @@ describe('buildUploadWebFlow', () => {
 
     const changed = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
-  createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content.replace('PAYOUT-BOOK-20260310', 'PAYOUT-BOOK-20260399')),
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content.replace('PAYOUT-BOOK-20260310', 'PAYOUT-BOOK-20260399')),
         createRuntimeFile(raiffeisen.sourceDocument.fileName, raiffeisen.rawInput.content),
         createRuntimeFile(invoice.sourceDocument.fileName, invoice.rawInput.content)
       ],
@@ -159,6 +159,54 @@ describe('buildUploadWebFlow', () => {
     expect(result.preparedFiles[0].fileName).toBe('booking-custom-name.csv')
     expect(result.preparedFiles[0].sourceSystem).toBe('booking')
     expect(result.extractedRecords[0].extractedCount).toBeGreaterThan(0)
+  })
+
+  it('completes the exact combined browser-only monthly run for the current two bank files and Booking file in one session', async () => {
+    const booking = getRealInputFixture('booking-payout-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        ),
+        createRuntimeFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+          [
+            '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+          ].join('\n')
+        ),
+        createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T11:35:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(3)
+    expect(result.preparedFiles.map((file: (typeof result.preparedFiles)[number]) => file.sourceSystem)).toEqual(['bank', 'bank', 'booking'])
+    expect(result.preparedFiles.map((file: (typeof result.preparedFiles)[number]) => file.fileName)).toEqual([
+      'Pohyby_5599955956_202603191023.csv',
+      'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+      'AaOS6MOZUh8BFtEr.booking.csv'
+    ])
+    expect(result.extractedRecords.map((file: (typeof result.extractedRecords)[number]) => file.accountLabelCs)).toEqual([
+      'RB účet 5599955956/5500',
+      'Fio účet 8888997777/2010',
+      'Bankovní účet expected-payouts'
+    ])
+    expect(result.extractedRecords.map((file: (typeof result.extractedRecords)[number]) => file.parserDebugLabel)).toEqual(['fio', 'fio', undefined])
+    expect(result.reviewSummary.normalizedTransactionCount).toBeGreaterThan(0)
+    expect(result.reviewSections.matched.length + result.reviewSections.unmatched.length + result.reviewSections.suspicious.length + result.reviewSections.missingDocuments.length).toBeGreaterThan(0)
+    expect(result.reportSummary.normalizedTransactionCount).toBeGreaterThan(0)
+    expect(result.exportFiles.map((file: (typeof result.exportFiles)[number]) => file.fileName)).toEqual([
+      'reconciliation-transactions.csv',
+      'review-items.csv',
+      'monthly-review-export.xlsx'
+    ])
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {
@@ -372,7 +420,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('Trasování nahraných souborů')
     expect(result.html).toContain('Částka')
     expect(result.html).toContain('1 250,00 Kč')
-  expect(result.html).toContain('Chybějící doklady')
+    expect(result.html).toContain('Chybějící doklady')
     expect(result.outputPath).toBe(outputPath)
     expect(existsSync(outputPath)).toBe(true)
     expect(readFileSync(outputPath, 'utf8')).toContain('jeden skutečný deterministický běh')
