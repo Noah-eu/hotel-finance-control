@@ -196,7 +196,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.extractedRecords.map((file: (typeof result.extractedRecords)[number]) => file.accountLabelCs)).toEqual([
       'RB účet 5599955956/5500',
       'Fio účet 8888997777/2010',
-      'Bankovní účet expected-payouts'
+      'Booking payout report'
     ])
     expect(result.extractedRecords.map((file: (typeof result.extractedRecords)[number]) => file.parserDebugLabel)).toEqual(['fio', 'fio', undefined])
     expect(result.reviewSummary.normalizedTransactionCount).toBeGreaterThan(0)
@@ -227,7 +227,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.extractedRecords[0]).toMatchObject({
       fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
       extractedCount: 1,
-      accountLabelCs: 'Bankovní účet expected-payouts'
+      accountLabelCs: 'Booking payout report'
     })
   })
 

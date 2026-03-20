@@ -158,7 +158,9 @@ function renderOperatorWebDemoHtml(input: {
       extractedRecordIds: fileResult.extractedRecordIds,
       accountLabelCs: buildVisibleAccountLabel(
         input.browserRun.run.batch.extractedRecords.find((record) => record.sourceDocumentId === fileResult.sourceDocumentId)?.data.accountId,
-        fileNameFromSourceDocumentId(input.browserRun, fileResult.sourceDocumentId)
+        fileNameFromSourceDocumentId(input.browserRun, fileResult.sourceDocumentId),
+        sourceSystemFromSourceDocumentId({ browserRun: input.browserRun }, fileResult.sourceDocumentId),
+        documentTypeFromSourceDocumentId({ browserRun: input.browserRun }, fileResult.sourceDocumentId)
       ),
       parserDebugLabel: toOptionalString(
         input.browserRun.run.batch.extractedRecords.find((record) => record.sourceDocumentId === fileResult.sourceDocumentId)?.data.bankParserVariant
@@ -682,9 +684,18 @@ function toOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-function buildVisibleAccountLabel(accountIdValue: unknown, fileName: string): string {
+function buildVisibleAccountLabel(
+  accountIdValue: unknown,
+  fileName: string,
+  sourceSystem: string | undefined,
+  documentType: string | undefined
+): string {
   const accountId = toOptionalString(accountIdValue)
   const normalizedFileName = fileName.toLowerCase()
+
+  if (sourceSystem && sourceSystem !== 'bank') {
+    return buildVisibleNonBankSourceLabel(sourceSystem, documentType)
+  }
 
   if (accountId) {
     if (accountId.startsWith('5599955956')) {
@@ -707,6 +718,54 @@ function buildVisibleAccountLabel(accountIdValue: unknown, fileName: string): st
   }
 
   return 'Bankovní účet neuveden'
+}
+
+function buildVisibleNonBankSourceLabel(sourceSystem: string, documentType?: string): string {
+  if (sourceSystem === 'booking') {
+    return 'Booking payout report'
+  }
+
+  if (sourceSystem === 'airbnb') {
+    return 'Airbnb payout report'
+  }
+
+  if (sourceSystem === 'comgate') {
+    return 'Comgate platební report'
+  }
+
+  if (sourceSystem === 'expedia') {
+    return 'Expedia payout report'
+  }
+
+  if (sourceSystem === 'previo') {
+    return 'Previo rezervační export'
+  }
+
+  if (documentType === 'invoice') {
+    return 'Dodavatelská faktura'
+  }
+
+  if (documentType === 'receipt') {
+    return 'Výdajový doklad'
+  }
+
+  if (documentType === 'ota_report') {
+    return 'OTA payout report'
+  }
+
+  return 'Nebankovní zdroj zpracování'
+}
+
+function sourceSystemFromSourceDocumentId(input: {
+  browserRun: BrowserUploadedMonthlyRunResult
+}, sourceDocumentId: string): string | undefined {
+  return input.browserRun.run.importedFiles.find((file) => file.sourceDocument.id === sourceDocumentId)?.sourceDocument.sourceSystem
+}
+
+function documentTypeFromSourceDocumentId(input: {
+  browserRun: BrowserUploadedMonthlyRunResult
+}, sourceDocumentId: string): string | undefined {
+  return input.browserRun.run.importedFiles.find((file) => file.sourceDocument.id === sourceDocumentId)?.sourceDocument.documentType
 }
 
 export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {

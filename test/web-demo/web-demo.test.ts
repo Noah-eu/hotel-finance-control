@@ -347,8 +347,10 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('Účet:')
+    expect(result.html).toContain('Booking payout report')
     expect(result.html).toContain('Bankovní pohyb')
     expect(result.html).toContain('Booking.com payout')
+    expect(result.html).not.toContain('Bankovní účet expected-payouts')
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
     expect(result.html).not.toContain('Technický tvar exportu (debug):')
     expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
@@ -421,6 +423,24 @@ describe('buildWebDemo', () => {
       'RB účet 5599955956/5500',
       'Fio účet 8888997777'
     ])
+  })
+
+  it('shows Booking extracted records as a non-bank payout source instead of a bank account label', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'AaOS6MOZUh8BFtEr.booking.csv',
+          text: async () => [
+            'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+            'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;1250,00;12 Mar 2026;PAYOUT-BOOK-20260310'
+          ].join('\n')
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T18:10:00.000Z'
+    })
+
+    expect(state.extractedRecords[0]?.accountLabelCs).toBe('Booking payout report')
   })
 
   it('renders parser/export debug metadata only when debug mode is explicitly enabled', async () => {

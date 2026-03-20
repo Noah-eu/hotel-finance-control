@@ -48,7 +48,12 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       fileName: file.sourceDocument.fileName,
       extractedCount: findBatchFileExtractedCount(batch, file.sourceDocument.id),
       extractedRecordIds: findBatchFileExtractedIds(batch, file.sourceDocument.id),
-      accountLabelCs: buildAccountLabel(file.sourceDocument.fileName, findBatchFileExtractedAccountId(batch, file.sourceDocument.id)),
+      accountLabelCs: buildAccountLabel(
+        file.sourceDocument.fileName,
+        findBatchFileExtractedAccountId(batch, file.sourceDocument.id),
+        file.sourceDocument.sourceSystem,
+        file.sourceDocument.documentType
+      ),
       parserDebugLabel: findBatchFileParserVariant(batch, file.sourceDocument.id)
     })),
     supportedExpenseLinks: batch.report.supportedExpenseLinks.map((link) => ({
@@ -101,8 +106,17 @@ function findBatchFileParserVariant(
   return batch.extractedRecords.find((record) => record.sourceDocumentId === sourceDocumentId)?.data.bankParserVariant as string | undefined
 }
 
-function buildAccountLabel(fileName: string, accountId?: string): string {
+function buildAccountLabel(
+  fileName: string,
+  accountId: string | undefined,
+  sourceSystem: string,
+  documentType: string
+): string {
   const normalizedFileName = fileName.toLowerCase()
+
+  if (sourceSystem !== 'bank') {
+    return buildNonBankSourceLabel(sourceSystem, documentType)
+  }
 
   if (accountId) {
     if (accountId.startsWith('5599955956')) {
@@ -125,6 +139,42 @@ function buildAccountLabel(fileName: string, accountId?: string): string {
   }
 
   return 'Bankovní účet neuveden'
+}
+
+function buildNonBankSourceLabel(sourceSystem: string, documentType: string): string {
+  if (sourceSystem === 'booking') {
+    return 'Booking payout report'
+  }
+
+  if (sourceSystem === 'airbnb') {
+    return 'Airbnb payout report'
+  }
+
+  if (sourceSystem === 'comgate') {
+    return 'Comgate platební report'
+  }
+
+  if (sourceSystem === 'expedia') {
+    return 'Expedia payout report'
+  }
+
+  if (sourceSystem === 'previo') {
+    return 'Previo rezervační export'
+  }
+
+  if (documentType === 'invoice') {
+    return 'Dodavatelská faktura'
+  }
+
+  if (documentType === 'receipt') {
+    return 'Výdajový doklad'
+  }
+
+  if (documentType === 'ota_report') {
+    return 'OTA payout report'
+  }
+
+  return 'Nebankovní zdroj zpracování'
 }
 
 function deriveMonthLabel(runId: string): string {
