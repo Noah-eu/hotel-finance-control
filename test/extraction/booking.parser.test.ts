@@ -75,7 +75,7 @@ describe('parseBookingPayoutExport', () => {
     })
   })
 
-  it('accepts the current anonymized browser-upload Booking export shape', () => {
+  it('accepts the real browser-upload Booking export shape from diagnostics', () => {
     const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     const records = parseBookingPayoutExport({
@@ -113,38 +113,55 @@ describe('parseBookingPayoutExport', () => {
     expect(records.map((record) => record.data.reservationId)).toEqual(['RES-BOOK-8841', 'RES-BOOK-8842'])
   })
 
-  it('still fails fast for unsupported Booking exports missing reservation/property linkage', () => {
+  it('still fails fast for unsupported Booking exports missing reservation linkage', () => {
     expect(() =>
       parseBookingPayoutExport({
         sourceDocument: getRealInputFixture('booking-payout-export-browser-upload-shape').sourceDocument,
         content: [
-          'datumVyplaty;netAmount;měna;bookingReference',
-          '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310'
+          'Type;Currency;Payment status;Amount;Payout date;Payout ID',
+          'Reservation;CZK;Paid;1250,00;10.03.2026;PAYOUT-BOOK-20260310'
         ].join('\n'),
         extractedAt: '2026-03-20T12:10:00.000Z'
       })
     ).toThrow('Booking payout export is missing required columns')
   })
 
-  it('exposes normalized detected headers for the current browser-upload Booking shape diagnostics', () => {
+  it('exposes normalized detected headers for the real browser-upload Booking shape diagnostics', () => {
     const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     expect(inspectBookingPayoutHeaders(fixture.rawInput.content)).toEqual([
-      'payoutDate',
-      'amountMinor',
-      'currency',
-      'payoutReference',
+      'Type',
       'reservationId',
-      'propertyId'
+      'Check-in',
+      'Checkout',
+      'Guest name',
+      'Reservation status',
+      'currency',
+      'Payment status',
+      'amountMinor',
+      'payoutDate',
+      'payoutReference'
     ])
   })
 
-  it('exposes the raw detected header row for the current browser-upload Booking shape diagnostics', () => {
+  it('exposes the raw detected header row for the real browser-upload Booking shape diagnostics', () => {
     const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     expect(inspectBookingPayoutHeaderDiagnostics(fixture.rawInput.content)).toEqual({
-      rawHeaderRow: 'datumVyplaty;netAmount;měna;bookingReference;bookingNumber;ubytovani',
-      headers: ['payoutDate', 'amountMinor', 'currency', 'payoutReference', 'reservationId', 'propertyId']
+      rawHeaderRow: 'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+      headers: [
+        'Type',
+        'reservationId',
+        'Check-in',
+        'Checkout',
+        'Guest name',
+        'Reservation status',
+        'currency',
+        'Payment status',
+        'amountMinor',
+        'payoutDate',
+        'payoutReference'
+      ]
     })
   })
 

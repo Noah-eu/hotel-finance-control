@@ -18,16 +18,34 @@ const REQUIRED_HEADERS = [
   'amountMinor',
   'currency',
   'payoutReference',
-  'reservationId',
-  'propertyId'
+  'reservationId'
 ]
 
 const HEADER_ALIASES = {
-  payoutDate: ['payoutDate', 'payout_date', 'date', 'datumVyplaty', 'datum'],
+  payoutDate: ['payoutDate', 'payout_date', 'date', 'datumVyplaty', 'datum', 'payoutDate', 'payout date'],
   amountMinor: ['amountMinor', 'amount_minor', 'amount', 'netAmount', 'castka', 'částka'],
   currency: ['currency', 'mena', 'měna'],
-  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'paymentReference', 'bookingReference', 'rezervace'],
-  reservationId: ['reservationId', 'reservation_id', 'reservation', 'bookingId', 'bookingNumber', 'cisloRezervace', 'čísloRezervace'],
+  payoutReference: [
+    'payoutReference',
+    'payout_reference',
+    'reference',
+    'paymentReference',
+    'bookingReference',
+    'rezervace',
+    'payoutId',
+    'payout id'
+  ],
+  reservationId: [
+    'reservationId',
+    'reservation_id',
+    'reservation',
+    'bookingId',
+    'bookingNumber',
+    'cisloRezervace',
+    'čísloRezervace',
+    'referenceNumber',
+    'reference number'
+  ],
   propertyId: ['propertyId', 'property_id', 'property', 'hotelId', 'propertyCode', 'ubytovani', 'listingName']
 } satisfies Record<string, string[]>
 
@@ -54,7 +72,7 @@ export class BookingPayoutParser {
       const currency = row.currency.trim().toUpperCase()
       const payoutReference = row.payoutReference.trim()
       const reservationId = row.reservationId.trim()
-      const propertyId = row.propertyId.trim()
+      const propertyId = typeof row.propertyId === 'string' ? row.propertyId.trim() : undefined
       const bookingPayoutBatchKey = buildBookingPayoutBatchKey(payoutReference, payoutDate)
 
       return {
@@ -75,7 +93,7 @@ export class BookingPayoutParser {
           reference: payoutReference,
           bookingPayoutBatchKey,
           reservationId,
-          propertyId
+          ...(propertyId ? { propertyId } : {})
         }
       }
     })

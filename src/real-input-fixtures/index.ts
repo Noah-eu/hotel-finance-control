@@ -270,7 +270,7 @@ export const realInputFixtures: RealInputFixture[] = [
   },
   {
     key: 'booking-payout-export-browser-upload-shape',
-    description: 'Minimal anonymized Booking payout export matching the currently failing browser-upload header shape.',
+    description: 'Minimal anonymized Booking payout export matching the real browser-upload header shape from diagnostics.',
     sourceDocument: sourceDocument({
       id: 'doc-booking-browser-upload-shape-2026-03' as SourceDocument['id'],
       sourceSystem: 'booking',
@@ -280,8 +280,8 @@ export const realInputFixtures: RealInputFixture[] = [
     rawInput: {
       format: 'csv',
       content: [
-        'datumVyplaty;netAmount;měna;bookingReference;bookingNumber;ubytovani',
-        '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310;RES-BOOK-8841;HOTEL-CZ-001'
+        'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+        'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;1250,00;10.03.2026;PAYOUT-BOOK-20260310'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -301,8 +301,7 @@ export const realInputFixtures: RealInputFixture[] = [
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
           bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-          reservationId: 'RES-BOOK-8841',
-          propertyId: 'HOTEL-CZ-001'
+          reservationId: 'RES-BOOK-8841'
         }
       })
     ],
@@ -325,7 +324,7 @@ export const realInputFixtures: RealInputFixture[] = [
   },
   {
     key: 'booking-payout-export-browser-upload-batch-shape',
-    description: 'Minimal anonymized Booking browser-upload shape with multiple reservation-linked rows sharing one payout batch.',
+    description: 'Minimal anonymized real Booking browser-upload shape with multiple reservation-linked rows sharing one payout batch.',
     sourceDocument: sourceDocument({
       id: 'doc-booking-browser-upload-batch-shape-2026-03' as SourceDocument['id'],
       sourceSystem: 'booking',
@@ -335,9 +334,9 @@ export const realInputFixtures: RealInputFixture[] = [
     rawInput: {
       format: 'csv',
       content: [
-        'datumVyplaty;netAmount;měna;bookingReference;bookingNumber;ubytovani',
-        '10.03.2026;800,00;CZK;PAYOUT-BOOK-20260310;RES-BOOK-8841;HOTEL-CZ-001',
-        '10.03.2026;450,00;CZK;PAYOUT-BOOK-20260310;RES-BOOK-8842;HOTEL-CZ-001'
+        'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+        'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;800,00;10.03.2026;PAYOUT-BOOK-20260310',
+        'Reservation;RES-BOOK-8842;2026-03-09;2026-03-10;Eva Svobodova;OK;CZK;Paid;450,00;10.03.2026;PAYOUT-BOOK-20260310'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -357,8 +356,7 @@ export const realInputFixtures: RealInputFixture[] = [
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
           bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-          reservationId: 'RES-BOOK-8841',
-          propertyId: 'HOTEL-CZ-001'
+          reservationId: 'RES-BOOK-8841'
         }
       }),
       extractedRecord({
@@ -377,8 +375,7 @@ export const realInputFixtures: RealInputFixture[] = [
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
           bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-          reservationId: 'RES-BOOK-8842',
-          propertyId: 'HOTEL-CZ-001'
+          reservationId: 'RES-BOOK-8842'
         }
       })
     ],

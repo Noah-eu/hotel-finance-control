@@ -209,7 +209,7 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
-  it('recognizes the current anonymized Booking browser-upload shape as Booking in the shared browser path', async () => {
+  it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
@@ -247,7 +247,7 @@ describe('buildUploadWebFlow', () => {
         generatedAt: '2026-03-20T16:25:00.000Z'
       })
     ).rejects.toThrow(
-      'Booking payout export is missing required columns: payoutReference, reservationId, propertyId. Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka'
+      'Booking payout export is missing required columns: payoutReference, reservationId. Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka'
     )
   })
 
