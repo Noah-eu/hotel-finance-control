@@ -137,24 +137,6 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
       || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'název protiúčtu', 'protiúčet', 'typ'])
       || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ']))
     && !hasAnyHeaderFields(headerFields, ['číslo protiúčtu', 'název protiúčtu', 'cislo protiuctu', 'nazev protiuctu'])
-  const isConfirmedFioFileName = normalizedFileName.startsWith('pohyby_na_uctu-')
-  const isConfirmedRaiffeisenbankFileName = /^pohyby_\d{6,10}_\d{8,}$/.test(normalizedFileName.replace(/\.csv$/, ''))
-
-  if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
-    return 'raiffeisenbank'
-  }
-
-  if (normalizedFileName.includes('fio')) {
-    return 'fio'
-  }
-
-  if (isConfirmedFioFileName) {
-    return 'fio'
-  }
-
-  if (isConfirmedRaiffeisenbankFileName) {
-    return 'raiffeisenbank'
-  }
 
   if (isCanonicalBankHeader) {
     return 'raiffeisenbank'
@@ -166,6 +148,14 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
 
   if (isRaiffeisenbankSpecificHeader) {
     return 'raiffeisenbank'
+  }
+
+  if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
+    return 'raiffeisenbank'
+  }
+
+  if (normalizedFileName.includes('fio')) {
+    return 'fio'
   }
 
   return 'unknown'
