@@ -2,6 +2,7 @@ import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
   findMissingHeaders,
   parseAmountMinor,
+  parseDelimitedContent,
   parseDelimitedRows,
   parseIsoDate
 } from './csv-utils'
@@ -32,7 +33,8 @@ const HEADER_ALIASES = {
 
 export class BookingPayoutParser {
   parse(input: ParseBookingPayoutExportInput): ExtractedRecord[] {
-    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
+    const parsed = parseDelimitedContent(input.content, { canonicalHeaders: HEADER_ALIASES })
+    const rows = parsed.rows
 
     if (rows.length === 0) {
       return []
@@ -40,7 +42,9 @@ export class BookingPayoutParser {
 
     const missing = findMissingHeaders(rows, REQUIRED_HEADERS)
     if (missing.length > 0) {
-      throw new Error(`Booking payout export is missing required columns: ${missing.join(', ')}`)
+      throw new Error(
+        `Booking payout export is missing required columns: ${missing.join(', ')}. Raw detected header row: ${parsed.rawHeaderRow}. Detected normalized headers: ${parsed.headers.join(', ')}`
+      )
     }
 
     return rows.map((row, index) => {
@@ -75,6 +79,18 @@ export class BookingPayoutParser {
         }
       }
     })
+  }
+}
+
+export function inspectBookingPayoutHeaders(content: string): string[] {
+  return parseDelimitedContent(content, { canonicalHeaders: HEADER_ALIASES }).headers
+}
+
+export function inspectBookingPayoutHeaderDiagnostics(content: string): { rawHeaderRow: string, headers: string[] } {
+  const parsed = parseDelimitedContent(content, { canonicalHeaders: HEADER_ALIASES })
+  return {
+    rawHeaderRow: parsed.rawHeaderRow,
+    headers: parsed.headers
   }
 }
 

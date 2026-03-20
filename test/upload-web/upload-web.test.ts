@@ -231,6 +231,26 @@ describe('buildUploadWebFlow', () => {
     })
   })
 
+  it('surfaces raw and normalized Booking header diagnostics when browser upload fails on missing required columns', async () => {
+    await expect(
+      buildBrowserRuntimeStateFromSelectedFiles({
+        files: [
+          createRuntimeFile(
+            'AaOS6MOZUh8BFtEr.booking.csv',
+            [
+              'Datum vyplaty;Castka;Mena;Poznamka',
+              '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310'
+            ].join('\n')
+          )
+        ],
+        month: '2026-03',
+        generatedAt: '2026-03-20T16:25:00.000Z'
+      })
+    ).rejects.toThrow(
+      'Booking payout export is missing required columns: payoutReference, reservationId, propertyId. Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka'
+    )
+  })
+
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
 

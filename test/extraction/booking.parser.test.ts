@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseBookingPayoutExport } from '../../src/extraction'
+import { inspectBookingPayoutHeaderDiagnostics, inspectBookingPayoutHeaders } from '../../src/extraction/parsers/booking.parser'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 describe('parseBookingPayoutExport', () => {
@@ -123,5 +124,40 @@ describe('parseBookingPayoutExport', () => {
         extractedAt: '2026-03-20T12:10:00.000Z'
       })
     ).toThrow('Booking payout export is missing required columns')
+  })
+
+  it('exposes normalized detected headers for the current browser-upload Booking shape diagnostics', () => {
+    const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    expect(inspectBookingPayoutHeaders(fixture.rawInput.content)).toEqual([
+      'payoutDate',
+      'amountMinor',
+      'currency',
+      'payoutReference',
+      'reservationId',
+      'propertyId'
+    ])
+  })
+
+  it('exposes the raw detected header row for the current browser-upload Booking shape diagnostics', () => {
+    const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    expect(inspectBookingPayoutHeaderDiagnostics(fixture.rawInput.content)).toEqual({
+      rawHeaderRow: 'datumVyplaty;netAmount;měna;bookingReference;bookingNumber;ubytovani',
+      headers: ['payoutDate', 'amountMinor', 'currency', 'payoutReference', 'reservationId', 'propertyId']
+    })
+  })
+
+  it('includes normalized detected headers in fail-fast errors for unsupported Booking files', () => {
+    expect(() =>
+      parseBookingPayoutExport({
+        sourceDocument: getRealInputFixture('booking-payout-export-browser-upload-shape').sourceDocument,
+        content: [
+          'Datum vyplaty;Castka;Mena;Poznamka',
+          '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310'
+        ].join('\n'),
+        extractedAt: '2026-03-20T12:20:00.000Z'
+      })
+    ).toThrow('Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka')
   })
 })

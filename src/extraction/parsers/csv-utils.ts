@@ -4,6 +4,12 @@ interface ParseDelimitedRowsOptions {
   canonicalHeaders?: CanonicalHeaderMap
 }
 
+export interface ParsedDelimitedContent {
+  rawHeaderRow: string
+  headers: string[]
+  rows: Array<Record<string, string>>
+}
+
 export function getAccountIdFromFileName(fileName: string): string | undefined {
   const normalized = normalizeCell(fileName)
   const match = /(?:^|[^\d])(\d{6,10}\/\d{4}|\d{6,10})(?:[^\d]|$)/.exec(normalized)
@@ -22,25 +28,34 @@ export function parseDelimitedRows(
   content: string,
   options: ParseDelimitedRowsOptions = {}
 ): Array<Record<string, string>> {
+  return parseDelimitedContent(content, options).rows
+}
+
+export function parseDelimitedContent(
+  content: string,
+  options: ParseDelimitedRowsOptions = {}
+): ParsedDelimitedContent {
   const lines = content
     .replace(/^\uFEFF/, '')
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0)
 
   if (lines.length === 0) {
-    return []
+    return { rawHeaderRow: '', headers: [], rows: [] }
   }
 
   const delimiter = detectDelimiter(lines[0])
   const headers = mapHeaders(splitDelimitedLine(lines[0], delimiter), options.canonicalHeaders)
 
-  return lines.slice(1).map((line) => {
+  const rows = lines.slice(1).map((line) => {
     const values = splitDelimitedLine(line, delimiter)
     return headers.reduce<Record<string, string>>((accumulator, header, index) => {
       accumulator[header] = normalizeCell(values[index] ?? '')
       return accumulator
     }, {})
   })
+
+  return { rawHeaderRow: lines[0], headers, rows }
 }
 
 export function findMissingHeaders(
