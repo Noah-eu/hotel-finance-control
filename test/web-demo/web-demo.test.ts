@@ -310,6 +310,45 @@ describe('buildWebDemo', () => {
     expect(state.extractedRecords.map((file) => file.extractedRecordIds)).toEqual([['fio-row-1'], ['raif-row-1']])
     expect(state.preparedFiles.map((file) => file.sourceSystem)).toEqual(['bank', 'bank'])
   })
+
+  it('shows truthful bank/account attribution separately from technical parser labels for the two current bank files', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          text: async () => [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+          text: async () => [
+            '"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+            '19.03.2026 06:23;1540,00;CZK;1234567890;2010;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+          ].join('\n')
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T08:30:00.000Z'
+    })
+
+    expect(state.extractedRecords.map((file) => file.accountLabelCs)).toEqual([
+      'RB účet 5599955956/5500',
+      'Fio účet 8888997777'
+    ])
+    expect(state.extractedRecords.map((file) => file.parserDebugLabel)).toEqual(['fio', 'raiffeisenbank'])
+  })
+
+  it('renders user-facing bank/account labels instead of making parser-row prefixes look like bank identity', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('Účet:')
+    expect(result.html).toContain('Technický parser/export:')
+    expect(result.html).toContain('Technické ID záznamů:')
+  })
 })
 
 describe('buildFixtureWebDemo', () => {

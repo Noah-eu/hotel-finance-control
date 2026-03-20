@@ -60,6 +60,8 @@ export interface BrowserRuntimeUploadState {
     fileName: string
     extractedCount: number
     extractedRecordIds: string[]
+    accountLabelCs: string
+    parserDebugLabel?: string
   }>
   supportedExpenseLinks: Array<{
     expenseTransactionId: string

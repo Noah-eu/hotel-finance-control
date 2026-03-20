@@ -47,7 +47,9 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     extractedRecords: importedFiles.map((file) => ({
       fileName: file.sourceDocument.fileName,
       extractedCount: findBatchFileExtractedCount(batch, file.sourceDocument.id),
-      extractedRecordIds: findBatchFileExtractedIds(batch, file.sourceDocument.id)
+      extractedRecordIds: findBatchFileExtractedIds(batch, file.sourceDocument.id),
+      accountLabelCs: buildAccountLabel(file.sourceDocument.fileName, findBatchFileExtractedAccountId(batch, file.sourceDocument.id)),
+      parserDebugLabel: findBatchFileParserVariant(batch, file.sourceDocument.id)
     })),
     supportedExpenseLinks: batch.report.supportedExpenseLinks.map((link) => ({
       expenseTransactionId: link.expenseTransactionId,
@@ -83,6 +85,46 @@ function findBatchFileExtractedIds(
   sourceDocumentId: string
 ): string[] {
   return batch.files.find((file) => file.sourceDocumentId === sourceDocumentId)?.extractedRecordIds ?? []
+}
+
+function findBatchFileExtractedAccountId(
+  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  sourceDocumentId: string
+): string | undefined {
+  return batch.extractedRecords.find((record) => record.sourceDocumentId === sourceDocumentId)?.data.accountId as string | undefined
+}
+
+function findBatchFileParserVariant(
+  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  sourceDocumentId: string
+): string | undefined {
+  return batch.extractedRecords.find((record) => record.sourceDocumentId === sourceDocumentId)?.data.bankParserVariant as string | undefined
+}
+
+function buildAccountLabel(fileName: string, accountId?: string): string {
+  const normalizedFileName = fileName.toLowerCase()
+
+  if (accountId) {
+    if (accountId.startsWith('5599955956')) {
+      return `RB účet ${accountId}`
+    }
+
+    if (accountId.startsWith('8888997777')) {
+      return `Fio účet ${accountId}`
+    }
+
+    return `Bankovní účet ${accountId}`
+  }
+
+  if (normalizedFileName.includes('5599955956')) {
+    return 'RB účet 5599955956'
+  }
+
+  if (normalizedFileName.includes('8888997777')) {
+    return 'Fio účet 8888997777'
+  }
+
+  return 'Bankovní účet neuveden'
 }
 
 function deriveMonthLabel(runId: string): string {

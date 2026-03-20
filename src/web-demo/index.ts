@@ -146,9 +146,16 @@ function renderOperatorWebDemoHtml(input: {
       documentType: file.sourceDocument.documentType
     })),
     extractedRecords: input.browserRun.run.batch.files.map((fileResult) => ({
-      fileName: input.browserRun.run.importedFiles.find((file) => file.sourceDocument.id === fileResult.sourceDocumentId)?.sourceDocument.fileName ?? fileResult.sourceDocumentId,
+      fileName: fileNameFromSourceDocumentId(input.browserRun, fileResult.sourceDocumentId),
       extractedCount: fileResult.extractedCount,
-      extractedRecordIds: fileResult.extractedRecordIds
+      extractedRecordIds: fileResult.extractedRecordIds,
+      accountLabelCs: buildVisibleAccountLabel(
+        input.browserRun.run.batch.extractedRecords.find((record) => record.sourceDocumentId === fileResult.sourceDocumentId)?.data.accountId,
+        fileNameFromSourceDocumentId(input.browserRun, fileResult.sourceDocumentId)
+      ),
+      parserDebugLabel: toOptionalString(
+        input.browserRun.run.batch.extractedRecords.find((record) => record.sourceDocumentId === fileResult.sourceDocumentId)?.data.bankParserVariant
+      )
     })),
     reviewSummary: input.browserRun.run.review.summary,
     reportTransactions: input.browserRun.run.report.transactions.slice(0, 5).map((transaction) => ({
@@ -401,7 +408,7 @@ function renderOperatorWebDemoHtml(input: {
 
         const extractedRecords = state.extractedRecords.length === 0
           ? '<li>Žádné extrahované záznamy.</li>'
-          : state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span><br />' + (file.extractedRecordIds.length > 0 ? '<code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Bez ID extrahovaných záznamů.</span>') + '</li>').join('');
+          : state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span><br />' + (file.extractedRecordIds.length > 0 ? '<span class="hint">Technické ID záznamů:</span><br /><code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Bez ID extrahovaných záznamů.</span>') + (file.parserDebugLabel ? '<br /><span class="hint">Technický parser/export: ' + escapeHtml(file.parserDebugLabel) + '</span>' : '') + '</li>').join('');
 
         return [
           '<p class="hint">Tato část po spuštění zobrazuje skutečný runtime výsledek místo původního snapshotu.</p>',
@@ -578,6 +585,44 @@ function renderOperatorWebDemoHtml(input: {
 `
 }
 
+function fileNameFromSourceDocumentId(
+  browserRun: BrowserUploadedMonthlyRunResult,
+  sourceDocumentId: string
+): string {
+  return browserRun.run.importedFiles.find((file) => file.sourceDocument.id === sourceDocumentId)?.sourceDocument.fileName ?? sourceDocumentId
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function buildVisibleAccountLabel(accountIdValue: unknown, fileName: string): string {
+  const accountId = toOptionalString(accountIdValue)
+  const normalizedFileName = fileName.toLowerCase()
+
+  if (accountId) {
+    if (accountId.startsWith('5599955956')) {
+      return `RB účet ${accountId}`
+    }
+
+    if (accountId.startsWith('8888997777')) {
+      return `Fio účet ${accountId}`
+    }
+
+    return `Bankovní účet ${accountId}`
+  }
+
+  if (normalizedFileName.includes('5599955956')) {
+    return 'RB účet 5599955956'
+  }
+
+  if (normalizedFileName.includes('8888997777')) {
+    return 'Fio účet 8888997777'
+  }
+
+  return 'Bankovní účet neuveden'
+}
+
 export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {
   const fixture = getDemoFixture(options.fixtureKey ?? 'matched-payout')
   const reconciliation = reconcileExtractedRecords(
@@ -613,14 +658,14 @@ export function renderFixtureWebDemoHtml(
   const matchItems = report.matches.length === 0
     ? '<li>Žádné položky</li>'
     : report.matches
-        .map((match) => `<li><strong>${escapeHtml(match.matchGroupId)}</strong> — ${escapeHtml(match.transactionIds.join(' ↔ '))} — jistota ${match.confidence.toFixed(2)}</li>`)
-        .join('')
+      .map((match) => `<li><strong>${escapeHtml(match.matchGroupId)}</strong> — ${escapeHtml(match.transactionIds.join(' ↔ '))} — jistota ${match.confidence.toFixed(2)}</li>`)
+      .join('')
 
   const exceptionItems = report.exceptions.length === 0
     ? '<li>Žádné položky</li>'
     : report.exceptions
-        .map((exceptionCase) => `<li><strong>${escapeHtml(exceptionCase.exceptionCaseId)}</strong> — ${escapeHtml(exceptionCase.explanation)}</li>`)
-        .join('')
+      .map((exceptionCase) => `<li><strong>${escapeHtml(exceptionCase.exceptionCaseId)}</strong> — ${escapeHtml(exceptionCase.explanation)}</li>`)
+      .join('')
 
   const transactionRows = report.transactions
     .map((transaction) => `
