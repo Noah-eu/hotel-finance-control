@@ -16,6 +16,7 @@ import { formatAmountMinorCs } from '../shared/money'
 export interface BuildWebDemoOptions {
   generatedAt?: string
   outputPath?: string
+  debugMode?: boolean
 }
 
 export interface WebDemoResult {
@@ -92,7 +93,8 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
     generatedAt,
     uploadFlowHtml: uploadFlow.html,
     browserRun,
-    runtimeAssetPath: './browser-runtime.js'
+    runtimeAssetPath: './browser-runtime.js',
+    debugMode: options.debugMode ?? false
   })
 
   return {
@@ -106,6 +108,7 @@ function renderOperatorWebDemoHtml(input: {
   uploadFlowHtml: string
   browserRun: BrowserUploadedMonthlyRunResult
   runtimeAssetPath: string
+  debugMode?: boolean
 }): string {
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
@@ -134,8 +137,12 @@ function renderOperatorWebDemoHtml(input: {
   const exportItems = input.browserRun.run.exports.files
     .map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong> — <code>${escapeHtml(file.fileName)}</code></li>`)
     .join('')
+  const buildExtractedRecordsMarkupFunction = input.debugMode
+    ? buildDebugExtractedRecordsMarkupFunctionSource()
+    : buildDefaultExtractedRecordsMarkupFunctionSource()
 
   const initialRuntimeState = {
+    debugMode: Boolean(input.debugMode),
     generatedAt: input.generatedAt,
     runId: 'web-demo-uploaded-monthly-run',
     monthLabel: 'ukázkový snapshot',
@@ -277,6 +284,7 @@ function renderOperatorWebDemoHtml(input: {
       .runtime-output {
         margin-top: 16px;
       }
+${input.debugMode ? `
       details.debug-details {
         margin-top: 8px;
       }
@@ -289,6 +297,7 @@ function renderOperatorWebDemoHtml(input: {
         margin-top: 8px;
         padding-left: 4px;
       }
+` : ''}
     </style>
   </head>
   <body>
@@ -403,6 +412,8 @@ function renderOperatorWebDemoHtml(input: {
       const generatedAt = ${JSON.stringify(input.generatedAt)};
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
       let browserRuntime;
+      const debugModeFromQuery = new URLSearchParams(window.location.search).get('debug') === '1';
+      const debugMode = Boolean(initialRuntimeState.debugMode || debugModeFromQuery);
 
       function escapeHtml(value) {
         return String(value)
@@ -413,28 +424,14 @@ function renderOperatorWebDemoHtml(input: {
           .replace(/'/g, '&#39;');
       }
 
+      ${buildExtractedRecordsMarkupFunction}
+
       function buildPreparedFilesMarkup(state) {
         const preparedFiles = state.preparedFiles.length === 0
           ? '<li>Žádné připravené soubory.</li>'
           : state.preparedFiles.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType) + '</span><br /><code>' + escapeHtml(file.sourceDocumentId) + '</code></li>').join('');
 
-        const extractedRecords = state.extractedRecords.length === 0
-          ? '<li>Žádné extrahované záznamy.</li>'
-          : state.extractedRecords.map((file) => {
-            const hasDebugMeta = file.extractedRecordIds.length > 0 || Boolean(file.parserDebugLabel);
-            const debugBlock = !hasDebugMeta
-              ? ''
-              : '<details class="debug-details"><summary>Technické ladicí údaje (debug)</summary><div class="debug-meta">'
-                + (file.parserDebugLabel
-                  ? '<div><span class="hint">Technický tvar exportu (debug): </span><code>' + escapeHtml(file.parserDebugLabel) + '</code></div>'
-                  : '')
-                + (file.extractedRecordIds.length > 0
-                  ? '<div><span class="hint">Technická ID extrahovaných záznamů (debug): </span><code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code></div>'
-                  : '<div><span class="hint">Technická ID extrahovaných záznamů (debug): nejsou k dispozici.</span></div>')
-                + '</div></details>';
-
-            return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span>' + debugBlock + '</li>';
-          }).join('');
+        const extractedRecords = buildExtractedRecordsMarkup(state.extractedRecords, escapeHtml);
 
         return [
           '<p class="hint">Tato část po spuštění zobrazuje skutečný runtime výsledek místo původního snapshotu.</p>',
@@ -572,7 +569,6 @@ function renderOperatorWebDemoHtml(input: {
             generatedAt
           });
 
-          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime běh dokončen</strong>. Všechny viditelné sekce teď ukazují skutečný výsledek sdíleného browser workflow.';
           applyVisibleRuntimeState({
             ...state,
             reportTransactions: ${JSON.stringify(input.browserRun.run.report.transactions.slice(0, 1))}.slice(0, 0)
@@ -609,6 +605,40 @@ function renderOperatorWebDemoHtml(input: {
   </body>
 </html>
 `
+}
+
+function buildDefaultExtractedRecordsMarkupFunctionSource(): string {
+  return `function buildExtractedRecordsMarkup(extractedRecords, escapeHtml) {
+        if (extractedRecords.length === 0) {
+          return '<li>Žádné extrahované záznamy.</li>';
+        }
+
+        return extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span></li>').join('');
+      }`
+}
+
+function buildDebugExtractedRecordsMarkupFunctionSource(): string {
+  return `function buildExtractedRecordsMarkup(extractedRecords, escapeHtml) {
+        if (extractedRecords.length === 0) {
+          return '<li>Žádné extrahované záznamy.</li>';
+        }
+
+        return extractedRecords.map((file) => {
+          const hasDebugMeta = file.extractedRecordIds.length > 0 || Boolean(file.parserDebugLabel);
+          const debugBlock = !hasDebugMeta
+            ? ''
+            : '<details class="debug-details"><summary>Technické ladicí údaje (debug)</summary><div class="debug-meta">'
+              + (file.parserDebugLabel
+                ? '<div><span class="hint">Technický tvar exportu (debug): </span><code>' + escapeHtml(file.parserDebugLabel) + '</code></div>'
+                : '')
+              + (file.extractedRecordIds.length > 0
+                ? '<div><span class="hint">Technická ID extrahovaných záznamů (debug): </span><code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code></div>'
+                : '<div><span class="hint">Technická ID extrahovaných záznamů (debug): nejsou k dispozici.</span></div>')
+              + '</div></details>';
+
+          return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span>' + debugBlock + '</li>';
+        }).join('');
+      }`
 }
 
 function fileNameFromSourceDocumentId(
