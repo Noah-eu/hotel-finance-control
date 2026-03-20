@@ -514,6 +514,7 @@ function renderRuntimeReviewSection(sections: BrowserRuntimeUploadState['reviewS
   const groups = [
     { label: 'Spárované', items: sections.matched },
     { label: 'Spárované payout dávky', items: sections.payoutBatchMatched },
+    { label: 'Nespárované payout dávky', items: sections.payoutBatchUnmatched },
     { label: 'Nespárované', items: sections.unmatched },
     { label: 'Podezřelé', items: sections.suspicious },
     { label: 'Chybějící doklady', items: sections.missingDocuments }
@@ -527,6 +528,7 @@ function renderRuntimeReportSummary(state: BrowserRuntimeUploadState): string {
     <div class="metric-grid">
       <div class="metric-tile"><strong>${state.reportSummary.matchedGroupCount}</strong><br />Spárované skupiny</div>
       <div class="metric-tile"><strong>${state.reportSummary.payoutBatchMatchCount ?? 0}</strong><br />Spárované payout dávky</div>
+      <div class="metric-tile"><strong>${state.reportSummary.unmatchedPayoutBatchCount ?? 0}</strong><br />Nespárované payout dávky</div>
       <div class="metric-tile"><strong>${state.reportSummary.unmatchedExpectedCount}</strong><br />Nespárované očekávané</div>
       <div class="metric-tile"><strong>${state.reportSummary.unmatchedActualCount}</strong><br />Nespárované skutečné</div>
     </div>

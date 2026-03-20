@@ -370,6 +370,43 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
+  it('shows that the real upload-page runtime path carries unmatched payout batches in state and that the dedicated browser review html renders them', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        ),
+        createRuntimeFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+          [
+            '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+          ].join('\n')
+        ),
+        createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T11:35:00.000Z'
+    })
+
+    expect(state.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(state.reviewSections.payoutBatchUnmatched[0]?.title).toBe('Booking payout dávka PAYOUT-BOOK-20260310')
+    expect(state.reviewSections.payoutBatchUnmatched[0]?.detail).toContain('Žádná bankovní položka se stejnou částkou.')
+
+    const uploadPage = buildUploadWebFlow({
+      generatedAt: '2026-03-20T11:35:00.000Z'
+    }).html
+
+    expect(uploadPage).toContain('renderRuntimeReviewSection')
+    expect(uploadPage).toContain('buildRuntimeState')
+  })
+
   it('renders unmatched payout batches visibly in the main browser review html with business-facing wording', () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const outputDir = resolve(process.cwd(), 'dist/test-browser-review-unmatched-payout-batches')
