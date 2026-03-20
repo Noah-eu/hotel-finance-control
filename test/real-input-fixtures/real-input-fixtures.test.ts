@@ -7,6 +7,7 @@ describe('realInputFixtures', () => {
       'raiffeisenbank-statement',
       'fio-statement',
       'booking-payout-export',
+      'booking-payout-export-browser-upload-shape',
       'airbnb-payout-export',
       'expedia-payout-export',
       'previo-reservation-export',
@@ -29,7 +30,7 @@ describe('realInputFixtures', () => {
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
     const invoice = getRealInputFixture('invoice-document')
-  const receipt = getRealInputFixture('receipt-document')
+    const receipt = getRealInputFixture('receipt-document')
 
     expect(raiffeisen.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'bank-transaction',

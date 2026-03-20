@@ -267,7 +267,8 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
 
   if (matchesAnyHeaderSignature(normalizedHeaderSample, [
     'payoutdate,amountminor,currency,payoutreference,reservationid,propertyid',
-    'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid'
+    'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid',
+    'datumvyplaty;netamount;měna;bookingreference;bookingnumber;ubytovani'
   ]) && normalizedContent.includes('payout-book')) {
     return 'booking'
   }

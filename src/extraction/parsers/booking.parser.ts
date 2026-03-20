@@ -25,9 +25,9 @@ const HEADER_ALIASES = {
   payoutDate: ['payoutDate', 'payout_date', 'date', 'datumVyplaty', 'datum'],
   amountMinor: ['amountMinor', 'amount_minor', 'amount', 'netAmount', 'castka', 'částka'],
   currency: ['currency', 'mena', 'měna'],
-  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'paymentReference'],
-  reservationId: ['reservationId', 'reservation_id', 'reservation', 'bookingId'],
-  propertyId: ['propertyId', 'property_id', 'property', 'hotelId']
+  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'paymentReference', 'bookingReference', 'rezervace'],
+  reservationId: ['reservationId', 'reservation_id', 'reservation', 'bookingId', 'bookingNumber', 'cisloRezervace', 'čísloRezervace'],
+  propertyId: ['propertyId', 'property_id', 'property', 'hotelId', 'propertyCode', 'ubytovani', 'listingName']
 } satisfies Record<string, string[]>
 
 export class BookingPayoutParser {

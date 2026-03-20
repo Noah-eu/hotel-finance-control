@@ -73,4 +73,38 @@ describe('parseBookingPayoutExport', () => {
       }
     })
   })
+
+  it('accepts the current anonymized browser-upload Booking export shape', () => {
+    const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const records = parseBookingPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T12:10:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      id: fixture.expectedExtractedRecords[0]?.id,
+      sourceDocumentId: fixture.expectedExtractedRecords[0]?.sourceDocumentId,
+      recordType: fixture.expectedExtractedRecords[0]?.recordType,
+      rawReference: fixture.expectedExtractedRecords[0]?.rawReference,
+      amountMinor: fixture.expectedExtractedRecords[0]?.amountMinor,
+      currency: fixture.expectedExtractedRecords[0]?.currency,
+      occurredAt: fixture.expectedExtractedRecords[0]?.occurredAt,
+      data: fixture.expectedExtractedRecords[0]?.data
+    })
+  })
+
+  it('still fails fast for unsupported Booking exports missing reservation/property linkage', () => {
+    expect(() =>
+      parseBookingPayoutExport({
+        sourceDocument: getRealInputFixture('booking-payout-export-browser-upload-shape').sourceDocument,
+        content: [
+          'datumVyplaty;netAmount;měna;bookingReference',
+          '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310'
+        ].join('\n'),
+        extractedAt: '2026-03-20T12:10:00.000Z'
+      })
+    ).toThrow('Booking payout export is missing required columns')
+  })
 })

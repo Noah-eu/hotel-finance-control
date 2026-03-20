@@ -162,7 +162,7 @@ describe('buildUploadWebFlow', () => {
   })
 
   it('completes the exact combined browser-only monthly run for the current two bank files and Booking file in one session', async () => {
-    const booking = getRealInputFixture('booking-payout-export')
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -207,6 +207,28 @@ describe('buildUploadWebFlow', () => {
       'review-items.csv',
       'monthly-review-export.xlsx'
     ])
+  })
+
+  it('recognizes the current anonymized Booking browser-upload shape as Booking in the shared browser path', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-20T12:15:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(1)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+      sourceSystem: 'booking',
+      documentType: 'ota_report'
+    })
+    expect(result.extractedRecords[0]).toMatchObject({
+      fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+      extractedCount: 1,
+      accountLabelCs: 'Bankovní účet expected-payouts'
+    })
   })
 
   it('writes the generated upload page to disk when outputPath is provided', () => {
