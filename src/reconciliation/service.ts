@@ -3,6 +3,7 @@ import type { MatchingContext } from '../matching'
 import { detectExceptions } from '../exceptions'
 import { matchTransactions } from '../matching'
 import { normalizeExtractedRecords } from '../normalization'
+import { matchPayoutBatchesToBank } from './payout-batch-bank.matcher'
 import { buildReconciliationWorkflowPlan } from './workflow-plan'
 import type {
   ReconciliationContext,
@@ -49,6 +50,10 @@ export class DefaultReconciliationService implements ReconciliationService {
       normalizedTransactions: normalization.transactions,
       requestedAt: context.requestedAt
     })
+    const payoutBatchMatches = matchPayoutBatchesToBank({
+      payoutBatches: workflowPlan.payoutBatches,
+      bankTransactions: normalization.transactions
+    })
 
     const exceptions = detectExceptions(
       {
@@ -76,6 +81,7 @@ export class DefaultReconciliationService implements ReconciliationService {
       exceptionCases: exceptions.cases,
       supportedExpenseLinks,
       workflowPlan,
+      payoutBatchMatches,
       normalization: {
         warnings: normalization.warnings,
         trace: normalization.trace

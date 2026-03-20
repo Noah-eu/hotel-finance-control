@@ -6,6 +6,7 @@ import type {
   ExtractedRecord,
   MatchGroup,
   NormalizedTransaction,
+  PayoutBatchExpectation,
   ReconciliationWorkflowPlan
 } from '../domain/types'
 
@@ -16,6 +17,23 @@ export interface SupportedExpenseLink {
   reasons: string[]
   supportSourceDocumentIds: NormalizedTransaction['sourceDocumentIds']
   supportExtractedRecordIds: NormalizedTransaction['extractedRecordIds']
+}
+
+export interface PayoutBatchBankMatch {
+  payoutBatchKey: PayoutBatchExpectation['payoutBatchKey']
+  payoutBatchRowIds: PayoutBatchExpectation['rowIds']
+  bankTransactionId: NormalizedTransaction['id']
+  bankAccountId: NormalizedTransaction['accountId']
+  amountMinor: number
+  currency: NormalizedTransaction['currency']
+  confidence: number
+  ruleKey: string
+  matched: boolean
+  reasons: string[]
+  evidence: Array<{
+    key: string
+    value: string | number | boolean
+  }>
 }
 
 export interface ReconciliationInput {
@@ -43,6 +61,7 @@ export interface ReconciliationResult {
   exceptionCases: ExceptionCase[]
   supportedExpenseLinks: SupportedExpenseLink[]
   workflowPlan?: ReconciliationWorkflowPlan
+  payoutBatchMatches?: PayoutBatchBankMatch[]
   normalization: Pick<NormalizationResult, 'warnings' | 'trace'>
   exceptions: ExceptionDetectionResult
   summary: ReconciliationSummary

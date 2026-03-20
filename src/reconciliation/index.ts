@@ -10,8 +10,10 @@ export type {
   ReconciliationContext,
   ReconciliationSummary,
   ReconciliationResult,
-  ReconciliationService
+  ReconciliationService,
+  PayoutBatchBankMatch
 } from './contracts'
 
 export { DefaultReconciliationService, reconcileExtractedRecords } from './service'
 export { buildReconciliationWorkflowPlan } from './workflow-plan'
+export { matchPayoutBatchesToBank } from './payout-batch-bank.matcher'
