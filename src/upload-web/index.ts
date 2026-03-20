@@ -968,6 +968,7 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
         <div class="summary-grid">
           <div class="metric"><strong>${review.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
           <div class="metric"><strong>${review.summary.matchedGroupCount}</strong><br />Spárované skupiny</div>
+          <div class="metric"><strong>${review.summary.unmatchedPayoutBatchCount ?? 0}</strong><br />Nespárované payout dávky</div>
           <div class="metric"><strong>${review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
           <div class="metric"><strong>${batch.files.length}</strong><br />Zpracované soubory</div>
         </div>
@@ -977,6 +978,7 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
         <h2>Přehled kontrolních sekcí</h2>
         <div class="section-grid">
           ${renderReviewSection('Spárované položky', 'matched', review.matched)}
+          ${renderReviewSection('Nespárované payout dávky', 'unmatched', review.payoutBatchUnmatched)}
           ${renderReviewSection('Nespárované položky', 'unmatched', review.unmatched)}
           ${renderReviewSection('Podezřelé položky', 'suspicious', review.suspicious)}
           ${renderReviewSection('Chybějící doklady', 'missing', review.missingDocuments)}

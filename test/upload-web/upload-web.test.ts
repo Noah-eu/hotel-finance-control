@@ -370,6 +370,47 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
+  it('renders unmatched payout batches visibly in the main browser review html with business-facing wording', () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const outputDir = resolve(process.cwd(), 'dist/test-browser-review-unmatched-payout-batches')
+    const outputPath = resolve(outputDir, 'index.html')
+
+    rmSync(outputDir, {
+      recursive: true,
+      force: true
+    })
+
+    const result = buildBrowserReviewScreen({
+      files: [
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n'),
+          uploadedAt: '2026-03-20T11:35:00.000Z'
+        },
+        {
+          name: 'AaOS6MOZUh8BFtEr.booking.csv',
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-20T11:35:00.000Z'
+        }
+      ],
+      runId: 'browser-review-unmatched-payout-batches',
+      generatedAt: '2026-03-20T11:35:00.000Z',
+      outputPath
+    })
+
+    expect(result.preview.review.payoutBatchUnmatched).toHaveLength(1)
+    expect(result.html).toContain('Nespárované payout dávky')
+    expect(result.html).toContain('Booking payout dávka PAYOUT-BOOK-20260310')
+    expect(result.html).toContain('Žádná bankovní položka se stejnou částkou.')
+    expect(result.html).toContain('Směřování: RB účet.')
+    expect(result.html).not.toContain('noExactAmount')
+    expect(result.html).not.toContain('bankTransactionId')
+    expect(result.html).not.toContain('parserDebugLabel')
+  })
+
   it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
@@ -523,6 +564,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.preview.review.payoutBatchUnmatched).toHaveLength(0)
     expect(result.html).toContain('První kontrolní obrazovka měsíčního zpracování')
     expect(result.html).toContain('Spárované položky')
+    expect(result.html).toContain('Nespárované payout dávky')
     expect(result.html).toContain('Nespárované položky')
     expect(result.html).toContain('Podezřelé položky')
     expect(result.html).toContain('Chybějící doklady')
