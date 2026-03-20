@@ -1,5 +1,9 @@
 import type { NormalizedTransaction, PayoutBatchExpectation } from '../domain'
-import type { PayoutBatchBankMatch } from './contracts'
+import type {
+    PayoutBatchBankMatch,
+    PayoutBatchCandidateDiagnostic,
+    PayoutBatchNoMatchDiagnostic
+} from './contracts'
 
 const PAYOUT_BATCH_BANK_RULE_KEY = 'deterministic:payout-batch-bank:1to1:v1'
 const MAX_DAY_DISTANCE = 2
@@ -79,6 +83,37 @@ export function matchPayoutBatchesToBank(
     })
 }
 
+export function diagnoseUnmatchedPayoutBatchesToBank(
+    input: MatchPayoutBatchesToBankInput
+): PayoutBatchNoMatchDiagnostic[] {
+    const availableBankTransactions = input.bankTransactions.filter(
+        (transaction) => transaction.direction === 'in' && transaction.source === 'bank'
+    )
+
+    return input.payoutBatches.flatMap((batch) => {
+        const diagnostics = availableBankTransactions.map((transaction) => buildCandidateDiagnostic(batch, transaction))
+        const eligibleCandidates = diagnostics.filter((candidate) => candidate.eligible)
+
+        if (eligibleCandidates.length === 1) {
+            return []
+        }
+
+        return [{
+            payoutBatchKey: batch.payoutBatchKey,
+            payoutReference: batch.payoutReference,
+            platform: batch.platform,
+            expectedTotalMinor: batch.expectedTotalMinor,
+            currency: batch.currency,
+            payoutDate: batch.payoutDate,
+            bankRoutingTarget: batch.bankRoutingTarget,
+            eligibleCandidates,
+            allInboundBankCandidates: diagnostics,
+            noMatchReason: determineNoMatchReason(diagnostics, eligibleCandidates),
+            matched: false
+        }]
+    })
+}
+
 function matchesRouting(
     batch: PayoutBatchExpectation,
     bankTransaction: NormalizedTransaction
@@ -88,6 +123,73 @@ function matchesRouting(
     }
 
     return true
+}
+
+function buildCandidateDiagnostic(
+    batch: PayoutBatchExpectation,
+    transaction: NormalizedTransaction
+): PayoutBatchCandidateDiagnostic {
+    const rejectionReasons: PayoutBatchCandidateDiagnostic['rejectionReasons'] = []
+
+    if (transaction.amountMinor !== batch.expectedTotalMinor) {
+        rejectionReasons.push('noExactAmount')
+    }
+
+    if (transaction.currency !== batch.currency) {
+        rejectionReasons.push('currencyMismatch')
+    }
+
+    if (!matchesRouting(batch, transaction)) {
+        rejectionReasons.push('wrongBankRouting')
+    }
+
+    const dateDistanceDays = calculateDayDistance(batch.payoutDate, transaction.bookedAt)
+    if (dateDistanceDays > MAX_DAY_DISTANCE) {
+        rejectionReasons.push('dateToleranceMiss')
+    }
+
+    return {
+        bankTransactionId: transaction.id,
+        bankAccountId: transaction.accountId,
+        amountMinor: transaction.amountMinor,
+        currency: transaction.currency,
+        bookedAt: transaction.bookedAt,
+        reference: transaction.reference,
+        eligible: rejectionReasons.length === 0,
+        rejectionReasons,
+        dateDistanceDays
+    }
+}
+
+function determineNoMatchReason(
+    diagnostics: PayoutBatchCandidateDiagnostic[],
+    eligibleCandidates: PayoutBatchCandidateDiagnostic[]
+): PayoutBatchNoMatchDiagnostic['noMatchReason'] {
+    if (eligibleCandidates.length > 1) {
+        return 'ambiguousCandidates'
+    }
+
+    if (diagnostics.length === 0) {
+        return 'noCandidateAtAll'
+    }
+
+    const hasExactAmountCandidate = diagnostics.some((candidate) => !candidate.rejectionReasons.includes('noExactAmount'))
+    if (!hasExactAmountCandidate) {
+        return 'noExactAmount'
+    }
+
+    const exactAmountCandidates = diagnostics.filter((candidate) => !candidate.rejectionReasons.includes('noExactAmount'))
+    const hasRoutingPass = exactAmountCandidates.some((candidate) => !candidate.rejectionReasons.includes('wrongBankRouting'))
+    if (!hasRoutingPass) {
+        return 'wrongBankRouting'
+    }
+
+    const hasDatePass = exactAmountCandidates.some((candidate) => !candidate.rejectionReasons.includes('dateToleranceMiss'))
+    if (!hasDatePass) {
+        return 'dateToleranceMiss'
+    }
+
+    return 'noCandidateAtAll'
 }
 
 function calculateDayDistance(left: string, right: string): number {

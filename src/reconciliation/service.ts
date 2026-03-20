@@ -3,7 +3,10 @@ import type { MatchingContext } from '../matching'
 import { detectExceptions } from '../exceptions'
 import { matchTransactions } from '../matching'
 import { normalizeExtractedRecords } from '../normalization'
-import { matchPayoutBatchesToBank } from './payout-batch-bank.matcher'
+import {
+  diagnoseUnmatchedPayoutBatchesToBank,
+  matchPayoutBatchesToBank
+} from './payout-batch-bank.matcher'
 import { buildReconciliationWorkflowPlan } from './workflow-plan'
 import type {
   ReconciliationContext,
@@ -54,6 +57,10 @@ export class DefaultReconciliationService implements ReconciliationService {
       payoutBatches: workflowPlan.payoutBatches,
       bankTransactions: normalization.transactions
     })
+    const payoutBatchNoMatchDiagnostics = diagnoseUnmatchedPayoutBatchesToBank({
+      payoutBatches: workflowPlan.payoutBatches,
+      bankTransactions: normalization.transactions
+    })
 
     const exceptions = detectExceptions(
       {
@@ -82,6 +89,7 @@ export class DefaultReconciliationService implements ReconciliationService {
       supportedExpenseLinks,
       workflowPlan,
       payoutBatchMatches,
+      payoutBatchNoMatchDiagnostics,
       normalization: {
         warnings: normalization.warnings,
         trace: normalization.trace

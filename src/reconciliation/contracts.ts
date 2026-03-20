@@ -36,6 +36,42 @@ export interface PayoutBatchBankMatch {
   }>
 }
 
+export interface PayoutBatchCandidateDiagnostic {
+  bankTransactionId: NormalizedTransaction['id']
+  bankAccountId: NormalizedTransaction['accountId']
+  amountMinor: NormalizedTransaction['amountMinor']
+  currency: NormalizedTransaction['currency']
+  bookedAt: NormalizedTransaction['bookedAt']
+  reference?: string
+  eligible: boolean
+  rejectionReasons: Array<
+    'noExactAmount'
+    | 'currencyMismatch'
+    | 'wrongBankRouting'
+    | 'dateToleranceMiss'
+  >
+  dateDistanceDays: number
+}
+
+export interface PayoutBatchNoMatchDiagnostic {
+  payoutBatchKey: PayoutBatchExpectation['payoutBatchKey']
+  payoutReference: PayoutBatchExpectation['payoutReference']
+  platform: PayoutBatchExpectation['platform']
+  expectedTotalMinor: PayoutBatchExpectation['expectedTotalMinor']
+  currency: PayoutBatchExpectation['currency']
+  payoutDate: PayoutBatchExpectation['payoutDate']
+  bankRoutingTarget: PayoutBatchExpectation['bankRoutingTarget']
+  eligibleCandidates: PayoutBatchCandidateDiagnostic[]
+  allInboundBankCandidates: PayoutBatchCandidateDiagnostic[]
+  noMatchReason:
+  | 'noExactAmount'
+  | 'wrongBankRouting'
+  | 'ambiguousCandidates'
+  | 'dateToleranceMiss'
+  | 'noCandidateAtAll'
+  matched: false
+}
+
 export interface ReconciliationInput {
   extractedRecords: ExtractedRecord[]
 }
@@ -62,6 +98,7 @@ export interface ReconciliationResult {
   supportedExpenseLinks: SupportedExpenseLink[]
   workflowPlan?: ReconciliationWorkflowPlan
   payoutBatchMatches?: PayoutBatchBankMatch[]
+  payoutBatchNoMatchDiagnostics?: PayoutBatchNoMatchDiagnostic[]
   normalization: Pick<NormalizationResult, 'warnings' | 'trace'>
   exceptions: ExceptionDetectionResult
   summary: ReconciliationSummary

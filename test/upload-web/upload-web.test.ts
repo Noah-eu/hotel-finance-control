@@ -2,6 +2,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
+import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 import {
   buildBrowserRuntimeStateFromSelectedFiles,
   createBrowserRuntime,
@@ -206,6 +207,128 @@ describe('buildUploadWebFlow', () => {
       'reconciliation-transactions.csv',
       'review-items.csv',
       'monthly-review-export.xlsx'
+    ])
+  })
+
+  it('audits the exact real 3-file browser-run and proves payoutBatchMatches stay zero because no bank inflow has the Booking batch amount', () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const batch = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'uploaded:bank:1:pohyby-5599955956-202603191023-csv' as never,
+            sourceSystem: 'bank',
+            documentType: 'bank_statement',
+            fileName: 'Pohyby_5599955956_202603191023.csv',
+            uploadedAt: '2026-03-20T11:35:00.000Z'
+          },
+          content: [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          sourceDocument: {
+            id: 'uploaded:bank:2:pohyby-na-uctu-8888997777-20260301-20260319-csv' as never,
+            sourceSystem: 'bank',
+            documentType: 'bank_statement',
+            fileName: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+            uploadedAt: '2026-03-20T11:35:00.000Z'
+          },
+          content: [
+            '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          sourceDocument: booking.sourceDocument,
+          content: booking.rawInput.content
+        }
+      ],
+      reconciliationContext: {
+        runId: 'audit-browser-real-3-file-run',
+        requestedAt: '2026-03-20T11:35:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-20T11:35:00.000Z'
+    })
+
+    expect(batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        expectedTotalMinor: 125000,
+        currency: 'CZK',
+        payoutDate: '2026-03-12'
+      })
+    ])
+
+    const inboundBankTransactions = batch.reconciliation.normalizedTransactions
+      .filter((transaction) => transaction.source === 'bank' && transaction.direction === 'in')
+      .map((transaction) => ({
+        id: transaction.id,
+        accountId: transaction.accountId,
+        amountMinor: transaction.amountMinor,
+        currency: transaction.currency,
+        bookedAt: transaction.bookedAt,
+        reference: transaction.reference
+      }))
+
+    expect(inboundBankTransactions).toEqual([
+      {
+        id: 'txn:bank:fio-row-1',
+        accountId: '5599955956/5500',
+        amountMinor: 154000,
+        currency: 'CZK',
+        bookedAt: '2026-03-19T06:23:00',
+        reference: 'Platba rezervace WEB-2001'
+      },
+      {
+        id: 'txn:bank:fio-row-1',
+        accountId: '8888997777/2010',
+        amountMinor: 154000,
+        currency: 'CZK',
+        bookedAt: '2026-03-19T06:23:00',
+        reference: 'Platba rezervace WEB-2001'
+      }
+    ])
+
+    expect(batch.reconciliation.payoutBatchMatches).toEqual([])
+    expect(batch.reconciliation.payoutBatchNoMatchDiagnostics).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        expectedTotalMinor: 125000,
+        currency: 'CZK',
+        payoutDate: '2026-03-12',
+        noMatchReason: 'noExactAmount',
+        matched: false,
+        eligibleCandidates: []
+      })
+    ])
+    expect(batch.reconciliation.payoutBatchNoMatchDiagnostics?.[0]?.allInboundBankCandidates).toEqual([
+      expect.objectContaining({
+        bankTransactionId: 'txn:bank:fio-row-1',
+        bankAccountId: '5599955956/5500',
+        amountMinor: 154000,
+        currency: 'CZK',
+        bookedAt: '2026-03-19T06:23:00',
+        eligible: false,
+        dateDistanceDays: Number.NaN,
+        reference: 'Platba rezervace WEB-2001',
+        rejectionReasons: ['noExactAmount']
+      }),
+      expect.objectContaining({
+        bankTransactionId: 'txn:bank:fio-row-1',
+        bankAccountId: '8888997777/2010',
+        amountMinor: 154000,
+        currency: 'CZK',
+        bookedAt: '2026-03-19T06:23:00',
+        eligible: false,
+        dateDistanceDays: Number.NaN,
+        reference: 'Platba rezervace WEB-2001',
+        rejectionReasons: ['noExactAmount', 'wrongBankRouting']
+      })
     ])
   })
 

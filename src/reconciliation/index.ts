@@ -11,9 +11,14 @@ export type {
   ReconciliationSummary,
   ReconciliationResult,
   ReconciliationService,
-  PayoutBatchBankMatch
+  PayoutBatchBankMatch,
+  PayoutBatchNoMatchDiagnostic,
+  PayoutBatchCandidateDiagnostic
 } from './contracts'
 
 export { DefaultReconciliationService, reconcileExtractedRecords } from './service'
 export { buildReconciliationWorkflowPlan } from './workflow-plan'
-export { matchPayoutBatchesToBank } from './payout-batch-bank.matcher'
+export {
+  matchPayoutBatchesToBank,
+  diagnoseUnmatchedPayoutBatchesToBank
+} from './payout-batch-bank.matcher'
