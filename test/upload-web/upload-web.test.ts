@@ -324,6 +324,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.batch.reconciliation.summary.matchedGroupCount).toBe(1)
     expect(result.batch.files).toHaveLength(2)
     expect(result.review.matched).toHaveLength(1)
+    expect(result.review.payoutBatchMatched).toHaveLength(2)
   })
 
   it('renders a browser-visible review screen from the shared uploaded batch preview flow', () => {
@@ -356,6 +357,7 @@ describe('buildUploadWebFlow', () => {
     })
 
     expect(result.preview.review.matched).toHaveLength(1)
+    expect(result.preview.review.payoutBatchMatched).toHaveLength(2)
     expect(result.html).toContain('První kontrolní obrazovka měsíčního zpracování')
     expect(result.html).toContain('Spárované položky')
     expect(result.html).toContain('Nespárované položky')
@@ -395,6 +397,7 @@ describe('buildUploadWebFlow', () => {
     })
 
     expect(result.preview.review.matched).toHaveLength(1)
+    expect(result.preview.review.payoutBatchMatched).toHaveLength(2)
     expect(result.exports.files).toHaveLength(3)
     expect(result.exports.files.map((file) => file.fileName)).toContain('monthly-review-export.xlsx')
     expect(existsSync(resolve(outputDir, 'review-items.csv'))).toBe(true)
@@ -430,7 +433,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.importedFiles).toHaveLength(3)
     expect(result.batch.files).toHaveLength(3)
     expect(result.report.summary).toEqual(result.batch.report.summary)
-    expect(result.review.summary).toEqual(result.batch.reconciliation.summary)
+    expect(result.review.summary).toEqual(result.batch.report.summary)
     expect(result.exports.files.map((file) => file.fileName)).toEqual([
       'reconciliation-transactions.csv',
       'review-items.csv',

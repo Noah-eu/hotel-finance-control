@@ -29,8 +29,9 @@ describe('buildReviewScreen', () => {
       generatedAt: '2026-03-18T23:02:00.000Z'
     })
 
-    expect(review.summary).toEqual(batch.reconciliation.summary)
+    expect(review.summary).toEqual(batch.report.summary)
     expect(review.matched).toHaveLength(1)
+    expect(review.payoutBatchMatched).toHaveLength(2)
     expect(review.unmatched.length).toBeGreaterThan(0)
     expect(review.suspicious.length).toBeGreaterThan(0)
     expect(review.missingDocuments.length).toBeGreaterThan(0)
@@ -41,7 +42,7 @@ describe('buildReviewScreen', () => {
     expect(review.matched[0].title).toContain('Spárovaná skupina')
     expect(review.matched[0].detail).toContain('Jistota')
     expect(review.suspicious.some((item) => item.title.includes('suspicious_private_expense'))).toBe(true)
-  expect(review.missingDocuments.some((item) => item.detail.includes('no structured supporting invoice or receipt match'))).toBe(true)
+    expect(review.missingDocuments.some((item) => item.detail.includes('no structured supporting invoice or receipt match'))).toBe(true)
     expect(review.suspicious.some((item) => item.severity === 'high' || item.detail.length > 0)).toBe(true)
     expect(review.missingDocuments.some((item) => item.kind === 'missing-document' && item.title.startsWith('Chybějící doklad pro'))).toBe(true)
   })
@@ -128,6 +129,7 @@ describe('buildReviewScreen', () => {
             missingByRule
           ],
           supportedExpenseLinks: [],
+          payoutBatchMatches: [],
           normalization: {
             warnings: [],
             trace: []
@@ -154,6 +156,7 @@ describe('buildReviewScreen', () => {
           summary: {
             normalizedTransactionCount: 4,
             matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
             exceptionCount: 4,
             unmatchedExpectedCount: 0,
             unmatchedActualCount: 0
@@ -161,6 +164,7 @@ describe('buildReviewScreen', () => {
           matches: [],
           exceptions: [],
           supportedExpenseLinks: [],
+          payoutBatchMatches: [],
           transactions: []
         }
       }
@@ -193,6 +197,7 @@ describe('buildReviewScreen', () => {
           matchGroups: [],
           exceptionCases: [unmatchedDocument],
           supportedExpenseLinks: [],
+          payoutBatchMatches: [],
           normalization: {
             warnings: [],
             trace: []
@@ -214,6 +219,7 @@ describe('buildReviewScreen', () => {
           summary: {
             normalizedTransactionCount: 0,
             matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
             exceptionCount: 1,
             unmatchedExpectedCount: 0,
             unmatchedActualCount: 0
@@ -221,6 +227,7 @@ describe('buildReviewScreen', () => {
           matches: [],
           exceptions: [],
           supportedExpenseLinks: [],
+          payoutBatchMatches: [],
           transactions: []
         }
       }
@@ -234,6 +241,121 @@ describe('buildReviewScreen', () => {
     })
     expect(review.unmatched).toHaveLength(0)
     expect(review.suspicious).toHaveLength(0)
+  })
+
+  it('shows payout-batch matches as separate matched review items without double-counting exceptions', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-19T09:20:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            payoutRows: [
+              {
+                rowId: 'txn:payout:payout-1',
+                platform: 'booking',
+                sourceDocumentId: toDocumentId('doc-payout-1'),
+                payoutReference: 'PAYOUT-ABC-1',
+                payoutDate: '2026-03-10',
+                payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+                amountMinor: 125000,
+                currency: 'CZK',
+                bankRoutingTarget: 'rb_bank_inflow'
+              }
+            ],
+            payoutBatches: [
+              {
+                payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+                platform: 'booking',
+                payoutReference: 'PAYOUT-ABC-1',
+                payoutDate: '2026-03-10',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:payout-1'],
+                expectedTotalMinor: 125000,
+                currency: 'CZK'
+              }
+            ],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+              payoutBatchRowIds: ['txn:payout:payout-1'],
+              bankTransactionId: toTransactionId('txn:bank:bank-1'),
+              bankAccountId: 'raiffeisen-main',
+              amountMinor: 125000,
+              currency: 'CZK',
+              confidence: 0.99,
+              ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+              matched: true,
+              reasons: ['amountExact', 'currencyExact'],
+              evidence: [{ key: 'payoutReference', value: 'PAYOUT-ABC-1' }]
+            }
+          ],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-19T09:20:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 1,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+              platform: 'Booking',
+              payoutReference: 'PAYOUT-ABC-1',
+              bankAccountId: 'raiffeisen-main',
+              amountMinor: 125000,
+              currency: 'CZK',
+              status: 'matched',
+              confidence: 0.99,
+              reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
+              evidence: ['payoutReference: PAYOUT-ABC-1']
+            }
+          ],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.matched).toHaveLength(0)
+    expect(review.payoutBatchMatched).toHaveLength(2)
+    expect(review.payoutBatchMatched[0]).toMatchObject({
+      title: 'Booking payout dávka PAYOUT-ABC-1'
+    })
+    expect(review.summary.payoutBatchMatchCount).toBe(1)
+    expect(review.unmatched).toHaveLength(0)
   })
 })
 

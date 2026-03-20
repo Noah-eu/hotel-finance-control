@@ -88,6 +88,7 @@ function reconciliationResult(overrides: Partial<ReconciliationResult> = {}): Re
       }
     ],
     supportedExpenseLinks: [],
+    payoutBatchMatches: [],
     normalization: {
       warnings: [],
       trace: []
@@ -136,11 +137,13 @@ describe('buildReconciliationReport', () => {
     expect(report.summary).toEqual({
       normalizedTransactionCount: 3,
       matchedGroupCount: 1,
+      payoutBatchMatchCount: 0,
       exceptionCount: 1,
       unmatchedExpectedCount: 0,
       unmatchedActualCount: 1
     })
     expect(report.matches).toHaveLength(1)
+    expect(report.payoutBatchMatches).toHaveLength(0)
     expect(report.exceptions).toHaveLength(1)
     expect(report.transactions).toHaveLength(3)
   })
@@ -178,5 +181,71 @@ describe('buildReconciliationReport', () => {
     expect(report.transactions.find((item) => item.transactionId === 'txn:payout:payout-1')?.status).toBe('matched')
     expect(report.transactions.find((item) => item.transactionId === 'txn:bank:bank-2')?.status).toBe('unmatched')
     expect(report.transactions.find((item) => item.transactionId === 'txn:payout:orphan-1')?.status).toBe('unmatched')
+  })
+
+  it('surfaces payout-batch matches separately without double-counting transaction matches', () => {
+    const report = buildReconciliationReport({
+      reconciliation: reconciliationResult({
+        workflowPlan: {
+          reservationSources: [],
+          payoutRows: [
+            {
+              rowId: 'txn:payout:payout-1',
+              platform: 'booking',
+              sourceDocumentId: 'doc-payout-1' as never,
+              payoutReference: 'PAYOUT-ABC-1',
+              payoutDate: '2026-03-10',
+              payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+              amountMinor: 125000,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+              platform: 'booking',
+              payoutReference: 'PAYOUT-ABC-1',
+              payoutDate: '2026-03-10',
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: ['txn:payout:payout-1'],
+              expectedTotalMinor: 125000,
+              currency: 'CZK'
+            }
+          ],
+          directBankSettlements: [],
+          expenseDocuments: [],
+          bankFeeClassifications: []
+        },
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+            payoutBatchRowIds: ['txn:payout:payout-1'],
+            bankTransactionId: 'txn:bank:bank-1' as ReconciliationResult['normalizedTransactions'][number]['id'],
+            bankAccountId: 'raiffeisen-main',
+            amountMinor: 125000,
+            currency: 'CZK',
+            confidence: 0.99,
+            ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+            matched: true,
+            reasons: ['amountExact', 'currencyExact', 'payoutReferenceAligned'],
+            evidence: [{ key: 'payoutReference', value: 'PAYOUT-ABC-1' }]
+          }
+        ]
+      }),
+      generatedAt: '2026-03-18T15:00:00.000Z'
+    })
+
+    expect(report.payoutBatchMatches).toEqual([
+      expect.objectContaining({
+        platform: 'Booking',
+        payoutReference: 'PAYOUT-ABC-1',
+        bankAccountId: 'raiffeisen-main',
+        status: 'matched'
+      })
+    ])
+    expect(report.summary.matchedGroupCount).toBe(1)
+    expect(report.summary.payoutBatchMatchCount).toBe(1)
+    expect(report.matches).toHaveLength(1)
   })
 })

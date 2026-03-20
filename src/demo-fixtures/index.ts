@@ -11,7 +11,12 @@ export interface DemoFixture {
     ReconciliationResult,
     'summary' | 'normalization' | 'matchGroups' | 'exceptionCases'
   >
-  expectedReport: Pick<ReconciliationReport, 'summary' | 'matches' | 'exceptions' | 'transactions'>
+  expectedReport: {
+    summary: ReconciliationReport['summary']
+    matches: ReconciliationReport['matches']
+    exceptions: ReconciliationReport['exceptions']
+    transactions: ReconciliationReport['transactions']
+  }
 }
 
 const baseContext: ReconciliationContext = {
@@ -101,7 +106,8 @@ export const demoFixtures: DemoFixture[] = [
         matchedGroupCount: 1,
         exceptionCount: 0,
         unmatchedExpectedCount: 0,
-        unmatchedActualCount: 0
+        unmatchedActualCount: 0,
+        payoutBatchMatchCount: 1
       },
       matches: [
         {
@@ -219,7 +225,8 @@ export const demoFixtures: DemoFixture[] = [
         matchedGroupCount: 0,
         exceptionCount: 2,
         unmatchedExpectedCount: 1,
-        unmatchedActualCount: 1
+        unmatchedActualCount: 1,
+        payoutBatchMatchCount: 0
       },
       matches: [],
       exceptions: [

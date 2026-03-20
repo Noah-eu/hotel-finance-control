@@ -73,6 +73,7 @@ function buildReviewItemsCsv(review: ReviewScreenData): ExportFileArtifact {
 
   const items = [
     ...review.matched,
+    ...review.payoutBatchMatched,
     ...review.unmatched,
     ...review.suspicious,
     ...review.missingDocuments
@@ -114,7 +115,7 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
   )
 
   const reviewSheet = XLSX.utils.json_to_sheet(
-    [...review.matched, ...review.unmatched, ...review.suspicious, ...review.missingDocuments].map((item) => ({
+    [...review.matched, ...review.payoutBatchMatched, ...review.unmatched, ...review.suspicious, ...review.missingDocuments].map((item) => ({
       Sekce: toSectionLabel(item.kind),
       ID: item.id,
       Titulek: item.title,
@@ -125,10 +126,24 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
     }))
   )
 
+  const payoutBatchSheet = XLSX.utils.json_to_sheet(
+    (batch.report.payoutBatchMatches ?? []).map((match) => ({
+      Platforma: match.platform,
+      'Reference payoutu': match.payoutReference,
+      'Klíč dávky': match.payoutBatchKey,
+      'Bankovní účet': match.bankAccountId,
+      'Částka': formatAmountMinorCs(match.amountMinor, match.currency),
+      Stav: 'Spárováno',
+      Důvod: match.reason,
+      Evidence: match.evidence.join(' | ')
+    }))
+  )
+
   const summarySheet = XLSX.utils.json_to_sheet([
     {
       'Normalizované transakce': batch.reconciliation.summary.normalizedTransactionCount,
       'Spárované skupiny': batch.reconciliation.summary.matchedGroupCount,
+      'Spárované payout dávky': batch.report.summary.payoutBatchMatchCount,
       'Položky ke kontrole': batch.reconciliation.summary.exceptionCount,
       'Nespárované očekávané': batch.reconciliation.summary.unmatchedExpectedCount,
       'Nespárované skutečné': batch.reconciliation.summary.unmatchedActualCount
@@ -137,6 +152,7 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
 
   XLSX.utils.book_append_sheet(workbook, transactionsSheet, 'Transakce')
   XLSX.utils.book_append_sheet(workbook, reviewSheet, 'Kontrola')
+  XLSX.utils.book_append_sheet(workbook, payoutBatchSheet, 'Payout dávky')
   XLSX.utils.book_append_sheet(workbook, summarySheet, 'Souhrn')
 
   const content = XLSX.write(workbook, {

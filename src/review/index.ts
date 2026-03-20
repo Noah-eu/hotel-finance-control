@@ -13,8 +13,9 @@ export interface ReviewSectionItem {
 
 export interface ReviewScreenData {
   generatedAt: string
-  summary: MonthlyBatchResult['reconciliation']['summary']
+  summary: MonthlyBatchResult['report']['summary']
   matched: ReviewSectionItem[]
+  payoutBatchMatched: ReviewSectionItem[]
   unmatched: ReviewSectionItem[]
   suspicious: ReviewSectionItem[]
   missingDocuments: ReviewSectionItem[]
@@ -56,6 +57,25 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     sourceDocumentIds: collectSourceDocumentIds(input.batch, match.transactionIds)
   }))
 
+  const payoutBatchMatched = input.batch.report.payoutBatchMatches.map((match) => ({
+    id: `payout-batch:${match.payoutBatchKey}`,
+    kind: 'matched' as const,
+    title: `${match.platform} payout dávka ${match.payoutReference}`,
+    detail: `${match.reason} Bankovní účet: ${match.bankAccountId}. Částka: ${match.amountMinor} ${match.currency}.`,
+    transactionIds: [],
+    sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
+  }))
+    .concat(
+      input.batch.report.payoutBatchMatches.map((match) => ({
+        id: `payout-batch:${match.payoutBatchKey}`,
+        kind: 'matched' as const,
+        title: `${match.platform} payout dávka ${match.payoutReference}`,
+        detail: `${match.reason} Bankovní účet: ${match.bankAccountId}. Částka: ${match.amountMinor} ${match.currency}.`,
+        transactionIds: [],
+        sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
+      }))
+    )
+
   const unmatched = categorizedExceptionCases.unmatched
     .map((exceptionCase) => toReviewItem(exceptionCase, 'unmatched'))
 
@@ -67,12 +87,24 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
 
   return {
     generatedAt: input.generatedAt,
-    summary: input.batch.reconciliation.summary,
+    summary: input.batch.report.summary,
     matched,
+    payoutBatchMatched,
     unmatched,
     suspicious,
     missingDocuments
   }
+}
+
+function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payoutBatchKey: string): string[] {
+  const ids = new Set<string>()
+  const payoutRows = batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.payoutBatchKey === payoutBatchKey) ?? []
+
+  for (const row of payoutRows) {
+    ids.add(row.sourceDocumentId)
+  }
+
+  return [...ids]
 }
 
 export function placeholder() {
@@ -90,7 +122,7 @@ function toReviewItem(
   return {
     id: exceptionCase.id,
     kind,
-  title: `${toTitle(kind)}: ${exceptionCase.ruleCode ?? exceptionCase.type}`,
+    title: `${toTitle(kind)}: ${exceptionCase.ruleCode ?? exceptionCase.type}`,
     detail: exceptionCase.explanation,
     transactionIds: exceptionCase.relatedTransactionIds,
     sourceDocumentIds: exceptionCase.relatedSourceDocumentIds,

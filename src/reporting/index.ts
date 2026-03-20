@@ -11,9 +11,24 @@ export interface ReconciliationReportEntry {
   status: 'matched' | 'exception' | 'unmatched'
 }
 
+export interface ReconciliationPayoutBatchMatchEntry {
+  payoutBatchKey: string
+  platform: string
+  payoutReference: string
+  bankAccountId: string
+  amountMinor: number
+  currency: string
+  status: 'matched'
+  confidence: number
+  reason: string
+  evidence: string[]
+}
+
 export interface ReconciliationReport {
   generatedAt: string
-  summary: ReconciliationResult['summary']
+  summary: ReconciliationResult['summary'] & {
+    payoutBatchMatchCount: number
+  }
   matches: Array<{
     matchGroupId: string
     transactionIds: string[]
@@ -40,6 +55,7 @@ export interface ReconciliationReport {
     supportSourceDocumentIds: string[]
     supportExtractedRecordIds: string[]
   }>
+  payoutBatchMatches: ReconciliationPayoutBatchMatchEntry[]
   transactions: ReconciliationReportEntry[]
 }
 
@@ -57,10 +73,14 @@ export function buildReconciliationReport(
   const exceptionTransactionIds = new Set(
     input.reconciliation.exceptionCases.flatMap((exceptionCase) => exceptionCase.relatedTransactionIds)
   )
+  const payoutBatchMatches = buildPayoutBatchMatchEntries(input.reconciliation)
 
   return {
     generatedAt: input.generatedAt,
-    summary: input.reconciliation.summary,
+    summary: {
+      ...input.reconciliation.summary,
+      payoutBatchMatchCount: payoutBatchMatches.length
+    },
     matches: input.reconciliation.matchGroups.map((group) => ({
       matchGroupId: group.id,
       transactionIds: group.transactionIds,
@@ -87,6 +107,7 @@ export function buildReconciliationReport(
       supportSourceDocumentIds: link.supportSourceDocumentIds,
       supportExtractedRecordIds: link.supportExtractedRecordIds
     })),
+    payoutBatchMatches,
     transactions: input.reconciliation.normalizedTransactions.map((transaction) => ({
       transactionId: transaction.id,
       source: transaction.source,
@@ -102,6 +123,57 @@ export function buildReconciliationReport(
           : 'unmatched'
     }))
   }
+}
+
+function buildPayoutBatchMatchEntries(
+  reconciliation: ReconciliationResult
+): ReconciliationPayoutBatchMatchEntry[] {
+  const workflowPlan = reconciliation.workflowPlan
+
+  return (reconciliation.payoutBatchMatches ?? []).flatMap((match) => {
+    const batch = workflowPlan?.payoutBatches.find((item) => item.payoutBatchKey === match.payoutBatchKey)
+
+    if (!batch || !match.matched) {
+      return []
+    }
+
+    return [{
+      payoutBatchKey: match.payoutBatchKey,
+      platform: toPlatformLabel(batch.platform),
+      payoutReference: batch.payoutReference,
+      bankAccountId: match.bankAccountId,
+      amountMinor: match.amountMinor,
+      currency: match.currency,
+      status: 'matched',
+      confidence: match.confidence,
+      reason: buildConcisePayoutBatchReason(match.reasons),
+      evidence: match.evidence.map((item) => `${item.key}: ${String(item.value)}`)
+    }]
+  })
+}
+
+function toPlatformLabel(platform: string): string {
+  if (platform === 'booking') {
+    return 'Booking'
+  }
+
+  if (platform === 'airbnb') {
+    return 'Airbnb'
+  }
+
+  if (platform === 'comgate') {
+    return 'Comgate'
+  }
+
+  return platform
+}
+
+function buildConcisePayoutBatchReason(reasons: string[]): string {
+  if (reasons.includes('payoutReferenceAligned')) {
+    return 'Shoda dávky a bankovního přípisu podle částky, měny a reference payoutu.'
+  }
+
+  return 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.'
 }
 
 export function placeholder() {

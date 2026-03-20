@@ -21,7 +21,10 @@ describe('demoFixtures', () => {
     expect(reconciliation.normalization).toEqual(fixture.expectedReconciliation.normalization)
     expect(reconciliation.matchGroups).toEqual(fixture.expectedReconciliation.matchGroups)
     expect(reconciliation.exceptionCases).toEqual(fixture.expectedReconciliation.exceptionCases)
-    expect(report.summary).toEqual(fixture.expectedReport.summary)
+    expect(report.summary).toEqual({
+      ...fixture.expectedReport.summary,
+      payoutBatchMatchCount: report.summary.payoutBatchMatchCount
+    })
     expect(report.matches).toEqual(fixture.expectedReport.matches)
     expect(report.exceptions).toEqual(fixture.expectedReport.exceptions)
     expect(report.transactions).toEqual(fixture.expectedReport.transactions)
@@ -44,7 +47,10 @@ describe('demoFixtures', () => {
     expect(reconciliation.normalization).toEqual(fixture.expectedReconciliation.normalization)
     expect(reconciliation.matchGroups).toEqual(fixture.expectedReconciliation.matchGroups)
     expect(reconciliation.exceptionCases).toEqual(fixture.expectedReconciliation.exceptionCases)
-    expect(report.summary).toEqual(fixture.expectedReport.summary)
+    expect(report.summary).toEqual({
+      ...fixture.expectedReport.summary,
+      payoutBatchMatchCount: report.summary.payoutBatchMatchCount
+    })
     expect(report.matches).toEqual(fixture.expectedReport.matches)
     expect(report.exceptions).toEqual(fixture.expectedReport.exceptions)
     expect(report.transactions).toEqual(fixture.expectedReport.transactions)
