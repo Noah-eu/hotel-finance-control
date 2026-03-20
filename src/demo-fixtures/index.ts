@@ -107,7 +107,8 @@ export const demoFixtures: DemoFixture[] = [
         exceptionCount: 0,
         unmatchedExpectedCount: 0,
         unmatchedActualCount: 0,
-        payoutBatchMatchCount: 1
+        payoutBatchMatchCount: 1,
+        unmatchedPayoutBatchCount: 0
       },
       matches: [
         {
@@ -226,7 +227,8 @@ export const demoFixtures: DemoFixture[] = [
         exceptionCount: 2,
         unmatchedExpectedCount: 1,
         unmatchedActualCount: 1,
-        payoutBatchMatchCount: 0
+        payoutBatchMatchCount: 0,
+        unmatchedPayoutBatchCount: 1
       },
       matches: [],
       exceptions: [

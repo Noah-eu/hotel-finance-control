@@ -51,6 +51,53 @@ describe('buildExportArtifacts', () => {
     expect(workbook.Sheets.Transakce.D1.v).toBe('Částka')
     expect(workbook.Sheets.Transakce.D2.v).toBe('1 250,00 Kč')
     expect(workbook.Sheets['Payout dávky'].A1.v).toBe('Platforma')
+    expect(workbook.Sheets.Souhrn.D1.v).toBe('Nespárované payout dávky')
+  })
+
+  it('includes unmatched payout batches in review csv and payout workbook sheet with business-facing reason', () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const batch = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'uploaded:bank:1:pohyby-5599955956-202603191023-csv' as never,
+            sourceSystem: 'bank',
+            documentType: 'bank_statement',
+            fileName: 'Pohyby_5599955956_202603191023.csv',
+            uploadedAt: '2026-03-20T11:35:00.000Z'
+          },
+          content: [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          sourceDocument: booking.sourceDocument,
+          content: booking.rawInput.content
+        }
+      ],
+      reconciliationContext: {
+        runId: 'export-unmatched-payout-batch',
+        requestedAt: '2026-03-20T11:35:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-20T11:35:00.000Z'
+    })
+
+    const review = buildReviewScreen({
+      batch,
+      generatedAt: '2026-03-20T11:35:00.000Z'
+    })
+
+    const result = buildExportArtifacts({ batch, review })
+    const reviewCsv = String(result.files[1]?.content)
+    const workbook = XLSX.read(Buffer.from(result.files[2]?.content as Uint8Array), { type: 'buffer' })
+
+    expect(review.payoutBatchUnmatched).toHaveLength(1)
+    expect(reviewCsv).toContain('Booking payout dávka PAYOUT-BOOK-20260310')
+    expect(reviewCsv).toContain('Žádná bankovní položka se stejnou částkou.')
+    expect(reviewCsv).not.toContain('noExactAmount')
+    expect(workbook.Sheets['Payout dávky'].G3?.v ?? workbook.Sheets['Payout dávky'].G2?.v).toBe('Nespárováno')
   })
 
   it('writes actual CSV and XLSX files to disk when outputDir is provided', () => {

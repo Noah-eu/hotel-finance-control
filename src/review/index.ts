@@ -16,6 +16,7 @@ export interface ReviewScreenData {
   summary: MonthlyBatchResult['report']['summary']
   matched: ReviewSectionItem[]
   payoutBatchMatched: ReviewSectionItem[]
+  payoutBatchUnmatched: ReviewSectionItem[]
   unmatched: ReviewSectionItem[]
   suspicious: ReviewSectionItem[]
   missingDocuments: ReviewSectionItem[]
@@ -65,16 +66,15 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     transactionIds: [],
     sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
   }))
-    .concat(
-      input.batch.report.payoutBatchMatches.map((match) => ({
-        id: `payout-batch:${match.payoutBatchKey}`,
-        kind: 'matched' as const,
-        title: `${match.platform} payout dávka ${match.payoutReference}`,
-        detail: `${match.reason} Bankovní účet: ${match.bankAccountId}. Částka: ${match.amountMinor} ${match.currency}.`,
-        transactionIds: [],
-        sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
-      }))
-    )
+
+  const payoutBatchUnmatched = input.batch.report.unmatchedPayoutBatches.map((batch) => ({
+    id: `payout-batch-unmatched:${batch.payoutBatchKey}`,
+    kind: 'unmatched' as const,
+    title: `${batch.platform} payout dávka ${batch.payoutReference}`,
+    detail: `${batch.reason} Datum payoutu: ${batch.payoutDate}. Očekávaná částka: ${batch.amountMinor} ${batch.currency}. Směřování: ${batch.bankRoutingLabel}.`,
+    transactionIds: [],
+    sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, batch.payoutBatchKey)
+  }))
 
   const unmatched = categorizedExceptionCases.unmatched
     .map((exceptionCase) => toReviewItem(exceptionCase, 'unmatched'))
@@ -90,6 +90,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     summary: input.batch.report.summary,
     matched,
     payoutBatchMatched,
+    payoutBatchUnmatched,
     unmatched,
     suspicious,
     missingDocuments

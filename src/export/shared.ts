@@ -74,6 +74,7 @@ function buildReviewItemsCsv(review: ReviewScreenData): ExportFileArtifact {
   const items = [
     ...review.matched,
     ...review.payoutBatchMatched,
+    ...review.payoutBatchUnmatched,
     ...review.unmatched,
     ...review.suspicious,
     ...review.missingDocuments
@@ -115,7 +116,7 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
   )
 
   const reviewSheet = XLSX.utils.json_to_sheet(
-    [...review.matched, ...review.payoutBatchMatched, ...review.unmatched, ...review.suspicious, ...review.missingDocuments].map((item) => ({
+    [...review.matched, ...review.payoutBatchMatched, ...review.payoutBatchUnmatched, ...review.unmatched, ...review.suspicious, ...review.missingDocuments].map((item) => ({
       Sekce: toSectionLabel(item.kind),
       ID: item.id,
       Titulek: item.title,
@@ -127,16 +128,30 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
   )
 
   const payoutBatchSheet = XLSX.utils.json_to_sheet(
-    (batch.report.payoutBatchMatches ?? []).map((match) => ({
-      Platforma: match.platform,
-      'Reference payoutu': match.payoutReference,
-      'Klíč dávky': match.payoutBatchKey,
-      'Bankovní účet': match.bankAccountId,
-      'Částka': formatAmountMinorCs(match.amountMinor, match.currency),
-      Stav: 'Spárováno',
-      Důvod: match.reason,
-      Evidence: match.evidence.join(' | ')
-    }))
+    [
+      ...(batch.report.payoutBatchMatches ?? []).map((match) => ({
+        Platforma: match.platform,
+        'Reference payoutu': match.payoutReference,
+        'Klíč dávky': match.payoutBatchKey,
+        'Datum payoutu': '',
+        'Bankovní směřování': match.bankAccountId,
+        'Částka': formatAmountMinorCs(match.amountMinor, match.currency),
+        Stav: 'Spárováno',
+        Důvod: match.reason,
+        Evidence: match.evidence.join(' | ')
+      })),
+      ...(batch.report.unmatchedPayoutBatches ?? []).map((item) => ({
+        Platforma: item.platform,
+        'Reference payoutu': item.payoutReference,
+        'Klíč dávky': item.payoutBatchKey,
+        'Datum payoutu': item.payoutDate,
+        'Bankovní směřování': item.bankRoutingLabel,
+        'Částka': formatAmountMinorCs(item.amountMinor, item.currency),
+        Stav: 'Nespárováno',
+        Důvod: item.reason,
+        Evidence: ''
+      }))
+    ]
   )
 
   const summarySheet = XLSX.utils.json_to_sheet([
@@ -144,6 +159,7 @@ function buildWorkbookArtifact(batch: MonthlyBatchResult, review: ReviewScreenDa
       'Normalizované transakce': batch.reconciliation.summary.normalizedTransactionCount,
       'Spárované skupiny': batch.reconciliation.summary.matchedGroupCount,
       'Spárované payout dávky': batch.report.summary.payoutBatchMatchCount,
+      'Nespárované payout dávky': batch.report.summary.unmatchedPayoutBatchCount,
       'Položky ke kontrole': batch.reconciliation.summary.exceptionCount,
       'Nespárované očekávané': batch.reconciliation.summary.unmatchedExpectedCount,
       'Nespárované skutečné': batch.reconciliation.summary.unmatchedActualCount

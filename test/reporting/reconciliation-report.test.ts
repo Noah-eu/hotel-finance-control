@@ -138,6 +138,7 @@ describe('buildReconciliationReport', () => {
       normalizedTransactionCount: 3,
       matchedGroupCount: 1,
       payoutBatchMatchCount: 0,
+      unmatchedPayoutBatchCount: 0,
       exceptionCount: 1,
       unmatchedExpectedCount: 0,
       unmatchedActualCount: 1
@@ -246,6 +247,47 @@ describe('buildReconciliationReport', () => {
     ])
     expect(report.summary.matchedGroupCount).toBe(1)
     expect(report.summary.payoutBatchMatchCount).toBe(1)
+    expect(report.summary.unmatchedPayoutBatchCount).toBe(0)
+    expect(report.matches).toHaveLength(1)
+  })
+
+  it('surfaces unmatched payout-batch diagnostics separately with business-facing Czech reason text', () => {
+    const report = buildReconciliationReport({
+      reconciliation: reconciliationResult({
+        payoutBatchNoMatchDiagnostics: [
+          {
+            payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+            payoutReference: 'PAYOUT-ABC-1',
+            platform: 'booking',
+            expectedTotalMinor: 125000,
+            currency: 'CZK',
+            payoutDate: '2026-03-10',
+            bankRoutingTarget: 'rb_bank_inflow',
+            eligibleCandidates: [],
+            allInboundBankCandidates: [],
+            noMatchReason: 'noExactAmount',
+            matched: false
+          }
+        ]
+      }),
+      generatedAt: '2026-03-18T15:00:00.000Z'
+    })
+
+    expect(report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        platform: 'Booking',
+        payoutReference: 'PAYOUT-ABC-1',
+        payoutDate: '2026-03-10',
+        bankRoutingLabel: 'RB účet',
+        amountMinor: 125000,
+        currency: 'CZK',
+        status: 'unmatched',
+        reason: 'Žádná bankovní položka se stejnou částkou.'
+      })
+    ])
+    expect(report.summary.matchedGroupCount).toBe(1)
+    expect(report.summary.payoutBatchMatchCount).toBe(0)
+    expect(report.summary.unmatchedPayoutBatchCount).toBe(1)
     expect(report.matches).toHaveLength(1)
   })
 })

@@ -23,7 +23,8 @@ describe('demoFixtures', () => {
     expect(reconciliation.exceptionCases).toEqual(fixture.expectedReconciliation.exceptionCases)
     expect(report.summary).toEqual({
       ...fixture.expectedReport.summary,
-      payoutBatchMatchCount: report.summary.payoutBatchMatchCount
+      payoutBatchMatchCount: report.summary.payoutBatchMatchCount,
+      unmatchedPayoutBatchCount: report.summary.unmatchedPayoutBatchCount
     })
     expect(report.matches).toEqual(fixture.expectedReport.matches)
     expect(report.exceptions).toEqual(fixture.expectedReport.exceptions)
@@ -49,7 +50,8 @@ describe('demoFixtures', () => {
     expect(reconciliation.exceptionCases).toEqual(fixture.expectedReconciliation.exceptionCases)
     expect(report.summary).toEqual({
       ...fixture.expectedReport.summary,
-      payoutBatchMatchCount: report.summary.payoutBatchMatchCount
+      payoutBatchMatchCount: report.summary.payoutBatchMatchCount,
+      unmatchedPayoutBatchCount: report.summary.unmatchedPayoutBatchCount
     })
     expect(report.matches).toEqual(fixture.expectedReport.matches)
     expect(report.exceptions).toEqual(fixture.expectedReport.exceptions)

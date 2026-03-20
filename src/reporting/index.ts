@@ -24,10 +24,30 @@ export interface ReconciliationPayoutBatchMatchEntry {
   evidence: string[]
 }
 
+export interface ReconciliationUnmatchedPayoutBatchEntry {
+  payoutBatchKey: string
+  platform: string
+  payoutReference: string
+  payoutDate: string
+  bankRoutingLabel: string
+  amountMinor: number
+  currency: string
+  status: 'unmatched'
+  reason: string
+}
+
+type UnmatchedPayoutBatchReason =
+  | 'noExactAmount'
+  | 'wrongBankRouting'
+  | 'ambiguousCandidates'
+  | 'dateToleranceMiss'
+  | 'noCandidateAtAll'
+
 export interface ReconciliationReport {
   generatedAt: string
   summary: ReconciliationResult['summary'] & {
     payoutBatchMatchCount: number
+    unmatchedPayoutBatchCount: number
   }
   matches: Array<{
     matchGroupId: string
@@ -56,6 +76,7 @@ export interface ReconciliationReport {
     supportExtractedRecordIds: string[]
   }>
   payoutBatchMatches: ReconciliationPayoutBatchMatchEntry[]
+  unmatchedPayoutBatches: ReconciliationUnmatchedPayoutBatchEntry[]
   transactions: ReconciliationReportEntry[]
 }
 
@@ -74,12 +95,14 @@ export function buildReconciliationReport(
     input.reconciliation.exceptionCases.flatMap((exceptionCase) => exceptionCase.relatedTransactionIds)
   )
   const payoutBatchMatches = buildPayoutBatchMatchEntries(input.reconciliation)
+  const unmatchedPayoutBatches = buildUnmatchedPayoutBatchEntries(input.reconciliation)
 
   return {
     generatedAt: input.generatedAt,
     summary: {
       ...input.reconciliation.summary,
-      payoutBatchMatchCount: payoutBatchMatches.length
+      payoutBatchMatchCount: payoutBatchMatches.length,
+      unmatchedPayoutBatchCount: unmatchedPayoutBatches.length
     },
     matches: input.reconciliation.matchGroups.map((group) => ({
       matchGroupId: group.id,
@@ -108,6 +131,7 @@ export function buildReconciliationReport(
       supportExtractedRecordIds: link.supportExtractedRecordIds
     })),
     payoutBatchMatches,
+    unmatchedPayoutBatches,
     transactions: input.reconciliation.normalizedTransactions.map((transaction) => ({
       transactionId: transaction.id,
       source: transaction.source,
@@ -123,6 +147,22 @@ export function buildReconciliationReport(
           : 'unmatched'
     }))
   }
+}
+
+function buildUnmatchedPayoutBatchEntries(
+  reconciliation: ReconciliationResult
+): ReconciliationUnmatchedPayoutBatchEntry[] {
+  return (reconciliation.payoutBatchNoMatchDiagnostics ?? []).map((diagnostic) => ({
+    payoutBatchKey: diagnostic.payoutBatchKey,
+    platform: toPlatformLabel(diagnostic.platform),
+    payoutReference: diagnostic.payoutReference,
+    payoutDate: diagnostic.payoutDate,
+    bankRoutingLabel: toBankRoutingLabel(diagnostic.bankRoutingTarget),
+    amountMinor: diagnostic.expectedTotalMinor,
+    currency: diagnostic.currency,
+    status: 'unmatched',
+    reason: toNoMatchReasonCs(diagnostic.noMatchReason)
+  }))
 }
 
 function buildPayoutBatchMatchEntries(
@@ -174,6 +214,35 @@ function buildConcisePayoutBatchReason(reasons: string[]): string {
   }
 
   return 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.'
+}
+
+function toBankRoutingLabel(bankRoutingTarget: string): string {
+  if (bankRoutingTarget === 'rb_bank_inflow') {
+    return 'RB účet'
+  }
+
+  if (bankRoutingTarget === 'fio_bank_inflow') {
+    return 'Fio účet'
+  }
+
+  return 'Určený bankovní účet'
+}
+
+function toNoMatchReasonCs(reason: UnmatchedPayoutBatchReason): string {
+  switch (reason) {
+    case 'noExactAmount':
+      return 'Žádná bankovní položka se stejnou částkou.'
+    case 'ambiguousCandidates':
+      return 'Více možných bankovních kandidátů.'
+    case 'wrongBankRouting':
+      return 'Nesprávný bankovní účet.'
+    case 'dateToleranceMiss':
+      return 'Žádný vhodný kandidát v očekávaném datu payoutu.'
+    case 'noCandidateAtAll':
+      return 'Žádný vhodný kandidát.'
+  }
+
+  return 'Žádný vhodný kandidát.'
 }
 
 export function placeholder() {

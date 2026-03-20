@@ -31,7 +31,8 @@ describe('buildReviewScreen', () => {
 
     expect(review.summary).toEqual(batch.report.summary)
     expect(review.matched).toHaveLength(1)
-    expect(review.payoutBatchMatched).toHaveLength(2)
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.payoutBatchUnmatched).toHaveLength(2)
     expect(review.unmatched.length).toBeGreaterThan(0)
     expect(review.suspicious.length).toBeGreaterThan(0)
     expect(review.missingDocuments.length).toBeGreaterThan(0)
@@ -157,6 +158,7 @@ describe('buildReviewScreen', () => {
             normalizedTransactionCount: 4,
             matchedGroupCount: 0,
             payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
             exceptionCount: 4,
             unmatchedExpectedCount: 0,
             unmatchedActualCount: 0
@@ -165,6 +167,7 @@ describe('buildReviewScreen', () => {
           exceptions: [],
           supportedExpenseLinks: [],
           payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
           transactions: []
         }
       }
@@ -220,6 +223,7 @@ describe('buildReviewScreen', () => {
             normalizedTransactionCount: 0,
             matchedGroupCount: 0,
             payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
             exceptionCount: 1,
             unmatchedExpectedCount: 0,
             unmatchedActualCount: 0
@@ -228,6 +232,7 @@ describe('buildReviewScreen', () => {
           exceptions: [],
           supportedExpenseLinks: [],
           payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
           transactions: []
         }
       }
@@ -323,6 +328,7 @@ describe('buildReviewScreen', () => {
             normalizedTransactionCount: 0,
             matchedGroupCount: 0,
             payoutBatchMatchCount: 1,
+            unmatchedPayoutBatchCount: 0,
             exceptionCount: 0,
             unmatchedExpectedCount: 0,
             unmatchedActualCount: 0
@@ -344,18 +350,141 @@ describe('buildReviewScreen', () => {
               evidence: ['payoutReference: PAYOUT-ABC-1']
             }
           ],
+          unmatchedPayoutBatches: [],
           transactions: []
         }
       }
     })
 
     expect(review.matched).toHaveLength(0)
-    expect(review.payoutBatchMatched).toHaveLength(2)
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.payoutBatchUnmatched).toHaveLength(0)
     expect(review.payoutBatchMatched[0]).toMatchObject({
       title: 'Booking payout dávka PAYOUT-ABC-1'
     })
     expect(review.summary.payoutBatchMatchCount).toBe(1)
+    expect(review.summary.unmatchedPayoutBatchCount).toBe(0)
     expect(review.unmatched).toHaveLength(0)
+  })
+
+  it('shows unmatched payout batches as separate business-facing unmatched review items', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-19T09:25:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            payoutRows: [
+              {
+                rowId: 'txn:payout:payout-1',
+                platform: 'booking',
+                sourceDocumentId: toDocumentId('doc-payout-1'),
+                payoutReference: 'PAYOUT-ABC-1',
+                payoutDate: '2026-03-10',
+                payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+                amountMinor: 125000,
+                currency: 'CZK',
+                bankRoutingTarget: 'rb_bank_inflow'
+              }
+            ],
+            payoutBatches: [
+              {
+                payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+                platform: 'booking',
+                payoutReference: 'PAYOUT-ABC-1',
+                payoutDate: '2026-03-10',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:payout-1'],
+                expectedTotalMinor: 125000,
+                currency: 'CZK'
+              }
+            ],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [],
+          payoutBatchNoMatchDiagnostics: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+              payoutReference: 'PAYOUT-ABC-1',
+              platform: 'booking',
+              expectedTotalMinor: 125000,
+              currency: 'CZK',
+              payoutDate: '2026-03-10',
+              bankRoutingTarget: 'rb_bank_inflow',
+              eligibleCandidates: [],
+              allInboundBankCandidates: [],
+              noMatchReason: 'noExactAmount',
+              matched: false
+            }
+          ],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-19T09:25:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 1,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
+              platform: 'Booking',
+              payoutReference: 'PAYOUT-ABC-1',
+              payoutDate: '2026-03-10',
+              bankRoutingLabel: 'RB účet',
+              amountMinor: 125000,
+              currency: 'CZK',
+              status: 'unmatched',
+              reason: 'Žádná bankovní položka se stejnou částkou.'
+            }
+          ],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.matched).toHaveLength(0)
+    expect(review.payoutBatchMatched).toHaveLength(0)
+    expect(review.payoutBatchUnmatched).toHaveLength(1)
+    expect(review.payoutBatchUnmatched[0]).toMatchObject({
+      kind: 'unmatched',
+      title: 'Booking payout dávka PAYOUT-ABC-1'
+    })
+    expect(review.payoutBatchUnmatched[0]?.detail).toContain('Žádná bankovní položka se stejnou částkou.')
+    expect(review.payoutBatchUnmatched[0]?.detail).toContain('Směřování: RB účet.')
+    expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 })
 

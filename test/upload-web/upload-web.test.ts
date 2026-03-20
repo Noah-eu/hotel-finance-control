@@ -306,6 +306,18 @@ describe('buildUploadWebFlow', () => {
         eligibleCandidates: []
       })
     ])
+    expect(batch.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        platform: 'Booking',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        payoutDate: '2026-03-12',
+        bankRoutingLabel: 'RB účet',
+        amountMinor: 125000,
+        currency: 'CZK',
+        status: 'unmatched',
+        reason: 'Žádná bankovní položka se stejnou částkou.'
+      })
+    ])
     expect(batch.reconciliation.payoutBatchNoMatchDiagnostics?.[0]?.allInboundBankCandidates).toEqual([
       expect.objectContaining({
         bankTransactionId: 'txn:bank:fio-row-1',
@@ -330,6 +342,32 @@ describe('buildUploadWebFlow', () => {
         rejectionReasons: ['noExactAmount', 'wrongBankRouting']
       })
     ])
+  })
+
+  it('surfaces unmatched payout batches in browser runtime review sections without debug wording', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        ),
+        createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T11:35:00.000Z'
+    })
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched[0]?.title).toBe('Booking payout dávka PAYOUT-BOOK-20260310')
+    expect(result.reviewSections.payoutBatchUnmatched[0]?.detail).toContain('Žádná bankovní položka se stejnou částkou.')
+    expect(result.reviewSections.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
   it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {
@@ -447,7 +485,8 @@ describe('buildUploadWebFlow', () => {
     expect(result.batch.reconciliation.summary.matchedGroupCount).toBe(1)
     expect(result.batch.files).toHaveLength(2)
     expect(result.review.matched).toHaveLength(1)
-    expect(result.review.payoutBatchMatched).toHaveLength(2)
+    expect(result.review.payoutBatchMatched).toHaveLength(1)
+    expect(result.review.payoutBatchUnmatched).toHaveLength(0)
   })
 
   it('renders a browser-visible review screen from the shared uploaded batch preview flow', () => {
@@ -480,7 +519,8 @@ describe('buildUploadWebFlow', () => {
     })
 
     expect(result.preview.review.matched).toHaveLength(1)
-    expect(result.preview.review.payoutBatchMatched).toHaveLength(2)
+    expect(result.preview.review.payoutBatchMatched).toHaveLength(1)
+    expect(result.preview.review.payoutBatchUnmatched).toHaveLength(0)
     expect(result.html).toContain('První kontrolní obrazovka měsíčního zpracování')
     expect(result.html).toContain('Spárované položky')
     expect(result.html).toContain('Nespárované položky')
@@ -520,7 +560,8 @@ describe('buildUploadWebFlow', () => {
     })
 
     expect(result.preview.review.matched).toHaveLength(1)
-    expect(result.preview.review.payoutBatchMatched).toHaveLength(2)
+    expect(result.preview.review.payoutBatchMatched).toHaveLength(1)
+    expect(result.preview.review.payoutBatchUnmatched).toHaveLength(0)
     expect(result.exports.files).toHaveLength(3)
     expect(result.exports.files.map((file) => file.fileName)).toContain('monthly-review-export.xlsx')
     expect(existsSync(resolve(outputDir, 'review-items.csv'))).toBe(true)

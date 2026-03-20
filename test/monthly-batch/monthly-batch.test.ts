@@ -54,7 +54,8 @@ describe('runMonthlyReconciliationBatch', () => {
     })
     expect(result.report.summary).toEqual({
       ...result.reconciliation.summary,
-      payoutBatchMatchCount: 1
+      payoutBatchMatchCount: 1,
+      unmatchedPayoutBatchCount: 2
     })
     expect(result.report.matches).toHaveLength(1)
     expect(result.report.exceptions).toHaveLength(8)
