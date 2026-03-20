@@ -519,7 +519,7 @@ export const realInputFixtures: RealInputFixture[] = [
   },
   {
     key: 'previo-reservation-export',
-    description: 'Representative Previo reservation export for direct reservation expectations on the shared payout-line path.',
+    description: 'Operational Previo reservation export for deterministic reservation-source expectations on the shared payout-line path.',
     sourceDocument: sourceDocument({
       id: 'doc-previo-reservations-2026-03' as SourceDocument['id'],
       sourceSystem: 'previo',
@@ -529,8 +529,8 @@ export const realInputFixtures: RealInputFixture[] = [
     rawInput: {
       format: 'csv',
       content: [
-        'stayDate,amountMinor,currency,reservationReference,reservationId,propertyId',
-        '2026-03-14,42000,CZK,PREVIO-20260314,PREVIO-8841,HOTEL-CZ-001'
+        'reservationId,reservationReference,channel,guestName,checkIn,checkOut,amountMinor,netAmountMinor,currency,propertyId',
+        'PREVIO-8841,PREVIO-20260314,direct-web,Jan Novak,2026-03-14,2026-03-16,42000,39000,CZK,HOTEL-CZ-001'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -545,12 +545,17 @@ export const realInputFixtures: RealInputFixture[] = [
         data: {
           platform: 'previo',
           bookedAt: '2026-03-14',
+          stayStartAt: '2026-03-14',
+          stayEndAt: '2026-03-16',
           amountMinor: 42000,
+          netAmountMinor: 39000,
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PREVIO-20260314',
           reservationId: 'PREVIO-8841',
-          propertyId: 'HOTEL-CZ-001'
+          propertyId: 'HOTEL-CZ-001',
+          guestName: 'Jan Novak',
+          channel: 'direct-web'
         }
       })
     ],

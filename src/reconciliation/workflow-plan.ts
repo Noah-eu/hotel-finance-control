@@ -47,8 +47,14 @@ function buildReservationSources(extractedRecords: ExtractedRecord[]): Reservati
             sourceDocumentId: record.sourceDocumentId,
             sourceSystem: 'previo',
             bookedAt: stringOrFallback(record.data.bookedAt, record.occurredAt, record.extractedAt.slice(0, 10)),
+            reference: optionalString(record.data.reference) ?? record.rawReference,
+            guestName: optionalString(record.data.guestName),
+            channel: optionalString(record.data.channel),
+            stayStartAt: optionalString(record.data.stayStartAt) ?? optionalString(record.data.bookedAt) ?? record.occurredAt,
+            stayEndAt: optionalString(record.data.stayEndAt),
             propertyId: optionalString(record.data.propertyId),
             grossRevenueMinor: numberOrZero(record.data.amountMinor, record.amountMinor),
+            netRevenueMinor: optionalNumber(record.data.netAmountMinor),
             currency: stringOrFallback(record.data.currency, record.currency, 'CZK'),
             expectedSettlementChannels: inferReservationSettlementChannels(record)
         }))
@@ -222,4 +228,8 @@ function numberOrZero(...values: Array<unknown>): number {
     }
 
     return 0
+}
+
+function optionalNumber(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }

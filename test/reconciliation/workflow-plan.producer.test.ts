@@ -47,6 +47,32 @@ describe('buildReconciliationWorkflowPlan', () => {
         expect(plan.payoutRows).toHaveLength(0)
     })
 
+    it('derives deterministic Previo reservation sources for the monthly workflow', () => {
+        const previo = getRealInputFixture('previo-reservation-export')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: previo.expectedExtractedRecords,
+            normalizedTransactions: previo.expectedNormalizedTransactions ?? [],
+            requestedAt: '2026-03-20T18:41:30.000Z'
+        })
+
+        expect(plan.reservationSources).toEqual([
+            expect.objectContaining({
+                reservationId: 'PREVIO-8841',
+                sourceSystem: 'previo',
+                reference: 'PREVIO-20260314',
+                guestName: 'Jan Novak',
+                channel: 'direct-web',
+                stayStartAt: '2026-03-14',
+                stayEndAt: '2026-03-16',
+                propertyId: 'HOTEL-CZ-001',
+                grossRevenueMinor: 42000,
+                netRevenueMinor: 39000,
+                currency: 'CZK'
+            })
+        ])
+    })
+
     it('keeps expense documents separate from reservation revenue planning', () => {
         const invoice = getRealInputFixture('invoice-document')
 
