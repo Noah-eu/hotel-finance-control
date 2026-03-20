@@ -14,3 +14,4 @@ export type {
 } from './contracts'
 
 export { DefaultReconciliationService, reconcileExtractedRecords } from './service'
+export { buildReconciliationWorkflowPlan } from './workflow-plan'

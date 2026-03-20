@@ -3,6 +3,7 @@ import type { MatchingContext } from '../matching'
 import { detectExceptions } from '../exceptions'
 import { matchTransactions } from '../matching'
 import { normalizeExtractedRecords } from '../normalization'
+import { buildReconciliationWorkflowPlan } from './workflow-plan'
 import type {
   ReconciliationContext,
   ReconciliationInput,
@@ -43,6 +44,11 @@ export class DefaultReconciliationService implements ReconciliationService {
     const lowConfidenceThreshold = context.lowConfidenceThreshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD
     const supportedExpenseLinks = linkSupportedExpenses(normalization.transactions)
     const supportedExpenseIds = new Set(supportedExpenseLinks.map((link) => link.expenseTransactionId))
+    const workflowPlan = buildReconciliationWorkflowPlan({
+      extractedRecords: input.extractedRecords,
+      normalizedTransactions: normalization.transactions,
+      requestedAt: context.requestedAt
+    })
 
     const exceptions = detectExceptions(
       {
@@ -69,6 +75,7 @@ export class DefaultReconciliationService implements ReconciliationService {
       matchGroups: matching.matchGroups,
       exceptionCases: exceptions.cases,
       supportedExpenseLinks,
+      workflowPlan,
       normalization: {
         warnings: normalization.warnings,
         trace: normalization.trace
