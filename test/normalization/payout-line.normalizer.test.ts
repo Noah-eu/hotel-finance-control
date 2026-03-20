@@ -110,6 +110,28 @@ describe('PayoutLineNormalizer', () => {
     expect(txn.reservationId).toBe('AIRBNB-RES-77')
   })
 
+  it('propagates booking payout batch key when present', () => {
+    const input: NormalizationInput = {
+      extractedRecords: [
+        makeRecord({
+          data: {
+            amountMinor: 3000,
+            currency: 'CZK',
+            bookedAt: '2024-01-20',
+            accountId: 'expected-payouts',
+            platform: 'booking',
+            reference: 'PAYOUT-BOOK-20240120',
+            reservationId: 'RES-1',
+            bookingPayoutBatchKey: 'booking-batch:2024-01-20:PAYOUT-BOOK-20240120'
+          }
+        })
+      ]
+    }
+
+    const result = normalizer.normalize(input, context)
+    expect(result.transactions[0]?.bookingPayoutBatchKey).toBe('booking-batch:2024-01-20:PAYOUT-BOOK-20240120')
+  })
+
   it('skips records with wrong recordType', () => {
     const input: NormalizationInput = {
       extractedRecords: [makeRecord({ recordType: 'bank-transaction' })]

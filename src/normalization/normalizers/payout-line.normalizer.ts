@@ -82,6 +82,7 @@ export class PayoutLineNormalizer implements Normalizer {
         accountId: accountId!,
         reference: typeof data.reference === 'string' ? data.reference : undefined,
         reservationId: typeof data.reservationId === 'string' ? data.reservationId : undefined,
+        bookingPayoutBatchKey: typeof data.bookingPayoutBatchKey === 'string' ? data.bookingPayoutBatchKey : undefined,
         extractedRecordIds: [record.id],
         sourceDocumentIds: [record.sourceDocumentId]
       }

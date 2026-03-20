@@ -51,6 +51,7 @@ export class BookingPayoutParser {
       const payoutReference = row.payoutReference.trim()
       const reservationId = row.reservationId.trim()
       const propertyId = row.propertyId.trim()
+      const bookingPayoutBatchKey = buildBookingPayoutBatchKey(payoutReference, payoutDate)
 
       return {
         id: recordId,
@@ -68,12 +69,17 @@ export class BookingPayoutParser {
           currency,
           accountId: 'expected-payouts',
           reference: payoutReference,
+          bookingPayoutBatchKey,
           reservationId,
           propertyId
         }
       }
     })
   }
+}
+
+function buildBookingPayoutBatchKey(payoutReference: string, payoutDate: string): string {
+  return `booking-batch:${payoutDate}:${payoutReference.trim().toUpperCase()}`
 }
 
 const defaultBookingPayoutParser = new BookingPayoutParser()

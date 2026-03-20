@@ -46,6 +46,7 @@ export interface NormalizedTransaction {
   counterparty?: string
   reference?: string
   reservationId?: string
+  bookingPayoutBatchKey?: string
   invoiceNumber?: string
   extractedRecordIds: string[]
   sourceDocumentIds: DocumentId[]

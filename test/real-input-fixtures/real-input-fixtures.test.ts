@@ -8,6 +8,7 @@ describe('realInputFixtures', () => {
       'fio-statement',
       'booking-payout-export',
       'booking-payout-export-browser-upload-shape',
+      'booking-payout-export-browser-upload-batch-shape',
       'airbnb-payout-export',
       'expedia-payout-export',
       'previo-reservation-export',
@@ -26,6 +27,7 @@ describe('realInputFixtures', () => {
   it('keeps representative extracted outputs aligned with downstream contracts', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const booking = getRealInputFixture('booking-payout-export')
+    const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
@@ -43,9 +45,14 @@ describe('realInputFixtures', () => {
       recordType: 'payout-line',
       data: {
         platform: 'booking',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
         reservationId: 'RES-BOOK-8841'
       }
     })
+    expect(bookingBatch.expectedExtractedRecords.map((record) => record.data.bookingPayoutBatchKey)).toEqual([
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+    ])
     expect(airbnb.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'payout-line',
       data: {
@@ -90,6 +97,7 @@ describe('realInputFixtures', () => {
   it('includes normalized expectations where current deterministic normalizers already apply', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const booking = getRealInputFixture('booking-payout-export')
+    const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
@@ -101,8 +109,13 @@ describe('realInputFixtures', () => {
     expect(previo.expectedNormalizedTransactions).toBeDefined()
     expect(booking.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'booking',
-      reference: 'PAYOUT-BOOK-20260310'
+      reference: 'PAYOUT-BOOK-20260310',
+      bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
     })
+    expect(bookingBatch.expectedNormalizedTransactions?.map((transaction) => transaction.bookingPayoutBatchKey)).toEqual([
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+    ])
     expect(airbnb.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'airbnb',
       reference: 'AIRBNB-20260312'

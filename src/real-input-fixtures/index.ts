@@ -6,6 +6,7 @@ export interface RealInputFixture {
   | 'fio-statement'
   | 'booking-payout-export'
   | 'booking-payout-export-browser-upload-shape'
+  | 'booking-payout-export-browser-upload-batch-shape'
   | 'airbnb-payout-export'
   | 'expedia-payout-export'
   | 'previo-reservation-export'
@@ -244,6 +245,7 @@ export const realInputFixtures: RealInputFixture[] = [
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
           reservationId: 'RES-BOOK-8841',
           propertyId: 'HOTEL-CZ-001'
         }
@@ -260,6 +262,7 @@ export const realInputFixtures: RealInputFixture[] = [
         accountId: 'expected-payouts',
         reference: 'PAYOUT-BOOK-20260310',
         reservationId: 'RES-BOOK-8841',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
         extractedRecordIds: ['booking-payout-1'],
         sourceDocumentIds: ['doc-booking-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
@@ -297,6 +300,7 @@ export const realInputFixtures: RealInputFixture[] = [
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
           reservationId: 'RES-BOOK-8841',
           propertyId: 'HOTEL-CZ-001'
         }
@@ -313,8 +317,99 @@ export const realInputFixtures: RealInputFixture[] = [
         accountId: 'expected-payouts',
         reference: 'PAYOUT-BOOK-20260310',
         reservationId: 'RES-BOOK-8841',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
         extractedRecordIds: ['booking-payout-1'],
         sourceDocumentIds: ['doc-booking-browser-upload-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'booking-payout-export-browser-upload-batch-shape',
+    description: 'Minimal anonymized Booking browser-upload shape with multiple reservation-linked rows sharing one payout batch.',
+    sourceDocument: sourceDocument({
+      id: 'doc-booking-browser-upload-batch-shape-2026-03' as SourceDocument['id'],
+      sourceSystem: 'booking',
+      documentType: 'ota_report',
+      fileName: 'AaOS6MOZUh8BFtEr.booking.csv'
+    }),
+    rawInput: {
+      format: 'csv',
+      content: [
+        'datumVyplaty;netAmount;měna;bookingReference;bookingNumber;ubytovani',
+        '10.03.2026;800,00;CZK;PAYOUT-BOOK-20260310;RES-BOOK-8841;HOTEL-CZ-001',
+        '10.03.2026;450,00;CZK;PAYOUT-BOOK-20260310;RES-BOOK-8842;HOTEL-CZ-001'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'booking-payout-1',
+        sourceDocumentId: 'doc-booking-browser-upload-batch-shape-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'PAYOUT-BOOK-20260310',
+        amountMinor: 80000,
+        currency: 'CZK',
+        occurredAt: '2026-03-10',
+        data: {
+          platform: 'booking',
+          bookedAt: '2026-03-10',
+          amountMinor: 80000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+          reservationId: 'RES-BOOK-8841',
+          propertyId: 'HOTEL-CZ-001'
+        }
+      }),
+      extractedRecord({
+        id: 'booking-payout-2',
+        sourceDocumentId: 'doc-booking-browser-upload-batch-shape-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'PAYOUT-BOOK-20260310',
+        amountMinor: 45000,
+        currency: 'CZK',
+        occurredAt: '2026-03-10',
+        data: {
+          platform: 'booking',
+          bookedAt: '2026-03-10',
+          amountMinor: 45000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+          reservationId: 'RES-BOOK-8842',
+          propertyId: 'HOTEL-CZ-001'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:payout:booking-payout-1' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'booking',
+        amountMinor: 80000,
+        currency: 'CZK',
+        bookedAt: '2026-03-10',
+        accountId: 'expected-payouts',
+        reference: 'PAYOUT-BOOK-20260310',
+        reservationId: 'RES-BOOK-8841',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+        extractedRecordIds: ['booking-payout-1'],
+        sourceDocumentIds: ['doc-booking-browser-upload-batch-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:payout:booking-payout-2' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'booking',
+        amountMinor: 45000,
+        currency: 'CZK',
+        bookedAt: '2026-03-10',
+        accountId: 'expected-payouts',
+        reference: 'PAYOUT-BOOK-20260310',
+        reservationId: 'RES-BOOK-8842',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+        extractedRecordIds: ['booking-payout-2'],
+        sourceDocumentIds: ['doc-booking-browser-upload-batch-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

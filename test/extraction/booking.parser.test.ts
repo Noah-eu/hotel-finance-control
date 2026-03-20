@@ -95,6 +95,23 @@ describe('parseBookingPayoutExport', () => {
     })
   })
 
+  it('keeps multiple Booking reservation rows on the same deterministic payout batch key', () => {
+    const fixture = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
+
+    const records = parseBookingPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T14:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records.map((record) => record.data.bookingPayoutBatchKey)).toEqual([
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+    ])
+    expect(records.map((record) => record.data.reservationId)).toEqual(['RES-BOOK-8841', 'RES-BOOK-8842'])
+  })
+
   it('still fails fast for unsupported Booking exports missing reservation/property linkage', () => {
     expect(() =>
       parseBookingPayoutExport({

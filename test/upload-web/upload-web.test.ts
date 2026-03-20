@@ -231,6 +231,26 @@ describe('buildUploadWebFlow', () => {
     })
   })
 
+  it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-20T14:15:00.000Z'
+    })
+
+    expect(result.preparedFiles[0]).toMatchObject({
+      sourceSystem: 'booking',
+      documentType: 'ota_report'
+    })
+    expect(result.extractedRecords[0]?.extractedCount).toBe(2)
+    expect(booking.expectedExtractedRecords.map((record) => record.data.bookingPayoutBatchKey)).toEqual([
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+    ])
+  })
+
   it('writes the generated upload page to disk when outputPath is provided', () => {
     const outputDir = resolve(process.cwd(), 'dist/test-upload-web')
     const outputPath = resolve(outputDir, 'index.html')
