@@ -475,6 +475,7 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.files.map((file) => file.extractedCount)).toEqual([1])
     expect(result.extractedRecords.map((record) => record.id)).toEqual(['fio-row-1'])
     expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['fio'])
+    expect(result.extractedRecords[0]?.data.accountId).toBe('5599955956/5500')
   })
 
   it('routes the Pohyby_na_uctu shape by its own Datum/Objem/Měna/Protiúčet content shape instead of filename assumptions', () => {
@@ -500,6 +501,57 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(result.extractedRecords.map((record) => record.id)).toEqual(['raif-row-1'])
     expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual(['raiffeisenbank'])
+    expect(result.extractedRecords[0]?.data.accountId).toBe('8888997777')
+  })
+
+  it('keeps account attribution separate from parser selection when an RB-owned file uses the Fio-style export shape', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_5599955956_202603191023.csv',
+        content: [
+          '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+          '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+        ].join('\n'),
+        uploadedAt: '2026-03-20T09:00:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-rb-owned-fio-shape',
+        requestedAt: '2026-03-20T09:00:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-20T09:01:00.000Z'
+    })
+
+    expect(result.extractedRecords[0]?.data.bankParserVariant).toBe('fio')
+    expect(result.extractedRecords[0]?.data.accountId).toBe('5599955956/5500')
+  })
+
+  it('keeps account attribution separate from parser selection when a Fio-owned file uses the Datum/Objem/Měna/Protiúčet export shape', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+        content: [
+          '\uFEFF"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+          '19.03.2026 06:23;1250,00;CZK;5500/1234;5500;PAYOUT-BOOK-20260310;Booking BV;Příchozí platba'
+        ].join('\n'),
+        uploadedAt: '2026-03-20T09:02:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-fio-owned-rb-shape',
+        requestedAt: '2026-03-20T09:02:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-20T09:03:00.000Z'
+    })
+
+    expect(result.extractedRecords[0]?.data.bankParserVariant).toBe('raiffeisenbank')
+    expect(result.extractedRecords[0]?.data.accountId).toBe('8888997777')
   })
 
   it('runs the two current bank file shapes through the shared path without swapped parser routing', () => {
