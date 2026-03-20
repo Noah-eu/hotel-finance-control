@@ -1,13 +1,18 @@
 import type {
+  BankFeeCategory,
   CurrencyCode,
   DocumentId,
+  ExpenseSettlementKind,
   ExceptionCaseId,
   ExceptionSeverity,
   ExceptionStatus,
   ISODateString,
   MatchGroupId,
   MatchStatus,
+  PayoutBatchPlatform,
+  ReservationSettlementChannel,
   SourceSystem,
+  SettlementRoutingTarget,
   TransactionDirection,
   TransactionId
 } from './value-types'
@@ -76,4 +81,79 @@ export interface ExceptionCase {
   recommendedNextStep?: string
   createdAt: ISODateString
   resolvedAt?: ISODateString
+}
+
+export interface ReservationSourceRecord {
+  reservationId: string
+  sourceDocumentId: DocumentId
+  sourceSystem: 'previo'
+  bookedAt: ISODateString
+  propertyId?: string
+  grossRevenueMinor: number
+  currency: CurrencyCode
+  expectedSettlementChannels: ReservationSettlementChannel[]
+}
+
+export interface PayoutRowExpectation {
+  rowId: string
+  platform: PayoutBatchPlatform
+  sourceDocumentId: DocumentId
+  reservationId?: string
+  payoutReference: string
+  payoutDate: ISODateString
+  payoutBatchKey: string
+  amountMinor: number
+  currency: CurrencyCode
+  bankRoutingTarget: 'rb_bank_inflow'
+}
+
+export interface PayoutBatchExpectation {
+  payoutBatchKey: string
+  platform: PayoutBatchPlatform
+  payoutReference: string
+  payoutDate: ISODateString
+  bankRoutingTarget: 'rb_bank_inflow'
+  rowIds: string[]
+  expectedTotalMinor: number
+  currency: CurrencyCode
+}
+
+export interface DirectBankSettlementExpectation {
+  settlementId: string
+  channel: 'expedia_direct_bank'
+  reservationId: string
+  bankRoutingTarget: 'fio_bank_inflow'
+  accountIdHint?: string
+  bookedAt: ISODateString
+  amountMinor: number
+  currency: CurrencyCode
+}
+
+export interface ExpenseDocumentExpectation {
+  documentId: DocumentId
+  kind: ExpenseSettlementKind
+  sourceSystem: 'invoice' | 'receipt'
+  bookedAt: ISODateString
+  amountMinor: number
+  currency: CurrencyCode
+  expectedBankDirection: 'out'
+  routingTarget: 'document_expense_outflow'
+  documentReference?: string
+}
+
+export interface BankFeeClassification {
+  transactionId: TransactionId
+  category: BankFeeCategory
+  bankRoutingTarget: SettlementRoutingTarget
+  bankAccountId?: string
+  reason: string
+}
+
+export interface ReconciliationWorkflowPlan {
+  reservationSources: ReservationSourceRecord[]
+  payoutRows: PayoutRowExpectation[]
+  payoutBatches: PayoutBatchExpectation[]
+  directBankSettlements: DirectBankSettlementExpectation[]
+  expenseDocuments: ExpenseDocumentExpectation[]
+  bankFeeClassifications: BankFeeClassification[]
 }

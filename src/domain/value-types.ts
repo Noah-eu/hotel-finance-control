@@ -28,6 +28,27 @@ export type SourceSystem =
   | 'manual'
   | 'unknown'
 
+export type ReservationSettlementChannel =
+  | 'booking'
+  | 'airbnb'
+  | 'comgate'
+  | 'expedia_direct_bank'
+
+export type SettlementRoutingTarget =
+  | 'rb_bank_inflow'
+  | 'fio_bank_inflow'
+  | 'document_expense_outflow'
+
+export type PayoutBatchPlatform = 'booking' | 'airbnb' | 'comgate'
+
+export type ExpenseSettlementKind =
+  | 'supplier_invoice'
+  | 'merchant_receipt'
+
+export type BankFeeCategory =
+  | 'fio_terminal_fee'
+  | 'rb_account_fee'
+
 export type DocumentKind =
   | 'bank_statement'
   | 'ota_report'

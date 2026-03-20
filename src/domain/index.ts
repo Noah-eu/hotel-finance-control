@@ -4,6 +4,7 @@ export function placeholder() {
 
 export type {
   Brand,
+  BankFeeCategory,
   RecordId,
   DocumentId,
   TransactionId,
@@ -12,7 +13,11 @@ export type {
   ISODateString,
   CurrencyCode,
   Money,
+  ExpenseSettlementKind,
   SourceSystem,
+  ReservationSettlementChannel,
+  SettlementRoutingTarget,
+  PayoutBatchPlatform,
   DocumentKind,
   ExtractionMethod,
   TransactionDirection,
@@ -27,5 +32,12 @@ export type {
   ExtractedRecord,
   NormalizedTransaction,
   MatchGroup,
-  ExceptionCase
+  ExceptionCase,
+  ReservationSourceRecord,
+  PayoutRowExpectation,
+  PayoutBatchExpectation,
+  DirectBankSettlementExpectation,
+  ExpenseDocumentExpectation,
+  BankFeeClassification,
+  ReconciliationWorkflowPlan
 } from './types'

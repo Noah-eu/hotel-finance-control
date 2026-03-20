@@ -1,7 +1,13 @@
 import type { ExceptionDetectionResult } from '../exceptions'
 import type { MatchingResult } from '../matching'
 import type { NormalizationResult } from '../normalization'
-import type { ExceptionCase, ExtractedRecord, MatchGroup, NormalizedTransaction } from '../domain/types'
+import type {
+  ExceptionCase,
+  ExtractedRecord,
+  MatchGroup,
+  NormalizedTransaction,
+  ReconciliationWorkflowPlan
+} from '../domain/types'
 
 export interface SupportedExpenseLink {
   expenseTransactionId: NormalizedTransaction['id']
@@ -36,6 +42,7 @@ export interface ReconciliationResult {
   matchGroups: MatchGroup[]
   exceptionCases: ExceptionCase[]
   supportedExpenseLinks: SupportedExpenseLink[]
+  workflowPlan?: ReconciliationWorkflowPlan
   normalization: Pick<NormalizationResult, 'warnings' | 'trace'>
   exceptions: ExceptionDetectionResult
   summary: ReconciliationSummary
