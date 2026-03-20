@@ -96,6 +96,24 @@ describe('parseBookingPayoutExport', () => {
     })
   })
 
+  it('accepts English short-month payout dates from the real Booking browser-upload shape', () => {
+    const fixture = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const records = parseBookingPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T12:12:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      occurredAt: '2026-03-12',
+      data: {
+        bookedAt: '2026-03-12',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
+      }
+    })
+  })
+
   it('keeps multiple Booking reservation rows on the same deterministic payout batch key', () => {
     const fixture = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
 
@@ -107,8 +125,8 @@ describe('parseBookingPayoutExport', () => {
 
     expect(records).toHaveLength(2)
     expect(records.map((record) => record.data.bookingPayoutBatchKey)).toEqual([
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
     ])
     expect(records.map((record) => record.data.reservationId)).toEqual(['RES-BOOK-8841', 'RES-BOOK-8842'])
   })
@@ -176,5 +194,18 @@ describe('parseBookingPayoutExport', () => {
         extractedAt: '2026-03-20T12:20:00.000Z'
       })
     ).toThrow('Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka')
+  })
+
+  it('still fails fast for unsupported Booking payout date formats', () => {
+    expect(() =>
+      parseBookingPayoutExport({
+        sourceDocument: getRealInputFixture('booking-payout-export-browser-upload-shape').sourceDocument,
+        content: [
+          'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+          'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;1250,00;12 March 2026;PAYOUT-BOOK-20260310'
+        ].join('\n'),
+        extractedAt: '2026-03-20T12:25:00.000Z'
+      })
+    ).toThrow('Booking payoutDate has unsupported date format: 12 March 2026')
   })
 })

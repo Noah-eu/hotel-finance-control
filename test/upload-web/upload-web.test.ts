@@ -266,8 +266,8 @@ describe('buildUploadWebFlow', () => {
     })
     expect(result.extractedRecords[0]?.extractedCount).toBe(2)
     expect(booking.expectedExtractedRecords.map((record) => record.data.bookingPayoutBatchKey)).toEqual([
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
     ])
   })
 

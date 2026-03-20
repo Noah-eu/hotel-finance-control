@@ -50,8 +50,8 @@ describe('realInputFixtures', () => {
       }
     })
     expect(bookingBatch.expectedExtractedRecords.map((record) => record.data.bookingPayoutBatchKey)).toEqual([
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
     ])
     expect(airbnb.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'payout-line',
@@ -113,8 +113,8 @@ describe('realInputFixtures', () => {
       bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
     })
     expect(bookingBatch.expectedNormalizedTransactions?.map((transaction) => transaction.bookingPayoutBatchKey)).toEqual([
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
-      'booking-batch:2026-03-10:PAYOUT-BOOK-20260310'
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+      'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
     ])
     expect(airbnb.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'airbnb',

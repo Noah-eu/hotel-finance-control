@@ -1,5 +1,6 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
+  DeterministicParserError,
   findMissingHeaders,
   parseAmountMinor,
   parseDelimitedContent,
@@ -67,7 +68,7 @@ export class BookingPayoutParser {
 
     return rows.map((row, index) => {
       const recordId = `booking-payout-${index + 1}`
-      const payoutDate = parseIsoDate(row.payoutDate, 'Booking payoutDate')
+      const payoutDate = parseBookingPayoutDate(row.payoutDate)
       const amountMinor = parseAmountMinor(row.amountMinor, 'Booking amountMinor')
       const currency = row.currency.trim().toUpperCase()
       const payoutReference = row.payoutReference.trim()
@@ -120,4 +121,42 @@ const defaultBookingPayoutParser = new BookingPayoutParser()
 
 export function parseBookingPayoutExport(input: ParseBookingPayoutExportInput): ExtractedRecord[] {
   return defaultBookingPayoutParser.parse(input)
+}
+
+const ENGLISH_SHORT_MONTHS: Record<string, string> = {
+  jan: '01',
+  feb: '02',
+  mar: '03',
+  apr: '04',
+  may: '05',
+  jun: '06',
+  jul: '07',
+  aug: '08',
+  sep: '09',
+  oct: '10',
+  nov: '11',
+  dec: '12'
+}
+
+function parseBookingPayoutDate(value: string): string {
+  try {
+    return parseIsoDate(value, 'Booking payoutDate')
+  } catch (error) {
+    const englishShortMonthMatch = /^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/.exec(value.trim())
+
+    if (englishShortMonthMatch) {
+      const [, day, shortMonth, year] = englishShortMonthMatch
+      const month = ENGLISH_SHORT_MONTHS[shortMonth.toLowerCase()]
+
+      if (month) {
+        return `${year}-${month}-${day.padStart(2, '0')}`
+      }
+    }
+
+    if (error instanceof DeterministicParserError) {
+      throw error
+    }
+
+    throw new DeterministicParserError(`Booking payoutDate has unsupported date format: ${value}`)
+  }
 }

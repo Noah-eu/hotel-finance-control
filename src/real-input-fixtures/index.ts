@@ -281,7 +281,7 @@ export const realInputFixtures: RealInputFixture[] = [
       format: 'csv',
       content: [
         'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
-        'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;1250,00;10.03.2026;PAYOUT-BOOK-20260310'
+        'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;1250,00;12 Mar 2026;PAYOUT-BOOK-20260310'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -292,15 +292,15 @@ export const realInputFixtures: RealInputFixture[] = [
         rawReference: 'PAYOUT-BOOK-20260310',
         amountMinor: 125000,
         currency: 'CZK',
-        occurredAt: '2026-03-10',
+        occurredAt: '2026-03-12',
         data: {
           platform: 'booking',
-          bookedAt: '2026-03-10',
+          bookedAt: '2026-03-12',
           amountMinor: 125000,
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
-          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
           reservationId: 'RES-BOOK-8841'
         }
       })
@@ -312,11 +312,11 @@ export const realInputFixtures: RealInputFixture[] = [
         source: 'booking',
         amountMinor: 125000,
         currency: 'CZK',
-        bookedAt: '2026-03-10',
+        bookedAt: '2026-03-12',
         accountId: 'expected-payouts',
         reference: 'PAYOUT-BOOK-20260310',
         reservationId: 'RES-BOOK-8841',
-        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
         extractedRecordIds: ['booking-payout-1'],
         sourceDocumentIds: ['doc-booking-browser-upload-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
@@ -335,8 +335,8 @@ export const realInputFixtures: RealInputFixture[] = [
       format: 'csv',
       content: [
         'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
-        'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;800,00;10.03.2026;PAYOUT-BOOK-20260310',
-        'Reservation;RES-BOOK-8842;2026-03-09;2026-03-10;Eva Svobodova;OK;CZK;Paid;450,00;10.03.2026;PAYOUT-BOOK-20260310'
+        'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;800,00;12 Mar 2026;PAYOUT-BOOK-20260310',
+        'Reservation;RES-BOOK-8842;2026-03-09;2026-03-10;Eva Svobodova;OK;CZK;Paid;450,00;12 Mar 2026;PAYOUT-BOOK-20260310'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -347,15 +347,15 @@ export const realInputFixtures: RealInputFixture[] = [
         rawReference: 'PAYOUT-BOOK-20260310',
         amountMinor: 80000,
         currency: 'CZK',
-        occurredAt: '2026-03-10',
+        occurredAt: '2026-03-12',
         data: {
           platform: 'booking',
-          bookedAt: '2026-03-10',
+          bookedAt: '2026-03-12',
           amountMinor: 80000,
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
-          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
           reservationId: 'RES-BOOK-8841'
         }
       }),
@@ -366,15 +366,15 @@ export const realInputFixtures: RealInputFixture[] = [
         rawReference: 'PAYOUT-BOOK-20260310',
         amountMinor: 45000,
         currency: 'CZK',
-        occurredAt: '2026-03-10',
+        occurredAt: '2026-03-12',
         data: {
           platform: 'booking',
-          bookedAt: '2026-03-10',
+          bookedAt: '2026-03-12',
           amountMinor: 45000,
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PAYOUT-BOOK-20260310',
-          bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+          bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
           reservationId: 'RES-BOOK-8842'
         }
       })
@@ -386,11 +386,11 @@ export const realInputFixtures: RealInputFixture[] = [
         source: 'booking',
         amountMinor: 80000,
         currency: 'CZK',
-        bookedAt: '2026-03-10',
+        bookedAt: '2026-03-12',
         accountId: 'expected-payouts',
         reference: 'PAYOUT-BOOK-20260310',
         reservationId: 'RES-BOOK-8841',
-        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
         extractedRecordIds: ['booking-payout-1'],
         sourceDocumentIds: ['doc-booking-browser-upload-batch-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       }),
@@ -400,11 +400,11 @@ export const realInputFixtures: RealInputFixture[] = [
         source: 'booking',
         amountMinor: 45000,
         currency: 'CZK',
-        bookedAt: '2026-03-10',
+        bookedAt: '2026-03-12',
         accountId: 'expected-payouts',
         reference: 'PAYOUT-BOOK-20260310',
         reservationId: 'RES-BOOK-8842',
-        bookingPayoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-BOOK-20260310',
+        bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
         extractedRecordIds: ['booking-payout-2'],
         sourceDocumentIds: ['doc-booking-browser-upload-batch-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
