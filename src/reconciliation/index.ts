@@ -22,3 +22,4 @@ export {
   matchPayoutBatchesToBank,
   diagnoseUnmatchedPayoutBatchesToBank
 } from './payout-batch-bank.matcher'
+export { matchReservationSourcesToSettlements } from './reservation-settlement.matcher'

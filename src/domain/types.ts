@@ -118,6 +118,32 @@ export interface AncillaryRevenueSourceRecord {
   currency: CurrencyCode
 }
 
+export interface ReservationSettlementMatch {
+  reservationId: string
+  reference?: string
+  sourceDocumentId: DocumentId
+  settlementKind: 'payout_row' | 'direct_bank_settlement'
+  matchedRowId?: string
+  matchedSettlementId?: string
+  platform: 'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'
+  amountMinor: number
+  currency: CurrencyCode
+  confidence: number
+  reasons: string[]
+  evidence: Array<{
+    key: string
+    value: string | number | boolean
+  }>
+}
+
+export interface ReservationSettlementNoMatch {
+  reservationId: string
+  reference?: string
+  sourceDocumentId: DocumentId
+  candidateCount: number
+  noMatchReason: 'noCandidate' | 'ambiguousCandidates' | 'channelMismatch' | 'amountMismatch'
+}
+
 export interface PayoutRowExpectation {
   rowId: string
   platform: PayoutBatchPlatform
@@ -176,6 +202,8 @@ export interface BankFeeClassification {
 export interface ReconciliationWorkflowPlan {
   reservationSources: ReservationSourceRecord[]
   ancillaryRevenueSources: AncillaryRevenueSourceRecord[]
+  reservationSettlementMatches: ReservationSettlementMatch[]
+  reservationSettlementNoMatches: ReservationSettlementNoMatch[]
   payoutRows: PayoutRowExpectation[]
   payoutBatches: PayoutBatchExpectation[]
   directBankSettlements: DirectBankSettlementExpectation[]

@@ -138,4 +138,55 @@ describe('reconcileExtractedRecords', () => {
       'unmatched_transaction'
     ])
   })
+
+  it('attaches deterministic reservation settlement matches from the workflow plan without rewriting the main reconciliation engine', () => {
+    const extractedRecords: ExtractedRecord[] = [
+      record({
+        id: 'previo-reservation-1',
+        recordType: 'payout-line',
+        rawReference: 'PREVIO-BOOK-8841',
+        amountMinor: 42000,
+        currency: 'CZK',
+        occurredAt: '2026-03-14',
+        data: {
+          platform: 'previo',
+          rowKind: 'accommodation',
+          bookedAt: '2026-03-14',
+          stayStartAt: '2026-03-14',
+          stayEndAt: '2026-03-16',
+          amountMinor: 42000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'PREVIO-BOOK-8841',
+          reservationId: 'PREVIO-BOOK-8841',
+          guestName: 'Jan Novak',
+          channel: 'booking'
+        }
+      }),
+      record({
+        id: 'booking-payout-1',
+        recordType: 'payout-line',
+        data: {
+          platform: 'booking',
+          bookedAt: '2026-03-15',
+          amountMinor: 42000,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'BOOK-PAYOUT-8841',
+          reservationId: 'PREVIO-BOOK-8841'
+        }
+      })
+    ]
+
+    const result = reconcileExtractedRecords({ extractedRecords }, context)
+
+    expect(result.workflowPlan?.reservationSettlementMatches).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-BOOK-8841',
+        platform: 'booking',
+        settlementKind: 'payout_row'
+      })
+    ])
+    expect(result.reservationSettlementMatches).toEqual(result.workflowPlan?.reservationSettlementMatches)
+  })
 })

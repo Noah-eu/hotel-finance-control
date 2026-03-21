@@ -12,6 +12,7 @@ import type {
     ReservationSourceRecord,
     SourceDocument
 } from '../domain'
+import { matchReservationSourcesToSettlements } from './reservation-settlement.matcher'
 
 export interface BuildWorkflowPlanInput {
     extractedRecords: ExtractedRecord[]
@@ -27,12 +28,19 @@ export function buildReconciliationWorkflowPlan(
     const payoutRows = buildPayoutRows(input.normalizedTransactions)
     const payoutBatches = buildPayoutBatches(payoutRows)
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
+    const reservationSettlementMatching = matchReservationSourcesToSettlements({
+        reservationSources,
+        payoutRows,
+        directBankSettlements
+    })
     const expenseDocuments = buildExpenseDocuments(input.normalizedTransactions)
     const bankFeeClassifications = buildBankFeeClassifications(input.normalizedTransactions)
 
     return {
         reservationSources,
         ancillaryRevenueSources,
+        reservationSettlementMatches: reservationSettlementMatching.matches,
+        reservationSettlementNoMatches: reservationSettlementMatching.noMatches,
         payoutRows,
         payoutBatches,
         directBankSettlements,

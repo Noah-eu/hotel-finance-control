@@ -88,6 +88,8 @@ export class DefaultReconciliationService implements ReconciliationService {
       exceptionCases: exceptions.cases,
       supportedExpenseLinks,
       workflowPlan,
+      reservationSettlementMatches: workflowPlan.reservationSettlementMatches,
+      reservationSettlementNoMatches: workflowPlan.reservationSettlementNoMatches,
       payoutBatchMatches,
       payoutBatchNoMatchDiagnostics,
       normalization: {

@@ -69,6 +69,295 @@ describe('buildReconciliationWorkflowPlan', () => {
                 currency: 'CZK'
             })
         ])
+        expect(plan.reservationSettlementMatches).toEqual([])
+    })
+
+    it('matches a Previo accommodation reservation to a Booking payout row by unique deterministic evidence', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'PREVIO-BOOK-8841',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-14',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-03-14',
+                        stayStartAt: '2026-03-14',
+                        stayEndAt: '2026-03-16',
+                        amountMinor: 42000,
+                        currency: 'CZK',
+                        reference: 'PREVIO-BOOK-8841',
+                        reservationId: 'PREVIO-BOOK-8841',
+                        guestName: 'Jan Novak',
+                        channel: 'booking'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:booking-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'booking',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'BOOK-SETTLEMENT-8841',
+                    reservationId: 'PREVIO-BOOK-8841',
+                    extractedRecordIds: ['booking-payout-1'],
+                    sourceDocumentIds: ['doc-booking-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:45:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'PREVIO-BOOK-8841',
+                settlementKind: 'payout_row',
+                matchedRowId: 'txn:payout:booking-payout-1',
+                platform: 'booking',
+                amountMinor: 42000,
+                reasons: expect.arrayContaining(['reservationIdExact', 'amountExact'])
+            })
+        ])
+        expect(plan.reservationSettlementNoMatches).toEqual([])
+    })
+
+    it('leaves ambiguous reservation settlement candidates unmatched instead of guessing', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:46:00.000Z',
+                    rawReference: 'PREVIO-BOOK-8841',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-14',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-03-14',
+                        stayStartAt: '2026-03-14',
+                        stayEndAt: '2026-03-16',
+                        amountMinor: 42000,
+                        currency: 'CZK',
+                        reference: 'PREVIO-BOOK-8841',
+                        reservationId: 'PREVIO-BOOK-8841',
+                        guestName: 'Jan Novak',
+                        channel: 'booking'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:booking-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'booking',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'BOOK-SETTLEMENT-8841-A',
+                    reservationId: 'PREVIO-BOOK-8841',
+                    extractedRecordIds: ['booking-payout-1'],
+                    sourceDocumentIds: ['doc-booking-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                },
+                {
+                    id: 'txn:payout:booking-payout-2' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'booking',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'BOOK-SETTLEMENT-8841-B',
+                    reservationId: 'PREVIO-BOOK-8841',
+                    extractedRecordIds: ['booking-payout-2'],
+                    sourceDocumentIds: ['doc-booking-2' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:46:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([])
+        expect(plan.reservationSettlementNoMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'PREVIO-BOOK-8841',
+                noMatchReason: 'ambiguousCandidates',
+                candidateCount: 2
+            })
+        ])
+    })
+
+    it('does not match when the expected channel or amount is wrong', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:47:00.000Z',
+                    rawReference: 'PREVIO-CG-8841',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-14',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-03-14',
+                        stayStartAt: '2026-03-14',
+                        stayEndAt: '2026-03-16',
+                        amountMinor: 42000,
+                        currency: 'CZK',
+                        reference: 'PREVIO-CG-8841',
+                        reservationId: 'PREVIO-CG-8841',
+                        guestName: 'Jan Novak',
+                        channel: 'comgate'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:booking-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'booking',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'BOOK-SETTLEMENT-8841',
+                    reservationId: 'PREVIO-CG-8841',
+                    extractedRecordIds: ['booking-payout-1'],
+                    sourceDocumentIds: ['doc-booking-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                },
+                {
+                    id: 'txn:payout:comgate-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'comgate',
+                    amountMinor: 41000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'CG-SETTLEMENT-8841',
+                    reservationId: 'PREVIO-CG-8841',
+                    extractedRecordIds: ['comgate-payout-1'],
+                    sourceDocumentIds: ['doc-comgate-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:47:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([])
+        expect(plan.reservationSettlementNoMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'PREVIO-CG-8841',
+                noMatchReason: 'channelMismatch'
+            })
+        ])
+    })
+
+    it('can match the Expedia direct-bank path separately from payout rows', () => {
+        const expedia = getRealInputFixture('expedia-payout-export')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:48:00.000Z',
+                    rawReference: 'EXP-RES-1001',
+                    amountMinor: 65000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-11',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-03-11',
+                        stayStartAt: '2026-03-11',
+                        stayEndAt: '2026-03-12',
+                        amountMinor: 65000,
+                        currency: 'CZK',
+                        reference: 'EXP-RES-1001',
+                        reservationId: 'EXP-RES-1001',
+                        guestName: 'Jan Novak',
+                        channel: 'expedia_direct_bank'
+                    }
+                },
+                ...expedia.expectedExtractedRecords
+            ],
+            normalizedTransactions: expedia.expectedNormalizedTransactions ?? [],
+            requestedAt: '2026-03-20T18:48:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'EXP-RES-1001',
+                settlementKind: 'direct_bank_settlement',
+                matchedSettlementId: 'txn:payout:expedia-payout-1',
+                platform: 'expedia_direct_bank'
+            })
+        ])
+    })
+
+    it('does not treat ancillary revenue rows as accommodation reservation settlement matches', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-ancillary-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'expected-revenue-line',
+                    extractedAt: '2026-03-20T18:49:00.000Z',
+                    rawReference: 'PREVIO-20260314',
+                    amountMinor: 20000,
+                    currency: 'CZK',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'ancillary',
+                        bookedAt: '2026-03-14',
+                        amountMinor: 20000,
+                        currency: 'CZK',
+                        reference: 'PREVIO-20260314',
+                        reservationId: 'PREVIO-20260314',
+                        itemLabel: 'Parkování 1',
+                        channel: 'comgate'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:comgate-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'comgate',
+                    amountMinor: 20000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-14',
+                    accountId: 'expected-payouts',
+                    reference: 'PREVIO-20260314',
+                    reservationId: 'PREVIO-20260314',
+                    extractedRecordIds: ['comgate-payout-1'],
+                    sourceDocumentIds: ['doc-comgate-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:49:30.000Z'
+        })
+
+        expect(plan.ancillaryRevenueSources).toEqual([
+            expect.objectContaining({
+                reference: 'PREVIO-20260314',
+                itemLabel: 'Parkování 1'
+            })
+        ])
+        expect(plan.reservationSettlementMatches).toEqual([])
     })
 
     it('keeps expense documents separate from reservation revenue planning', () => {

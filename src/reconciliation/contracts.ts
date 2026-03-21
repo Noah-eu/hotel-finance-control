@@ -7,6 +7,8 @@ import type {
   MatchGroup,
   NormalizedTransaction,
   PayoutBatchExpectation,
+  ReservationSettlementMatch,
+  ReservationSettlementNoMatch,
   ReconciliationWorkflowPlan
 } from '../domain/types'
 
@@ -97,6 +99,8 @@ export interface ReconciliationResult {
   exceptionCases: ExceptionCase[]
   supportedExpenseLinks: SupportedExpenseLink[]
   workflowPlan?: ReconciliationWorkflowPlan
+  reservationSettlementMatches?: ReservationSettlementMatch[]
+  reservationSettlementNoMatches?: ReservationSettlementNoMatch[]
   payoutBatchMatches?: PayoutBatchBankMatch[]
   payoutBatchNoMatchDiagnostics?: PayoutBatchNoMatchDiagnostic[]
   normalization: Pick<NormalizationResult, 'warnings' | 'trace'>

@@ -139,6 +139,8 @@ describe('reconciliation workflow business contracts', () => {
                 }
             ],
             ancillaryRevenueSources: [],
+            reservationSettlementMatches: [],
+            reservationSettlementNoMatches: [],
             payoutRows: [],
             payoutBatches: [],
             directBankSettlements: [],

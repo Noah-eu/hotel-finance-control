@@ -35,6 +35,8 @@ export type {
   ExceptionCase,
   ReservationSourceRecord,
   AncillaryRevenueSourceRecord,
+  ReservationSettlementMatch,
+  ReservationSettlementNoMatch,
   PayoutRowExpectation,
   PayoutBatchExpectation,
   DirectBankSettlementExpectation,
