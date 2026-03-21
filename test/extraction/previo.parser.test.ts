@@ -128,6 +128,28 @@ describe('parsePrevioReservationExport', () => {
     expect(records[0]?.data.workbookExtractionAudit).toMatchObject({
       sheetName: 'Seznam rezervací',
       headerRowIndex: 1,
+      headerColumnIndexes: {
+        Voucher: 4,
+        'Termín od': 1,
+        'Termín do': 2,
+        Hosté: 6,
+        PP: 10,
+        Cena: 12,
+        Saldo: 13,
+        Stav: 11
+      },
+      sampleCandidateRows: [
+        {
+          Voucher: 'PREVIO-20260314',
+          'Termín od': '14.03.2026',
+          'Termín do': '16.03.2026',
+          Hosté: 'Jan Novak',
+          PP: 'direct-web',
+          Cena: '420,00',
+          Saldo: '30,00',
+          Stav: 'confirmed'
+        }
+      ],
       candidateRowCount: 1,
       skippedRowCount: 0,
       rejectedRowCount: 0,
@@ -193,6 +215,116 @@ describe('parsePrevioReservationExport', () => {
       candidateRowCount: 1,
       extractedRowCount: 1
     })
+  })
+
+  it('maps `Termín od` and `Termín do` from the correct columns even when a header-like legend block appears earlier in the sheet', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64WithLeadingRows({
+        leadingRows: [
+          ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'],
+          ['Legenda', 'P = potvrzeno', 'R = rezervace', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'],
+          [''],
+          ['Export vytvořen 21.03.2026']
+        ],
+        headers: [
+          'Vytvořeno',
+          'Termín od',
+          'Termín do',
+          'Nocí',
+          'Voucher',
+          'Počet hostů',
+          'Hosté',
+          'Check-In dokončen',
+          'Market kody',
+          'Firma',
+          'PP',
+          'Stav',
+          'Cena',
+          'Saldo',
+          'Pokoj'
+        ],
+        rows: [
+          [
+            '13.03.2026 09:15',
+            '14.03.2026',
+            '16.03.2026',
+            '2',
+            'PREVIO-20260314',
+            '2',
+            'Jan Novak',
+            'Ano',
+            '',
+            'Acme Travel s.r.o.',
+            'direct-web',
+            'confirmed',
+            '420,00',
+            '30,00',
+            'A101'
+          ]
+        ]
+      }),
+      extractedAt: '2026-03-21T13:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      occurredAt: '2026-03-14',
+      data: {
+        stayStartAt: '2026-03-14',
+        stayEndAt: '2026-03-16'
+      }
+    })
+    expect(records[0]?.data.workbookExtractionAudit).toMatchObject({
+      headerRowIndex: 5,
+      sampleCandidateRows: [
+        {
+          Voucher: 'PREVIO-20260314',
+          'Termín od': '14.03.2026',
+          'Termín do': '16.03.2026',
+          Stav: 'confirmed'
+        }
+      ]
+    })
+  })
+
+  it('does not interpret legend status text like `P = potvrzeno` as reservation date fields', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    expect(() =>
+      parsePrevioReservationExport({
+        sourceDocument: fixture.sourceDocument,
+        content: fixture.rawInput.content,
+        binaryContentBase64: createPrevioWorkbookBase64WithLeadingRows({
+          leadingRows: [
+            ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena'],
+            ['Legenda', 'P = potvrzeno', 'R = rezervace', 'Hosté', 'PP', 'Cena']
+          ],
+          headers: [
+            'Vytvořeno',
+            'Termín od',
+            'Termín do',
+            'Nocí',
+            'Voucher',
+            'Počet hostů',
+            'Hosté',
+            'Check-In dokončen',
+            'Market kody',
+            'Firma',
+            'PP',
+            'Stav',
+            'Cena',
+            'Saldo',
+            'Pokoj'
+          ],
+          rows: []
+        }),
+        extractedAt: '2026-03-21T13:15:00.000Z'
+      })
+    ).not.toThrow('Previo Termín od has unsupported date format: P = potvrzeno')
   })
 
   it('parses the real short Czech workbook date-time format like `01.03.26 12:30` deterministically', () => {
@@ -410,25 +542,62 @@ describe('parsePrevioReservationExport', () => {
       parsePrevioReservationExport({
         sourceDocument: fixture.sourceDocument,
         content: fixture.rawInput.content,
-        binaryContentBase64: createPrevioWorkbookBase64([
-          {
-            'Vytvořeno': '13.03.2026 09:15',
-            'Termín od': '14.03.2026',
-            'Termín do': '16.03.2026',
-            'Nocí': '2',
-            'Voucher': '',
-            'Počet hostů': '2',
-            'Hosté': 'Jan Novak',
-            'Check-In dokončen': 'Ano',
-            'Market kody': '',
-            'Firma': 'Acme Travel s.r.o.',
-            'PP': 'direct-web',
-            'Stav': 'confirmed',
-            'Cena': '420,00',
-            'Saldo': '30,00',
-            'Pokoj': 'A101'
-          }
-        ]),
+        binaryContentBase64: createPrevioWorkbookBase64WithLeadingRows({
+          leadingRows: [],
+          headers: [
+            'Vytvořeno',
+            'Termín od',
+            'Termín do',
+            'Nocí',
+            'Voucher',
+            'Počet hostů',
+            'Hosté',
+            'Check-In dokončen',
+            'Market kody',
+            'Firma',
+            'PP',
+            'Stav',
+            'Cena',
+            'Saldo',
+            'Pokoj'
+          ],
+          rows: [
+            [
+              '13.03.2026 09:15',
+              '14.03.2026',
+              '16.03.2026',
+              '2',
+              'PREVIO-HEADER-CONTEXT',
+              '2',
+              'Jan Novak',
+              'Ano',
+              '',
+              'Acme Travel s.r.o.',
+              'direct-web',
+              'confirmed',
+              '420,00',
+              '30,00',
+              'A101'
+            ],
+            [
+              '13.03.2026 09:15',
+              '14.03.2026',
+              '16.03.2026',
+              '2',
+              '',
+              '2',
+              'Jan Novak',
+              'Ano',
+              '',
+              'Acme Travel s.r.o.',
+              'direct-web',
+              'confirmed',
+              '420,00',
+              '30,00',
+              'A101'
+            ]
+          ]
+        }),
         extractedAt: '2026-03-21T10:16:00.000Z'
       })
     ).toThrow('Previo Voucher is missing or empty')

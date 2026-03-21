@@ -604,6 +604,52 @@ export const realInputFixtures: RealInputFixture[] = [
           workbookExtractionAudit: {
             sheetName: 'Seznam rezervací',
             headerRowIndex: 1,
+            headerRowValues: [
+              'Vytvořeno',
+              'Termín od',
+              'Termín do',
+              'Nocí',
+              'Voucher',
+              'Počet hostů',
+              'Hosté',
+              'Check-In dokončen',
+              'Market kody',
+              'Firma',
+              'PP',
+              'Stav',
+              'Cena',
+              'Saldo',
+              'Pokoj'
+            ],
+            headerColumnIndexes: {
+              'Vytvořeno': 0,
+              'Termín od': 1,
+              'Termín do': 2,
+              'Nocí': 3,
+              Voucher: 4,
+              'Počet hostů': 5,
+              Hosté: 6,
+              'Check-In dokončen': 7,
+              'Market kody': 8,
+              Firma: 9,
+              PP: 10,
+              Stav: 11,
+              Cena: 12,
+              Saldo: 13,
+              Pokoj: 14
+            },
+            sampleCandidateRows: [
+              {
+                Voucher: 'PREVIO-20260314',
+                'Termín od': '14.03.2026',
+                'Termín do': '16.03.2026',
+                Hosté: 'Jan Novak',
+                PP: 'direct-web',
+                Cena: '420,00',
+                Saldo: '30,00',
+                Stav: 'confirmed'
+              }
+            ],
             candidateRowCount: 1,
             skippedRowCount: 0,
             rejectedRowCount: 0,

@@ -42,6 +42,7 @@ const HEADER_ALIASES = {
 
 const PREVIO_RESERVATION_WORKBOOK_SHEET = 'Seznam rezervací'
 const PREVIO_WORKBOOK_REQUIRED_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena'] as const
+const PREVIO_WORKBOOK_TRACE_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'] as const
 
 export class PrevioReservationParser {
   parse(input: ParsePrevioReservationExportInput): ExtractedRecord[] {
@@ -174,6 +175,9 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
         workbookExtractionAudit: {
           sheetName: PREVIO_RESERVATION_WORKBOOK_SHEET,
           headerRowIndex: extraction.headerRowIndex + 1,
+          headerRowValues: extraction.headerRowValues,
+          headerColumnIndexes: extraction.headerColumnIndexes,
+          sampleCandidateRows: extraction.candidateRows.slice(0, 3).map((candidateRow) => toWorkbookTraceRow(candidateRow)),
           candidateRowCount: extraction.candidateRows.length,
           skippedRowCount: extraction.candidateRows.length - reservationRows.length,
           rejectedRowCount: 0,
@@ -186,6 +190,8 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
 
 function extractWorkbookReservationRows(worksheet: XLSX.WorkSheet): {
   headerRowIndex: number
+  headerRowValues: string[]
+  headerColumnIndexes: Record<string, number>
   candidateRows: Array<Record<string, unknown>>
 } {
   const sheetRows = XLSX.utils.sheet_to_json<Array<unknown>>(worksheet, {
@@ -201,38 +207,111 @@ function extractWorkbookReservationRows(worksheet: XLSX.WorkSheet): {
   }
 
   const headerRow = sheetRows[headerRowIndex]!.map((cell) => String(cell ?? '').trim())
+  const headerColumnIndexes = indexWorkbookColumns(headerRow)
   const candidateRows = sheetRows
     .slice(headerRowIndex + 1)
-    .map((row) => buildWorkbookRowObject(headerRow, row))
+    .map((row) => buildWorkbookRowObject(headerColumnIndexes, row))
 
   return {
     headerRowIndex,
+    headerRowValues: headerRow,
+    headerColumnIndexes,
     candidateRows
   }
 }
 
 function findWorkbookHeaderRowIndex(rows: Array<Array<unknown>>): number {
-  return rows.findIndex((row) => {
-    const normalized = row
-      .map((cell) => String(cell ?? '').trim())
-      .filter(Boolean)
-
-    return PREVIO_WORKBOOK_REQUIRED_COLUMNS.every((column) => normalized.includes(column))
-  })
+  return rows.findIndex((row, rowIndex) => isWorkbookHeaderRowCandidate(rows, rowIndex))
 }
 
-function buildWorkbookRowObject(headers: string[], row: Array<unknown>): Record<string, unknown> {
-  const record: Record<string, unknown> = {}
+function isWorkbookHeaderRowCandidate(rows: Array<Array<unknown>>, rowIndex: number): boolean {
+  const row = rows[rowIndex]
+  if (!row) {
+    return false
+  }
+
+  const normalized = row.map((cell) => String(cell ?? '').trim())
+  const nonEmpty = normalized.filter(Boolean)
+
+  if (!PREVIO_WORKBOOK_REQUIRED_COLUMNS.every((column) => nonEmpty.includes(column))) {
+    return false
+  }
+
+  const headerColumnIndexes = indexWorkbookColumns(normalized)
+  const nextRows = rows.slice(rowIndex + 1, rowIndex + 4)
+
+  return nextRows.some((candidateRow) => isLikelyWorkbookReservationRow(candidateRow, headerColumnIndexes))
+}
+
+function indexWorkbookColumns(headers: string[]): Record<string, number> {
+  const indexMap: Record<string, number> = {}
 
   headers.forEach((header, index) => {
-    if (!header) {
+    const normalized = String(header ?? '').trim()
+    if (!normalized || normalized in indexMap) {
       return
     }
 
-    record[header] = row[index] ?? ''
+    indexMap[normalized] = index
   })
 
+  return indexMap
+}
+
+function buildWorkbookRowObject(headerColumnIndexes: Record<string, number>, row: Array<unknown>): Record<string, unknown> {
+  const record: Record<string, unknown> = {}
+
+  for (const [header, index] of Object.entries(headerColumnIndexes)) {
+    if (index < 0) {
+      continue
+    }
+
+    record[header] = row[index] ?? ''
+  }
+
   return record
+}
+
+function isLikelyWorkbookReservationRow(
+  row: Array<unknown>,
+  headerColumnIndexes: Record<string, number>
+): boolean {
+  const voucher = readWorkbookOptionalString(readWorkbookCellAt(row, headerColumnIndexes, 'Voucher'))
+  const stayStartAt = readWorkbookOptionalString(readWorkbookCellAt(row, headerColumnIndexes, 'Termín od'))
+  const stayEndAt = readWorkbookOptionalString(readWorkbookCellAt(row, headerColumnIndexes, 'Termín do'))
+  const guestName = readWorkbookOptionalString(readWorkbookCellAt(row, headerColumnIndexes, 'Hosté'))
+  const amount = readWorkbookOptionalString(readWorkbookCellAt(row, headerColumnIndexes, 'Cena'))
+
+  return Boolean(
+    voucher
+    && guestName
+    && stayStartAt
+    && PREVIO_DATE_CELL_PATTERN.test(stayStartAt)
+    && stayEndAt
+    && PREVIO_DATE_CELL_PATTERN.test(stayEndAt)
+    && amount
+    && PREVIO_AMOUNT_CELL_PATTERN.test(amount.replace(/\u00a0/g, '').replace(/\s+/g, ''))
+  )
+}
+
+function readWorkbookCellAt(
+  row: Array<unknown>,
+  headerColumnIndexes: Record<string, number>,
+  header: string
+): unknown {
+  const index = headerColumnIndexes[header]
+  return typeof index === 'number' ? row[index] ?? '' : ''
+}
+
+function toWorkbookTraceRow(row: Record<string, unknown>): Record<string, string> {
+  const trace: Record<string, string> = {}
+
+  PREVIO_WORKBOOK_TRACE_COLUMNS.forEach((column) => {
+    const value = row[column]
+    trace[column] = String(value ?? '').trim()
+  })
+
+  return trace
 }
 
 function shouldKeepWorkbookReservationRow(row: Record<string, unknown>): boolean {
@@ -442,6 +521,9 @@ function normalizeTwoDigitYear(value: string): string {
 
   return `20${padTwo(value)}`
 }
+
+const PREVIO_DATE_CELL_PATTERN = /^(\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?|\d{4}-\d{2}-\d{2}(?:t\d{2}:\d{2}(?::\d{2})?)?)$/i
+const PREVIO_AMOUNT_CELL_PATTERN = /^(?:(?:€|EUR|Kč|CZK)?(?:\d+(?:,\d{2})|\d{1,3}(?:,\d{3})+(?:\.\d{2})|\d+(?:\.\d{2})|\d+)(?:€|EUR|Kč|CZK)?)$/i
 
 const defaultPrevioReservationParser = new PrevioReservationParser()
 
