@@ -288,17 +288,29 @@ function parseFlexiblePrevioDate(value: unknown, label: string): string {
   }
 
   const match = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
-  if (!match) {
-    throw new Error(`${label} has unsupported date format: ${text}`)
+  if (match) {
+    const [, day, month, year, hours, minutes, seconds] = match
+    const isoDate = `${year}-${padTwo(month)}-${padTwo(day)}`
+    if (!hours || !minutes) {
+      return isoDate
+    }
+
+    return `${isoDate}T${padTwo(hours)}:${minutes}:${seconds ? padTwo(seconds) : '00'}`
   }
 
-  const [, day, month, year, hours, minutes, seconds] = match
-  const isoDate = `${year}-${padTwo(month)}-${padTwo(day)}`
-  if (!hours || !minutes) {
-    return isoDate
+  const shortYearMatch = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/)
+  if (shortYearMatch) {
+    const [, day, month, shortYear, hours, minutes, seconds] = shortYearMatch
+    const year = normalizeTwoDigitYear(shortYear)
+    const isoDate = `${year}-${padTwo(month)}-${padTwo(day)}`
+    if (!hours || !minutes) {
+      return isoDate
+    }
+
+    return `${isoDate}T${padTwo(hours)}:${minutes}:${seconds ? padTwo(seconds) : '00'}`
   }
 
-  return `${isoDate}T${padTwo(hours)}:${minutes}:${seconds ? padTwo(seconds) : '00'}`
+  throw new Error(`${label} has unsupported date format: ${text}`)
 }
 
 function parsePrevioWorkbookAmount(value: unknown, label: string): number {
@@ -344,6 +356,20 @@ function stringOrEmpty(value: unknown): string {
 
 function padTwo(value: string): string {
   return value.padStart(2, '0')
+}
+
+function normalizeTwoDigitYear(value: string): string {
+  const numericYear = Number.parseInt(value, 10)
+
+  if (!Number.isFinite(numericYear)) {
+    throw new Error(`Unsupported two-digit year value: ${value}`)
+  }
+
+  if (numericYear >= 70) {
+    return `19${padTwo(value)}`
+  }
+
+  return `20${padTwo(value)}`
 }
 
 const defaultPrevioReservationParser = new PrevioReservationParser()
