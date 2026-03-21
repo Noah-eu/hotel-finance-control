@@ -315,8 +315,7 @@ function toWorkbookTraceRow(row: Record<string, unknown>): Record<string, string
 }
 
 function shouldKeepWorkbookReservationRow(row: Record<string, unknown>): boolean {
-  const voucher = readWorkbookOptionalString(row['Voucher'])
-  if (voucher) {
+  if (isStructuredWorkbookReservationRow(row)) {
     return true
   }
 
@@ -327,7 +326,31 @@ function shouldKeepWorkbookReservationRow(row: Record<string, unknown>): boolean
   throw new Error('Previo Voucher is missing or empty')
 }
 
+function isStructuredWorkbookReservationRow(row: Record<string, unknown>): boolean {
+  const voucher = readWorkbookOptionalString(row['Voucher'])
+  const stayStartAt = readWorkbookOptionalString(row['Termín od'])
+  const stayEndAt = readWorkbookOptionalString(row['Termín do'])
+  const guestName = readWorkbookOptionalString(row['Hosté'])
+  const amount = readWorkbookOptionalString(row['Cena'])
+
+  return Boolean(
+    voucher
+    && isLikelyReservationReference(voucher)
+    && guestName
+    && stayStartAt
+    && PREVIO_DATE_CELL_PATTERN.test(stayStartAt)
+    && stayEndAt
+    && PREVIO_DATE_CELL_PATTERN.test(stayEndAt)
+    && amount
+    && PREVIO_AMOUNT_CELL_PATTERN.test(amount.replace(/\u00a0/g, '').replace(/\s+/g, ''))
+  )
+}
+
 function isIgnorableWorkbookNonReservationRow(row: Record<string, unknown>): boolean {
+  if (isWorkbookLegendRow(row)) {
+    return true
+  }
+
   const stayStartAt = readWorkbookOptionalString(row['Termín od'])
   const stayEndAt = readWorkbookOptionalString(row['Termín do'])
   const guestName = readWorkbookOptionalString(row['Hosté'])
@@ -340,10 +363,12 @@ function isIgnorableWorkbookNonReservationRow(row: Record<string, unknown>): boo
   const occupancy = readWorkbookOptionalString(row['Počet hostů'])
   const nights = readWorkbookOptionalString(row['Nocí'])
   const channel = readWorkbookOptionalString(row['PP'])
+  const voucher = readWorkbookOptionalString(row['Voucher'])
 
   return !stayStartAt
     && !stayEndAt
     && !guestName
+    && !voucher
     && !amount
     && !roomName
     && !companyName
@@ -353,6 +378,18 @@ function isIgnorableWorkbookNonReservationRow(row: Record<string, unknown>): boo
     && !occupancy
     && !nights
     && !channel
+}
+
+function isWorkbookLegendRow(row: Record<string, unknown>): boolean {
+  const values = Object.values(toWorkbookTraceRow(row)).filter(Boolean)
+
+  if (values.length === 0) {
+    return false
+  }
+
+  const explanatoryValues = values.filter((value) => /^\p{L}\s*=\s*.+$/u.test(value))
+
+  return explanatoryValues.length >= 2 && explanatoryValues.length === values.length
 }
 
 function parseFlexiblePrevioDate(value: unknown, label: string): string {
@@ -520,6 +557,10 @@ function normalizeTwoDigitYear(value: string): string {
   }
 
   return `20${padTwo(value)}`
+}
+
+function isLikelyReservationReference(value: string): boolean {
+  return !/=/.test(value)
 }
 
 const PREVIO_DATE_CELL_PATTERN = /^(\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?|\d{4}-\d{2}-\d{2}(?:t\d{2}:\d{2}(?::\d{2})?)?)$/i
