@@ -188,6 +188,39 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'Klientský portál export transakcí JOKELAND s.r.o..csv',
+          [
+            'paidAt,amountMinor,currency,reference,paymentPurpose,reservationId',
+            '2026-03-19,154000,CZK,CG-WEB-2001,website-reservation,WEB-2001',
+            '2026-03-19,4000,CZK,CG-PARK-2001,parking,PARK-2001'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-21T18:00:00.000Z'
+    })
+
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'Klientský portál export transakcí JOKELAND s.r.o..csv',
+        sourceSystem: 'comgate',
+        documentType: 'payment_gateway_report'
+      })
+    ])
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        extractedCount: 2,
+        accountLabelCs: 'Comgate platební report'
+      })
+    ])
+    expect(result.reportSummary.normalizedTransactionCount).toBe(2)
+    expect(result.reportTransactions).toHaveLength(2)
+  })
+
   it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {
     const previo = getRealInputFixture('previo-reservation-export')
     const globalWithBuffer = globalThis as typeof globalThis & { Buffer?: unknown }

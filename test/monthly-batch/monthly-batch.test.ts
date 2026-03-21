@@ -661,6 +661,23 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared[0]?.sourceDocument.documentType).toBe('payment_gateway_report')
   })
 
+  it('classifies the real JOKELAND client-portal Comgate filename as comgate without changing bank routing', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Klientský portál export transakcí JOKELAND s.r.o..csv',
+        content: [
+          'paidAt,amountMinor,currency,reference,paymentPurpose,reservationId',
+          '2026-03-19,154000,CZK,CG-WEB-2001,website-reservation,WEB-2001'
+        ].join('\n'),
+        uploadedAt: '2026-03-21T18:00:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('comgate')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('payment_gateway_report')
+    expect(prepared[0]?.sourceDocument.fileName).toBe('Klientský portál export transakcí JOKELAND s.r.o..csv')
+  })
+
   it('routes generic uploaded filenames to the correct shared parser based on deterministic content signatures', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const fio = getRealInputFixture('fio-statement')

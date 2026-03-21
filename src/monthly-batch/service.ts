@@ -202,6 +202,8 @@ function inferUploadedSourceSystem(input: {
 }
 
 function inferSourceSystemFromFileName(fileName: string): SourceDocument['sourceSystem'] {
+  const normalizedFileName = fileName.toLowerCase()
+
   if (fileName.includes('raiff') || fileName.includes('raiffeisen')) {
     return 'bank'
   }
@@ -230,7 +232,11 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
     return 'previo'
   }
 
-  if (fileName.includes('comgate')) {
+  if (
+    normalizedFileName.includes('comgate')
+    || (normalizedFileName.includes('klientský portál export transakcí') && normalizedFileName.includes('jokeland'))
+    || (normalizedFileName.includes('klientsky portal export transakci') && normalizedFileName.includes('jokeland'))
+  ) {
     return 'comgate'
   }
 
