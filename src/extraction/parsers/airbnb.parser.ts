@@ -34,7 +34,6 @@ const HEADER_ALIASES = {
 
 const REAL_AIRBNB_REQUIRED_HEADERS = [
   'date',
-  'availableUntilDate',
   'type',
   'guestName',
   'details',
@@ -149,7 +148,13 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
     }
 
     const bookedAt = parseRealAirbnbDate(row.date, 'Airbnb real export date')
-    const payoutDate = rowKind === 'transfer' ? parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate') : bookedAt
+    const availableUntilDate = parseOptionalRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate')
+
+    if (rowKind === 'transfer' && availableUntilDate === undefined) {
+      throw new DeterministicParserError('Airbnb real export transfer row is missing required availableUntilDate')
+    }
+
+    const payoutDate = rowKind === 'transfer' ? availableUntilDate : bookedAt
     const amountMinor = parseRealAirbnbRowAmount(row, rowKind)
     const serviceFeeMinor = parseOptionalSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseOptionalSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
@@ -195,7 +200,7 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
         serviceFeeMinor,
         grossEarningsMinor,
         sourceDate: bookedAt,
-        availableUntilDate: parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate'),
+        availableUntilDate,
         ...(listingName ? { listingName } : {}),
         ...(referenceCode ? { referenceCode } : {}),
         ...(confirmationCode ? { confirmationCode } : {}),
