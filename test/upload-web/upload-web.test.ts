@@ -855,6 +855,28 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).not.toContain('noCandidate')
   })
 
+  it('carries additive business-facing reservation and ancillary settlement overviews in browser runtime state', async () => {
+    const comgate = getRealInputFixture('comgate-export')
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(comgate.sourceDocument.fileName, comgate.rawInput.content),
+        createRuntimeFile(airbnb.sourceDocument.fileName, airbnb.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-22T10:00:00.000Z'
+    })
+
+    expect(result.preparedFiles.map((file) => file.sourceSystem)).toEqual(['comgate', 'airbnb'])
+    expect(result.extractedRecords.map((file) => file.accountLabelCs)).toEqual([
+      'Comgate platební report',
+      'Airbnb payout report'
+    ])
+    expect(result.reviewSections).toHaveProperty('reservationSettlementOverview')
+    expect(result.reviewSections).toHaveProperty('ancillarySettlementOverview')
+  })
+
   it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 

@@ -4,7 +4,6 @@ import type { DocumentId, ExceptionCaseId, TransactionId } from '../../src/domai
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 import { buildReviewScreen } from '../../src/review'
-
 describe('buildReviewScreen', () => {
   it('builds deterministic review sections for matched, unmatched, suspicious, and missing-document items', () => {
     const booking = getRealInputFixture('booking-payout-export')
@@ -537,6 +536,149 @@ describe('buildReviewScreen', () => {
     expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Pobyt: 2026-03-14 – 2026-03-16.')
     expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Částka: 420,00 CZK.')
     expect(review.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
+  })
+
+  it('surfaces separate accommodation and ancillary settlement overview items with expected path and candidate status', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-22T09:00:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [
+              {
+                reservationId: 'PREVIO-CG-20260314',
+                sourceDocumentId: toDocumentId('doc-previo-1'),
+                sourceSystem: 'previo',
+                bookedAt: '2026-03-14',
+                reference: 'PREVIO-CG-20260314',
+                guestName: 'Jan Novak',
+                channel: 'comgate',
+                stayStartAt: '2026-03-14',
+                stayEndAt: '2026-03-16',
+                grossRevenueMinor: 42000,
+                currency: 'CZK',
+                roomName: 'A101',
+                expectedSettlementChannels: ['comgate']
+              }
+            ],
+            ancillaryRevenueSources: [
+              {
+                sourceDocumentId: toDocumentId('doc-previo-1'),
+                sourceSystem: 'previo',
+                reference: 'PREVIO-CG-20260314',
+                reservationId: 'PREVIO-CG-20260314',
+                bookedAt: '2026-03-14',
+                itemLabel: 'Parkování 1',
+                channel: 'comgate',
+                grossRevenueMinor: 4000,
+                currency: 'CZK'
+              }
+            ],
+            reservationSettlementMatches: [
+              {
+                reservationId: 'PREVIO-CG-20260314',
+                reference: 'PREVIO-CG-20260314',
+                sourceDocumentId: toDocumentId('doc-previo-1'),
+                settlementKind: 'payout_row',
+                matchedRowId: 'txn:payout:comgate-row-1',
+                platform: 'comgate',
+                amountMinor: 42000,
+                currency: 'CZK',
+                confidence: 1,
+                reasons: ['reservationIdExact', 'amountExact', 'channelAligned'],
+                evidence: []
+              }
+            ],
+            reservationSettlementNoMatches: [],
+            payoutRows: [
+              {
+                rowId: 'txn:payout:comgate-row-1',
+                platform: 'comgate',
+                sourceDocumentId: toDocumentId('doc-comgate-1'),
+                reservationId: 'PREVIO-CG-20260314',
+                payoutReference: 'CG-SETTLEMENT-ACCOM',
+                payoutDate: '2026-03-15',
+                payoutBatchKey: 'comgate-batch:2026-03-15:CG-SETTLEMENT-ACCOM',
+                amountMinor: 42000,
+                currency: 'CZK',
+                bankRoutingTarget: 'rb_bank_inflow'
+              },
+              {
+                rowId: 'txn:payout:comgate-row-2',
+                platform: 'comgate',
+                sourceDocumentId: toDocumentId('doc-comgate-1'),
+                reservationId: 'PREVIO-CG-20260314',
+                payoutReference: 'CG-SETTLEMENT-PARK',
+                payoutDate: '2026-03-15',
+                payoutBatchKey: 'comgate-batch:2026-03-15:CG-SETTLEMENT-PARK',
+                amountMinor: 4000,
+                currency: 'CZK',
+                bankRoutingTarget: 'rb_bank_inflow'
+              }
+            ],
+            payoutBatches: [],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-22T09:00:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.reservationSettlementOverview).toHaveLength(1)
+    expect(review.reservationSettlementOverview[0]?.title).toBe('Rezervace PREVIO-CG-20260314')
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('Typ položky: Hlavní ubytovací rezervace.')
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('Jednotka: A101.')
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('Očekávaná cesta úhrady: očekávaná úhrada přes platební bránu.')
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('Pasuje s kandidátem: Platební brána')
+    expect(review.ancillarySettlementOverview).toHaveLength(1)
+    expect(review.ancillarySettlementOverview[0]?.detail).toContain('Typ položky: Doplňková položka.')
+    expect(review.ancillarySettlementOverview[0]?.detail).toContain('Položka: Parkování 1.')
+    expect(review.ancillarySettlementOverview[0]?.detail).toContain('Očekávaná cesta úhrady: očekávaná úhrada přes platební bránu.')
+    expect(review.ancillarySettlementOverview[0]?.detail).toContain('Pasuje s kandidátem: Platební brána')
+    expect(review.reservationSettlementOverview[0]?.detail).not.toContain('noCandidate')
+    expect(review.ancillarySettlementOverview[0]?.detail).not.toContain('noCandidate')
   })
 })
 

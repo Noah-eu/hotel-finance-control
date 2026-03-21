@@ -197,6 +197,10 @@ function toSectionLabel(kind: ReviewScreenData['matched'][number]['kind']): stri
   switch (kind) {
     case 'matched':
       return 'Spárované položky'
+    case 'reservation-settlement-overview':
+      return 'Hlavní ubytovací rezervace'
+    case 'ancillary-settlement-overview':
+      return 'Doplňkové položky / ancillary revenue'
     case 'unmatched-reservation-settlement':
       return 'Nespárované rezervace k úhradě'
     case 'unmatched':

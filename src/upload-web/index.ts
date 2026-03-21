@@ -83,7 +83,7 @@ export interface BrowserRuntimeUploadState {
     status: string
   }>
   reviewSummary: ReviewScreenData['summary']
-  reviewSections: Pick<ReviewScreenData, 'matched' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
+  reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{
     labelCs: string
     fileName: string

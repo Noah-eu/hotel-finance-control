@@ -3,7 +3,7 @@ import type { MonthlyBatchResult } from '../monthly-batch'
 
 export interface ReviewSectionItem {
   id: string
-  kind: 'matched' | 'unmatched' | 'unmatched-reservation-settlement' | 'suspicious' | 'missing-document'
+  kind: 'matched' | 'unmatched' | 'unmatched-reservation-settlement' | 'reservation-settlement-overview' | 'ancillary-settlement-overview' | 'suspicious' | 'missing-document'
   title: string
   detail: string
   transactionIds: string[]
@@ -15,6 +15,8 @@ export interface ReviewScreenData {
   generatedAt: string
   summary: MonthlyBatchResult['report']['summary']
   matched: ReviewSectionItem[]
+  reservationSettlementOverview: ReviewSectionItem[]
+  ancillarySettlementOverview: ReviewSectionItem[]
   unmatchedReservationSettlements: ReviewSectionItem[]
   payoutBatchMatched: ReviewSectionItem[]
   payoutBatchUnmatched: ReviewSectionItem[]
@@ -80,6 +82,12 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   const unmatchedReservationSettlements = (input.batch.reconciliation.workflowPlan?.reservationSettlementNoMatches ?? [])
     .map((noMatch) => toReservationSettlementNoMatchReviewItem(input.batch, noMatch))
 
+  const reservationSettlementOverview = (input.batch.reconciliation.workflowPlan?.reservationSources ?? [])
+    .map((reservation) => toReservationSettlementOverviewItem(input.batch, reservation))
+
+  const ancillarySettlementOverview = (input.batch.reconciliation.workflowPlan?.ancillaryRevenueSources ?? [])
+    .map((item) => toAncillarySettlementOverviewItem(input.batch, item))
+
   const unmatched = categorizedExceptionCases.unmatched
     .map((exceptionCase) => toReviewItem(exceptionCase, 'unmatched'))
 
@@ -93,6 +101,8 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     generatedAt: input.generatedAt,
     summary: input.batch.report.summary,
     matched,
+    reservationSettlementOverview,
+    ancillarySettlementOverview,
     unmatchedReservationSettlements,
     payoutBatchMatched,
     payoutBatchUnmatched,
@@ -142,12 +152,194 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
       return 'Spárováno'
     case 'unmatched-reservation-settlement':
       return 'Nespárovaná rezervace k úhradě'
+    case 'reservation-settlement-overview':
+      return 'Přehled rezervace k úhradě'
+    case 'ancillary-settlement-overview':
+      return 'Přehled doplňkové položky'
     case 'unmatched':
       return 'Nespárováno'
     case 'suspicious':
       return 'Podezřelé'
     case 'missing-document':
       return 'Chybějící doklad'
+  }
+}
+
+function toReservationSettlementOverviewItem(
+  batch: MonthlyBatchResult,
+  reservation: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSources'][number]
+): ReviewSectionItem {
+  const match = batch.reconciliation.workflowPlan?.reservationSettlementMatches.find(
+    (item) => item.reservationId === reservation.reservationId && item.sourceDocumentId === reservation.sourceDocumentId
+  )
+  const noMatch = batch.reconciliation.workflowPlan?.reservationSettlementNoMatches.find(
+    (item) => item.reservationId === reservation.reservationId && item.sourceDocumentId === reservation.sourceDocumentId
+  )
+
+  const detailParts = [
+    'Typ položky: Hlavní ubytovací rezervace.',
+    reservation.roomName ? `Jednotka: ${reservation.roomName}.` : undefined,
+    reservation.channel ? `Kanál: ${toReservationChannelLabel(reservation.channel)}.` : undefined,
+    `Očekávaná cesta úhrady: ${buildExpectedSettlementPathCs(reservation.expectedSettlementChannels, reservation.channel)}.`,
+    reservation.reference && reservation.reference !== reservation.reservationId ? `Reference: ${reservation.reference}.` : undefined,
+    reservation.stayStartAt && reservation.stayEndAt
+      ? `Pobyt: ${reservation.stayStartAt} – ${reservation.stayEndAt}.`
+      : reservation.stayStartAt
+        ? `Datum pobytu: ${reservation.stayStartAt}.`
+        : undefined,
+    `Částka: ${formatAmountMinorForReview(reservation.grossRevenueMinor, reservation.currency)}.`,
+    buildSettlementStatusDetailCs(match, noMatch)
+  ].filter((part): part is string => Boolean(part))
+
+  return {
+    id: `reservation-settlement-overview:${reservation.sourceDocumentId}:${reservation.reservationId}`,
+    kind: 'reservation-settlement-overview',
+    title: `Rezervace ${reservation.reservationId}`,
+    detail: detailParts.join(' '),
+    transactionIds: match ? collectReservationMatchTransactionIds(match) : [],
+    sourceDocumentIds: [reservation.sourceDocumentId]
+  }
+}
+
+function toAncillarySettlementOverviewItem(
+  batch: MonthlyBatchResult,
+  item: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['ancillaryRevenueSources'][number]
+): ReviewSectionItem {
+  const candidate = findAncillaryCandidate(batch, item)
+
+  const detailParts = [
+    'Typ položky: Doplňková položka.',
+    item.itemLabel ? `Položka: ${item.itemLabel}.` : undefined,
+    item.channel ? `Kanál: ${toReservationChannelLabel(item.channel)}.` : undefined,
+    `Očekávaná cesta úhrady: ${buildExpectedSettlementPathCs([], item.channel)}.`,
+    item.reservationId ? `Rezervace: ${item.reservationId}.` : undefined,
+    `Částka: ${formatAmountMinorForReview(item.grossRevenueMinor, item.currency)}.`,
+    candidate
+      ? `Pasuje s kandidátem: ${buildAncillaryCandidateSummary(candidate)}.`
+      : buildAncillaryNoMatchReasonCs(item.channel)
+  ].filter((part): part is string => Boolean(part))
+
+  return {
+    id: `ancillary-settlement-overview:${item.sourceDocumentId}:${item.reference}`,
+    kind: 'ancillary-settlement-overview',
+    title: item.reference === item.reservationId || !item.reservationId
+      ? `Doplňková položka ${item.itemLabel ?? item.reference}`
+      : `Doplňková položka ${item.reference}`,
+    detail: detailParts.join(' '),
+    transactionIds: candidate ? [candidate.rowId] : [],
+    sourceDocumentIds: [item.sourceDocumentId]
+  }
+}
+
+function buildExpectedSettlementPathCs(expectedChannels: string[] | undefined, fallbackChannel: string | undefined): string {
+  const channels = expectedChannels && expectedChannels.length > 0 ? expectedChannels : inferExpectedChannelsFromFallback(fallbackChannel)
+
+  if (channels.includes('booking')) {
+    return 'očekávaná úhrada přes Booking'
+  }
+
+  if (channels.includes('airbnb')) {
+    return 'očekávaná úhrada přes Airbnb'
+  }
+
+  if (channels.includes('comgate')) {
+    return 'očekávaná úhrada přes platební bránu'
+  }
+
+  if (channels.includes('expedia_direct_bank')) {
+    return 'očekávaná přímá bankovní úhrada'
+  }
+
+  return 'očekávaná cesta úhrady zatím není určena'
+}
+
+function inferExpectedChannelsFromFallback(channel: string | undefined): string[] {
+  switch (channel) {
+    case 'booking':
+      return ['booking']
+    case 'airbnb':
+      return ['airbnb']
+    case 'comgate':
+    case 'direct':
+    case 'direct-web':
+      return ['comgate']
+    case 'expedia_direct_bank':
+      return ['expedia_direct_bank']
+    default:
+      return []
+  }
+}
+
+function buildSettlementStatusDetailCs(
+  match: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementMatches'][number] | undefined,
+  noMatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementNoMatches'][number] | undefined
+): string {
+  if (match) {
+    return `Pasuje s kandidátem: ${buildReservationMatchSummary(match)}.`
+  }
+
+  if (noMatch) {
+    return buildReservationSettlementReasonCs(noMatch.noMatchReason, undefined)
+  }
+
+  return 'Stav kandidáta zatím není k dispozici.'
+}
+
+function buildReservationMatchSummary(
+  match: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementMatches'][number]
+): string {
+  return `${toSettlementPlatformLabel(match.platform)} ${match.matchedRowId ?? match.matchedSettlementId ?? match.reference ?? match.reservationId} za ${formatAmountMinorForReview(match.amountMinor, match.currency)}`
+}
+
+function collectReservationMatchTransactionIds(
+  match: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementMatches'][number]
+): string[] {
+  const ids = [match.matchedRowId, match.matchedSettlementId].filter((value): value is string => Boolean(value))
+  return ids
+}
+
+function findAncillaryCandidate(
+  batch: MonthlyBatchResult,
+  item: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['ancillaryRevenueSources'][number]
+): NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number] | undefined {
+  const expectedPlatforms = inferExpectedChannelsFromFallback(item.channel)
+
+  return batch.reconciliation.workflowPlan?.payoutRows.find((row) => {
+    if (row.amountMinor !== item.grossRevenueMinor || row.currency !== item.currency) {
+      return false
+    }
+
+    if (expectedPlatforms.length > 0 && !expectedPlatforms.includes(row.platform)) {
+      return false
+    }
+
+    const referenceCandidates = [row.reservationId, row.payoutReference]
+    return referenceCandidates.some((candidate) => candidate === item.reference || candidate === item.reservationId)
+  })
+}
+
+function buildAncillaryCandidateSummary(
+  candidate: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number]
+): string {
+  return `${toSettlementPlatformLabel(candidate.platform)} ${candidate.rowId} za ${formatAmountMinorForReview(candidate.amountMinor, candidate.currency)}`
+}
+
+function buildAncillaryNoMatchReasonCs(channel: string | undefined): string {
+  return `Bez kandidáta: ${buildReservationMissingCandidateReason(inferExpectedChannelsFromFallback(channel))}`
+}
+
+function toSettlementPlatformLabel(platform: string): string {
+  switch (platform) {
+    case 'booking':
+      return 'Booking'
+    case 'airbnb':
+      return 'Airbnb'
+    case 'comgate':
+      return 'Platební brána'
+    case 'expedia_direct_bank':
+      return 'Přímá bankovní úhrada'
+    default:
+      return platform
   }
 }
 

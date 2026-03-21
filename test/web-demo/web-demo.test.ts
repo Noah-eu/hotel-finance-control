@@ -570,6 +570,23 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…')
     expect(result.html).not.toContain('noCandidate')
   })
+
+  it('renders dedicated accommodation and ancillary settlement overview panels in the main browser UI', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T10:15:00.000Z'
+    })
+
+    expect(result.html).toContain('id="reservation-settlement-overview-section"')
+    expect(result.html).toContain('id="reservation-settlement-overview-content"')
+    expect(result.html).toContain('Hlavní ubytovací rezervace')
+    expect(result.html).toContain('id="ancillary-settlement-overview-section"')
+    expect(result.html).toContain('id="ancillary-settlement-overview-content"')
+    expect(result.html).toContain('Doplňkové položky / ancillary revenue')
+    expect(result.html).toContain('buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.reservationSettlementOverview) || [])')
+    expect(result.html).toContain('buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.ancillarySettlementOverview) || [])')
+    expect(result.html).toContain('Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…')
+    expect(result.html).toContain('Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…')
+  })
 })
 
 describe('buildFixtureWebDemo', () => {
