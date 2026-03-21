@@ -6,11 +6,13 @@ export interface UploadedMonthlyFile {
   name: string
   content: string
   uploadedAt: string
+  binaryContentBase64?: string
 }
 
 export interface ImportedMonthlySourceFile {
   sourceDocument: SourceDocument
   content: string
+  binaryContentBase64?: string
 }
 
 export interface MonthlyBatchInput {

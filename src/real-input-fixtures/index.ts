@@ -1,4 +1,5 @@
 import type { ExtractedRecord, NormalizedTransaction, SourceDocument } from '../domain'
+import * as XLSX from 'xlsx'
 
 export interface RealInputFixture {
   key:
@@ -18,6 +19,7 @@ export interface RealInputFixture {
   rawInput: {
     format: 'csv' | 'json' | 'text' | 'pdf-text'
     content: string
+    binaryContentBase64?: string
   }
   expectedExtractedRecords: ExtractedRecord[]
   expectedNormalizedTransactions?: NormalizedTransaction[]
@@ -58,6 +60,16 @@ function normalizedTransaction(overrides: Partial<NormalizedTransaction>): Norma
     sourceDocumentIds: ['doc-default' as NormalizedTransaction['sourceDocumentIds'][number]],
     ...overrides
   }
+}
+
+function workbookBase64(sheets: Array<{ name: string, rows: Array<Record<string, string>> }>): string {
+  const workbook = XLSX.utils.book_new()
+
+  for (const sheet of sheets) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sheet.rows), sheet.name)
+  }
+
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }
 
 export const realInputFixtures: RealInputFixture[] = [
@@ -524,14 +536,44 @@ export const realInputFixtures: RealInputFixture[] = [
       id: 'doc-previo-reservations-2026-03' as SourceDocument['id'],
       sourceSystem: 'previo',
       documentType: 'reservation_export',
-      fileName: 'previo-reservations-2026-03.csv'
+      fileName: 'Prehled_rezervaci.xlsx'
     }),
     rawInput: {
-      format: 'csv',
-      content: [
-        'reservationId,reservationReference,channel,guestName,checkIn,checkOut,amountMinor,netAmountMinor,currency,propertyId',
-        'PREVIO-8841,PREVIO-20260314,direct-web,Jan Novak,2026-03-14,2026-03-16,42000,39000,CZK,HOTEL-CZ-001'
-      ].join('\n')
+      format: 'json',
+      content: 'Previo reservation workbook fixture: Seznam rezervací + Přehled rezervací.',
+      binaryContentBase64: workbookBase64([
+        {
+          name: 'Seznam rezervací',
+          rows: [
+            {
+              'Vytvořeno': '13.03.2026 09:15',
+              'Termín od': '14.03.2026',
+              'Termín do': '16.03.2026',
+              'Nocí': '2',
+              'Voucher': 'PREVIO-20260314',
+              'Počet hostů': '2',
+              'Hosté': 'Jan Novak',
+              'Check-In dokončen': 'Ano',
+              'Market kody': '',
+              'Firma': 'Acme Travel s.r.o.',
+              'PP': 'direct-web',
+              'Stav': 'confirmed',
+              'Cena': '420,00',
+              'Saldo': '30,00',
+              'Pokoj': 'A101'
+            }
+          ]
+        },
+        {
+          name: 'Přehled rezervací',
+          rows: [
+            {
+              Souhrn: 'Pouze agregovaný přehled',
+              Hodnota: '1 rezervace'
+            }
+          ]
+        }
+      ])
     },
     expectedExtractedRecords: [
       extractedRecord({
@@ -545,17 +587,20 @@ export const realInputFixtures: RealInputFixture[] = [
         data: {
           platform: 'previo',
           bookedAt: '2026-03-14',
+          createdAt: '2026-03-13T09:15:00',
           stayStartAt: '2026-03-14',
           stayEndAt: '2026-03-16',
           amountMinor: 42000,
-          netAmountMinor: 39000,
+          outstandingBalanceMinor: 3000,
           currency: 'CZK',
           accountId: 'expected-payouts',
           reference: 'PREVIO-20260314',
-          reservationId: 'PREVIO-8841',
-          propertyId: 'HOTEL-CZ-001',
+          reservationId: 'PREVIO-20260314',
           guestName: 'Jan Novak',
-          channel: 'direct-web'
+          channel: 'direct-web',
+          companyName: 'Acme Travel s.r.o.',
+          roomName: 'A101',
+          sourceSheet: 'Seznam rezervací'
         }
       })
     ],
@@ -569,7 +614,7 @@ export const realInputFixtures: RealInputFixture[] = [
         bookedAt: '2026-03-14',
         accountId: 'expected-payouts',
         reference: 'PREVIO-20260314',
-        reservationId: 'PREVIO-8841',
+        reservationId: 'PREVIO-20260314',
         extractedRecordIds: ['previo-reservation-1'],
         sourceDocumentIds: ['doc-previo-reservations-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })

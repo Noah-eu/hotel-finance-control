@@ -121,6 +121,7 @@ describe('runMonthlyReconciliationBatch', () => {
       {
         name: previo.sourceDocument.fileName,
         content: previo.rawInput.content,
+        binaryContentBase64: previo.rawInput.binaryContentBase64,
         uploadedAt: '2026-03-18T22:40:50.000Z'
       },
       {
@@ -139,7 +140,8 @@ describe('runMonthlyReconciliationBatch', () => {
           fileName: 'booking-payout-2026-03.csv',
           uploadedAt: '2026-03-18T22:40:00.000Z'
         },
-        content: booking.rawInput.content
+        content: booking.rawInput.content,
+        binaryContentBase64: undefined
       },
       {
         sourceDocument: {
@@ -149,7 +151,8 @@ describe('runMonthlyReconciliationBatch', () => {
           fileName: 'airbnb-payout-2026-03.csv',
           uploadedAt: '2026-03-18T22:40:30.000Z'
         },
-        content: airbnb.rawInput.content
+        content: airbnb.rawInput.content,
+        binaryContentBase64: undefined
       },
       {
         sourceDocument: {
@@ -159,17 +162,19 @@ describe('runMonthlyReconciliationBatch', () => {
           fileName: 'expedia-payout-2026-03.csv',
           uploadedAt: '2026-03-18T22:40:45.000Z'
         },
-        content: expedia.rawInput.content
+        content: expedia.rawInput.content,
+        binaryContentBase64: undefined
       },
       {
         sourceDocument: {
-          id: 'uploaded:previo:4:previo-reservations-2026-03-csv',
+          id: 'uploaded:previo:4:prehled-rezervaci-xlsx',
           sourceSystem: 'previo',
           documentType: 'reservation_export',
-          fileName: 'previo-reservations-2026-03.csv',
+          fileName: 'Prehled_rezervaci.xlsx',
           uploadedAt: '2026-03-18T22:40:50.000Z'
         },
-        content: previo.rawInput.content
+        content: previo.rawInput.content,
+        binaryContentBase64: previo.rawInput.binaryContentBase64
       },
       {
         sourceDocument: {
@@ -179,7 +184,8 @@ describe('runMonthlyReconciliationBatch', () => {
           fileName: 'invoice-2026-332.txt',
           uploadedAt: '2026-03-18T22:41:00.000Z'
         },
-        content: invoice.rawInput.content
+        content: invoice.rawInput.content,
+        binaryContentBase64: undefined
       }
     ])
   })
@@ -225,6 +231,52 @@ describe('runMonthlyReconciliationBatch', () => {
       'bank_statement',
       'payment_gateway_report',
       'ota_report'
+    ])
+  })
+
+  it('runs the real uploaded Previo reservation workbook shape through the shared monthly flow', () => {
+    const previo = getRealInputFixture('previo-reservation-export')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Prehled_rezervaci.xlsx',
+        content: previo.rawInput.content,
+        binaryContentBase64: previo.rawInput.binaryContentBase64,
+        uploadedAt: '2026-03-21T09:00:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('previo')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('reservation_export')
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-previo-workbook',
+        requestedAt: '2026-03-21T09:01:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-21T09:02:00.000Z'
+    })
+
+    expect(result.files).toEqual([
+      {
+        sourceDocumentId: 'uploaded:previo:1:prehled-rezervaci-xlsx',
+        extractedRecordIds: ['previo-reservation-1'],
+        extractedCount: 1
+      }
+    ])
+    expect(result.reconciliation.workflowPlan?.reservationSources).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        sourceSystem: 'previo',
+        reference: 'PREVIO-20260314',
+        stayStartAt: '2026-03-14',
+        stayEndAt: '2026-03-16',
+        guestName: 'Jan Novak',
+        channel: 'direct-web',
+        grossRevenueMinor: 42000,
+        currency: 'CZK'
+      })
     ])
   })
 
@@ -671,7 +723,8 @@ describe('runMonthlyReconciliationBatch', () => {
     const result = runMonthlyReconciliationBatch({
       files: [airbnb, expedia, previo].map((fixture) => ({
         sourceDocument: fixture.sourceDocument,
-        content: fixture.rawInput.content
+        content: fixture.rawInput.content,
+        binaryContentBase64: fixture.rawInput.binaryContentBase64
       })),
       reconciliationContext: {
         runId: 'monthly-run-step-34',

@@ -9,6 +9,7 @@ describe('parsePrevioReservationExport', () => {
     const records = parsePrevioReservationExport({
       sourceDocument: fixture.sourceDocument,
       content: fixture.rawInput.content,
+      binaryContentBase64: fixture.rawInput.binaryContentBase64,
       extractedAt: '2026-03-19T10:40:00.000Z'
     })
 
@@ -19,13 +20,16 @@ describe('parsePrevioReservationExport', () => {
       rawReference: 'PREVIO-20260314',
       data: {
         platform: 'previo',
-        reservationId: 'PREVIO-8841',
-        propertyId: 'HOTEL-CZ-001',
+        reservationId: 'PREVIO-20260314',
         guestName: 'Jan Novak',
         channel: 'direct-web',
+        createdAt: '2026-03-13T09:15:00',
         stayStartAt: '2026-03-14',
         stayEndAt: '2026-03-16',
-        netAmountMinor: 39000
+        outstandingBalanceMinor: 3000,
+        companyName: 'Acme Travel s.r.o.',
+        roomName: 'A101',
+        sourceSheet: 'Seznam rezervací'
       }
     })
   })
@@ -36,6 +40,7 @@ describe('parsePrevioReservationExport', () => {
     const records = parsePrevioReservationExport({
       sourceDocument: fixture.sourceDocument,
       content: fixture.rawInput.content,
+      binaryContentBase64: fixture.rawInput.binaryContentBase64,
       extractedAt: '2026-03-18T20:00:00.000Z'
     })
 
@@ -81,5 +86,20 @@ describe('parsePrevioReservationExport', () => {
         propertyId: 'HOTEL-CZ-002'
       }
     })
+  })
+
+  it('reads the real workbook shape from `Seznam rezervací` and does not misuse `Přehled rezervací` as row input', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: fixture.rawInput.binaryContentBase64,
+      extractedAt: '2026-03-21T09:30:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.rawReference).toBe('PREVIO-20260314')
+    expect(records[0]?.data.sourceSheet).toBe('Seznam rezervací')
   })
 })

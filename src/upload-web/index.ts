@@ -13,6 +13,10 @@ import type { ReconciliationReport } from '../reporting'
 import { formatAmountMinorCs } from '../shared/money'
 import { emitBrowserRuntimeBundle } from './browser-bundle'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state'
+export {
+  buildBrowserRuntimeStateFromSelectedFiles,
+  createBrowserRuntime
+} from './browser-runtime'
 
 export interface BuildUploadWebFlowOptions {
   generatedAt?: string
@@ -137,6 +141,7 @@ export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewI
 export interface BrowserRuntimeInputFile {
   name: string
   text?: () => Promise<string>
+  arrayBuffer?: () => Promise<ArrayBuffer>
 }
 
 export interface BrowserRuntimeBuilder {

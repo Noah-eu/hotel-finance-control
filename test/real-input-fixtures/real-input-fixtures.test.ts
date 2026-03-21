@@ -71,7 +71,7 @@ describe('realInputFixtures', () => {
       recordType: 'payout-line',
       data: {
         platform: 'previo',
-        reservationId: 'PREVIO-8841'
+        reservationId: 'PREVIO-20260314'
       }
     })
     expect(invoice.expectedExtractedRecords[0]).toMatchObject({

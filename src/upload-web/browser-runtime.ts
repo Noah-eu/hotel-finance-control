@@ -18,7 +18,10 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
     input.files.map(async (file) => ({
       name: file.name,
       content: typeof file.text === 'function' ? await file.text() : '',
-      uploadedAt: input.generatedAt
+      uploadedAt: input.generatedAt,
+      binaryContentBase64: typeof file.arrayBuffer === 'function'
+        ? Buffer.from(await file.arrayBuffer()).toString('base64')
+        : undefined
     }))
   )
 

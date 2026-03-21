@@ -88,6 +88,7 @@ export interface ReservationSourceRecord {
   sourceDocumentId: DocumentId
   sourceSystem: 'previo'
   bookedAt: ISODateString
+  createdAt?: ISODateString
   reference?: string
   guestName?: string
   channel?: string
@@ -96,6 +97,9 @@ export interface ReservationSourceRecord {
   propertyId?: string
   grossRevenueMinor: number
   netRevenueMinor?: number
+  outstandingBalanceMinor?: number
+  roomName?: string
+  companyName?: string
   currency: CurrencyCode
   expectedSettlementChannels: ReservationSettlementChannel[]
 }

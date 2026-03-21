@@ -162,6 +162,30 @@ describe('buildUploadWebFlow', () => {
     expect(result.extractedRecords[0].extractedCount).toBeGreaterThan(0)
   })
 
+  it('builds browser runtime state from a real uploaded Previo reservation workbook and exposes reservation-source processing truthfully', async () => {
+    const previo = getRealInputFixture('previo-reservation-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('Prehled_rezervaci.xlsx', previo.rawInput.binaryContentBase64!)],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:05:00.000Z'
+    })
+
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'Prehled_rezervaci.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        extractedCount: 1,
+        accountLabelCs: 'Previo rezervační export'
+      })
+    ])
+  })
+
   it('completes the exact combined browser-only monthly run for the current two bank files and Booking file in one session', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
@@ -741,6 +765,19 @@ function createRuntimeFile(name: string, content: string) {
     name,
     async text() {
       return content
+    }
+  }
+}
+
+function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
+  return {
+    name,
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      const buffer = Buffer.from(binaryContentBase64, 'base64')
+      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
     }
   }
 }

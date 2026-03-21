@@ -24,6 +24,7 @@ type Parser = (input: {
   sourceDocument: SourceDocument
   content: string
   extractedAt: string
+  binaryContentBase64?: string
 }) => ExtractedRecord[]
 
 export class DefaultMonthlyBatchService implements MonthlyBatchService {
@@ -33,7 +34,8 @@ export class DefaultMonthlyBatchService implements MonthlyBatchService {
       const extractedRecords = parser({
         sourceDocument: file.sourceDocument,
         content: file.content,
-        extractedAt: input.reconciliationContext.requestedAt
+        extractedAt: input.reconciliationContext.requestedAt,
+        binaryContentBase64: file.binaryContentBase64
       })
 
       return {
@@ -74,7 +76,8 @@ export function runMonthlyReconciliationBatch(input: MonthlyBatchInput): Monthly
 export function prepareUploadedMonthlyFiles(files: UploadedMonthlyFile[]): ImportedMonthlySourceFile[] {
   return files.map((file, index) => ({
     sourceDocument: buildSourceDocument(file, index),
-    content: file.content
+    content: file.content,
+    binaryContentBase64: file.binaryContentBase64
   }))
 }
 
@@ -166,7 +169,8 @@ function buildSourceDocument(file: UploadedMonthlyFile, index: number): SourceDo
   const normalized = fileName.toLowerCase()
   const sourceSystem = inferUploadedSourceSystem({
     fileName: normalized,
-    content: file.content
+    content: file.content,
+    binaryContentBase64: file.binaryContentBase64
   })
   const documentType = inferDocumentType(sourceSystem)
 
@@ -182,11 +186,16 @@ function buildSourceDocument(file: UploadedMonthlyFile, index: number): SourceDo
 function inferUploadedSourceSystem(input: {
   fileName: string
   content: string
+  binaryContentBase64?: string
 }): SourceDocument['sourceSystem'] {
   const byFileName = inferSourceSystemFromFileName(input.fileName)
 
   if (byFileName !== 'unknown') {
     return byFileName
+  }
+
+  if (input.binaryContentBase64 && input.fileName.includes('prehled_rezervaci')) {
+    return 'previo'
   }
 
   return inferSourceSystemFromContent(input.content)
@@ -214,6 +223,10 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
   }
 
   if (fileName.includes('previo')) {
+    return 'previo'
+  }
+
+  if (fileName.includes('prehled_rezervaci')) {
     return 'previo'
   }
 

@@ -58,16 +58,14 @@ describe('buildReconciliationWorkflowPlan', () => {
 
         expect(plan.reservationSources).toEqual([
             expect.objectContaining({
-                reservationId: 'PREVIO-8841',
+                reservationId: 'PREVIO-20260314',
                 sourceSystem: 'previo',
                 reference: 'PREVIO-20260314',
                 guestName: 'Jan Novak',
                 channel: 'direct-web',
                 stayStartAt: '2026-03-14',
                 stayEndAt: '2026-03-16',
-                propertyId: 'HOTEL-CZ-001',
                 grossRevenueMinor: 42000,
-                netRevenueMinor: 39000,
                 currency: 'CZK'
             })
         ])
