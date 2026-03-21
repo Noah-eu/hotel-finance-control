@@ -267,6 +267,32 @@ describe('parseAirbnbPayoutExport', () => {
     })
   })
 
+  it('keeps payout rows valid when stay dates are empty in the real Airbnb export shape', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    const records = parseAirbnbPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+        '2026-03-12;2026-03-15;Payout;;;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);REF-HMA4TR9;;CZK;;980,00;;'
+      ].join('\n'),
+      extractedAt: '2026-03-21T16:50:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 98000,
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        stayStartAt: undefined,
+        stayEndAt: undefined,
+        paidOutAmountMinor: 98000,
+        payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+      }
+    })
+  })
+
   it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 

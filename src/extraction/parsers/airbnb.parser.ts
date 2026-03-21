@@ -36,8 +36,6 @@ const REAL_AIRBNB_REQUIRED_HEADERS = [
   'date',
   'availableUntilDate',
   'type',
-  'stayStartDate',
-  'stayEndDate',
   'guestName',
   'details',
   'currency',
@@ -151,15 +149,15 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
     const serviceFeeMinor = parseOptionalSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseOptionalSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
     const currency = row.currency.trim().toUpperCase()
-    const stayStartDate = parseRealAirbnbDate(row.stayStartDate, 'Airbnb real export stayStartDate')
-    const stayEndDate = parseRealAirbnbDate(row.stayEndDate, 'Airbnb real export stayEndDate')
+    const stayStartDate = parseOptionalRealAirbnbDate(row.stayStartDate, 'Airbnb real export stayStartDate')
+    const stayEndDate = parseOptionalRealAirbnbDate(row.stayEndDate, 'Airbnb real export stayEndDate')
     const guestName = row.guestName.trim()
     const details = row.details.trim()
     const listingName = typeof row.listingName === 'string' ? row.listingName.trim() : ''
     const referenceCode = typeof row.referenceCode === 'string' ? row.referenceCode.trim() : ''
     const confirmationCode = typeof row.confirmationCode === 'string' ? row.confirmationCode.trim() : ''
     const parsedTransfer = rowKind === 'transfer' ? parseRealAirbnbTransferDetails(details) : undefined
-    const reservationId = rowKind === 'reservation'
+    const reservationId = rowKind === 'reservation' && stayStartDate && stayEndDate
       ? buildRealAirbnbReservationId(confirmationCode || guestName, stayStartDate, stayEndDate, amountMinor)
       : undefined
     const reference = rowKind === 'transfer'
@@ -264,9 +262,13 @@ function buildRealAirbnbReservationId(
 
 function buildRealAirbnbReservationReference(
   guestName: string,
-  stayStartDate: string,
-  stayEndDate: string
+  stayStartDate: string | undefined,
+  stayEndDate: string | undefined
 ): string {
+  if (!stayStartDate || !stayEndDate) {
+    return `AIRBNB-STAY:${slugifyComparable(guestName)}`
+  }
+
   return `AIRBNB-STAY:${slugifyComparable(guestName)}:${stayStartDate}:${stayEndDate}`
 }
 
@@ -319,4 +321,13 @@ function parseRealAirbnbDate(value: string, fieldName: string): string {
 
     throw new DeterministicParserError(`${fieldName} has unsupported date format: ${value}`)
   }
+}
+
+function parseOptionalRealAirbnbDate(value: string | undefined, fieldName: string): string | undefined {
+  const trimmed = value?.trim() ?? ''
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  return parseRealAirbnbDate(trimmed, fieldName)
 }
