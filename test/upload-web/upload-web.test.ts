@@ -506,6 +506,101 @@ describe('buildUploadWebFlow', () => {
       reportGeneratedAt: '2026-03-21T16:00:00.000Z'
     })
 
+    expect(state.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'Prehled_rezervaci.xlsx',
+        extractedCount: 1,
+        extractedRecordIds: ['previo-reservation-1'],
+        accountLabelCs: 'Previo rezervační export'
+      }),
+      expect.objectContaining({
+        fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+        extractedCount: 1,
+        extractedRecordIds: ['booking-payout-1'],
+        accountLabelCs: 'Booking payout report'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        extractedCount: 1,
+        extractedRecordIds: ['fio-row-1'],
+        accountLabelCs: 'RB účet 5599955956/5500',
+        parserDebugLabel: 'fio'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+        extractedCount: 1,
+        extractedRecordIds: ['fio-row-1'],
+        accountLabelCs: 'Fio účet 8888997777/2010',
+        parserDebugLabel: 'fio'
+      })
+    ])
+    expect(batch.files).toEqual([
+      expect.objectContaining({
+        sourceDocumentId: 'uploaded:previo:1:prehled-rezervaci-xlsx',
+        extractedCount: 1,
+        extractedRecordIds: ['previo-reservation-1']
+      }),
+      expect.objectContaining({
+        sourceDocumentId: 'doc-booking-browser-upload-shape-2026-03',
+        extractedCount: 1,
+        extractedRecordIds: ['booking-payout-1']
+      }),
+      expect.objectContaining({
+        sourceDocumentId: 'uploaded:bank:3:pohyby-5599955956-202603191023-csv',
+        extractedCount: 1,
+        extractedRecordIds: ['fio-row-1']
+      }),
+      expect.objectContaining({
+        sourceDocumentId: 'uploaded:bank:4:pohyby-na-uctu-8888997777-20260301-20260319-csv',
+        extractedCount: 1,
+        extractedRecordIds: ['fio-row-1']
+      })
+    ])
+    expect(batch.extractedRecords).toHaveLength(4)
+    expect(batch.extractedRecords.map((record) => record.recordType)).toEqual([
+      'payout-line',
+      'payout-line',
+      'bank-transaction',
+      'bank-transaction'
+    ])
+    expect(
+      batch.extractedRecords.filter((record) => record.sourceDocumentId === 'uploaded:previo:1:prehled-rezervaci-xlsx')
+    ).toEqual([
+      expect.objectContaining({
+        id: 'previo-reservation-1',
+        recordType: 'payout-line',
+        rawReference: 'PREVIO-20260314',
+        data: expect.objectContaining({
+          platform: 'previo',
+          rowKind: 'accommodation'
+        })
+      })
+    ])
+    expect(batch.reconciliation.normalizedTransactions).toHaveLength(4)
+    expect(batch.reconciliation.normalizedTransactions).toEqual([
+      expect.objectContaining({
+        id: 'txn:payout:previo-reservation-1',
+        source: 'previo',
+        direction: 'in'
+      }),
+      expect.objectContaining({
+        id: 'txn:payout:booking-payout-1',
+        source: 'booking',
+        direction: 'in'
+      }),
+      expect.objectContaining({
+        id: 'txn:bank:fio-row-1',
+        source: 'bank',
+        direction: 'in',
+        accountId: '5599955956/5500'
+      }),
+      expect.objectContaining({
+        id: 'txn:bank:fio-row-1',
+        source: 'bank',
+        direction: 'in',
+        accountId: '8888997777/2010'
+      })
+    ])
     expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(1)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.payoutRows).toEqual([
