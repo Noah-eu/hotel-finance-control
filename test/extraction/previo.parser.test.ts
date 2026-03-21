@@ -10,6 +10,22 @@ function createPrevioWorkbookBase64(rows: Array<Record<string, string>>) {
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }
 
+function createPrevioWorkbookBase64WithLeadingRows(input: {
+  leadingRows: Array<Array<string>>
+  headers: string[]
+  rows: Array<Array<string>>
+}) {
+  const aoaSheet = XLSX.utils.aoa_to_sheet([
+    ...input.leadingRows,
+    input.headers,
+    ...input.rows
+  ])
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, aoaSheet, 'Seznam rezervací')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ Souhrn: 'Souhrn', Hodnota: '1' }]), 'Přehled rezervací')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
 describe('parsePrevioReservationExport', () => {
   it('extracts deterministic payout-line records from the operational Previo reservation fixture', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
@@ -109,6 +125,74 @@ describe('parsePrevioReservationExport', () => {
     expect(records).toHaveLength(1)
     expect(records[0]?.rawReference).toBe('PREVIO-20260314')
     expect(records[0]?.data.sourceSheet).toBe('Seznam rezervací')
+    expect(records[0]?.data.workbookExtractionAudit).toMatchObject({
+      sheetName: 'Seznam rezervací',
+      headerRowIndex: 1,
+      candidateRowCount: 1,
+      skippedRowCount: 0,
+      rejectedRowCount: 0,
+      extractedRowCount: 1
+    })
+  })
+
+  it('detects the real header row even when the workbook has leading title or blank rows before `Seznam rezervací` data', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64WithLeadingRows({
+        leadingRows: [
+          ['Přehled rezervací'],
+          [''],
+          ['Export vytvořen 21.03.2026']
+        ],
+        headers: [
+          'Vytvořeno',
+          'Termín od',
+          'Termín do',
+          'Nocí',
+          'Voucher',
+          'Počet hostů',
+          'Hosté',
+          'Check-In dokončen',
+          'Market kody',
+          'Firma',
+          'PP',
+          'Stav',
+          'Cena',
+          'Saldo',
+          'Pokoj'
+        ],
+        rows: [
+          [
+            '13.03.2026 09:15',
+            '14.03.2026',
+            '16.03.2026',
+            '2',
+            'PREVIO-20260314',
+            '2',
+            'Jan Novak',
+            'Ano',
+            '',
+            'Acme Travel s.r.o.',
+            'direct-web',
+            'confirmed',
+            '420,00',
+            '30,00',
+            'A101'
+          ]
+        ]
+      }),
+      extractedAt: '2026-03-21T11:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.data.workbookExtractionAudit).toMatchObject({
+      headerRowIndex: 4,
+      candidateRowCount: 1,
+      extractedRowCount: 1
+    })
   })
 
   it('skips blank or non-reservation workbook rows that have an empty Voucher', () => {

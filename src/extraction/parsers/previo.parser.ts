@@ -41,6 +41,7 @@ const HEADER_ALIASES = {
 } satisfies Record<string, string[]>
 
 const PREVIO_RESERVATION_WORKBOOK_SHEET = 'Seznam rezervací'
+const PREVIO_WORKBOOK_REQUIRED_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena'] as const
 
 export class PrevioReservationParser {
   parse(input: ParsePrevioReservationExportInput): ExtractedRecord[] {
@@ -124,16 +125,13 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     throw new Error(`Previo reservation workbook is missing required sheet: ${PREVIO_RESERVATION_WORKBOOK_SHEET}`)
   }
 
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
-    defval: '',
-    raw: false
-  })
+  const extraction = extractWorkbookReservationRows(worksheet)
 
-  if (rows.length === 0) {
+  if (extraction.candidateRows.length === 0) {
     return []
   }
 
-  const reservationRows = rows.filter((row) => shouldKeepWorkbookReservationRow(row))
+  const reservationRows = extraction.candidateRows.filter((row) => shouldKeepWorkbookReservationRow(row))
 
   return reservationRows.map((row, index) => {
     const reservationReference = readWorkbookString(row['Voucher'])
@@ -172,10 +170,69 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
         channel,
         companyName,
         roomName,
-        sourceSheet: PREVIO_RESERVATION_WORKBOOK_SHEET
+        sourceSheet: PREVIO_RESERVATION_WORKBOOK_SHEET,
+        workbookExtractionAudit: {
+          sheetName: PREVIO_RESERVATION_WORKBOOK_SHEET,
+          headerRowIndex: extraction.headerRowIndex + 1,
+          candidateRowCount: extraction.candidateRows.length,
+          skippedRowCount: extraction.candidateRows.length - reservationRows.length,
+          rejectedRowCount: 0,
+          extractedRowCount: reservationRows.length
+        }
       }
     }
   })
+}
+
+function extractWorkbookReservationRows(worksheet: XLSX.WorkSheet): {
+  headerRowIndex: number
+  candidateRows: Array<Record<string, unknown>>
+} {
+  const sheetRows = XLSX.utils.sheet_to_json<Array<unknown>>(worksheet, {
+    header: 1,
+    defval: '',
+    raw: false,
+    blankrows: false
+  })
+
+  const headerRowIndex = findWorkbookHeaderRowIndex(sheetRows)
+  if (headerRowIndex === -1) {
+    throw new Error(`Previo reservation workbook is missing the expected header row on sheet: ${PREVIO_RESERVATION_WORKBOOK_SHEET}`)
+  }
+
+  const headerRow = sheetRows[headerRowIndex]!.map((cell) => String(cell ?? '').trim())
+  const candidateRows = sheetRows
+    .slice(headerRowIndex + 1)
+    .map((row) => buildWorkbookRowObject(headerRow, row))
+
+  return {
+    headerRowIndex,
+    candidateRows
+  }
+}
+
+function findWorkbookHeaderRowIndex(rows: Array<Array<unknown>>): number {
+  return rows.findIndex((row) => {
+    const normalized = row
+      .map((cell) => String(cell ?? '').trim())
+      .filter(Boolean)
+
+    return PREVIO_WORKBOOK_REQUIRED_COLUMNS.every((column) => normalized.includes(column))
+  })
+}
+
+function buildWorkbookRowObject(headers: string[], row: Array<unknown>): Record<string, unknown> {
+  const record: Record<string, unknown> = {}
+
+  headers.forEach((header, index) => {
+    if (!header) {
+      return
+    }
+
+    record[header] = row[index] ?? ''
+  })
+
+  return record
 }
 
 function shouldKeepWorkbookReservationRow(row: Record<string, unknown>): boolean {

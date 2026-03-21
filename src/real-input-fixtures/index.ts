@@ -600,7 +600,15 @@ export const realInputFixtures: RealInputFixture[] = [
           channel: 'direct-web',
           companyName: 'Acme Travel s.r.o.',
           roomName: 'A101',
-          sourceSheet: 'Seznam rezervací'
+          sourceSheet: 'Seznam rezervací',
+          workbookExtractionAudit: {
+            sheetName: 'Seznam rezervací',
+            headerRowIndex: 1,
+            candidateRowCount: 1,
+            skippedRowCount: 0,
+            rejectedRowCount: 0,
+            extractedRowCount: 1
+          }
         }
       })
     ],
