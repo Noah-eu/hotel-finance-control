@@ -44,13 +44,17 @@ export interface PayoutBatchCandidateDiagnostic {
   amountMinor: NormalizedTransaction['amountMinor']
   currency: NormalizedTransaction['currency']
   bookedAt: NormalizedTransaction['bookedAt']
+  counterparty?: string
   reference?: string
   eligible: boolean
+  clueScore: number
+  clueLabels: string[]
   rejectionReasons: Array<
     'noExactAmount'
     | 'currencyMismatch'
     | 'wrongBankRouting'
     | 'dateToleranceMiss'
+    | 'counterpartyClueMismatch'
   >
   dateDistanceDays: number
 }
@@ -68,6 +72,7 @@ export interface PayoutBatchNoMatchDiagnostic {
   noMatchReason:
   | 'noExactAmount'
   | 'wrongBankRouting'
+  | 'counterpartyClueMismatch'
   | 'ambiguousCandidates'
   | 'dateToleranceMiss'
   | 'noCandidateAtAll'

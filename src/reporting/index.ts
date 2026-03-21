@@ -39,6 +39,7 @@ export interface ReconciliationUnmatchedPayoutBatchEntry {
 type UnmatchedPayoutBatchReason =
   | 'noExactAmount'
   | 'wrongBankRouting'
+  | 'counterpartyClueMismatch'
   | 'ambiguousCandidates'
   | 'dateToleranceMiss'
   | 'noCandidateAtAll'
@@ -213,6 +214,10 @@ function buildConcisePayoutBatchReason(reasons: string[]): string {
     return 'Shoda dávky a bankovního přípisu podle částky, měny a reference payoutu.'
   }
 
+  if (reasons.includes('counterpartyClueAligned')) {
+    return 'Shoda dávky a bankovního přípisu podle částky, měny, povoleného směrování a pozorovaného protiúčtu.'
+  }
+
   return 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.'
 }
 
@@ -236,6 +241,8 @@ function toNoMatchReasonCs(reason: UnmatchedPayoutBatchReason): string {
       return 'Více možných bankovních kandidátů.'
     case 'wrongBankRouting':
       return 'Nesprávný bankovní účet.'
+    case 'counterpartyClueMismatch':
+      return 'Chybí očekávaná stopa protiúčtu pro tento typ payoutu.'
     case 'dateToleranceMiss':
       return 'Žádný vhodný kandidát v očekávaném datu payoutu.'
     case 'noCandidateAtAll':

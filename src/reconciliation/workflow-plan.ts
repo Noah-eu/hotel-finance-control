@@ -183,13 +183,25 @@ function buildBankFeeClassifications(
         const reference = (transaction.reference ?? '').toLowerCase()
         const counterparty = (transaction.counterparty ?? '').toLowerCase()
 
-        if (transaction.accountId.includes('fio') && (reference.includes('fee') || counterparty.includes('terminal'))) {
+        if (
+            transaction.accountId.includes('fio')
+            && (
+                reference.includes('fee')
+                || counterparty.includes('terminal')
+                || reference.includes('zúčtování pos terminálu')
+                || reference.includes('zuctovani pos terminalu')
+                || counterparty.includes('zúčtování pos terminálu')
+                || counterparty.includes('zuctovani pos terminalu')
+                || reference.includes('settlement fee')
+                || reference.includes('payment fee')
+            )
+        ) {
             classifications.push({
                 transactionId: transaction.id,
                 category: 'fio_terminal_fee',
                 bankRoutingTarget: 'fio_bank_inflow',
                 bankAccountId: transaction.accountId,
-                reason: 'Fio terminal fee inferred from outgoing bank transaction metadata.'
+                reason: 'Fio POS terminal fee inferred from observed settlement wording on the current dataset.'
             })
             continue
         }

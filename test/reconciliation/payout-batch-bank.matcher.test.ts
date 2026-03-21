@@ -58,6 +58,31 @@ describe('matchPayoutBatchesToBank', () => {
         expect(matches[0]?.reasons).toContain('payoutReferenceAligned')
     })
 
+    it('prefers the observed platform counterparty clue when multiple exact-amount RB candidates exist', () => {
+        const matches = matchPayoutBatchesToBank({
+            payoutBatches: [bookingBatch()],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-clue' as NormalizedTransaction['id'],
+                    counterparty: 'Booking BV',
+                    bookedAt: '2026-03-12'
+                }),
+                bankTransaction({
+                    id: 'txn:bank:non-clue' as NormalizedTransaction['id'],
+                    counterparty: 'Some Other Merchant',
+                    bookedAt: '2026-03-13'
+                })
+            ]
+        })
+
+        expect(matches).toEqual([
+            expect.objectContaining({
+                bankTransactionId: 'txn:bank:booking-clue'
+            })
+        ])
+        expect(matches[0]?.reasons).toContain('counterpartyClueAligned')
+    })
+
     it('leaves ambiguous bank candidates unmatched', () => {
         const matches = matchPayoutBatchesToBank({
             payoutBatches: [bookingBatch()],
@@ -148,6 +173,43 @@ describe('matchPayoutBatchesToBank', () => {
                 rejectionReasons: ['noExactAmount', 'wrongBankRouting', 'dateToleranceMiss']
             })
         ])
+    })
+
+    it('surfaces a clue mismatch reason when exact-amount RB candidates exist but none carry the observed platform clue', () => {
+        const diagnostics = diagnoseUnmatchedPayoutBatchesToBank({
+            payoutBatches: [{
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                payoutDate: '2026-03-15',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:airbnb-payout-2'],
+                expectedTotalMinor: 98000,
+                currency: 'CZK'
+            }],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:airbnb-noclued' as NormalizedTransaction['id'],
+                    amountMinor: 98000,
+                    accountId: '5599955956/5500',
+                    bookedAt: '2026-03-15',
+                    counterparty: 'Other Bank Clearing',
+                    reference: 'Settlement credit'
+                })
+            ]
+        })
+
+        expect(diagnostics).toEqual([
+            expect.objectContaining({
+                noMatchReason: 'counterpartyClueMismatch'
+            })
+        ])
+        expect(diagnostics[0]?.allInboundBankCandidates[0]).toEqual(
+            expect.objectContaining({
+                clueScore: 0,
+                clueLabels: []
+            })
+        )
     })
 
     it('attaches payout-batch matches into reconciliation flow conservatively', () => {

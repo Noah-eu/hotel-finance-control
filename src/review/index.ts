@@ -235,19 +235,19 @@ function buildExpectedSettlementPathCs(expectedChannels: string[] | undefined, f
   const channels = expectedChannels && expectedChannels.length > 0 ? expectedChannels : inferExpectedChannelsFromFallback(fallbackChannel)
 
   if (channels.includes('booking')) {
-    return 'očekávaná úhrada přes Booking'
+    return 'očekávaná úhrada přes Booking na RB účet, typicky se stopou Booking v protiúčtu'
   }
 
   if (channels.includes('airbnb')) {
-    return 'očekávaná úhrada přes Airbnb'
+    return 'očekávaná úhrada přes Airbnb na RB účet, typicky se stopou CITIBANK v protiúčtu'
   }
 
   if (channels.includes('comgate')) {
-    return 'očekávaná úhrada přes platební bránu'
+    return 'očekávaná úhrada přes platební bránu na RB účet, typicky se stopou Comgate v protiúčtu'
   }
 
   if (channels.includes('expedia_direct_bank')) {
-    return 'očekávaná přímá bankovní úhrada'
+    return 'očekávaná přímá bankovní úhrada na Fio účet, typicky se stopou Zúčtování POS terminálu'
   }
 
   return 'očekávaná cesta úhrady zatím není určena'
@@ -395,19 +395,19 @@ function buildReservationMissingCandidateReason(expectedChannels: string[] | und
   const channels = expectedChannels ?? []
 
   if (channels.includes('booking')) {
-    return 'Nenalezen odpovídající payout z Bookingu.'
+    return 'Nenalezen odpovídající payout z Bookingu na RB účtu se stopou Booking.'
   }
 
   if (channels.includes('airbnb')) {
-    return 'Nenalezen odpovídající payout z Airbnb.'
+    return 'Nenalezen odpovídající payout z Airbnb na RB účtu se stopou CITIBANK.'
   }
 
   if (channels.includes('comgate')) {
-    return 'Nenalezen odpovídající payout z platební brány.'
+    return 'Nenalezen odpovídající payout z platební brány na RB účtu se stopou Comgate.'
   }
 
   if (channels.includes('expedia_direct_bank')) {
-    return 'Nenalezena odpovídající bankovní úhrada.'
+    return 'Nenalezena odpovídající bankovní úhrada na Fio účtu se stopou Zúčtování POS terminálu.'
   }
 
   return 'Chybí deterministická vazba na odpovídající úhradu.'
@@ -417,19 +417,19 @@ function buildReservationChannelMismatchReason(expectedChannels: string[] | unde
   const channels = expectedChannels ?? []
 
   if (channels.includes('booking')) {
-    return 'Nenalezen odpovídající payout z Bookingu ve správném kanálu.'
+    return 'Nenalezen odpovídající payout z Bookingu ve správném kanálu a na RB účtu.'
   }
 
   if (channels.includes('airbnb')) {
-    return 'Nenalezen odpovídající payout z Airbnb ve správném kanálu.'
+    return 'Nenalezen odpovídající payout z Airbnb ve správném kanálu a na RB účtu.'
   }
 
   if (channels.includes('comgate')) {
-    return 'Nenalezen odpovídající payout z platební brány ve správném kanálu.'
+    return 'Nenalezen odpovídající payout z platební brány ve správném kanálu a na RB účtu.'
   }
 
   if (channels.includes('expedia_direct_bank')) {
-    return 'Nenalezena odpovídající bankovní úhrada ve správném kanálu.'
+    return 'Nenalezena odpovídající bankovní úhrada ve správném kanálu a na Fio účtu.'
   }
 
   return 'Chybí odpovídající úhrada ve správném kanálu.'

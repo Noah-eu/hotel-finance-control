@@ -45,6 +45,10 @@ describe('buildReviewScreen', () => {
     expect(review.missingDocuments.some((item) => item.detail.includes('no structured supporting invoice or receipt match'))).toBe(true)
     expect(review.suspicious.some((item) => item.severity === 'high' || item.detail.length > 0)).toBe(true)
     expect(review.missingDocuments.some((item) => item.kind === 'missing-document' && item.title.startsWith('Chybějící doklad pro'))).toBe(true)
+    expect(
+      review.payoutBatchUnmatched.some((item) => item.detail.includes('Směřování: RB účet.'))
+      || review.reservationSettlementOverview.some((item) => item.detail.includes('RB účet') || item.detail.includes('Fio účet'))
+    ).toBe(true)
   })
 
   it('keeps matched items separate from exception-driven review buckets', () => {
@@ -670,12 +674,12 @@ describe('buildReviewScreen', () => {
     expect(review.reservationSettlementOverview[0]?.title).toBe('Rezervace PREVIO-CG-20260314')
     expect(review.reservationSettlementOverview[0]?.detail).toContain('Typ položky: Hlavní ubytovací rezervace.')
     expect(review.reservationSettlementOverview[0]?.detail).toContain('Jednotka: A101.')
-    expect(review.reservationSettlementOverview[0]?.detail).toContain('Očekávaná cesta úhrady: očekávaná úhrada přes platební bránu.')
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('Očekávaná cesta úhrady: očekávaná úhrada přes platební bránu na RB účet, typicky se stopou Comgate v protiúčtu.')
     expect(review.reservationSettlementOverview[0]?.detail).toContain('Pasuje s kandidátem: Platební brána')
     expect(review.ancillarySettlementOverview).toHaveLength(1)
     expect(review.ancillarySettlementOverview[0]?.detail).toContain('Typ položky: Doplňková položka.')
     expect(review.ancillarySettlementOverview[0]?.detail).toContain('Položka: Parkování 1.')
-    expect(review.ancillarySettlementOverview[0]?.detail).toContain('Očekávaná cesta úhrady: očekávaná úhrada přes platební bránu.')
+    expect(review.ancillarySettlementOverview[0]?.detail).toContain('Očekávaná cesta úhrady: očekávaná úhrada přes platební bránu na RB účet, typicky se stopou Comgate v protiúčtu.')
     expect(review.ancillarySettlementOverview[0]?.detail).toContain('Pasuje s kandidátem: Platební brána')
     expect(review.reservationSettlementOverview[0]?.detail).not.toContain('noCandidate')
     expect(review.ancillarySettlementOverview[0]?.detail).not.toContain('noCandidate')
