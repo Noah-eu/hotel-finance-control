@@ -186,6 +186,30 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {
+    const previo = getRealInputFixture('previo-reservation-export')
+    const globalWithBuffer = globalThis as typeof globalThis & { Buffer?: unknown }
+    const originalBuffer = globalWithBuffer.Buffer
+
+    try {
+      delete (globalWithBuffer as { Buffer?: unknown }).Buffer
+
+      const result = await buildBrowserRuntimeStateFromSelectedFiles({
+        files: [createRuntimeWorkbookFile('Prehled_rezervaci.xlsx', previo.rawInput.binaryContentBase64!)],
+        month: '2026-03',
+        generatedAt: '2026-03-21T09:06:00.000Z'
+      })
+
+      expect(result.preparedFiles[0]).toMatchObject({
+        fileName: 'Prehled_rezervaci.xlsx',
+        sourceSystem: 'previo'
+      })
+      expect(result.extractedRecords[0]?.extractedCount).toBe(1)
+    } finally {
+      globalWithBuffer.Buffer = originalBuffer
+    }
+  })
+
   it('completes the exact combined browser-only monthly run for the current two bank files and Booking file in one session', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
@@ -776,8 +800,14 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
       return ''
     },
     async arrayBuffer() {
-      const buffer = Buffer.from(binaryContentBase64, 'base64')
-      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+      const binary = atob(binaryContentBase64)
+      const bytes = new Uint8Array(binary.length)
+
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
+
+      return bytes.buffer
     }
   }
 }
