@@ -284,11 +284,41 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     return 'comgate'
   }
 
+  if (hasAllHeaderFields(headerFields, ['datum převodu', 'částka převodu', 'měna', 'transfer id', 'confirmation code', 'listing name'])
+    || hasAllHeaderFields(headerFields, ['datum prevodu', 'castka prevodu', 'mena', 'transfer id', 'confirmation code', 'listing name'])
+    || hasAllHeaderFields(headerFields, ['payout amount', 'currency', 'payout id', 'confirmation code', 'listing name'])) {
+    return 'airbnb'
+  }
+
+  if (hasAllHeaderFields(headerFields, ['type', 'reference number', 'currency', 'amount', 'payout date', 'payout id'])
+    || hasAllHeaderFields(headerFields, ['type', 'reference number', 'check-in', 'checkout', 'amount', 'payout id'])) {
+    return 'booking'
+  }
+
+  if (hasAllHeaderFields(headerFields, ['datum zaplacení', 'uhrazená částka', 'měna', 'variabilní symbol', 'štítek', 'číslo objednávky'])
+    || hasAllHeaderFields(headerFields, ['datum zaplaceni', 'uhrazena castka', 'mena', 'variabilni symbol', 'stitek', 'cislo objednavky'])) {
+    return 'comgate'
+  }
+
   if (matchesAnyHeaderSignature(normalizedHeaderSample, [
     'payoutdate,amountminor,currency,payoutreference,reservationid,propertyid',
     'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid',
     'datumvyplaty;netamount;měna;bookingreference;bookingnumber;ubytovani'
   ]) && normalizedContent.includes('payout-book')) {
+    return 'booking'
+  }
+
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+    'payoutdate,amountminor,currency,payoutreference,reservationid,listingid',
+    'datum převodu;částka převodu;měna;transfer id;confirmation code;listing name',
+    'datum prevodu;castka prevodu;mena;transfer id;confirmation code;listing name'
+  ])) {
+    return 'airbnb'
+  }
+
+  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+    'type;reference number;checkin;checkout;guest name;reservation status;currency;payment status;amount;payout date;payout id'
+  ])) {
     return 'booking'
   }
 

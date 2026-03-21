@@ -22,12 +22,12 @@ const REQUIRED_HEADERS = [
 ]
 
 const HEADER_ALIASES = {
-  payoutDate: ['payoutDate', 'payout_date', 'arrivalDate', 'datumVyplaty', 'date'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'netPayout', 'castka', 'částka'],
+  payoutDate: ['payoutDate', 'payout_date', 'arrivalDate', 'datumVyplaty', 'date', 'datum převodu', 'datum transferu'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'netPayout', 'castka', 'částka', 'částka převodu', 'transfer amount', 'payout amount'],
   currency: ['currency', 'mena', 'měna'],
-  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'transactionId'],
-  reservationId: ['reservationId', 'reservation_id', 'confirmationCode', 'reservationCode'],
-  listingId: ['listingId', 'listing_id', 'propertyId', 'listing']
+  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'transactionId', 'transferId', 'transfer id', 'payout id'],
+  reservationId: ['reservationId', 'reservation_id', 'confirmationCode', 'reservationCode', 'confirmation code', 'rezervace', 'reservation'],
+  listingId: ['listingId', 'listing_id', 'propertyId', 'listing', 'listing name', 'název nabídky']
 } satisfies Record<string, string[]>
 
 export class AirbnbPayoutParser {

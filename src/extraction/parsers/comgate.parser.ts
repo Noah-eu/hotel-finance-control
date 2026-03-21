@@ -22,12 +22,12 @@ const REQUIRED_HEADERS = [
 ]
 
 const HEADER_ALIASES = {
-  paidAt: ['paidAt', 'paid_at', 'paymentDate', 'datumPlatby', 'datum'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka'],
+  paidAt: ['paidAt', 'paid_at', 'paymentDate', 'datumPlatby', 'datum', 'datum zaplacení', 'datum úhrady'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'uhrazená částka', 'zaplacená částka'],
   currency: ['currency', 'mena', 'měna'],
-  reference: ['reference', 'paymentReference', 'transactionReference', 'variabilniSymbol'],
-  paymentPurpose: ['paymentPurpose', 'payment_purpose', 'purpose', 'ucelPlatby', 'účelPlatby'],
-  reservationId: ['reservationId', 'reservation_id', 'reservation', 'orderId']
+  reference: ['reference', 'paymentReference', 'transactionReference', 'variabilniSymbol', 'variabilní symbol', 'id transakce', 'transaction id'],
+  paymentPurpose: ['paymentPurpose', 'payment_purpose', 'purpose', 'ucelPlatby', 'účelPlatby', 'štítek', 'typ platby', 'payment label'],
+  reservationId: ['reservationId', 'reservation_id', 'reservation', 'orderId', 'číslo objednávky', 'order id', 'merchant id']
 } satisfies Record<string, string[]>
 
 export class ComgateParser {

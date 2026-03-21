@@ -33,6 +33,30 @@ describe('parseComgateExport', () => {
     })
   })
 
+  it('accepts richer Comgate client portal headers with explicit label and order linkage', () => {
+    const fixture = getRealInputFixture('comgate-export')
+
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum zaplacení;Uhrazená částka;Měna;Variabilní symbol;Štítek;Číslo objednávky',
+        '15.03.2026;380,00;CZK;CG-RES-991;website-reservation;WEB-RES-991'
+      ].join('\n'),
+      extractedAt: '2026-03-20T13:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      rawReference: 'CG-RES-991',
+      occurredAt: '2026-03-15',
+      amountMinor: 38000,
+      data: {
+        paymentPurpose: 'website-reservation',
+        reservationId: 'WEB-RES-991'
+      }
+    })
+  })
+
   it('matches the representative expected extracted outputs for the fixture rows', () => {
     const fixture = getRealInputFixture('comgate-export')
 

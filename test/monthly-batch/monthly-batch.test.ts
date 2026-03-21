@@ -950,4 +950,36 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.reconciliation.exceptionCases[0].explanation).not.toContain('suspicious/private')
     expect(result.reconciliation.exceptionCases[0].explanation).not.toContain('supporting invoice or receipt')
   })
+
+  it('detects real-style Booking, Airbnb, and Comgate upload shapes from file content when filenames are opaque', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'Q3iygU5b0wLBneSGbooking10-20.csv',
+        content: [
+          'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+          'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;1250,00;12 Mar 2026;PAYOUT-BOOK-20260310'
+        ].join('\n'),
+        uploadedAt: '2026-03-20T12:00:00.000Z'
+      },
+      {
+        name: 'airbnb_03_2026-03_2026.csv',
+        content: [
+          'Datum převodu;Částka převodu;Měna;Transfer ID;Confirmation code;Listing name',
+          '12.03.2026;980,00;CZK;AIRBNB-20260312;HMA4TR9;LISTING-CZ-11'
+        ].join('\n'),
+        uploadedAt: '2026-03-20T12:00:00.000Z'
+      },
+      {
+        name: 'export.csv',
+        content: [
+          'Datum zaplacení;Uhrazená částka;Měna;Variabilní symbol;Štítek;Číslo objednávky',
+          '15.03.2026;380,00;CZK;CG-RES-991;website-reservation;WEB-RES-991'
+        ].join('\n'),
+        uploadedAt: '2026-03-20T12:00:00.000Z'
+      }
+    ])
+
+    expect(prepared.map((file) => file.sourceDocument.sourceSystem)).toEqual(['booking', 'airbnb', 'comgate'])
+    expect(prepared.map((file) => file.sourceDocument.documentType)).toEqual(['ota_report', 'ota_report', 'payment_gateway_report'])
+  })
 })
