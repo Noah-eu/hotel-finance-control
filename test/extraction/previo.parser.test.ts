@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import * as XLSX from 'xlsx'
 import { parsePrevioReservationExport } from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
+
+function createPrevioWorkbookBase64(rows: Array<Record<string, string>>) {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Seznam rezervací')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet([{ Souhrn: 'Souhrn', Hodnota: '1' }]), 'Přehled rezervací')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
 
 describe('parsePrevioReservationExport', () => {
   it('extracts deterministic payout-line records from the operational Previo reservation fixture', () => {
@@ -101,5 +109,85 @@ describe('parsePrevioReservationExport', () => {
     expect(records).toHaveLength(1)
     expect(records[0]?.rawReference).toBe('PREVIO-20260314')
     expect(records[0]?.data.sourceSheet).toBe('Seznam rezervací')
+  })
+
+  it('skips blank or non-reservation workbook rows that have an empty Voucher', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '13.03.2026 09:15',
+          'Termín od': '14.03.2026',
+          'Termín do': '16.03.2026',
+          'Nocí': '2',
+          'Voucher': 'PREVIO-20260314',
+          'Počet hostů': '2',
+          'Hosté': 'Jan Novak',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': 'Acme Travel s.r.o.',
+          'PP': 'direct-web',
+          'Stav': 'confirmed',
+          'Cena': '420,00',
+          'Saldo': '30,00',
+          'Pokoj': 'A101'
+        },
+        {
+          'Vytvořeno': '',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': '',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': '',
+          'Stav': '',
+          'Cena': '',
+          'Saldo': '',
+          'Pokoj': ''
+        }
+      ]),
+      extractedAt: '2026-03-21T10:15:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.rawReference).toBe('PREVIO-20260314')
+  })
+
+  it('fails truthfully for reservation-looking workbook rows with empty Voucher and no grounded fallback identifier', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    expect(() =>
+      parsePrevioReservationExport({
+        sourceDocument: fixture.sourceDocument,
+        content: fixture.rawInput.content,
+        binaryContentBase64: createPrevioWorkbookBase64([
+          {
+            'Vytvořeno': '13.03.2026 09:15',
+            'Termín od': '14.03.2026',
+            'Termín do': '16.03.2026',
+            'Nocí': '2',
+            'Voucher': '',
+            'Počet hostů': '2',
+            'Hosté': 'Jan Novak',
+            'Check-In dokončen': 'Ano',
+            'Market kody': '',
+            'Firma': 'Acme Travel s.r.o.',
+            'PP': 'direct-web',
+            'Stav': 'confirmed',
+            'Cena': '420,00',
+            'Saldo': '30,00',
+            'Pokoj': 'A101'
+          }
+        ]),
+        extractedAt: '2026-03-21T10:16:00.000Z'
+      })
+    ).toThrow('Previo Voucher is missing or empty')
   })
 })

@@ -133,7 +133,9 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     return []
   }
 
-  return rows.map((row, index) => {
+  const reservationRows = rows.filter((row) => shouldKeepWorkbookReservationRow(row))
+
+  return reservationRows.map((row, index) => {
     const reservationReference = readWorkbookString(row['Voucher'])
     const stayStartAt = parseFlexiblePrevioDate(row['Termín od'], 'Previo Termín od')
     const stayEndAt = parseFlexiblePrevioDate(row['Termín do'], 'Previo Termín do')
@@ -174,6 +176,47 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
       }
     }
   })
+}
+
+function shouldKeepWorkbookReservationRow(row: Record<string, unknown>): boolean {
+  const voucher = readWorkbookOptionalString(row['Voucher'])
+  if (voucher) {
+    return true
+  }
+
+  if (isIgnorableWorkbookNonReservationRow(row)) {
+    return false
+  }
+
+  throw new Error('Previo Voucher is missing or empty')
+}
+
+function isIgnorableWorkbookNonReservationRow(row: Record<string, unknown>): boolean {
+  const stayStartAt = readWorkbookOptionalString(row['Termín od'])
+  const stayEndAt = readWorkbookOptionalString(row['Termín do'])
+  const guestName = readWorkbookOptionalString(row['Hosté'])
+  const amount = readWorkbookOptionalString(row['Cena'])
+  const roomName = readWorkbookOptionalString(row['Pokoj'])
+  const companyName = readWorkbookOptionalString(row['Firma'])
+  const status = readWorkbookOptionalString(row['Stav'])
+  const marketCodes = readWorkbookOptionalString(row['Market kody'])
+  const checkInCompleted = readWorkbookOptionalString(row['Check-In dokončen'])
+  const occupancy = readWorkbookOptionalString(row['Počet hostů'])
+  const nights = readWorkbookOptionalString(row['Nocí'])
+  const channel = readWorkbookOptionalString(row['PP'])
+
+  return !stayStartAt
+    && !stayEndAt
+    && !guestName
+    && !amount
+    && !roomName
+    && !companyName
+    && !status
+    && !marketCodes
+    && !checkInCompleted
+    && !occupancy
+    && !nights
+    && !channel
 }
 
 function parseFlexiblePrevioDate(value: unknown, label: string): string {
