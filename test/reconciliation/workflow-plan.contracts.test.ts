@@ -138,6 +138,7 @@ describe('reconciliation workflow business contracts', () => {
                     expectedSettlementChannels: ['booking', 'airbnb', 'comgate']
                 }
             ],
+            ancillaryRevenueSources: [],
             payoutRows: [],
             payoutBatches: [],
             directBankSettlements: [],

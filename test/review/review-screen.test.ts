@@ -262,6 +262,7 @@ describe('buildReviewScreen', () => {
           supportedExpenseLinks: [],
           workflowPlan: {
             reservationSources: [],
+            ancillaryRevenueSources: [],
             payoutRows: [
               {
                 rowId: 'txn:payout:payout-1',
@@ -381,6 +382,7 @@ describe('buildReviewScreen', () => {
           supportedExpenseLinks: [],
           workflowPlan: {
             reservationSources: [],
+            ancillaryRevenueSources: [],
             payoutRows: [
               {
                 rowId: 'txn:payout:payout-1',

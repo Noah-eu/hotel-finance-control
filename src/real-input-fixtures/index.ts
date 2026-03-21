@@ -586,6 +586,7 @@ export const realInputFixtures: RealInputFixture[] = [
         occurredAt: '2026-03-14',
         data: {
           platform: 'previo',
+          rowKind: 'accommodation',
           bookedAt: '2026-03-14',
           createdAt: '2026-03-13T09:15:00',
           stayStartAt: '2026-03-14',
@@ -600,6 +601,7 @@ export const realInputFixtures: RealInputFixture[] = [
           channel: 'direct-web',
           companyName: 'Acme Travel s.r.o.',
           roomName: 'A101',
+          itemLabel: undefined,
           sourceSheet: 'Seznam rezervací',
           workbookExtractionAudit: {
             sheetName: 'Seznam rezervací',

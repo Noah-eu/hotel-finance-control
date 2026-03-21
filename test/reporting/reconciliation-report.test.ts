@@ -189,6 +189,7 @@ describe('buildReconciliationReport', () => {
       reconciliation: reconciliationResult({
         workflowPlan: {
           reservationSources: [],
+          ancillaryRevenueSources: [],
           payoutRows: [
             {
               rowId: 'txn:payout:payout-1',

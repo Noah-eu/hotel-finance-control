@@ -1,4 +1,5 @@
 import type {
+    AncillaryRevenueSourceRecord,
     BankFeeClassification,
     DirectBankSettlementExpectation,
     ExpenseDocumentExpectation,
@@ -22,6 +23,7 @@ export function buildReconciliationWorkflowPlan(
     input: BuildWorkflowPlanInput
 ): ReconciliationWorkflowPlan {
     const reservationSources = buildReservationSources(input.extractedRecords)
+    const ancillaryRevenueSources = buildAncillaryRevenueSources(input.extractedRecords)
     const payoutRows = buildPayoutRows(input.normalizedTransactions)
     const payoutBatches = buildPayoutBatches(payoutRows)
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
@@ -30,6 +32,7 @@ export function buildReconciliationWorkflowPlan(
 
     return {
         reservationSources,
+        ancillaryRevenueSources,
         payoutRows,
         payoutBatches,
         directBankSettlements,
@@ -42,6 +45,7 @@ function buildReservationSources(extractedRecords: ExtractedRecord[]): Reservati
     return extractedRecords
         .filter((record) => record.recordType === 'payout-line')
         .filter((record) => record.data.platform === 'previo')
+        .filter((record) => record.data.rowKind !== 'ancillary')
         .map((record) => ({
             reservationId: stringOrFallback(record.data.reservationId, record.rawReference, record.id),
             sourceDocumentId: record.sourceDocumentId,
@@ -57,6 +61,25 @@ function buildReservationSources(extractedRecords: ExtractedRecord[]): Reservati
             netRevenueMinor: optionalNumber(record.data.netAmountMinor),
             currency: stringOrFallback(record.data.currency, record.currency, 'CZK'),
             expectedSettlementChannels: inferReservationSettlementChannels(record)
+        }))
+}
+
+function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): AncillaryRevenueSourceRecord[] {
+    return extractedRecords
+        .filter((record) => record.data.platform === 'previo')
+        .filter((record) => record.data.rowKind === 'ancillary')
+        .map((record) => ({
+            sourceDocumentId: record.sourceDocumentId,
+            sourceSystem: 'previo',
+            reference: stringOrFallback(record.data.reference, record.rawReference, record.id),
+            reservationId: optionalString(record.data.reservationId),
+            bookedAt: optionalString(record.data.bookedAt) ?? record.occurredAt,
+            createdAt: optionalString(record.data.createdAt),
+            itemLabel: optionalString(record.data.itemLabel) ?? optionalString(record.data.roomName),
+            channel: optionalString(record.data.channel),
+            grossRevenueMinor: numberOrZero(record.data.amountMinor, record.amountMinor),
+            outstandingBalanceMinor: optionalNumber(record.data.outstandingBalanceMinor),
+            currency: stringOrFallback(record.data.currency, record.currency, 'CZK')
         }))
 }
 

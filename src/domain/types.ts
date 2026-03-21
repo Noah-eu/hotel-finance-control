@@ -104,6 +104,20 @@ export interface ReservationSourceRecord {
   expectedSettlementChannels: ReservationSettlementChannel[]
 }
 
+export interface AncillaryRevenueSourceRecord {
+  sourceDocumentId: DocumentId
+  sourceSystem: 'previo'
+  reference: string
+  reservationId?: string
+  bookedAt?: ISODateString
+  createdAt?: ISODateString
+  itemLabel?: string
+  channel?: string
+  grossRevenueMinor: number
+  outstandingBalanceMinor?: number
+  currency: CurrencyCode
+}
+
 export interface PayoutRowExpectation {
   rowId: string
   platform: PayoutBatchPlatform
@@ -161,6 +175,7 @@ export interface BankFeeClassification {
 
 export interface ReconciliationWorkflowPlan {
   reservationSources: ReservationSourceRecord[]
+  ancillaryRevenueSources: AncillaryRevenueSourceRecord[]
   payoutRows: PayoutRowExpectation[]
   payoutBatches: PayoutBatchExpectation[]
   directBankSettlements: DirectBankSettlementExpectation[]

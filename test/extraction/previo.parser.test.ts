@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as XLSX from 'xlsx'
 import { parsePrevioReservationExport } from '../../src/extraction'
+import { buildReconciliationWorkflowPlan } from '../../src/reconciliation'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 function createPrevioWorkbookBase64(rows: Array<Record<string, string>>) {
@@ -451,6 +452,147 @@ describe('parsePrevioReservationExport', () => {
       skippedRowCount: 1,
       extractedRowCount: 1
     })
+  })
+
+  it('preserves parking/add-on rows as ancillary expected revenue instead of treating them as main accommodation stays', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '13.03.2026 09:15',
+          'Termín od': '14.03.2026',
+          'Termín do': '16.03.2026',
+          'Nocí': '2',
+          'Voucher': 'PREVIO-20260314',
+          'Počet hostů': '2',
+          'Hosté': 'Jan Novak',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': 'Acme Travel s.r.o.',
+          'PP': 'booking',
+          'Stav': 'P',
+          'Cena': '420,00',
+          'Saldo': '30,00',
+          'Pokoj': 'A101'
+        },
+        {
+          'Vytvořeno': '13.03.2026 09:20',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': 'PREVIO-20260314',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'comgate',
+          'Stav': 'P',
+          'Cena': '200,00',
+          'Saldo': '0,00',
+          'Pokoj': 'Parkování 1'
+        }
+      ]),
+      extractedAt: '2026-03-21T15:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      recordType: 'payout-line',
+      rawReference: 'PREVIO-20260314',
+      data: {
+        rowKind: 'accommodation',
+        reservationId: 'PREVIO-20260314',
+        guestName: 'Jan Novak',
+        roomName: 'A101'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      recordType: 'expected-revenue-line',
+      rawReference: 'PREVIO-20260314',
+      amountMinor: 20000,
+      data: {
+        rowKind: 'ancillary',
+        reservationId: 'PREVIO-20260314',
+        guestName: undefined,
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'comgate'
+      }
+    })
+  })
+
+  it('carries accommodation and ancillary Previo rows separately in the workflow plan', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const extractedRecords = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '13.03.2026 09:15',
+          'Termín od': '14.03.2026',
+          'Termín do': '16.03.2026',
+          'Nocí': '2',
+          'Voucher': 'PREVIO-20260314',
+          'Počet hostů': '2',
+          'Hosté': 'Jan Novak',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': 'Acme Travel s.r.o.',
+          'PP': 'booking',
+          'Stav': 'P',
+          'Cena': '420,00',
+          'Saldo': '30,00',
+          'Pokoj': 'A101'
+        },
+        {
+          'Vytvořeno': '13.03.2026 09:20',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': 'PREVIO-20260314',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'comgate',
+          'Stav': 'P',
+          'Cena': '200,00',
+          'Saldo': '0,00',
+          'Pokoj': 'Parkování 1'
+        }
+      ]),
+      extractedAt: '2026-03-21T15:05:00.000Z'
+    })
+
+    const plan = buildReconciliationWorkflowPlan({
+      extractedRecords,
+      normalizedTransactions: [],
+      requestedAt: '2026-03-21T15:05:30.000Z'
+    })
+
+    expect(plan.reservationSources).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        guestName: 'Jan Novak',
+        grossRevenueMinor: 42000,
+        channel: 'booking'
+      })
+    ])
+    expect(plan.ancillaryRevenueSources).toEqual([
+      expect.objectContaining({
+        reference: 'PREVIO-20260314',
+        reservationId: 'PREVIO-20260314',
+        itemLabel: 'Parkování 1',
+        grossRevenueMinor: 20000,
+        channel: 'comgate'
+      })
+    ])
   })
 
   it('parses the real short Czech workbook date-time format like `01.03.26 12:30` deterministically', () => {

@@ -43,6 +43,7 @@ const HEADER_ALIASES = {
 const PREVIO_RESERVATION_WORKBOOK_SHEET = 'Seznam rezervací'
 const PREVIO_WORKBOOK_REQUIRED_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena'] as const
 const PREVIO_WORKBOOK_TRACE_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'] as const
+type PrevioWorkbookRowKind = 'accommodation' | 'ancillary' | 'ignorable'
 
 export class PrevioReservationParser {
   parse(input: ParsePrevioReservationExportInput): ExtractedRecord[] {
@@ -132,12 +133,20 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     return []
   }
 
-  const reservationRows = extraction.candidateRows.filter((row) => shouldKeepWorkbookReservationRow(row))
+  const classifiedRows = extraction.candidateRows.map((row) => ({
+    row,
+    kind: classifyWorkbookCandidateRow(row)
+  }))
+  const extractedRows = classifiedRows.filter((entry) => entry.kind !== 'ignorable')
 
-  return reservationRows.map((row, index) => {
+  return extractedRows.map(({ row, kind }, index) => {
     const reservationReference = readWorkbookString(row['Voucher'])
-    const stayStartAt = parseFlexiblePrevioDate(row['Termín od'], 'Previo Termín od')
-    const stayEndAt = parseFlexiblePrevioDate(row['Termín do'], 'Previo Termín do')
+    const stayStartAt = kind === 'accommodation'
+      ? parseFlexiblePrevioDate(row['Termín od'], 'Previo Termín od')
+      : readWorkbookOptionalDate(row['Termín od'], 'Previo Termín od')
+    const stayEndAt = kind === 'accommodation'
+      ? parseFlexiblePrevioDate(row['Termín do'], 'Previo Termín do')
+      : readWorkbookOptionalDate(row['Termín do'], 'Previo Termín do')
     const createdAt = readWorkbookOptionalDate(row['Vytvořeno'], 'Previo Vytvořeno')
     const guestName = readWorkbookOptionalString(row['Hosté'])
     const channel = readWorkbookOptionalString(row['PP'])
@@ -145,19 +154,25 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     const roomName = readWorkbookOptionalString(row['Pokoj'])
     const grossAmount = parsePrevioWorkbookAmount(row['Cena'], 'Previo Cena')
     const outstandingBalance = readWorkbookOptionalAmount(row['Saldo'], 'Previo Saldo')
+    const occurredAt = stayStartAt ?? createdAt
+    const recordType = kind === 'accommodation' ? 'payout-line' : 'expected-revenue-line'
+    const recordId = kind === 'accommodation'
+      ? `previo-reservation-${index + 1}`
+      : `previo-ancillary-${index + 1}`
 
     return {
-      id: `previo-reservation-${index + 1}`,
+      id: recordId,
       sourceDocumentId: input.sourceDocument.id,
-      recordType: 'payout-line',
+      recordType,
       extractedAt: input.extractedAt,
       rawReference: reservationReference,
       amountMinor: grossAmount.amountMinor,
       currency: grossAmount.currency,
-      occurredAt: stayStartAt,
+      occurredAt,
       data: {
         platform: 'previo',
-        bookedAt: stayStartAt,
+        rowKind: kind,
+        bookedAt: occurredAt,
         createdAt,
         stayStartAt,
         stayEndAt,
@@ -171,6 +186,7 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
         channel,
         companyName,
         roomName,
+        itemLabel: kind === 'ancillary' ? roomName ?? readWorkbookOptionalString(row['Stav']) : undefined,
         sourceSheet: PREVIO_RESERVATION_WORKBOOK_SHEET,
         workbookExtractionAudit: {
           sheetName: PREVIO_RESERVATION_WORKBOOK_SHEET,
@@ -179,9 +195,9 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
           headerColumnIndexes: extraction.headerColumnIndexes,
           sampleCandidateRows: extraction.candidateRows.slice(0, 3).map((candidateRow) => toWorkbookTraceRow(candidateRow)),
           candidateRowCount: extraction.candidateRows.length,
-          skippedRowCount: extraction.candidateRows.length - reservationRows.length,
+          skippedRowCount: extraction.candidateRows.length - extractedRows.length,
           rejectedRowCount: 0,
-          extractedRowCount: reservationRows.length
+          extractedRowCount: extractedRows.length
         }
       }
     }
@@ -314,19 +330,23 @@ function toWorkbookTraceRow(row: Record<string, unknown>): Record<string, string
   return trace
 }
 
-function shouldKeepWorkbookReservationRow(row: Record<string, unknown>): boolean {
-  if (isStructuredWorkbookReservationRow(row)) {
-    return true
+function classifyWorkbookCandidateRow(row: Record<string, unknown>): PrevioWorkbookRowKind {
+  if (isAccommodationWorkbookRow(row)) {
+    return 'accommodation'
+  }
+
+  if (isAncillaryWorkbookRow(row)) {
+    return 'ancillary'
   }
 
   if (isIgnorableWorkbookNonReservationRow(row)) {
-    return false
+    return 'ignorable'
   }
 
   throw new Error('Previo Voucher is missing or empty')
 }
 
-function isStructuredWorkbookReservationRow(row: Record<string, unknown>): boolean {
+function isAccommodationWorkbookRow(row: Record<string, unknown>): boolean {
   const voucher = readWorkbookOptionalString(row['Voucher'])
   const stayStartAt = readWorkbookOptionalString(row['Termín od'])
   const stayEndAt = readWorkbookOptionalString(row['Termín do'])
@@ -343,6 +363,26 @@ function isStructuredWorkbookReservationRow(row: Record<string, unknown>): boole
     && PREVIO_DATE_CELL_PATTERN.test(stayEndAt)
     && amount
     && PREVIO_AMOUNT_CELL_PATTERN.test(amount.replace(/\u00a0/g, '').replace(/\s+/g, ''))
+  )
+}
+
+function isAncillaryWorkbookRow(row: Record<string, unknown>): boolean {
+  const voucher = readWorkbookOptionalString(row['Voucher'])
+  const guestName = readWorkbookOptionalString(row['Hosté'])
+  const amount = readWorkbookOptionalString(row['Cena'])
+  const roomName = readWorkbookOptionalString(row['Pokoj'])
+  const stayStartAt = readWorkbookOptionalString(row['Termín od'])
+  const stayEndAt = readWorkbookOptionalString(row['Termín do'])
+
+  return Boolean(
+    voucher
+    && isLikelyReservationReference(voucher)
+    && !guestName
+    && amount
+    && PREVIO_AMOUNT_CELL_PATTERN.test(amount.replace(/\u00a0/g, '').replace(/\s+/g, ''))
+    && roomName
+    && (!stayStartAt || PREVIO_DATE_CELL_PATTERN.test(stayStartAt))
+    && (!stayEndAt || PREVIO_DATE_CELL_PATTERN.test(stayEndAt))
   )
 }
 
