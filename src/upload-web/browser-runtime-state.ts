@@ -67,8 +67,13 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     reportSummary: batch.report.summary,
     reportTransactions: batch.report.transactions.slice(0, 5).map((transaction) => ({
       transactionId: transaction.transactionId,
-      labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source),
+      labelCs: buildVisibleTransactionLabel(
+        transaction.transactionId,
+        transaction.source,
+        findVisibleTransactionSubtype(batch, transaction.transactionId, transaction.source)
+      ),
       source: transaction.source,
+      subtype: findVisibleTransactionSubtype(batch, transaction.transactionId, transaction.source),
       amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
       status: transaction.status
     })),
@@ -201,7 +206,20 @@ function deriveMonthLabel(runId: string): string {
   return suffix === 'local' ? 'neuvedeno' : suffix
 }
 
-function buildVisibleTransactionLabel(transactionId: string, source: string): string {
+function findVisibleTransactionSubtype(
+  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  transactionId: string,
+  source: string
+): string | undefined {
+  if (source !== 'airbnb') {
+    return undefined
+  }
+
+  const extractedRecord = batch.extractedRecords.find((record) => `txn:payout:${record.id}` === transactionId)
+  return typeof extractedRecord?.data.rowKind === 'string' ? extractedRecord.data.rowKind : undefined
+}
+
+function buildVisibleTransactionLabel(transactionId: string, source: string, subtype?: string): string {
   const normalizedSource = source.toLowerCase()
   const normalizedId = transactionId.toLowerCase()
 
@@ -210,6 +228,10 @@ function buildVisibleTransactionLabel(transactionId: string, source: string): st
   }
 
   if (normalizedSource.includes('airbnb') || normalizedId.includes('airbnb')) {
+    if (subtype === 'reservation') {
+      return 'Airbnb rezervace'
+    }
+
     return 'Airbnb payout'
   }
 

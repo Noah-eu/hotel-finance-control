@@ -171,8 +171,13 @@ function renderOperatorWebDemoHtml(input: {
     reviewSections: input.browserRun.run.review,
     reportTransactions: input.browserRun.run.report.transactions.slice(0, 5).map((transaction) => ({
       transactionId: transaction.transactionId,
-      labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source),
+      labelCs: buildVisibleTransactionLabel(
+        transaction.transactionId,
+        transaction.source,
+        findVisibleTransactionSubtype(input.browserRun, transaction.transactionId, transaction.source)
+      ),
       source: transaction.source,
+      subtype: findVisibleTransactionSubtype(input.browserRun, transaction.transactionId, transaction.source),
       amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
       status: transaction.status
     })),
@@ -787,32 +792,6 @@ function buildDebugExtractedRecordsMarkupFunctionSource(): string {
       }`
 }
 
-function buildVisibleTransactionLabel(transactionId: string, source: string): string {
-  const normalizedSource = source.toLowerCase()
-
-  if (normalizedSource === 'booking') {
-    return 'Booking.com payout'
-  }
-
-  if (normalizedSource === 'bank') {
-    return 'Bankovní pohyb'
-  }
-
-  if (normalizedSource === 'invoice') {
-    return 'Faktura'
-  }
-
-  if (normalizedSource === 'receipt') {
-    return 'Účtenka'
-  }
-
-  if (transactionId.startsWith('txn:payout:')) {
-    return 'Výplatní transakce'
-  }
-
-  return 'Transakce měsíčního běhu'
-}
-
 function fileNameFromSourceDocumentId(
   browserRun: BrowserUploadedMonthlyRunResult,
   sourceDocumentId: string
@@ -906,6 +885,50 @@ function documentTypeFromSourceDocumentId(input: {
   browserRun: BrowserUploadedMonthlyRunResult
 }, sourceDocumentId: string): string | undefined {
   return input.browserRun.run.importedFiles.find((file) => file.sourceDocument.id === sourceDocumentId)?.sourceDocument.documentType
+}
+
+function findVisibleTransactionSubtype(
+  browserRun: BrowserUploadedMonthlyRunResult,
+  transactionId: string,
+  source: string
+): string | undefined {
+  if (source !== 'airbnb') {
+    return undefined
+  }
+
+  const extractedRecord = browserRun.run.batch.extractedRecords.find((record) => `txn:payout:${record.id}` === transactionId)
+  return typeof extractedRecord?.data.rowKind === 'string' ? extractedRecord.data.rowKind : undefined
+}
+
+function buildVisibleTransactionLabel(transactionId: string, source: string, subtype?: string): string {
+  const normalizedSource = source.toLowerCase()
+  const normalizedId = transactionId.toLowerCase()
+
+  if (normalizedSource.includes('booking') || normalizedId.includes('booking')) {
+    return 'Booking.com payout'
+  }
+
+  if (normalizedSource.includes('airbnb') || normalizedId.includes('airbnb')) {
+    if (subtype === 'reservation') {
+      return 'Airbnb rezervace'
+    }
+
+    return 'Airbnb payout'
+  }
+
+  if (normalizedSource.includes('comgate') || normalizedId.includes('comgate')) {
+    return 'Comgate platba'
+  }
+
+  if (normalizedSource.includes('expedia') || normalizedId.includes('expedia')) {
+    return 'Expedia settlement'
+  }
+
+  if (normalizedSource.includes('bank') || normalizedId.includes('bank')) {
+    return 'Bankovní transakce'
+  }
+
+  return 'Transakce'
 }
 
 export function buildFixtureWebDemo(options: BuildFixtureWebDemoOptions = {}): FixtureWebDemoResult {

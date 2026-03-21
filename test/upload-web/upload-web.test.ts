@@ -959,6 +959,48 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(2)
     expect(result.reportTransactions.map((item) => item.amount)).toEqual(['1 060,00 Kč', '980,00 Kč'])
     expect(result.reportTransactions.map((item) => item.transactionId)).toEqual(['txn:payout:airbnb-payout-1', 'txn:payout:airbnb-payout-2'])
+    expect(result.reportTransactions.map((item) => item.labelCs)).toEqual(['Airbnb rezervace', 'Airbnb payout'])
+    expect(result.reportTransactions.map((item) => item.subtype)).toEqual(['reservation', 'transfer'])
+  })
+
+  it('truthfully audits the current Airbnb plus RB browser runtime path with two Airbnb payout batches and zero matches', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-21T19:35:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        extractedCount: 2,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+        accountLabelCs: 'Airbnb payout report'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        extractedCount: 1,
+        extractedRecordIds: ['fio-row-1'],
+        accountLabelCs: 'RB účet 5599955956/5500',
+        parserDebugLabel: 'fio'
+      })
+    ])
+    expect(result.reportTransactions.map((item) => item.labelCs)).toEqual([
+      'Airbnb rezervace',
+      'Airbnb payout',
+      'Bankovní transakce'
+    ])
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(0)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
   })
 
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
@@ -356,6 +357,90 @@ describe('buildWebDemo', () => {
       'Fio účet 8888997777'
     ])
     expect(state.extractedRecords.map((file) => file.parserDebugLabel)).toEqual(['fio', 'raiffeisenbank'])
+  })
+
+  it('keeps Airbnb reservation vs payout preview labeling truthful in the main browser runtime projection', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'airbnb.csv',
+          text: async () => getRealInputFixture('airbnb-payout-export').rawInput.content
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-21T19:40:00.000Z'
+    })
+
+    expect(state.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        extractedCount: 2,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+        accountLabelCs: 'Airbnb payout report'
+      })
+    ])
+    expect(state.reportTransactions.map((transaction) => transaction.labelCs)).toEqual([
+      'Airbnb rezervace',
+      'Airbnb payout'
+    ])
+    expect(state.reportTransactions.map((transaction) => transaction.subtype)).toEqual([
+      'reservation',
+      'transfer'
+    ])
+  })
+
+  it('truthfully audits that the current Airbnb plus RB batch matching stays at zero because no RB inflow has either Airbnb batch amount', () => {
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+
+    const batch = runMonthlyReconciliationBatch({
+      files: prepareUploadedMonthlyFiles([
+        {
+          name: 'airbnb.csv',
+          content: airbnb.rawInput.content,
+          uploadedAt: '2026-03-21T19:45:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n'),
+          uploadedAt: '2026-03-21T19:45:00.000Z'
+        }
+      ]),
+      reconciliationContext: {
+        runId: 'airbnb-rb-truthful-audit',
+        requestedAt: '2026-03-21T19:45:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-21T19:45:00.000Z'
+    })
+
+    expect(batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.platform === 'airbnb')).toHaveLength(2)
+    expect(batch.reconciliation.workflowPlan?.payoutBatches.filter((row) => row.platform === 'airbnb')).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'airbnb-batch:2026-03-12:AIRBNB-STAY:HMA4TR9:2026-03-10:2026-03-12',
+        expectedTotalMinor: 106000,
+        currency: 'CZK'
+      }),
+      expect.objectContaining({
+        payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+        expectedTotalMinor: 98000,
+        currency: 'CZK'
+      })
+    ])
+    expect((batch.reconciliation.payoutBatchMatches ?? []).filter((match) => match.payoutBatchKey.includes('airbnb-batch:'))).toEqual([])
+    expect(batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')).toEqual([
+      expect.objectContaining({
+        amountMinor: 106000,
+        bankRoutingLabel: 'RB účet',
+        reason: 'Žádná bankovní položka se stejnou částkou.'
+      }),
+      expect.objectContaining({
+        amountMinor: 98000,
+        bankRoutingLabel: 'RB účet',
+        reason: 'Žádná bankovní položka se stejnou částkou.'
+      })
+    ])
   })
 
   it('renders user-facing bank/account labels instead of making parser-row prefixes look like bank identity', async () => {

@@ -79,6 +79,7 @@ export interface BrowserRuntimeUploadState {
     transactionId: string
     labelCs: string
     source: string
+    subtype?: string
     amount: string
     status: string
   }>
