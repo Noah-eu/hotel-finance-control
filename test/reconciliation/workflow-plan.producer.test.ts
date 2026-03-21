@@ -64,6 +64,22 @@ describe('buildReconciliationWorkflowPlan', () => {
                 payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
                 amountMinor: 396105,
                 currency: 'CZK'
+            }),
+            expect.objectContaining({
+                rowId: 'txn:payout:airbnb-payout-3',
+                platform: 'airbnb',
+                payoutReference: 'G-DXVK4YVI7MJVL',
+                payoutBatchKey: 'airbnb-batch:2026-03-15:G-DXVK4YVI7MJVL',
+                amountMinor: 445697,
+                currency: 'CZK'
+            }),
+            expect.objectContaining({
+                rowId: 'txn:payout:airbnb-payout-4',
+                platform: 'airbnb',
+                payoutReference: 'G-ZD5RVTGOHW3GE',
+                payoutBatchKey: 'airbnb-batch:2026-03-15:G-ZD5RVTGOHW3GE',
+                amountMinor: 705994,
+                currency: 'CZK'
             })
         ])
         expect(plan.payoutRows.find((row) => row.rowId === 'txn:payout:airbnb-payout-1')).toBeUndefined()
@@ -84,6 +100,20 @@ describe('buildReconciliationWorkflowPlan', () => {
                 payoutReference: 'G-OC3WJE3SIXRO5',
                 rowIds: ['txn:payout:airbnb-payout-2'],
                 expectedTotalMinor: 396105,
+                currency: 'CZK'
+            }),
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-15:G-DXVK4YVI7MJVL',
+                payoutReference: 'G-DXVK4YVI7MJVL',
+                rowIds: ['txn:payout:airbnb-payout-3'],
+                expectedTotalMinor: 445697,
+                currency: 'CZK'
+            }),
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-15:G-ZD5RVTGOHW3GE',
+                payoutReference: 'G-ZD5RVTGOHW3GE',
+                rowIds: ['txn:payout:airbnb-payout-4'],
+                expectedTotalMinor: 705994,
                 currency: 'CZK'
             })
         ])

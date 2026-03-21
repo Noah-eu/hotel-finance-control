@@ -12,7 +12,7 @@ describe('parseAirbnbPayoutExport', () => {
       extractedAt: '2026-03-19T10:30:00.000Z'
     })
 
-    expect(records).toHaveLength(2)
+    expect(records).toHaveLength(4)
     expect(records[0]).toMatchObject({
       id: 'airbnb-payout-1',
       recordType: 'payout-line',
@@ -35,6 +35,24 @@ describe('parseAirbnbPayoutExport', () => {
         rowKind: 'transfer',
         transferDescriptor: 'Převod Jokeland s.r.o.',
         transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+      }
+    })
+    expect(records[2]).toMatchObject({
+      id: 'airbnb-payout-3',
+      rawReference: 'G-DXVK4YVI7MJVL',
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        payoutReference: 'G-DXVK4YVI7MJVL'
+      }
+    })
+    expect(records[3]).toMatchObject({
+      id: 'airbnb-payout-4',
+      rawReference: 'G-ZD5RVTGOHW3GE',
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        payoutReference: 'G-ZD5RVTGOHW3GE'
       }
     })
   })
@@ -72,7 +90,7 @@ describe('parseAirbnbPayoutExport', () => {
       extractedAt: '2026-03-20T13:00:00.000Z'
     })
 
-    expect(records).toHaveLength(2)
+    expect(records).toHaveLength(4)
     expect(records[0]).toMatchObject({
       rawReference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
       occurredAt: '2026-03-12',
@@ -98,6 +116,24 @@ describe('parseAirbnbPayoutExport', () => {
         transferDescriptor: 'Převod Jokeland s.r.o.',
         transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
         availableUntilDate: '2026-03-15'
+      }
+    })
+    expect(records[2]).toMatchObject({
+      rawReference: 'G-DXVK4YVI7MJVL',
+      occurredAt: '2026-03-15',
+      amountMinor: 445697,
+      data: {
+        rowKind: 'transfer',
+        payoutReference: 'G-DXVK4YVI7MJVL'
+      }
+    })
+    expect(records[3]).toMatchObject({
+      rawReference: 'G-ZD5RVTGOHW3GE',
+      occurredAt: '2026-03-15',
+      amountMinor: 705994,
+      data: {
+        rowKind: 'transfer',
+        payoutReference: 'G-ZD5RVTGOHW3GE'
       }
     })
   })
@@ -145,7 +181,7 @@ describe('parseAirbnbPayoutExport', () => {
       extractedAt: '2026-03-21T14:00:00.000Z'
     })
 
-    expect(records).toHaveLength(2)
+    expect(records).toHaveLength(4)
     expect(records[0]).toMatchObject({
       amountMinor: 106000,
       rawReference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
@@ -165,6 +201,24 @@ describe('parseAirbnbPayoutExport', () => {
         availableUntilDate: '2026-03-15',
         paidOutAmountMinor: 396105,
         payoutReference: 'G-OC3WJE3SIXRO5'
+      }
+    })
+    expect(records[2]).toMatchObject({
+      amountMinor: 445697,
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        paidOutAmountMinor: 445697,
+        payoutReference: 'G-DXVK4YVI7MJVL'
+      }
+    })
+    expect(records[3]).toMatchObject({
+      amountMinor: 705994,
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        paidOutAmountMinor: 705994,
+        payoutReference: 'G-ZD5RVTGOHW3GE'
       }
     })
   })

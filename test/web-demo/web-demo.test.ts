@@ -374,17 +374,21 @@ describe('buildWebDemo', () => {
     expect(state.extractedRecords).toEqual([
       expect.objectContaining({
         fileName: 'airbnb.csv',
-        extractedCount: 2,
-        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+        extractedCount: 4,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2', 'airbnb-payout-3', 'airbnb-payout-4'],
         accountLabelCs: 'Airbnb payout report'
       })
     ])
     expect(state.reportTransactions.map((transaction) => transaction.labelCs)).toEqual([
       'Airbnb rezervace',
+      'Airbnb payout',
+      'Airbnb payout',
       'Airbnb payout'
     ])
     expect(state.reportTransactions.map((transaction) => transaction.subtype)).toEqual([
       'reservation',
+      'transfer',
+      'transfer',
       'transfer'
     ])
   })
@@ -403,7 +407,9 @@ describe('buildWebDemo', () => {
           name: 'Pohyby_5599955956_202603191023.csv',
           content: [
             '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
-            '15.03.2026 06:20;15.03.2026 06:23;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;3961,05;CZK;G-OC3WJE3SIXRO5'
+            '15.03.2026 06:20;15.03.2026 06:23;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;3961,05;CZK;G-OC3WJE3SIXRO5',
+            '15.03.2026 07:20;15.03.2026 07:23;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;4456,97;CZK;G-DXVK4YVI7MJVL',
+            '15.03.2026 08:20;15.03.2026 08:23;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;7059,94;CZK;G-ZD5RVTGOHW3GE'
           ].join('\n'),
           uploadedAt: '2026-03-21T19:45:00.000Z'
         }
@@ -422,6 +428,20 @@ describe('buildWebDemo', () => {
         payoutReference: 'G-OC3WJE3SIXRO5',
         amountMinor: 396105,
         currency: 'CZK'
+      }),
+      expect.objectContaining({
+        rowId: 'txn:payout:airbnb-payout-3',
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-DXVK4YVI7MJVL',
+        payoutReference: 'G-DXVK4YVI7MJVL',
+        amountMinor: 445697,
+        currency: 'CZK'
+      }),
+      expect.objectContaining({
+        rowId: 'txn:payout:airbnb-payout-4',
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-ZD5RVTGOHW3GE',
+        payoutReference: 'G-ZD5RVTGOHW3GE',
+        amountMinor: 705994,
+        currency: 'CZK'
       })
     ])
     expect(batch.reconciliation.workflowPlan?.payoutBatches.filter((row) => row.platform === 'airbnb')).toEqual([
@@ -430,12 +450,34 @@ describe('buildWebDemo', () => {
         payoutReference: 'G-OC3WJE3SIXRO5',
         expectedTotalMinor: 396105,
         currency: 'CZK'
+      }),
+      expect.objectContaining({
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-DXVK4YVI7MJVL',
+        payoutReference: 'G-DXVK4YVI7MJVL',
+        expectedTotalMinor: 445697,
+        currency: 'CZK'
+      }),
+      expect.objectContaining({
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-ZD5RVTGOHW3GE',
+        payoutReference: 'G-ZD5RVTGOHW3GE',
+        expectedTotalMinor: 705994,
+        currency: 'CZK'
       })
     ])
     expect((batch.reconciliation.payoutBatchMatches ?? []).filter((match) => match.payoutBatchKey.includes('airbnb-batch:'))).toEqual([
       expect.objectContaining({
         payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
         bankTransactionId: 'txn:bank:fio-row-1',
+        matched: true
+      }),
+      expect.objectContaining({
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-DXVK4YVI7MJVL',
+        bankTransactionId: 'txn:bank:fio-row-2',
+        matched: true
+      }),
+      expect.objectContaining({
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-ZD5RVTGOHW3GE',
+        bankTransactionId: 'txn:bank:fio-row-3',
         matched: true
       })
     ])
@@ -444,6 +486,16 @@ describe('buildWebDemo', () => {
         payoutReference: 'G-OC3WJE3SIXRO5',
         bankAccountId: '5599955956/5500',
         amountMinor: 396105
+      }),
+      expect.objectContaining({
+        payoutReference: 'G-DXVK4YVI7MJVL',
+        bankAccountId: '5599955956/5500',
+        amountMinor: 445697
+      }),
+      expect.objectContaining({
+        payoutReference: 'G-ZD5RVTGOHW3GE',
+        bankAccountId: '5599955956/5500',
+        amountMinor: 705994
       })
     ])
     expect(batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')).toEqual([])

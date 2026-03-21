@@ -436,7 +436,9 @@ export const realInputFixtures: RealInputFixture[] = [
       content: [
         'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
         '2026-03-12;2026-03-12;Rezervace;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
-        '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;3 961,05;0,00;3 961,05'
+        '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;3 961,05;0,00;3 961,05',
+        '2026-03-13;2026-03-15;Payout;2026-03-11;2026-03-13;Petra Svobodova;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-DXVK4YVI7MJVL;;CZK;;4 456,97;0,00;4 456,97',
+        '2026-03-14;2026-03-15;Payout;2026-03-12;2026-03-14;Martin Dvorak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-ZD5RVTGOHW3GE;;CZK;;7 059,94;0,00;7 059,94'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -504,6 +506,73 @@ export const realInputFixtures: RealInputFixture[] = [
           transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
         }
       })
+      ,
+      extractedRecord({
+        id: 'airbnb-payout-3',
+        sourceDocumentId: 'doc-airbnb-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'G-DXVK4YVI7MJVL',
+        amountMinor: 445697,
+        currency: 'CZK',
+        occurredAt: '2026-03-15',
+        data: {
+          platform: 'airbnb',
+          rowKind: 'transfer',
+          bookedAt: '2026-03-15',
+          amountMinor: 445697,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'G-DXVK4YVI7MJVL',
+          stayStartAt: '2026-03-11',
+          stayEndAt: '2026-03-13',
+          guestName: 'Petra Svobodova',
+          listingName: 'Jokeland apartment',
+          details: 'Převod Jokeland s.r.o., IBAN 5956 (CZK)',
+          referenceCode: 'G-DXVK4YVI7MJVL',
+          paidOutAmountMinor: 445697,
+          serviceFeeMinor: 0,
+          grossEarningsMinor: 445697,
+          sourceDate: '2026-03-13',
+          availableUntilDate: '2026-03-15',
+          transferDescriptor: 'Převod Jokeland s.r.o.',
+          payoutReference: 'G-DXVK4YVI7MJVL',
+          payoutBatchKey: 'G-DXVK4YVI7MJVL',
+          transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+        }
+      }),
+      extractedRecord({
+        id: 'airbnb-payout-4',
+        sourceDocumentId: 'doc-airbnb-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'G-ZD5RVTGOHW3GE',
+        amountMinor: 705994,
+        currency: 'CZK',
+        occurredAt: '2026-03-15',
+        data: {
+          platform: 'airbnb',
+          rowKind: 'transfer',
+          bookedAt: '2026-03-15',
+          amountMinor: 705994,
+          currency: 'CZK',
+          accountId: 'expected-payouts',
+          reference: 'G-ZD5RVTGOHW3GE',
+          stayStartAt: '2026-03-12',
+          stayEndAt: '2026-03-14',
+          guestName: 'Martin Dvorak',
+          listingName: 'Jokeland apartment',
+          details: 'Převod Jokeland s.r.o., IBAN 5956 (CZK)',
+          referenceCode: 'G-ZD5RVTGOHW3GE',
+          paidOutAmountMinor: 705994,
+          serviceFeeMinor: 0,
+          grossEarningsMinor: 705994,
+          sourceDate: '2026-03-14',
+          availableUntilDate: '2026-03-15',
+          transferDescriptor: 'Převod Jokeland s.r.o.',
+          payoutReference: 'G-ZD5RVTGOHW3GE',
+          payoutBatchKey: 'G-ZD5RVTGOHW3GE',
+          transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+        }
+      })
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
@@ -531,6 +600,32 @@ export const realInputFixtures: RealInputFixture[] = [
         accountId: 'expected-payouts',
         reference: 'G-OC3WJE3SIXRO5',
         extractedRecordIds: ['airbnb-payout-2'],
+        sourceDocumentIds: ['doc-airbnb-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:payout:airbnb-payout-3' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'airbnb',
+        subtype: 'transfer',
+        amountMinor: 445697,
+        currency: 'CZK',
+        bookedAt: '2026-03-15',
+        accountId: 'expected-payouts',
+        reference: 'G-DXVK4YVI7MJVL',
+        extractedRecordIds: ['airbnb-payout-3'],
+        sourceDocumentIds: ['doc-airbnb-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:payout:airbnb-payout-4' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'airbnb',
+        subtype: 'transfer',
+        amountMinor: 705994,
+        currency: 'CZK',
+        bookedAt: '2026-03-15',
+        accountId: 'expected-payouts',
+        reference: 'G-ZD5RVTGOHW3GE',
+        extractedRecordIds: ['airbnb-payout-4'],
         sourceDocumentIds: ['doc-airbnb-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
