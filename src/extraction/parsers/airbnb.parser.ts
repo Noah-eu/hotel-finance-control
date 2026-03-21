@@ -1,7 +1,9 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
+  DeterministicParserError,
   findMissingHeaders,
   parseAmountMinor,
+  parseDelimitedContent,
   parseDelimitedRows,
   parseIsoDate
 } from './csv-utils'
@@ -30,8 +32,40 @@ const HEADER_ALIASES = {
   listingId: ['listingId', 'listing_id', 'propertyId', 'listing', 'listing name', 'název nabídky']
 } satisfies Record<string, string[]>
 
+const REAL_AIRBNB_REQUIRED_HEADERS = [
+  'date',
+  'availableUntilDate',
+  'stayStartDate',
+  'stayEndDate',
+  'guestName',
+  'details',
+  'currency',
+  'amountMinor',
+  'paidOutAmountMinor',
+  'serviceFeeMinor',
+  'grossEarningsMinor'
+]
+
+const REAL_AIRBNB_HEADER_ALIASES = {
+  date: ['Datum'],
+  availableUntilDate: ['Bude připsán do dne'],
+  stayStartDate: ['Datum zahájení'],
+  stayEndDate: ['Datum ukončení'],
+  guestName: ['Host'],
+  details: ['Podrobnosti'],
+  currency: ['Měna'],
+  amountMinor: ['Částka'],
+  paidOutAmountMinor: ['Vyplaceno'],
+  serviceFeeMinor: ['Servisní poplatek'],
+  grossEarningsMinor: ['Hrubé výdělky']
+} satisfies Record<string, string[]>
+
 export class AirbnbPayoutParser {
   parse(input: ParseAirbnbPayoutExportInput): ExtractedRecord[] {
+    if (isRealAirbnbMixedExport(input.content)) {
+      return parseRealAirbnbMixedExport(input)
+    }
+
     const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
 
     if (rows.length === 0) {
@@ -80,4 +114,149 @@ const defaultAirbnbPayoutParser = new AirbnbPayoutParser()
 
 export function parseAirbnbPayoutExport(input: ParseAirbnbPayoutExportInput): ExtractedRecord[] {
   return defaultAirbnbPayoutParser.parse(input)
+}
+
+function isRealAirbnbMixedExport(content: string): boolean {
+  const parsed = parseDelimitedContent(content, { canonicalHeaders: REAL_AIRBNB_HEADER_ALIASES })
+
+  return REAL_AIRBNB_REQUIRED_HEADERS.every((header) => parsed.headers.includes(header))
+}
+
+function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): ExtractedRecord[] {
+  const parsed = parseDelimitedContent(input.content, { canonicalHeaders: REAL_AIRBNB_HEADER_ALIASES })
+  const rows = parsed.rows
+
+  if (rows.length === 0) {
+    return []
+  }
+
+  const missing = findMissingHeaders(rows, REAL_AIRBNB_REQUIRED_HEADERS)
+  if (missing.length > 0) {
+    throw new Error(
+      `Airbnb real export is missing required columns: ${missing.join(', ')}. Raw detected header row: ${parsed.rawHeaderRow}. Detected normalized headers: ${parsed.headers.join(', ')}`
+    )
+  }
+
+  return rows.map((row, index) => {
+    const rowKind = inferRealAirbnbRowKind(row.details)
+    const bookedAt = parseIsoDate(row.date, 'Airbnb real export date')
+    const payoutDate = rowKind === 'transfer' ? parseIsoDate(row.availableUntilDate, 'Airbnb real export availableUntilDate') : bookedAt
+    const amountMinor = parseAmountMinor(row.amountMinor, 'Airbnb real export amount')
+    const paidOutAmountMinor = parseAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
+    const serviceFeeMinor = parseSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
+    const grossEarningsMinor = parseSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
+    const currency = row.currency.trim().toUpperCase()
+    const stayStartDate = parseIsoDate(row.stayStartDate, 'Airbnb real export stayStartDate')
+    const stayEndDate = parseIsoDate(row.stayEndDate, 'Airbnb real export stayEndDate')
+    const guestName = row.guestName.trim()
+    const details = row.details.trim()
+    const parsedTransfer = rowKind === 'transfer' ? parseRealAirbnbTransferDetails(details) : undefined
+    const reservationId = rowKind === 'reservation' ? buildRealAirbnbReservationId(guestName, stayStartDate, stayEndDate, amountMinor) : undefined
+    const reference = rowKind === 'transfer'
+      ? parsedTransfer!.transferReference
+      : buildRealAirbnbReservationReference(guestName, stayStartDate, stayEndDate)
+
+    return {
+      id: `airbnb-payout-${index + 1}`,
+      sourceDocumentId: input.sourceDocument.id,
+      recordType: 'payout-line',
+      extractedAt: input.extractedAt,
+      rawReference: reference,
+      amountMinor: rowKind === 'transfer' ? paidOutAmountMinor : amountMinor,
+      currency,
+      occurredAt: payoutDate,
+      data: {
+        platform: 'airbnb',
+        rowKind,
+        bookedAt: payoutDate,
+        amountMinor: rowKind === 'transfer' ? paidOutAmountMinor : amountMinor,
+        currency,
+        accountId: 'expected-payouts',
+        reference,
+        reservationId,
+        stayStartAt: stayStartDate,
+        stayEndAt: stayEndDate,
+        guestName,
+        details,
+        paidOutAmountMinor,
+        serviceFeeMinor,
+        grossEarningsMinor,
+        sourceDate: bookedAt,
+        availableUntilDate: parseIsoDate(row.availableUntilDate, 'Airbnb real export availableUntilDate'),
+        ...(parsedTransfer
+          ? {
+            transferDescriptor: parsedTransfer.transferDescriptor,
+            payoutReference: parsedTransfer.transferReference,
+            payoutBatchKey: parsedTransfer.transferReference
+          }
+          : {})
+      }
+    }
+  })
+}
+
+function inferRealAirbnbRowKind(details: string): 'reservation' | 'transfer' {
+  const normalized = details.trim().toLowerCase()
+  return normalized.startsWith('převod ') || normalized.startsWith('prevod ') ? 'transfer' : 'reservation'
+}
+
+function parseRealAirbnbTransferDetails(details: string): {
+  transferDescriptor: string
+  transferReference: string
+} {
+  const trimmed = details.trim()
+  const match = /^Převod\s+(.+?),\s*IBAN\s+([\w\-\/]+.*)$/iu.exec(trimmed)
+    ?? /^Prevod\s+(.+?),\s*IBAN\s+([\w\-\/]+.*)$/iu.exec(trimmed)
+
+  if (!match) {
+    throw new DeterministicParserError(`Airbnb transfer row has unsupported details format: ${details}`)
+  }
+
+  const [, merchant, ibanTail] = match
+  const transferDescriptor = `Převod ${merchant.trim()}`
+  const transferReference = `AIRBNB-TRANSFER:${merchant.trim()}:IBAN-${ibanTail.trim().replace(/\s+/g, '-')}`
+
+  return {
+    transferDescriptor,
+    transferReference
+  }
+}
+
+function buildRealAirbnbReservationId(
+  guestName: string,
+  stayStartDate: string,
+  stayEndDate: string,
+  amountMinor: number
+): string {
+  return `AIRBNB-RES:${slugifyComparable(guestName)}:${stayStartDate}:${stayEndDate}:${amountMinor}`
+}
+
+function buildRealAirbnbReservationReference(
+  guestName: string,
+  stayStartDate: string,
+  stayEndDate: string
+): string {
+  return `AIRBNB-STAY:${slugifyComparable(guestName)}:${stayStartDate}:${stayEndDate}`
+}
+
+function slugifyComparable(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function parseSignedMoney(value: string, fieldName: string): number {
+  const trimmed = value.trim()
+  if (trimmed.startsWith('-')) {
+    return -parseAmountMinor(trimmed.slice(1), fieldName)
+  }
+
+  if (trimmed.startsWith('+')) {
+    return parseAmountMinor(trimmed.slice(1), fieldName)
+  }
+
+  return parseAmountMinor(trimmed, fieldName)
 }

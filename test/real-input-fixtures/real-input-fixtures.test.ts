@@ -57,7 +57,16 @@ describe('realInputFixtures', () => {
       recordType: 'payout-line',
       data: {
         platform: 'airbnb',
-        reservationId: 'HMA4TR9'
+        rowKind: 'reservation',
+        reservationId: 'AIRBNB-RES:jan-novak:2026-03-10:2026-03-12:106000'
+      }
+    })
+    expect(airbnb.expectedExtractedRecords[1]).toMatchObject({
+      recordType: 'payout-line',
+      data: {
+        platform: 'airbnb',
+        rowKind: 'transfer',
+        payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
       }
     })
     expect(expedia.expectedExtractedRecords[0]).toMatchObject({
@@ -118,7 +127,11 @@ describe('realInputFixtures', () => {
     ])
     expect(airbnb.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'airbnb',
-      reference: 'AIRBNB-20260312'
+      reference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12'
+    })
+    expect(airbnb.expectedNormalizedTransactions?.[1]).toMatchObject({
+      source: 'airbnb',
+      reference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
     })
     expect(expedia.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'expedia',

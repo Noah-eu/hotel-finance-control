@@ -145,10 +145,10 @@ describe('runMonthlyReconciliationBatch', () => {
       },
       {
         sourceDocument: {
-          id: 'uploaded:airbnb:2:airbnb-payout-2026-03-csv',
+          id: 'uploaded:airbnb:2:airbnb-03-2026-03-2026-csv',
           sourceSystem: 'airbnb',
           documentType: 'ota_report',
-          fileName: 'airbnb-payout-2026-03.csv',
+          fileName: 'airbnb_03_2026-03_2026.csv',
           uploadedAt: '2026-03-18T22:40:30.000Z'
         },
         content: airbnb.rawInput.content,
@@ -753,8 +753,8 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.files).toEqual([
       {
         sourceDocumentId: airbnb.sourceDocument.id,
-        extractedRecordIds: ['airbnb-payout-1'],
-        extractedCount: 1
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+        extractedCount: 2
       },
       {
         sourceDocumentId: expedia.sourceDocument.id,
@@ -769,10 +769,12 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
     expect(result.extractedRecords.map((record) => record.sourceDocumentId)).toEqual([
       airbnb.sourceDocument.id,
+      airbnb.sourceDocument.id,
       expedia.sourceDocument.id,
       previo.sourceDocument.id
     ])
     expect(result.reconciliation.normalizedTransactions.map((transaction) => transaction.source)).toEqual([
+      'airbnb',
       'airbnb',
       'expedia',
       'previo'

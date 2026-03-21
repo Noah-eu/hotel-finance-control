@@ -3,7 +3,7 @@ import { parseAirbnbPayoutExport } from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 describe('parseAirbnbPayoutExport', () => {
-  it('extracts deterministic payout-line records from the representative Airbnb fixture', () => {
+  it('extracts deterministic reservation and transfer payout-line records from the representative Airbnb fixture', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 
     const records = parseAirbnbPayoutExport({
@@ -12,15 +12,27 @@ describe('parseAirbnbPayoutExport', () => {
       extractedAt: '2026-03-19T10:30:00.000Z'
     })
 
-    expect(records).toHaveLength(1)
+    expect(records).toHaveLength(2)
     expect(records[0]).toMatchObject({
       id: 'airbnb-payout-1',
       recordType: 'payout-line',
-      rawReference: 'AIRBNB-20260312',
+      rawReference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
       data: {
         platform: 'airbnb',
-        reservationId: 'HMA4TR9',
-        listingId: 'LISTING-CZ-11'
+        rowKind: 'reservation',
+        reservationId: 'AIRBNB-RES:jan-novak:2026-03-10:2026-03-12:106000',
+        guestName: 'Jan Novak'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      id: 'airbnb-payout-2',
+      recordType: 'payout-line',
+      rawReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+      occurredAt: '2026-03-15',
+      data: {
+        platform: 'airbnb',
+        rowKind: 'transfer',
+        transferDescriptor: 'Převod Jokeland s.r.o.'
       }
     })
   })
@@ -34,7 +46,7 @@ describe('parseAirbnbPayoutExport', () => {
       extractedAt: '2026-03-18T20:00:00.000Z'
     })
 
-    expect(records[0]).toEqual(fixture.expectedExtractedRecords[0])
+    expect(records).toEqual(fixture.expectedExtractedRecords)
   })
 
   it('throws a clear error when required Airbnb payout columns are missing', () => {
@@ -49,28 +61,55 @@ describe('parseAirbnbPayoutExport', () => {
     ).toThrow('Airbnb payout export is missing required columns')
   })
 
-  it('accepts richer Airbnb transfer export headers while preserving reservation linkage', () => {
+  it('supports the grounded real Airbnb mixed export shape with separate reservation and transfer rows', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 
     const records = parseAirbnbPayoutExport({
       sourceDocument: fixture.sourceDocument,
-      content: [
-        'Datum převodu;Částka převodu;Měna;Transfer ID;Confirmation code;Listing name',
-        '12.03.2026;980,00;CZK;AIRBNB-20260312;HMA4TR9;LISTING-CZ-11'
-      ].join('\n'),
+      content: fixture.rawInput.content,
       extractedAt: '2026-03-20T13:00:00.000Z'
     })
 
-    expect(records).toHaveLength(1)
+    expect(records).toHaveLength(2)
     expect(records[0]).toMatchObject({
-      rawReference: 'AIRBNB-20260312',
+      rawReference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
       occurredAt: '2026-03-12',
-      amountMinor: 98000,
+      amountMinor: 106000,
       data: {
-        reservationId: 'HMA4TR9',
-        listingId: 'LISTING-CZ-11',
-        propertyId: 'LISTING-CZ-11'
+        rowKind: 'reservation',
+        stayStartAt: '2026-03-10',
+        stayEndAt: '2026-03-12',
+        guestName: 'Jan Novak',
+        paidOutAmountMinor: 98000,
+        serviceFeeMinor: -8000,
+        grossEarningsMinor: 106000
       }
     })
+    expect(records[1]).toMatchObject({
+      rawReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+      occurredAt: '2026-03-15',
+      amountMinor: 98000,
+      data: {
+        rowKind: 'transfer',
+        payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+        transferDescriptor: 'Převod Jokeland s.r.o.',
+        availableUntilDate: '2026-03-15'
+      }
+    })
+  })
+
+  it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    expect(() =>
+      parseAirbnbPayoutExport({
+        sourceDocument: fixture.sourceDocument,
+        content: [
+          'Datum;Bude připsán do dne;Datum zahájení;Datum ukončení;Host;Podrobnosti;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+          '2026-03-12;2026-03-15;2026-03-10;2026-03-12;Jan Novak;Převod na účet hostitele bez IBAN reference;CZK;980,00;980,00;0,00;980,00'
+        ].join('\n'),
+        extractedAt: '2026-03-20T13:20:00.000Z'
+      })
+    ).toThrow('Airbnb transfer row has unsupported details format')
   })
 })

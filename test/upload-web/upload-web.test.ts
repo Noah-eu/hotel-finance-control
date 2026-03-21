@@ -877,6 +877,34 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections).toHaveProperty('ancillarySettlementOverview')
   })
 
+  it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeFile('airbnb_03_2026-03_2026.csv', airbnb.rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-21T12:00:00.000Z'
+    })
+
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb_03_2026-03_2026.csv',
+        sourceSystem: 'airbnb',
+        documentType: 'ota_report'
+      })
+    ])
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb_03_2026-03_2026.csv',
+        extractedCount: 2,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+        accountLabelCs: 'Airbnb payout report'
+      })
+    ])
+    expect(result.reportSummary.normalizedTransactionCount).toBe(2)
+    expect(result.reportTransactions).toHaveLength(2)
+  })
+
   it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
