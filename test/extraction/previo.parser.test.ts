@@ -274,6 +274,86 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+  it('parses grouped English-style workbook amounts like `2,000.00` deterministically', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '01.03.26 12:30',
+          'Termín od': '02.03.26 15:45',
+          'Termín do': '04.03.26 10:15',
+          'Nocí': '2',
+          'Voucher': 'PREVIO-GROUPED-20260302',
+          'Počet hostů': '2',
+          'Hosté': 'Jana Novakova',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': 'Acme Travel s.r.o.',
+          'PP': 'direct-web',
+          'Stav': 'confirmed',
+          'Cena': '2,000.00',
+          'Saldo': '150.00',
+          'Pokoj': 'A102'
+        }
+      ]),
+      extractedAt: '2026-03-21T12:20:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 200000,
+      currency: 'CZK',
+      data: {
+        amountMinor: 200000,
+        outstandingBalanceMinor: 15000,
+        currency: 'CZK'
+      }
+    })
+  })
+
+  it('parses grouped English-style euro workbook amounts like `€2,000.00` and infers EUR', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '01.03.26 12:30',
+          'Termín od': '02.03.26 15:45',
+          'Termín do': '04.03.26 10:15',
+          'Nocí': '2',
+          'Voucher': 'PREVIO-EUR-GROUPED-20260302',
+          'Počet hostů': '2',
+          'Hosté': 'Jana Novakova',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': 'Euro Travel GmbH',
+          'PP': 'direct-web',
+          'Stav': 'confirmed',
+          'Cena': '€2,000.00',
+          'Saldo': '€120.00',
+          'Pokoj': 'A102'
+        }
+      ]),
+      extractedAt: '2026-03-21T12:25:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 200000,
+      currency: 'EUR',
+      data: {
+        amountMinor: 200000,
+        outstandingBalanceMinor: 12000,
+        currency: 'EUR'
+      }
+    })
+  })
+
   it('skips blank or non-reservation workbook rows that have an empty Voucher', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 

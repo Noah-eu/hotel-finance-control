@@ -362,10 +362,32 @@ function normalizeWorkbookAmount(
     throw new Error(`${label} has unsupported amount format: ${raw}`)
   }
 
+  const normalizedAmount = normalizeWorkbookAmountNumber(amount.trim(), label, raw)
+
   return {
-    amount: amount.trim(),
+    amount: normalizedAmount,
     currency: detectedCurrencies[0] ?? 'CZK'
   }
+}
+
+function normalizeWorkbookAmountNumber(amount: string, label: string, raw: string): string {
+  if (/^\d+(,\d{2})$/.test(amount)) {
+    return amount
+  }
+
+  if (/^\d{1,3}(,\d{3})+(\.\d{2})$/.test(amount)) {
+    return amount.replace(/,/g, '')
+  }
+
+  if (/^\d+(\.\d{2})$/.test(amount)) {
+    return amount
+  }
+
+  if (/^\d+$/.test(amount)) {
+    return amount
+  }
+
+  throw new Error(`${label} has unsupported amount format: ${raw}`)
 }
 
 function inferWorkbookCurrency(token: string, label: string, raw: string): 'CZK' | 'EUR' {
