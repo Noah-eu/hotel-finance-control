@@ -557,6 +557,19 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain("['Nespárované rezervace k úhradě', state.reviewSections.unmatchedReservationSettlements.length]")
     expect(result.html).toContain('reviewSections: state.reviewSections')
   })
+
+  it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-20T11:40:00.000Z'
+    })
+
+    expect(result.html).toContain('id="unmatched-reservations-section"')
+    expect(result.html).toContain('id="unmatched-reservations-content"')
+    expect(result.html).toContain('function buildUnmatchedReservationDetailsMarkup(state)')
+    expect(result.html).toContain('unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(state);')
+    expect(result.html).toContain('Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…')
+    expect(result.html).not.toContain('noCandidate')
+  })
 })
 
 describe('buildFixtureWebDemo', () => {
