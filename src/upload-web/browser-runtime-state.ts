@@ -75,6 +75,7 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     reviewSummary: review.summary,
     reviewSections: {
       matched: review.matched,
+      unmatchedReservationSettlements: review.unmatchedReservationSettlements,
       payoutBatchMatched: review.payoutBatchMatched,
       payoutBatchUnmatched: review.payoutBatchUnmatched,
       unmatched: review.unmatched,

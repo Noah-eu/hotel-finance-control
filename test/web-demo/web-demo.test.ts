@@ -547,6 +547,16 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('raif-row-1,')
     expect(result.html).not.toContain('fio-row-1,')
   })
+
+  it('shows unmatched reservation settlement counts in the main browser review summary wiring', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-20T11:40:00.000Z'
+    })
+
+    expect(result.html).toContain('Nespárované rezervace k úhradě')
+    expect(result.html).toContain("['Nespárované rezervace k úhradě', state.reviewSections.unmatchedReservationSettlements.length]")
+    expect(result.html).toContain('reviewSections: state.reviewSections')
+  })
 })
 
 describe('buildFixtureWebDemo', () => {

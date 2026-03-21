@@ -127,6 +127,7 @@ function renderOperatorWebDemoHtml(input: {
 
   const reviewSummaryItems = [
     ['Spárované položky', input.browserRun.run.review.matched.length],
+    ['Nespárované rezervace k úhradě', input.browserRun.run.review.unmatchedReservationSettlements.length],
     ['Nespárované položky', input.browserRun.run.review.unmatched.length],
     ['Podezřelé položky', input.browserRun.run.review.suspicious.length],
     ['Chybějící doklady', input.browserRun.run.review.missingDocuments.length]
@@ -167,6 +168,7 @@ function renderOperatorWebDemoHtml(input: {
       )
     })),
     reviewSummary: input.browserRun.run.review.summary,
+    reviewSections: input.browserRun.run.review,
     reportTransactions: input.browserRun.run.report.transactions.slice(0, 5).map((transaction) => ({
       transactionId: transaction.transactionId,
       labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source),
@@ -486,6 +488,7 @@ ${input.debugMode ? `
       function buildReviewSummaryMarkup(state) {
         const reviewSummaryItems = [
           ['Spárované položky', state.reviewSections.matched.length],
+          ['Nespárované rezervace k úhradě', state.reviewSections.unmatchedReservationSettlements.length],
           ['Nespárované položky', state.reviewSections.unmatched.length],
           ['Podezřelé položky', state.reviewSections.suspicious.length],
           ['Chybějící doklady', state.reviewSections.missingDocuments.length]

@@ -197,6 +197,8 @@ function toSectionLabel(kind: ReviewScreenData['matched'][number]['kind']): stri
   switch (kind) {
     case 'matched':
       return 'Spárované položky'
+    case 'unmatched-reservation-settlement':
+      return 'Nespárované rezervace k úhradě'
     case 'unmatched':
       return 'Nespárované položky'
     case 'suspicious':

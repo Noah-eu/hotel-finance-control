@@ -683,6 +683,13 @@ describe('buildUploadWebFlow', () => {
       })
     ])
     expect(state.reviewSections.matched).toHaveLength(0)
+    expect(state.reviewSections.unmatchedReservationSettlements).toHaveLength(1)
+    expect(state.reviewSections.unmatchedReservationSettlements[0]).toEqual(
+      expect.objectContaining({
+        title: 'Rezervace PREVIO-20260314',
+        detail: expect.stringContaining('Chybí deterministická vazba na odpovídající úhradu.')
+      })
+    )
     expect(state.reviewSections.unmatched).toHaveLength(4)
     expect(state.reviewSections.suspicious).toHaveLength(0)
     expect(state.reviewSections.missingDocuments).toHaveLength(0)
@@ -694,6 +701,7 @@ describe('buildUploadWebFlow', () => {
         detail: expect.stringContaining('Žádná bankovní položka se stejnou částkou.')
       })
     )
+    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
     expect(state.reportSummary.matchedGroupCount).toBe(batch.reconciliation.summary.matchedGroupCount)
     expect(batch.reconciliation.summary.matchedGroupCount).toBe(0)
     expect(batch.report.summary.unmatchedExpectedCount).toBe(1)
@@ -804,6 +812,44 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).not.toContain('noExactAmount')
     expect(result.html).not.toContain('bankTransactionId')
     expect(result.html).not.toContain('parserDebugLabel')
+  })
+
+  it('renders unmatched reservation settlements visibly in the main browser review html with Czech business wording', () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const previo = getRealInputFixture('previo-reservation-export')
+    const outputDir = resolve(process.cwd(), 'dist/test-browser-review-unmatched-reservations')
+    const outputPath = resolve(outputDir, 'index.html')
+
+    rmSync(outputDir, {
+      recursive: true,
+      force: true
+    })
+
+    const result = buildBrowserReviewScreen({
+      files: [
+        {
+          name: 'Prehled_rezervaci.xlsx',
+          content: previo.rawInput.content,
+          binaryContentBase64: previo.rawInput.binaryContentBase64,
+          uploadedAt: '2026-03-21T16:00:00.000Z'
+        },
+        {
+          name: 'AaOS6MOZUh8BFtEr.booking.csv',
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-21T16:00:00.000Z'
+        }
+      ],
+      runId: 'browser-review-unmatched-reservations',
+      generatedAt: '2026-03-21T16:00:00.000Z',
+      outputPath
+    })
+
+    expect(result.preview.review.unmatchedReservationSettlements).toHaveLength(1)
+    expect(result.html).toContain('Nespárované rezervace k úhradě')
+    expect(result.html).toContain('Rezervace PREVIO-20260314')
+    expect(result.html).toContain('Chybí deterministická vazba na odpovídající úhradu.')
+    expect(result.html).toContain('Kanál: Přímá rezervace.')
+    expect(result.html).not.toContain('noCandidate')
   })
 
   it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {

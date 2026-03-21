@@ -83,7 +83,7 @@ export interface BrowserRuntimeUploadState {
     status: string
   }>
   reviewSummary: ReviewScreenData['summary']
-  reviewSections: Pick<ReviewScreenData, 'matched' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
+  reviewSections: Pick<ReviewScreenData, 'matched' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{
     labelCs: string
     fileName: string
@@ -525,6 +525,7 @@ function buildBrowserRuntimeRunId(month?: string): string {
 function renderRuntimeReviewSection(sections: BrowserRuntimeUploadState['reviewSections']): string {
   const groups = [
     { label: 'Spárované', items: sections.matched },
+    { label: 'Nespárované rezervace k úhradě', items: sections.unmatchedReservationSettlements },
     { label: 'Spárované payout dávky', items: sections.payoutBatchMatched },
     { label: 'Nespárované payout dávky', items: sections.payoutBatchUnmatched },
     { label: 'Nespárované', items: sections.unmatched },
@@ -992,6 +993,7 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
         <h2>Přehled kontrolních sekcí</h2>
         <div class="section-grid">
           ${renderReviewSection('Spárované položky', 'matched', review.matched)}
+          ${renderReviewSection('Nespárované rezervace k úhradě', 'unmatched', review.unmatchedReservationSettlements)}
           ${renderReviewSection('Nespárované payout dávky', 'unmatched', review.payoutBatchUnmatched)}
           ${renderReviewSection('Nespárované položky', 'unmatched', review.unmatched)}
           ${renderReviewSection('Podezřelé položky', 'suspicious', review.suspicious)}

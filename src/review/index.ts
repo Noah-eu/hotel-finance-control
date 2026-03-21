@@ -3,7 +3,7 @@ import type { MonthlyBatchResult } from '../monthly-batch'
 
 export interface ReviewSectionItem {
   id: string
-  kind: 'matched' | 'unmatched' | 'suspicious' | 'missing-document'
+  kind: 'matched' | 'unmatched' | 'unmatched-reservation-settlement' | 'suspicious' | 'missing-document'
   title: string
   detail: string
   transactionIds: string[]
@@ -15,6 +15,7 @@ export interface ReviewScreenData {
   generatedAt: string
   summary: MonthlyBatchResult['report']['summary']
   matched: ReviewSectionItem[]
+  unmatchedReservationSettlements: ReviewSectionItem[]
   payoutBatchMatched: ReviewSectionItem[]
   payoutBatchUnmatched: ReviewSectionItem[]
   unmatched: ReviewSectionItem[]
@@ -76,6 +77,9 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, batch.payoutBatchKey)
   }))
 
+  const unmatchedReservationSettlements = (input.batch.reconciliation.workflowPlan?.reservationSettlementNoMatches ?? [])
+    .map((noMatch) => toReservationSettlementNoMatchReviewItem(input.batch, noMatch))
+
   const unmatched = categorizedExceptionCases.unmatched
     .map((exceptionCase) => toReviewItem(exceptionCase, 'unmatched'))
 
@@ -89,6 +93,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     generatedAt: input.generatedAt,
     summary: input.batch.report.summary,
     matched,
+    unmatchedReservationSettlements,
     payoutBatchMatched,
     payoutBatchUnmatched,
     unmatched,
@@ -135,6 +140,8 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
   switch (kind) {
     case 'matched':
       return 'Spárováno'
+    case 'unmatched-reservation-settlement':
+      return 'Nespárovaná rezervace k úhradě'
     case 'unmatched':
       return 'Nespárováno'
     case 'suspicious':
@@ -142,6 +149,119 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
     case 'missing-document':
       return 'Chybějící doklad'
   }
+}
+
+function toReservationSettlementNoMatchReviewItem(
+  batch: MonthlyBatchResult,
+  noMatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementNoMatches'][number]
+): ReviewSectionItem {
+  const reservation = batch.reconciliation.workflowPlan?.reservationSources.find(
+    (item) => item.reservationId === noMatch.reservationId && item.sourceDocumentId === noMatch.sourceDocumentId
+  )
+
+  const detailParts = [
+    buildReservationSettlementReasonCs(noMatch.noMatchReason, reservation?.expectedSettlementChannels),
+    reservation?.reference && reservation.reference !== reservation.reservationId ? `Reference: ${reservation.reference}.` : undefined,
+    reservation?.channel ? `Kanál: ${toReservationChannelLabel(reservation.channel)}.` : undefined,
+    reservation?.stayStartAt && reservation?.stayEndAt
+      ? `Pobyt: ${reservation.stayStartAt} – ${reservation.stayEndAt}.`
+      : reservation?.stayStartAt
+        ? `Datum pobytu: ${reservation.stayStartAt}.`
+        : undefined,
+    typeof reservation?.grossRevenueMinor === 'number'
+      ? `Částka: ${formatAmountMinorForReview(reservation.grossRevenueMinor, reservation.currency)}.`
+      : undefined
+  ].filter((part): part is string => Boolean(part))
+
+  return {
+    id: `reservation-settlement-unmatched:${noMatch.sourceDocumentId}:${noMatch.reservationId}`,
+    kind: 'unmatched-reservation-settlement',
+    title: `Rezervace ${reservation?.reservationId ?? noMatch.reservationId}`,
+    detail: detailParts.join(' '),
+    transactionIds: [],
+    sourceDocumentIds: [noMatch.sourceDocumentId]
+  }
+}
+
+function buildReservationSettlementReasonCs(
+  reason: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementNoMatches'][number]['noMatchReason'],
+  expectedChannels: string[] | undefined
+): string {
+  switch (reason) {
+    case 'amountMismatch':
+      return 'Částka nesouhlasí s očekávanou úhradou.'
+    case 'ambiguousCandidates':
+      return 'Není jednoznačný kandidát pro úhradu rezervace.'
+    case 'channelMismatch':
+      return buildReservationChannelMismatchReason(expectedChannels)
+    case 'noCandidate':
+      return buildReservationMissingCandidateReason(expectedChannels)
+  }
+}
+
+function buildReservationMissingCandidateReason(expectedChannels: string[] | undefined): string {
+  const channels = expectedChannels ?? []
+
+  if (channels.includes('booking')) {
+    return 'Nenalezen odpovídající payout z Bookingu.'
+  }
+
+  if (channels.includes('airbnb')) {
+    return 'Nenalezen odpovídající payout z Airbnb.'
+  }
+
+  if (channels.includes('comgate')) {
+    return 'Nenalezen odpovídající payout z platební brány.'
+  }
+
+  if (channels.includes('expedia_direct_bank')) {
+    return 'Nenalezena odpovídající bankovní úhrada.'
+  }
+
+  return 'Chybí deterministická vazba na odpovídající úhradu.'
+}
+
+function buildReservationChannelMismatchReason(expectedChannels: string[] | undefined): string {
+  const channels = expectedChannels ?? []
+
+  if (channels.includes('booking')) {
+    return 'Nenalezen odpovídající payout z Bookingu ve správném kanálu.'
+  }
+
+  if (channels.includes('airbnb')) {
+    return 'Nenalezen odpovídající payout z Airbnb ve správném kanálu.'
+  }
+
+  if (channels.includes('comgate')) {
+    return 'Nenalezen odpovídající payout z platební brány ve správném kanálu.'
+  }
+
+  if (channels.includes('expedia_direct_bank')) {
+    return 'Nenalezena odpovídající bankovní úhrada ve správném kanálu.'
+  }
+
+  return 'Chybí odpovídající úhrada ve správném kanálu.'
+}
+
+function toReservationChannelLabel(channel: string): string {
+  switch (channel) {
+    case 'direct-web':
+      return 'Přímá rezervace'
+    case 'booking':
+      return 'Booking'
+    case 'airbnb':
+      return 'Airbnb'
+    case 'comgate':
+      return 'Platební brána'
+    case 'expedia_direct_bank':
+      return 'Bankovní úhrada Expedia'
+    default:
+      return channel
+  }
+}
+
+function formatAmountMinorForReview(amountMinor: number, currency: string): string {
+  return `${(amountMinor / 100).toFixed(2).replace('.', ',')} ${currency}`
 }
 
 function classifyReviewBucket(

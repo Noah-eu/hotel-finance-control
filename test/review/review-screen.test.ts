@@ -492,6 +492,52 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchUnmatched[0]?.detail).toContain('Směřování: RB účet.')
     expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
+
+  it('shows reservation-settlement no-matches as a separate business-facing review section without raw matcher codes', () => {
+    const previo = getRealInputFixture('previo-reservation-export')
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const batch = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'uploaded:previo:1:prehled-rezervaci-xlsx' as DocumentId,
+            sourceSystem: 'previo',
+            documentType: 'reservation_export',
+            fileName: 'Prehled_rezervaci.xlsx',
+            uploadedAt: '2026-03-21T16:00:00.000Z'
+          },
+          content: previo.rawInput.content,
+          binaryContentBase64: previo.rawInput.binaryContentBase64
+        },
+        {
+          sourceDocument: booking.sourceDocument,
+          content: booking.rawInput.content
+        }
+      ],
+      reconciliationContext: {
+        runId: 'review-reservation-no-match',
+        requestedAt: '2026-03-21T16:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-21T16:00:00.000Z'
+    })
+
+    const review = buildReviewScreen({
+      batch,
+      generatedAt: '2026-03-21T16:00:00.000Z'
+    })
+
+    expect(review.unmatchedReservationSettlements).toHaveLength(1)
+    expect(review.unmatchedReservationSettlements[0]).toMatchObject({
+      kind: 'unmatched-reservation-settlement',
+      title: 'Rezervace PREVIO-20260314'
+    })
+    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Chybí deterministická vazba na odpovídající úhradu.')
+    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Kanál: Přímá rezervace.')
+    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Pobyt: 2026-03-14 – 2026-03-16.')
+    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Částka: 420,00 CZK.')
+    expect(review.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
+  })
 })
 
 function buildExceptionCase(overrides: Partial<ExceptionCase> & Pick<ExceptionCase, 'id' | 'explanation'>): ExceptionCase {
