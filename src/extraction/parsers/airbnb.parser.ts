@@ -139,15 +139,15 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
 
   return rows.map((row, index) => {
     const rowKind = inferRealAirbnbRowKind(row.details)
-    const bookedAt = parseIsoDate(row.date, 'Airbnb real export date')
-    const payoutDate = rowKind === 'transfer' ? parseIsoDate(row.availableUntilDate, 'Airbnb real export availableUntilDate') : bookedAt
+    const bookedAt = parseRealAirbnbDate(row.date, 'Airbnb real export date')
+    const payoutDate = rowKind === 'transfer' ? parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate') : bookedAt
     const amountMinor = parseAmountMinor(row.amountMinor, 'Airbnb real export amount')
     const paidOutAmountMinor = parseAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
     const serviceFeeMinor = parseSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
     const currency = row.currency.trim().toUpperCase()
-    const stayStartDate = parseIsoDate(row.stayStartDate, 'Airbnb real export stayStartDate')
-    const stayEndDate = parseIsoDate(row.stayEndDate, 'Airbnb real export stayEndDate')
+    const stayStartDate = parseRealAirbnbDate(row.stayStartDate, 'Airbnb real export stayStartDate')
+    const stayEndDate = parseRealAirbnbDate(row.stayEndDate, 'Airbnb real export stayEndDate')
     const guestName = row.guestName.trim()
     const details = row.details.trim()
     const parsedTransfer = rowKind === 'transfer' ? parseRealAirbnbTransferDetails(details) : undefined
@@ -182,7 +182,7 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
         serviceFeeMinor,
         grossEarningsMinor,
         sourceDate: bookedAt,
-        availableUntilDate: parseIsoDate(row.availableUntilDate, 'Airbnb real export availableUntilDate'),
+        availableUntilDate: parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate'),
         ...(parsedTransfer
           ? {
             transferDescriptor: parsedTransfer.transferDescriptor,
@@ -259,4 +259,24 @@ function parseSignedMoney(value: string, fieldName: string): number {
   }
 
   return parseAmountMinor(trimmed, fieldName)
+}
+
+function parseRealAirbnbDate(value: string, fieldName: string): string {
+  try {
+    return parseIsoDate(value, fieldName)
+  } catch (error) {
+    const normalized = value.trim()
+    const usStyleMatch = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(normalized)
+
+    if (usStyleMatch) {
+      const [, month, day, year] = usStyleMatch
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    }
+
+    if (error instanceof DeterministicParserError) {
+      throw error
+    }
+
+    throw new DeterministicParserError(`${fieldName} has unsupported date format: ${value}`)
+  }
 }

@@ -98,6 +98,40 @@ describe('parseAirbnbPayoutExport', () => {
     })
   })
 
+  it('supports slash-based US-style real Airbnb dates like 03/20/2026 in reservation and transfer rows', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    const records = parseAirbnbPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+        '03/20/2026;03/20/2026;Rezervace;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
+        '03/20/2026;03/21/2026;Převod;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);HMA4TR9;CZK;980,00;980,00;0,00;980,00'
+      ].join('\n'),
+      extractedAt: '2026-03-21T13:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      occurredAt: '2026-03-20',
+      data: {
+        rowKind: 'reservation',
+        stayStartAt: '2026-03-18',
+        stayEndAt: '2026-03-20',
+        availableUntilDate: '2026-03-20'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      occurredAt: '2026-03-21',
+      data: {
+        rowKind: 'transfer',
+        stayStartAt: '2026-03-18',
+        stayEndAt: '2026-03-20',
+        availableUntilDate: '2026-03-21'
+      }
+    })
+  })
+
   it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 
