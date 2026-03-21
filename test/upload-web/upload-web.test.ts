@@ -911,9 +911,9 @@ describe('buildUploadWebFlow', () => {
         createRuntimeFile(
           'airbnb.csv',
           [
-            'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
-            '03/20/2026;03/20/2026;Rezervace;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
-            '03/20/2026;03/21/2026;Převod;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);HMA4TR9;CZK;980,00;980,00;0,00;980,00'
+            'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+            '03/20/2026;03/20/2026;Rezervace;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
+            '03/20/2026;03/21/2026;Payout;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);REF-HMA4TR9;;CZK;;980,00;0,00;980,00'
           ].join('\n')
         )
       ],
@@ -938,6 +938,27 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(result.reportSummary.normalizedTransactionCount).toBe(2)
     expect(result.reportTransactions).toHaveLength(2)
+  })
+
+  it('parses the real Airbnb-only browser runtime path when payout rows carry the amount only in Vyplaceno', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-21T14:05:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        extractedCount: 2,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+        accountLabelCs: 'Airbnb payout report'
+      })
+    ])
+    expect(result.reportSummary.normalizedTransactionCount).toBe(2)
+    expect(result.reportTransactions).toHaveLength(2)
+    expect(result.reportTransactions.map((item) => item.amount)).toEqual(['1 060,00 Kč', '980,00 Kč'])
+    expect(result.reportTransactions.map((item) => item.transactionId)).toEqual(['txn:payout:airbnb-payout-1', 'txn:payout:airbnb-payout-2'])
   })
 
   it('recognizes the real Booking browser-upload shape as Booking in the shared browser path', async () => {
@@ -1057,6 +1078,69 @@ describe('buildUploadWebFlow', () => {
     expect(result.review.matched).toHaveLength(1)
     expect(result.review.payoutBatchMatched).toHaveLength(1)
     expect(result.review.payoutBatchUnmatched).toHaveLength(0)
+  })
+
+  it('completes the truthful Airbnb-only uploaded browser and monthly path with one reservation row and one payout row', () => {
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+
+    const result = buildUploadedMonthlyRun({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: airbnb.rawInput.content,
+          uploadedAt: '2026-03-21T15:00:00.000Z'
+        }
+      ],
+      runId: 'airbnb-only-uploaded-monthly-run',
+      generatedAt: '2026-03-21T15:00:00.000Z'
+    })
+
+    const browserRuntimePromise = createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeFile('airbnb.csv', airbnb.rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-21T15:00:00.000Z'
+    })
+
+    expect(result.importedFiles).toHaveLength(1)
+    expect(result.importedFiles[0]?.sourceDocument).toMatchObject({
+      sourceSystem: 'airbnb',
+      documentType: 'ota_report',
+      fileName: 'airbnb.csv'
+    })
+
+    expect(result.batch.files).toEqual([
+      expect.objectContaining({
+        sourceDocumentId: expect.any(String),
+        extractedCount: 2,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2']
+      })
+    ])
+
+    expect(result.batch.extractedRecords).toHaveLength(2)
+    expect(result.batch.extractedRecords.filter((record: (typeof result.batch.extractedRecords)[number]) => record.recordType === 'payout-line')).toHaveLength(2)
+    expect(result.batch.extractedRecords.filter((record: (typeof result.batch.extractedRecords)[number]) => record.data.rowKind === 'reservation')).toHaveLength(1)
+    expect(result.batch.extractedRecords.filter((record: (typeof result.batch.extractedRecords)[number]) => record.data.rowKind === 'transfer')).toHaveLength(1)
+    expect(result.report.transactions).toHaveLength(2)
+
+    return browserRuntimePromise.then((browserRuntime) => {
+      expect(browserRuntime.preparedFiles).toEqual([
+        expect.objectContaining({
+          fileName: 'airbnb.csv',
+          sourceSystem: 'airbnb',
+          documentType: 'ota_report'
+        })
+      ])
+      expect(browserRuntime.extractedRecords).toEqual([
+        expect.objectContaining({
+          fileName: 'airbnb.csv',
+          extractedCount: 2,
+          extractedRecordIds: ['airbnb-payout-1', 'airbnb-payout-2'],
+          accountLabelCs: 'Airbnb payout report'
+        })
+      ])
+      expect(browserRuntime.reportSummary.normalizedTransactionCount).toBe(2)
+      expect(browserRuntime.reportTransactions).toHaveLength(2)
+    })
   })
 
   it('renders a browser-visible review screen from the shared uploaded batch preview flow', () => {

@@ -35,6 +35,7 @@ const HEADER_ALIASES = {
 const REAL_AIRBNB_REQUIRED_HEADERS = [
   'date',
   'availableUntilDate',
+  'type',
   'stayStartDate',
   'stayEndDate',
   'guestName',
@@ -49,10 +50,14 @@ const REAL_AIRBNB_REQUIRED_HEADERS = [
 const REAL_AIRBNB_HEADER_ALIASES = {
   date: ['Datum'],
   availableUntilDate: ['Bude připsán do dne'],
+  type: ['Typ'],
   stayStartDate: ['Datum zahájení'],
   stayEndDate: ['Datum ukončení'],
   guestName: ['Host'],
+  listingName: ['Nabídka'],
   details: ['Podrobnosti'],
+  referenceCode: ['Referenční kód'],
+  confirmationCode: ['Potvrzující kód'],
   currency: ['Měna'],
   amountMinor: ['Částka'],
   paidOutAmountMinor: ['Vyplaceno'],
@@ -138,10 +143,10 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
   }
 
   return rows.map((row, index) => {
-    const rowKind = inferRealAirbnbRowKind(row.details)
+    const rowKind = inferRealAirbnbRowKind(row.type, row.details)
     const bookedAt = parseRealAirbnbDate(row.date, 'Airbnb real export date')
     const payoutDate = rowKind === 'transfer' ? parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate') : bookedAt
-    const amountMinor = parseAmountMinor(row.amountMinor, 'Airbnb real export amount')
+    const amountMinor = parseRealAirbnbRowAmount(row, rowKind)
     const paidOutAmountMinor = parseAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
     const serviceFeeMinor = parseSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
@@ -150,11 +155,16 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
     const stayEndDate = parseRealAirbnbDate(row.stayEndDate, 'Airbnb real export stayEndDate')
     const guestName = row.guestName.trim()
     const details = row.details.trim()
+    const listingName = typeof row.listingName === 'string' ? row.listingName.trim() : ''
+    const referenceCode = typeof row.referenceCode === 'string' ? row.referenceCode.trim() : ''
+    const confirmationCode = typeof row.confirmationCode === 'string' ? row.confirmationCode.trim() : ''
     const parsedTransfer = rowKind === 'transfer' ? parseRealAirbnbTransferDetails(details) : undefined
-    const reservationId = rowKind === 'reservation' ? buildRealAirbnbReservationId(guestName, stayStartDate, stayEndDate, amountMinor) : undefined
+    const reservationId = rowKind === 'reservation'
+      ? buildRealAirbnbReservationId(confirmationCode || guestName, stayStartDate, stayEndDate, amountMinor)
+      : undefined
     const reference = rowKind === 'transfer'
       ? parsedTransfer!.transferReference
-      : buildRealAirbnbReservationReference(guestName, stayStartDate, stayEndDate)
+      : buildRealAirbnbReservationReference(confirmationCode || guestName, stayStartDate, stayEndDate)
 
     return {
       id: `airbnb-payout-${index + 1}`,
@@ -183,6 +193,9 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
         grossEarningsMinor,
         sourceDate: bookedAt,
         availableUntilDate: parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate'),
+        ...(listingName ? { listingName } : {}),
+        ...(referenceCode ? { referenceCode } : {}),
+        ...(confirmationCode ? { confirmationCode } : {}),
         ...(parsedTransfer
           ? {
             transferDescriptor: parsedTransfer.transferDescriptor,
@@ -195,9 +208,27 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
   })
 }
 
-function inferRealAirbnbRowKind(details: string): 'reservation' | 'transfer' {
+function inferRealAirbnbRowKind(type: string | undefined, details: string): 'reservation' | 'transfer' {
+  const normalizedType = (type ?? '').trim().toLowerCase()
+
+  if (normalizedType === 'rezervace' || normalizedType === 'reservation') {
+    return 'reservation'
+  }
+
+  if (normalizedType === 'payout' || normalizedType === 'převod' || normalizedType === 'prevod' || normalizedType === 'transfer') {
+    return 'transfer'
+  }
+
   const normalized = details.trim().toLowerCase()
   return normalized.startsWith('převod ') || normalized.startsWith('prevod ') ? 'transfer' : 'reservation'
+}
+
+function parseRealAirbnbRowAmount(row: Record<string, string>, rowKind: 'reservation' | 'transfer'): number {
+  if (rowKind === 'transfer') {
+    return parseAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
+  }
+
+  return parseAmountMinor(row.amountMinor, 'Airbnb real export amount')
 }
 
 function parseRealAirbnbTransferDetails(details: string): {

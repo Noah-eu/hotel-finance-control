@@ -434,9 +434,9 @@ export const realInputFixtures: RealInputFixture[] = [
     rawInput: {
       format: 'csv',
       content: [
-        'Datum;Bude připsán do dne;Datum zahájení;Datum ukončení;Host;Podrobnosti;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
-        '2026-03-12;2026-03-12;2026-03-10;2026-03-12;Jan Novak;Rezervace HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
-        '2026-03-12;2026-03-15;2026-03-10;2026-03-12;Jan Novak;Převod Jokeland s.r.o., IBAN 5956 (CZK);CZK;980,00;980,00;0,00;980,00'
+        'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+        '2026-03-12;2026-03-12;Rezervace;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
+        '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);REF-HMA4TR9;;CZK;;980,00;0,00;980,00'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -444,7 +444,7 @@ export const realInputFixtures: RealInputFixture[] = [
         id: 'airbnb-payout-1',
         sourceDocumentId: 'doc-airbnb-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
         recordType: 'payout-line',
-        rawReference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
+        rawReference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
         amountMinor: 106000,
         currency: 'CZK',
         occurredAt: '2026-03-12',
@@ -455,12 +455,15 @@ export const realInputFixtures: RealInputFixture[] = [
           amountMinor: 106000,
           currency: 'CZK',
           accountId: 'expected-payouts',
-          reference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
-          reservationId: 'AIRBNB-RES:jan-novak:2026-03-10:2026-03-12:106000',
+          reference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
+          reservationId: 'AIRBNB-RES:hma4tr9:2026-03-10:2026-03-12:106000',
           stayStartAt: '2026-03-10',
           stayEndAt: '2026-03-12',
           guestName: 'Jan Novak',
+          listingName: 'Jokeland apartment',
           details: 'Rezervace HMA4TR9',
+          referenceCode: 'REF-HMA4TR9',
+          confirmationCode: 'HMA4TR9',
           paidOutAmountMinor: 98000,
           serviceFeeMinor: -8000,
           grossEarningsMinor: 106000,
@@ -487,7 +490,9 @@ export const realInputFixtures: RealInputFixture[] = [
           stayStartAt: '2026-03-10',
           stayEndAt: '2026-03-12',
           guestName: 'Jan Novak',
+          listingName: 'Jokeland apartment',
           details: 'Převod Jokeland s.r.o., IBAN 5956 (CZK)',
+          referenceCode: 'REF-HMA4TR9',
           paidOutAmountMinor: 98000,
           serviceFeeMinor: 0,
           grossEarningsMinor: 98000,
@@ -508,8 +513,8 @@ export const realInputFixtures: RealInputFixture[] = [
         currency: 'CZK',
         bookedAt: '2026-03-12',
         accountId: 'expected-payouts',
-        reference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
-        reservationId: 'AIRBNB-RES:jan-novak:2026-03-10:2026-03-12:106000',
+        reference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
+        reservationId: 'AIRBNB-RES:hma4tr9:2026-03-10:2026-03-12:106000',
         extractedRecordIds: ['airbnb-payout-1'],
         sourceDocumentIds: ['doc-airbnb-payout-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       }),

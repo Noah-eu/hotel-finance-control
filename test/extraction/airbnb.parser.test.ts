@@ -16,12 +16,13 @@ describe('parseAirbnbPayoutExport', () => {
     expect(records[0]).toMatchObject({
       id: 'airbnb-payout-1',
       recordType: 'payout-line',
-      rawReference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
+      rawReference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
       data: {
         platform: 'airbnb',
         rowKind: 'reservation',
-        reservationId: 'AIRBNB-RES:jan-novak:2026-03-10:2026-03-12:106000',
-        guestName: 'Jan Novak'
+        reservationId: 'AIRBNB-RES:hma4tr9:2026-03-10:2026-03-12:106000',
+        guestName: 'Jan Novak',
+        confirmationCode: 'HMA4TR9'
       }
     })
     expect(records[1]).toMatchObject({
@@ -72,7 +73,7 @@ describe('parseAirbnbPayoutExport', () => {
 
     expect(records).toHaveLength(2)
     expect(records[0]).toMatchObject({
-      rawReference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12',
+      rawReference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
       occurredAt: '2026-03-12',
       amountMinor: 106000,
       data: {
@@ -80,6 +81,7 @@ describe('parseAirbnbPayoutExport', () => {
         stayStartAt: '2026-03-10',
         stayEndAt: '2026-03-12',
         guestName: 'Jan Novak',
+        confirmationCode: 'HMA4TR9',
         paidOutAmountMinor: 98000,
         serviceFeeMinor: -8000,
         grossEarningsMinor: 106000
@@ -104,9 +106,9 @@ describe('parseAirbnbPayoutExport', () => {
     const records = parseAirbnbPayoutExport({
       sourceDocument: fixture.sourceDocument,
       content: [
-        'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
-        '03/20/2026;03/20/2026;Rezervace;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
-        '03/20/2026;03/21/2026;Převod;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);HMA4TR9;CZK;980,00;980,00;0,00;980,00'
+        'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+        '03/20/2026;03/20/2026;Rezervace;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;1 060,00',
+        '03/20/2026;03/21/2026;Payout;03/18/2026;03/20/2026;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);REF-HMA4TR9;;CZK;;980,00;0,00;980,00'
       ].join('\n'),
       extractedAt: '2026-03-21T13:00:00.000Z'
     })
@@ -132,6 +134,38 @@ describe('parseAirbnbPayoutExport', () => {
     })
   })
 
+  it('uses Částka for reservation rows and Vyplaceno for payout rows when the payout row leaves Částka empty', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    const records = parseAirbnbPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-21T14:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      amountMinor: 106000,
+      rawReference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12',
+      data: {
+        rowKind: 'reservation',
+        confirmationCode: 'HMA4TR9',
+        details: 'Rezervace HMA4TR9',
+        availableUntilDate: '2026-03-12'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      amountMinor: 98000,
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        details: 'Převod Jokeland s.r.o., IBAN 5956 (CZK)',
+        availableUntilDate: '2026-03-15',
+        paidOutAmountMinor: 98000
+      }
+    })
+  })
+
   it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 
@@ -139,8 +173,8 @@ describe('parseAirbnbPayoutExport', () => {
       parseAirbnbPayoutExport({
         sourceDocument: fixture.sourceDocument,
         content: [
-          'Datum;Bude připsán do dne;Datum zahájení;Datum ukončení;Host;Podrobnosti;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
-          '2026-03-12;2026-03-15;2026-03-10;2026-03-12;Jan Novak;Převod na účet hostitele bez IBAN reference;CZK;980,00;980,00;0,00;980,00'
+          'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+          '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Převod na účet hostitele bez IBAN reference;REF-HMA4TR9;;CZK;;980,00;0,00;980,00'
         ].join('\n'),
         extractedAt: '2026-03-20T13:20:00.000Z'
       })

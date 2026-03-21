@@ -58,7 +58,7 @@ describe('realInputFixtures', () => {
       data: {
         platform: 'airbnb',
         rowKind: 'reservation',
-        reservationId: 'AIRBNB-RES:jan-novak:2026-03-10:2026-03-12:106000'
+        reservationId: 'AIRBNB-RES:hma4tr9:2026-03-10:2026-03-12:106000'
       }
     })
     expect(airbnb.expectedExtractedRecords[1]).toMatchObject({
@@ -127,7 +127,7 @@ describe('realInputFixtures', () => {
     ])
     expect(airbnb.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'airbnb',
-      reference: 'AIRBNB-STAY:jan-novak:2026-03-10:2026-03-12'
+      reference: 'AIRBNB-STAY:hma4tr9:2026-03-10:2026-03-12'
     })
     expect(airbnb.expectedNormalizedTransactions?.[1]).toMatchObject({
       source: 'airbnb',
