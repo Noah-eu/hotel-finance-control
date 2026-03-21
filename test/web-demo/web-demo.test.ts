@@ -420,7 +420,9 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('if (state.reportTransactions.length === 0)')
+    expect(result.html).toContain('function buildVisibleTransactionLabel(transactionId, source) {')
     expect(result.html).toContain("reportTransactions: (state.reportTransactions || []).map((transaction) => ({")
+    expect(result.html).toContain("labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)")
   })
 
   it('builds non-empty report preview rows in the shared runtime state consumed by the web demo', async () => {

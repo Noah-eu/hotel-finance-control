@@ -431,6 +431,41 @@ ${input.debugMode ? `
           .replace(/'/g, '&#39;');
       }
 
+      function buildVisibleTransactionLabel(transactionId, source) {
+        const normalizedSource = String(source || '').toLowerCase();
+        const normalizedId = String(transactionId || '').toLowerCase();
+
+        if (normalizedSource.includes('booking') || normalizedId.includes('booking')) {
+          return 'Booking.com payout';
+        }
+
+        if (normalizedSource.includes('airbnb') || normalizedId.includes('airbnb')) {
+          return 'Airbnb payout';
+        }
+
+        if (normalizedSource.includes('comgate') || normalizedId.includes('comgate')) {
+          return 'Comgate platba';
+        }
+
+        if (normalizedSource.includes('expedia') || normalizedId.includes('expedia')) {
+          return 'Expedia settlement';
+        }
+
+        if (normalizedSource.includes('bank') || normalizedId.includes('bank')) {
+          return 'Bankovní pohyb';
+        }
+
+        if (normalizedSource.includes('invoice') || normalizedId.includes('invoice')) {
+          return 'Faktura';
+        }
+
+        if (normalizedSource.includes('receipt') || normalizedId.includes('receipt')) {
+          return 'Účtenka';
+        }
+
+        return 'Transakce měsíčního běhu';
+      }
+
       ${buildExtractedRecordsMarkupFunction}
 
       function buildPreparedFilesMarkup(state) {
