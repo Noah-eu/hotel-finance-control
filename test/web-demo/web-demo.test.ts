@@ -274,6 +274,22 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('původní snapshot zůstává finální odpovědí')
   })
 
+  it('binds the top runtime summary strip to the current run state instead of leaving stale snapshot/demo numbers visible', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-21T15:30:00.000Z'
+    })
+
+    expect(result.html).toContain('id="runtime-summary-uploaded-files"')
+    expect(result.html).toContain('id="runtime-summary-normalized-transactions"')
+    expect(result.html).toContain('id="runtime-summary-review-items"')
+    expect(result.html).toContain('id="runtime-summary-export-files"')
+    expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String((state.preparedFiles || []).length);")
+    expect(result.html).toContain("runtimeSummaryNormalizedTransactions.textContent = String(state.reviewSummary?.normalizedTransactionCount ?? state.reportSummary?.normalizedTransactionCount ?? 0);")
+    expect(result.html).toContain("runtimeSummaryReviewItems.textContent = String(state.reviewSummary?.exceptionCount ?? 0);")
+    expect(result.html).toContain("runtimeSummaryExportFiles.textContent = String((state.exportFiles || []).length);")
+    expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String(files.length);")
+  })
+
   it('surfaces runtime failures visibly instead of leaving the original demo snapshot as if nothing happened', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-18T19:00:00.000Z'

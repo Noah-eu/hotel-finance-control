@@ -346,10 +346,10 @@ ${input.debugMode ? `
           <h3>Aktuální testovatelný stav v prohlížeči</h3>
           <p id="runtime-stage-copy" class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
           <div class="summary-grid">
-            <div class="metric"><strong>${input.browserRun.run.importedFiles.length}</strong><br />Ukázkové nahrané soubory</div>
-            <div class="metric"><strong>${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
-            <div class="metric"><strong>${input.browserRun.run.review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
-            <div class="metric"><strong>${input.browserRun.run.exports.files.length}</strong><br />Připravené exporty</div>
+            <div class="metric"><strong id="runtime-summary-uploaded-files">${input.browserRun.run.importedFiles.length}</strong><br />Ukázkové nahrané soubory</div>
+            <div class="metric"><strong id="runtime-summary-normalized-transactions">${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
+            <div class="metric"><strong id="runtime-summary-review-items">${input.browserRun.run.review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+            <div class="metric"><strong id="runtime-summary-export-files">${input.browserRun.run.exports.files.length}</strong><br />Připravené exporty</div>
           </div>
         </div>
       </section>
@@ -405,6 +405,10 @@ ${input.debugMode ? `
       const button = document.getElementById('prepare-upload');
       const runtimeOutput = document.getElementById('runtime-output');
   const runtimeStageCopy = document.getElementById('runtime-stage-copy');
+  const runtimeSummaryUploadedFiles = document.getElementById('runtime-summary-uploaded-files');
+  const runtimeSummaryNormalizedTransactions = document.getElementById('runtime-summary-normalized-transactions');
+  const runtimeSummaryReviewItems = document.getElementById('runtime-summary-review-items');
+  const runtimeSummaryExportFiles = document.getElementById('runtime-summary-export-files');
   const preparedFilesSection = document.getElementById('prepared-files-section');
   const preparedFilesContent = document.getElementById('prepared-files-content');
   const reviewSummarySection = document.getElementById('review-summary-section');
@@ -502,6 +506,19 @@ ${input.debugMode ? `
         reportPreviewBody.setAttribute('data-runtime-phase', phase);
         exportHandoffSection.setAttribute('data-runtime-phase', phase);
 
+        if (runtimeSummaryUploadedFiles) {
+          runtimeSummaryUploadedFiles.textContent = String((state.preparedFiles || []).length);
+        }
+        if (runtimeSummaryNormalizedTransactions) {
+          runtimeSummaryNormalizedTransactions.textContent = String(state.reviewSummary?.normalizedTransactionCount ?? state.reportSummary?.normalizedTransactionCount ?? 0);
+        }
+        if (runtimeSummaryReviewItems) {
+          runtimeSummaryReviewItems.textContent = String(state.reviewSummary?.exceptionCount ?? 0);
+        }
+        if (runtimeSummaryExportFiles) {
+          runtimeSummaryExportFiles.textContent = String((state.exportFiles || []).length);
+        }
+
         preparedFilesContent.innerHTML = buildPreparedFilesMarkup(state);
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(state);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(state);
@@ -517,6 +534,10 @@ ${input.debugMode ? `
         reviewSummarySection.setAttribute('data-runtime-phase', 'running');
         reportPreviewBody.setAttribute('data-runtime-phase', 'running');
         exportHandoffSection.setAttribute('data-runtime-phase', 'running');
+
+        if (runtimeSummaryUploadedFiles) {
+          runtimeSummaryUploadedFiles.textContent = String(files.length);
+        }
 
         preparedFilesContent.innerHTML = '<p class="hint">Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.</p><ul>' + fileNames + '</ul>';
         reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
