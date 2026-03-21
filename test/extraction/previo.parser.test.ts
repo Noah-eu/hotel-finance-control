@@ -234,6 +234,46 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+  it('parses symbol-prefixed workbook amounts like `€108.00` and infers EUR deterministically', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '01.03.26 12:30',
+          'Termín od': '02.03.26 15:45',
+          'Termín do': '04.03.26 10:15',
+          'Nocí': '2',
+          'Voucher': 'PREVIO-EUR-20260302',
+          'Počet hostů': '2',
+          'Hosté': 'Jana Novakova',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': 'Euro Travel GmbH',
+          'PP': 'direct-web',
+          'Stav': 'confirmed',
+          'Cena': '€108.00',
+          'Saldo': '€8.00',
+          'Pokoj': 'A102'
+        }
+      ]),
+      extractedAt: '2026-03-21T12:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 10800,
+      currency: 'EUR',
+      data: {
+        amountMinor: 10800,
+        outstandingBalanceMinor: 800,
+        currency: 'EUR'
+      }
+    })
+  })
+
   it('skips blank or non-reservation workbook rows that have an empty Voucher', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 

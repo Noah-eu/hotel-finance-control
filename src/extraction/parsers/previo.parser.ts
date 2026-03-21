@@ -142,8 +142,8 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     const channel = readWorkbookOptionalString(row['PP'])
     const companyName = readWorkbookOptionalString(row['Firma'])
     const roomName = readWorkbookOptionalString(row['Pokoj'])
-    const grossAmountMinor = parsePrevioWorkbookAmount(row['Cena'], 'Previo Cena')
-    const outstandingBalanceMinor = readWorkbookOptionalAmount(row['Saldo'], 'Previo Saldo')
+    const grossAmount = parsePrevioWorkbookAmount(row['Cena'], 'Previo Cena')
+    const outstandingBalance = readWorkbookOptionalAmount(row['Saldo'], 'Previo Saldo')
 
     return {
       id: `previo-reservation-${index + 1}`,
@@ -151,8 +151,8 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
       recordType: 'payout-line',
       extractedAt: input.extractedAt,
       rawReference: reservationReference,
-      amountMinor: grossAmountMinor,
-      currency: 'CZK',
+      amountMinor: grossAmount.amountMinor,
+      currency: grossAmount.currency,
       occurredAt: stayStartAt,
       data: {
         platform: 'previo',
@@ -160,9 +160,9 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
         createdAt,
         stayStartAt,
         stayEndAt,
-        amountMinor: grossAmountMinor,
-        outstandingBalanceMinor,
-        currency: 'CZK',
+        amountMinor: grossAmount.amountMinor,
+        outstandingBalanceMinor: outstandingBalance?.amountMinor,
+        currency: grossAmount.currency,
         accountId: 'expected-payouts',
         reference: reservationReference,
         reservationId: reservationReference,
@@ -313,22 +313,71 @@ function parseFlexiblePrevioDate(value: unknown, label: string): string {
   throw new Error(`${label} has unsupported date format: ${text}`)
 }
 
-function parsePrevioWorkbookAmount(value: unknown, label: string): number {
-  return parseAmountMinor(normalizeWorkbookAmount(value), label)
+function parsePrevioWorkbookAmount(value: unknown, label: string): { amountMinor: number; currency: 'CZK' | 'EUR' } {
+  const normalized = normalizeWorkbookAmount(value, label)
+
+  if (!normalized) {
+    throw new Error(`${label} is missing or empty`)
+  }
+
+  return {
+    amountMinor: parseAmountMinor(normalized.amount, label),
+    currency: normalized.currency
+  }
 }
 
-function readWorkbookOptionalAmount(value: unknown, label: string): number | undefined {
-  const normalized = normalizeWorkbookAmount(value)
-  return normalized.length > 0 ? parseAmountMinor(normalized, label) : undefined
+function readWorkbookOptionalAmount(value: unknown, label: string): { amountMinor: number; currency: 'CZK' | 'EUR' } | undefined {
+  const normalized = normalizeWorkbookAmount(value, label, true)
+  return normalized ? {
+    amountMinor: parseAmountMinor(normalized.amount, label),
+    currency: normalized.currency
+  } : undefined
 }
 
-function normalizeWorkbookAmount(value: unknown): string {
-  return String(value ?? '')
+function normalizeWorkbookAmount(
+  value: unknown,
+  label: string,
+  optional = false
+): { amount: string; currency: 'CZK' | 'EUR' } | undefined {
+  const raw = String(value ?? '')
     .trim()
     .replace(/\u00a0/g, '')
     .replace(/\s+/g, '')
-    .replace(/Kč|CZK/gi, '')
-    .trim()
+
+  if (!raw) {
+    return optional ? undefined : { amount: raw, currency: 'CZK' }
+  }
+
+  const currencyMatch = raw.match(/^(€|EUR|Kč|CZK)?(.*?)(€|EUR|Kč|CZK)?$/i)
+  if (!currencyMatch) {
+    throw new Error(`${label} has unsupported amount format: ${raw}`)
+  }
+
+  const [, leadingCurrency, amount, trailingCurrency] = currencyMatch
+  const detectedCurrencies = [leadingCurrency, trailingCurrency]
+    .filter((currency): currency is string => Boolean(currency))
+    .map((currency) => inferWorkbookCurrency(currency, label, raw))
+
+  if (detectedCurrencies.length > 1 && detectedCurrencies[0] !== detectedCurrencies[1]) {
+    throw new Error(`${label} has unsupported amount format: ${raw}`)
+  }
+
+  return {
+    amount: amount.trim(),
+    currency: detectedCurrencies[0] ?? 'CZK'
+  }
+}
+
+function inferWorkbookCurrency(token: string, label: string, raw: string): 'CZK' | 'EUR' {
+  if (/^(€|EUR)$/i.test(token)) {
+    return 'EUR'
+  }
+
+  if (/^(Kč|CZK)$/i.test(token)) {
+    return 'CZK'
+  }
+
+  throw new Error(`${label} has unsupported amount format: ${raw}`)
 }
 
 function readWorkbookString(value: unknown): string {
