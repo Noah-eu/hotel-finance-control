@@ -508,22 +508,54 @@ describe('buildUploadWebFlow', () => {
 
     expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(1)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
-    expect(batch.reconciliation.workflowPlan?.payoutRows.length).toBeGreaterThan(0)
-    expect(batch.reconciliation.workflowPlan?.payoutBatches.length).toBeGreaterThan(0)
+    expect(batch.reconciliation.workflowPlan?.payoutRows).toEqual([
+      expect.objectContaining({
+        platform: 'booking',
+        reservationId: 'RES-BOOK-8841',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        amountMinor: 125000,
+        currency: 'CZK'
+      })
+    ])
+    expect(batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        platform: 'booking',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        expectedTotalMinor: 125000,
+        currency: 'CZK'
+      })
+    ])
+    expect(batch.reconciliation.workflowPlan?.directBankSettlements).toEqual([])
     expect(batch.reconciliation.workflowPlan?.reservationSettlementMatches).toEqual([])
     expect(batch.reconciliation.workflowPlan?.reservationSettlementNoMatches).toEqual([
       expect.objectContaining({
         reservationId: 'PREVIO-20260314',
+        reference: 'PREVIO-20260314',
         noMatchReason: 'noCandidate',
         candidateCount: 0
       })
     ])
     expect(batch.reconciliation.payoutBatchMatches).toEqual([])
-    expect(batch.report.unmatchedPayoutBatches.length).toBeGreaterThan(0)
+    expect(batch.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        platform: 'Booking',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        status: 'unmatched',
+        reason: 'Žádná bankovní položka se stejnou částkou.'
+      })
+    ])
 
     expect(state.reviewSections.matched).toEqual([])
     expect(state.reviewSections.unmatched.length).toBeGreaterThan(0)
     expect(batch.report.transactions).toHaveLength(4)
+    expect(batch.report.transactions).toEqual([
+      expect.objectContaining({ source: 'previo', status: 'exception' }),
+      expect.objectContaining({ source: 'booking', status: 'exception' }),
+      expect.objectContaining({ source: 'bank', status: 'exception' }),
+      expect.objectContaining({ source: 'bank', status: 'exception' })
+    ])
     expect(state.reportTransactions).toHaveLength(4)
     expect(state.reportTransactions).toEqual([
       expect.objectContaining({
@@ -559,7 +591,20 @@ describe('buildUploadWebFlow', () => {
     expect(state.reviewSections.unmatched).toHaveLength(4)
     expect(state.reviewSections.suspicious).toHaveLength(0)
     expect(state.reviewSections.missingDocuments).toHaveLength(0)
+    expect(state.reviewSections.payoutBatchMatched).toHaveLength(0)
+    expect(state.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(state.reviewSections.payoutBatchUnmatched[0]).toEqual(
+      expect.objectContaining({
+        title: 'Booking payout dávka PAYOUT-BOOK-20260310',
+        detail: expect.stringContaining('Žádná bankovní položka se stejnou částkou.')
+      })
+    )
     expect(state.reportSummary.matchedGroupCount).toBe(batch.reconciliation.summary.matchedGroupCount)
+    expect(batch.reconciliation.summary.matchedGroupCount).toBe(0)
+    expect(batch.report.summary.unmatchedExpectedCount).toBe(1)
+    expect(batch.report.summary.unmatchedActualCount).toBe(2)
+    expect(batch.report.summary.payoutBatchMatchCount).toBe(0)
+    expect(batch.report.summary.unmatchedPayoutBatchCount).toBe(1)
   })
 
   it('surfaces unmatched payout batches in browser runtime review sections without debug wording', async () => {
