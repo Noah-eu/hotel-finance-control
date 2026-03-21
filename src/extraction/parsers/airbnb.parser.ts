@@ -140,12 +140,17 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
     )
   }
 
-  return rows.map((row, index) => {
+  return rows.flatMap((row, index) => {
     const rowKind = inferRealAirbnbRowKind(row.type, row.details)
+    const paidOutAmountMinor = parseOptionalAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
+
+    if (rowKind === 'transfer' && paidOutAmountMinor === undefined) {
+      return []
+    }
+
     const bookedAt = parseRealAirbnbDate(row.date, 'Airbnb real export date')
     const payoutDate = rowKind === 'transfer' ? parseRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate') : bookedAt
     const amountMinor = parseRealAirbnbRowAmount(row, rowKind)
-    const paidOutAmountMinor = parseAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
     const serviceFeeMinor = parseOptionalSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseOptionalSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
     const currency = row.currency.trim().toUpperCase()
@@ -202,7 +207,7 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
           }
           : {})
       }
-    }
+    } satisfies ExtractedRecord
   })
 }
 
@@ -227,6 +232,15 @@ function parseRealAirbnbRowAmount(row: Record<string, string>, rowKind: 'reserva
   }
 
   return parseAmountMinor(row.amountMinor, 'Airbnb real export amount')
+}
+
+function parseOptionalAmountMinor(value: string | undefined, fieldName: string): number | undefined {
+  const trimmed = value?.trim() ?? ''
+  if (trimmed.length === 0) {
+    return undefined
+  }
+
+  return parseAmountMinor(trimmed, fieldName)
 }
 
 function parseRealAirbnbTransferDetails(details: string): {
