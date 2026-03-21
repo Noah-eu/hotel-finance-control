@@ -43,6 +43,7 @@ export interface NormalizedTransaction {
   id: TransactionId
   direction: TransactionDirection
   source: SourceSystem
+  subtype?: string
   amountMinor: number
   currency: CurrencyCode
   bookedAt: ISODateString

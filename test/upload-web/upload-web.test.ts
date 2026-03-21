@@ -1000,7 +1000,7 @@ describe('buildUploadWebFlow', () => {
       'Bankovní transakce'
     ])
     expect(result.reviewSections.payoutBatchMatched).toHaveLength(0)
-    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(1)
   })
 
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {

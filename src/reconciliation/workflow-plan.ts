@@ -95,6 +95,7 @@ function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpect
     return transactions
         .filter(isPayoutPlanTransaction)
         .filter((transaction) => transaction.direction === 'in')
+        .filter(shouldRemainPayoutPlanTransaction)
         .map((transaction) => ({
             rowId: transaction.id,
             platform: transaction.source,
@@ -225,6 +226,14 @@ function isPayoutPlanTransaction(
     transaction: NormalizedTransaction
 ): transaction is NormalizedTransaction & { source: 'booking' | 'airbnb' | 'comgate' } {
     return transaction.source === 'booking' || transaction.source === 'airbnb' || transaction.source === 'comgate'
+}
+
+function shouldRemainPayoutPlanTransaction(transaction: NormalizedTransaction): boolean {
+    if (transaction.source !== 'airbnb') {
+        return true
+    }
+
+    return transaction.subtype !== 'reservation'
 }
 
 function isExpenseDocumentTransaction(

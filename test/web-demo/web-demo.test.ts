@@ -415,13 +415,15 @@ describe('buildWebDemo', () => {
       reportGeneratedAt: '2026-03-21T19:45:00.000Z'
     })
 
-    expect(batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.platform === 'airbnb')).toHaveLength(2)
-    expect(batch.reconciliation.workflowPlan?.payoutBatches.filter((row) => row.platform === 'airbnb')).toEqual([
+    expect(batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.platform === 'airbnb')).toEqual([
       expect.objectContaining({
-        payoutBatchKey: 'airbnb-batch:2026-03-12:AIRBNB-STAY:HMA4TR9:2026-03-10:2026-03-12',
-        expectedTotalMinor: 106000,
+        rowId: 'txn:payout:airbnb-payout-2',
+        payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+        amountMinor: 98000,
         currency: 'CZK'
-      }),
+      })
+    ])
+    expect(batch.reconciliation.workflowPlan?.payoutBatches.filter((row) => row.platform === 'airbnb')).toEqual([
       expect.objectContaining({
         payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
         expectedTotalMinor: 98000,
@@ -430,11 +432,6 @@ describe('buildWebDemo', () => {
     ])
     expect((batch.reconciliation.payoutBatchMatches ?? []).filter((match) => match.payoutBatchKey.includes('airbnb-batch:'))).toEqual([])
     expect(batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')).toEqual([
-      expect.objectContaining({
-        amountMinor: 106000,
-        bankRoutingLabel: 'RB účet',
-        reason: 'Žádná bankovní položka se stejnou částkou.'
-      }),
       expect.objectContaining({
         amountMinor: 98000,
         bankRoutingLabel: 'RB účet',

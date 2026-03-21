@@ -47,6 +47,46 @@ describe('buildReconciliationWorkflowPlan', () => {
         expect(plan.payoutRows).toHaveLength(0)
     })
 
+    it('keeps Airbnb reservation-derived transactions out of payoutRows while preserving transfer-derived rows', () => {
+        const airbnb = getRealInputFixture('airbnb-payout-export')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: airbnb.expectedExtractedRecords,
+            normalizedTransactions: airbnb.expectedNormalizedTransactions ?? [],
+            requestedAt: '2026-03-21T20:10:00.000Z'
+        })
+
+        expect(plan.payoutRows).toEqual([
+            expect.objectContaining({
+                rowId: 'txn:payout:airbnb-payout-2',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                amountMinor: 98000,
+                currency: 'CZK'
+            })
+        ])
+        expect(plan.payoutRows.find((row) => row.rowId === 'txn:payout:airbnb-payout-1')).toBeUndefined()
+    })
+
+    it('builds Airbnb payout batches only from transfer-derived payout rows', () => {
+        const airbnb = getRealInputFixture('airbnb-payout-export')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: airbnb.expectedExtractedRecords,
+            normalizedTransactions: airbnb.expectedNormalizedTransactions ?? [],
+            requestedAt: '2026-03-21T20:11:00.000Z'
+        })
+
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                rowIds: ['txn:payout:airbnb-payout-2'],
+                expectedTotalMinor: 98000,
+                currency: 'CZK'
+            })
+        ])
+    })
+
     it('derives deterministic Previo reservation sources for the monthly workflow', () => {
         const previo = getRealInputFixture('previo-reservation-export')
 

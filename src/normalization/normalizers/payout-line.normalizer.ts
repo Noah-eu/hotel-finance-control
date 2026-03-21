@@ -76,6 +76,7 @@ export class PayoutLineNormalizer implements Normalizer {
         id,
         direction: 'in',
         source,
+        subtype: typeof data.rowKind === 'string' ? data.rowKind : undefined,
         amountMinor: amountMinor!,
         currency: currency!,
         bookedAt: bookedAt!,
