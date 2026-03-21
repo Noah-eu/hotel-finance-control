@@ -957,13 +957,13 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(result.reportSummary.normalizedTransactionCount).toBe(2)
     expect(result.reportTransactions).toHaveLength(2)
-    expect(result.reportTransactions.map((item) => item.amount)).toEqual(['1 060,00 Kč', '980,00 Kč'])
+    expect(result.reportTransactions.map((item) => item.amount)).toEqual(['1 060,00 Kč', '3 961,05 Kč'])
     expect(result.reportTransactions.map((item) => item.transactionId)).toEqual(['txn:payout:airbnb-payout-1', 'txn:payout:airbnb-payout-2'])
     expect(result.reportTransactions.map((item) => item.labelCs)).toEqual(['Airbnb rezervace', 'Airbnb payout'])
     expect(result.reportTransactions.map((item) => item.subtype)).toEqual(['reservation', 'transfer'])
   })
 
-  it('truthfully audits the current Airbnb plus RB browser runtime path with two Airbnb payout batches and zero matches', async () => {
+  it('recognizes grounded exact Airbnb payout-to-RB CITIBANK matches in browser runtime state', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
         createRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
@@ -971,7 +971,7 @@ describe('buildUploadWebFlow', () => {
           'Pohyby_5599955956_202603191023.csv',
           [
             '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
-            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+            '15.03.2026 06:20;15.03.2026 06:23;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;3961,05;CZK;G-OC3WJE3SIXRO5'
           ].join('\n')
         )
       ],
@@ -999,8 +999,11 @@ describe('buildUploadWebFlow', () => {
       'Airbnb payout',
       'Bankovní transakce'
     ])
-    expect(result.reviewSections.payoutBatchMatched).toHaveLength(0)
-    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchMatched[0]).toMatchObject({
+      title: 'Airbnb payout dávka G-OC3WJE3SIXRO5'
+    })
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(0)
   })
 
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {

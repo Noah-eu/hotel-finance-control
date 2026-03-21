@@ -28,12 +28,13 @@ describe('parseAirbnbPayoutExport', () => {
     expect(records[1]).toMatchObject({
       id: 'airbnb-payout-2',
       recordType: 'payout-line',
-      rawReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+      rawReference: 'G-OC3WJE3SIXRO5',
       occurredAt: '2026-03-15',
       data: {
         platform: 'airbnb',
         rowKind: 'transfer',
-        transferDescriptor: 'Převod Jokeland s.r.o.'
+        transferDescriptor: 'Převod Jokeland s.r.o.',
+        transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
       }
     })
   })
@@ -88,13 +89,14 @@ describe('parseAirbnbPayoutExport', () => {
       }
     })
     expect(records[1]).toMatchObject({
-      rawReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+      rawReference: 'G-OC3WJE3SIXRO5',
       occurredAt: '2026-03-15',
-      amountMinor: 98000,
+      amountMinor: 396105,
       data: {
         rowKind: 'transfer',
-        payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+        payoutReference: 'G-OC3WJE3SIXRO5',
         transferDescriptor: 'Převod Jokeland s.r.o.',
+        transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
         availableUntilDate: '2026-03-15'
       }
     })
@@ -155,13 +157,14 @@ describe('parseAirbnbPayoutExport', () => {
       }
     })
     expect(records[1]).toMatchObject({
-      amountMinor: 98000,
+      amountMinor: 396105,
       occurredAt: '2026-03-15',
       data: {
         rowKind: 'transfer',
         details: 'Převod Jokeland s.r.o., IBAN 5956 (CZK)',
         availableUntilDate: '2026-03-15',
-        paidOutAmountMinor: 98000
+        paidOutAmountMinor: 396105,
+        payoutReference: 'G-OC3WJE3SIXRO5'
       }
     })
   })

@@ -170,8 +170,11 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
     const reservationId = rowKind === 'reservation' && stayStartDate && stayEndDate
       ? buildRealAirbnbReservationId(confirmationCode || guestName, stayStartDate, stayEndDate, amountMinor)
       : undefined
+    const exactPayoutReference = rowKind === 'transfer'
+      ? buildRealAirbnbExactPayoutReference(referenceCode, parsedTransfer!.transferReference)
+      : undefined
     const reference = rowKind === 'transfer'
-      ? parsedTransfer!.transferReference
+      ? exactPayoutReference!
       : buildRealAirbnbReservationReference(confirmationCode || guestName, stayStartDate, stayEndDate)
 
     return {
@@ -207,8 +210,9 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
         ...(parsedTransfer
           ? {
             transferDescriptor: parsedTransfer.transferDescriptor,
-            payoutReference: parsedTransfer.transferReference,
-            payoutBatchKey: parsedTransfer.transferReference
+            payoutReference: exactPayoutReference,
+            payoutBatchKey: exactPayoutReference,
+            transferBatchDescriptor: parsedTransfer.transferReference
           }
           : {})
       }
@@ -268,6 +272,15 @@ function parseRealAirbnbTransferDetails(details: string): {
     transferDescriptor,
     transferReference
   }
+}
+
+function buildRealAirbnbExactPayoutReference(referenceCode: string, fallbackTransferReference: string): string {
+  const trimmedReferenceCode = referenceCode.trim()
+  if (/^G-[A-Z0-9]+$/i.test(trimmedReferenceCode)) {
+    return trimmedReferenceCode.toUpperCase()
+  }
+
+  return fallbackTransferReference
 }
 
 function buildRealAirbnbReservationId(

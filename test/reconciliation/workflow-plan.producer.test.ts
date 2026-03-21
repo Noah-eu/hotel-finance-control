@@ -60,8 +60,9 @@ describe('buildReconciliationWorkflowPlan', () => {
             expect.objectContaining({
                 rowId: 'txn:payout:airbnb-payout-2',
                 platform: 'airbnb',
-                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
-                amountMinor: 98000,
+                payoutReference: 'G-OC3WJE3SIXRO5',
+                payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+                amountMinor: 396105,
                 currency: 'CZK'
             })
         ])
@@ -79,9 +80,10 @@ describe('buildReconciliationWorkflowPlan', () => {
 
         expect(plan.payoutBatches).toEqual([
             expect.objectContaining({
-                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+                payoutReference: 'G-OC3WJE3SIXRO5',
                 rowIds: ['txn:payout:airbnb-payout-2'],
-                expectedTotalMinor: 98000,
+                expectedTotalMinor: 396105,
                 currency: 'CZK'
             })
         ])

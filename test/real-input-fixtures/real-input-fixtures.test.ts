@@ -66,7 +66,8 @@ describe('realInputFixtures', () => {
       data: {
         platform: 'airbnb',
         rowKind: 'transfer',
-        payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
       }
     })
     expect(expedia.expectedExtractedRecords[0]).toMatchObject({
@@ -131,7 +132,7 @@ describe('realInputFixtures', () => {
     })
     expect(airbnb.expectedNormalizedTransactions?.[1]).toMatchObject({
       source: 'airbnb',
-      reference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+      reference: 'G-OC3WJE3SIXRO5'
     })
     expect(expedia.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'expedia',

@@ -389,7 +389,7 @@ describe('buildWebDemo', () => {
     ])
   })
 
-  it('truthfully audits that the current Airbnb plus RB batch matching stays at zero because no RB inflow has either Airbnb batch amount', () => {
+  it('recognizes grounded exact Airbnb payout-to-RB CITIBANK matches from the real uploaded shapes', () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 
     const batch = runMonthlyReconciliationBatch({
@@ -403,7 +403,7 @@ describe('buildWebDemo', () => {
           name: 'Pohyby_5599955956_202603191023.csv',
           content: [
             '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
-            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+            '15.03.2026 06:20;15.03.2026 06:23;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;3961,05;CZK;G-OC3WJE3SIXRO5'
           ].join('\n'),
           uploadedAt: '2026-03-21T19:45:00.000Z'
         }
@@ -418,26 +418,35 @@ describe('buildWebDemo', () => {
     expect(batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.platform === 'airbnb')).toEqual([
       expect.objectContaining({
         rowId: 'txn:payout:airbnb-payout-2',
-        payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
-        amountMinor: 98000,
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        amountMinor: 396105,
         currency: 'CZK'
       })
     ])
     expect(batch.reconciliation.workflowPlan?.payoutBatches.filter((row) => row.platform === 'airbnb')).toEqual([
       expect.objectContaining({
-        payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
-        expectedTotalMinor: 98000,
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        expectedTotalMinor: 396105,
         currency: 'CZK'
       })
     ])
-    expect((batch.reconciliation.payoutBatchMatches ?? []).filter((match) => match.payoutBatchKey.includes('airbnb-batch:'))).toEqual([])
-    expect(batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')).toEqual([
+    expect((batch.reconciliation.payoutBatchMatches ?? []).filter((match) => match.payoutBatchKey.includes('airbnb-batch:'))).toEqual([
       expect.objectContaining({
-        amountMinor: 98000,
-        bankRoutingLabel: 'RB účet',
-        reason: 'Žádná bankovní položka se stejnou částkou.'
+        payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+        bankTransactionId: 'txn:bank:fio-row-1',
+        matched: true
       })
     ])
+    expect(batch.report.payoutBatchMatches.filter((item) => item.platform === 'Airbnb')).toEqual([
+      expect.objectContaining({
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        bankAccountId: '5599955956/5500',
+        amountMinor: 396105
+      })
+    ])
+    expect(batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')).toEqual([])
   })
 
   it('renders user-facing bank/account labels instead of making parser-row prefixes look like bank identity', async () => {
