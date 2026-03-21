@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
+import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
 import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
 
@@ -411,6 +412,51 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain("'<td><strong>' + escapeHtml(transaction.labelCs || 'Transakce') + '</strong></td>'")
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
     expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
+  })
+
+  it('expects shared runtime state to provide report preview rows for the visible report table', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(result.html).toContain('if (state.reportTransactions.length === 0)')
+    expect(result.html).toContain("reportTransactions: (state.reportTransactions || []).map((transaction) => ({")
+  })
+
+  it('builds non-empty report preview rows in the shared runtime state consumed by the web demo', async () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const invoice = getRealInputFixture('invoice-document')
+
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          text: async () => booking.rawInput.content
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          text: async () => raiffeisen.rawInput.content
+        },
+        {
+          name: invoice.sourceDocument.fileName,
+          text: async () => invoice.rawInput.content
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
+
+    expect(state.reportTransactions.length).toBeGreaterThan(0)
+    expect(state.reportTransactions[0]).toEqual(
+      expect.objectContaining({
+        transactionId: expect.any(String),
+        labelCs: expect.any(String),
+        source: expect.any(String),
+        amount: expect.any(String),
+        status: expect.any(String)
+      })
+    )
   })
 
   it('keeps truthful account attribution in the extracted runtime state for the two current bank files', async () => {

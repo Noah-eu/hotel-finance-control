@@ -5,6 +5,7 @@ import {
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { buildReviewScreen } from '../review'
+import { formatAmountMinorCs } from '../shared/money'
 import type { BrowserRuntimeUploadState } from './index.js'
 
 export interface BuildBrowserRuntimeStateInput {
@@ -64,6 +65,13 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       reasons: link.reasons
     })),
     reportSummary: batch.report.summary,
+    reportTransactions: batch.report.transactions.slice(0, 5).map((transaction) => ({
+      transactionId: transaction.transactionId,
+      labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source),
+      source: transaction.source,
+      amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
+      status: transaction.status
+    })),
     reviewSummary: review.summary,
     reviewSections: {
       matched: review.matched,
@@ -188,4 +196,31 @@ function deriveMonthLabel(runId: string): string {
 
   const suffix = runId.slice(prefix.length)
   return suffix === 'local' ? 'neuvedeno' : suffix
+}
+
+function buildVisibleTransactionLabel(transactionId: string, source: string): string {
+  const normalizedSource = source.toLowerCase()
+  const normalizedId = transactionId.toLowerCase()
+
+  if (normalizedSource.includes('booking') || normalizedId.includes('booking')) {
+    return 'Booking.com payout'
+  }
+
+  if (normalizedSource.includes('airbnb') || normalizedId.includes('airbnb')) {
+    return 'Airbnb payout'
+  }
+
+  if (normalizedSource.includes('comgate') || normalizedId.includes('comgate')) {
+    return 'Comgate platba'
+  }
+
+  if (normalizedSource.includes('expedia') || normalizedId.includes('expedia')) {
+    return 'Expedia settlement'
+  }
+
+  if (normalizedSource.includes('bank') || normalizedId.includes('bank')) {
+    return 'Bankovní transakce'
+  }
+
+  return 'Transakce'
 }

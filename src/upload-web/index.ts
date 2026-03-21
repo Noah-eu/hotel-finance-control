@@ -75,6 +75,13 @@ export interface BrowserRuntimeUploadState {
     reasons: string[]
   }>
   reportSummary: UploadedMonthlyRunResult['report']['summary']
+  reportTransactions: Array<{
+    transactionId: string
+    labelCs: string
+    source: string
+    amount: string
+    status: string
+  }>
   reviewSummary: ReviewScreenData['summary']
   reviewSections: Pick<ReviewScreenData, 'matched' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{

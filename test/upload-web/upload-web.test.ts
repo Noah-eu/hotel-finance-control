@@ -67,6 +67,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.monthLabel).toBe('neuvedeno')
     expect(result.extractedRecords.some((file) => file.extractedCount > 0)).toBe(true)
     expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
+    expect(result.reportTransactions.length).toBeGreaterThan(0)
     expect(result.reviewSections.matched.length).toBeGreaterThan(0)
     expect(result.supportedExpenseLinks.length).toBeGreaterThanOrEqual(0)
     expect(result.exportFiles.map((file) => file.fileName)).toEqual([
@@ -110,6 +111,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSummary).toBeDefined()
     expect(result.reviewSections).toBeDefined()
     expect(result.reportSummary).toBeDefined()
+    expect(result.reportTransactions).toBeDefined()
     expect(result.exportFiles.length).toBeGreaterThan(0)
     expect(result.supportedExpenseLinks).toBeDefined()
   })
@@ -251,6 +253,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSummary.normalizedTransactionCount).toBeGreaterThan(0)
     expect(result.reviewSections.matched.length + result.reviewSections.unmatched.length + result.reviewSections.suspicious.length + result.reviewSections.missingDocuments.length).toBeGreaterThan(0)
     expect(result.reportSummary.normalizedTransactionCount).toBeGreaterThan(0)
+    expect(result.reportTransactions.length).toBeGreaterThan(0)
     expect(result.exportFiles.map((file: (typeof result.exportFiles)[number]) => file.fileName)).toEqual([
       'reconciliation-transactions.csv',
       'review-items.csv',
@@ -390,6 +393,140 @@ describe('buildUploadWebFlow', () => {
         rejectionReasons: ['noExactAmount', 'wrongBankRouting']
       })
     ])
+  })
+
+  it('audits the exact mixed 4-file browser run truthfully and proves whether zero visible matches is data-correct or only a projection gap', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const previo = getRealInputFixture('previo-reservation-export')
+
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('Prehled_rezervaci.xlsx', previo.rawInput.binaryContentBase64!),
+        createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        ),
+        createRuntimeFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+          [
+            '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-21T16:00:00.000Z'
+    })
+
+    const batch = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'uploaded:previo:1:prehled-rezervaci-xlsx' as never,
+            sourceSystem: 'previo',
+            documentType: 'reservation_export',
+            fileName: 'Prehled_rezervaci.xlsx',
+            uploadedAt: '2026-03-21T16:00:00.000Z'
+          },
+          content: previo.rawInput.content,
+          binaryContentBase64: previo.rawInput.binaryContentBase64
+        },
+        {
+          sourceDocument: booking.sourceDocument,
+          content: booking.rawInput.content
+        },
+        {
+          sourceDocument: {
+            id: 'uploaded:bank:3:pohyby-5599955956-202603191023-csv' as never,
+            sourceSystem: 'bank',
+            documentType: 'bank_statement',
+            fileName: 'Pohyby_5599955956_202603191023.csv',
+            uploadedAt: '2026-03-21T16:00:00.000Z'
+          },
+          content: [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:20;19.03.2026 06:23;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+          ].join('\n')
+        },
+        {
+          sourceDocument: {
+            id: 'uploaded:bank:4:pohyby-na-uctu-8888997777-20260301-20260319-csv' as never,
+            sourceSystem: 'bank',
+            documentType: 'bank_statement',
+            fileName: 'Pohyby_na_uctu-8888997777_20260301-20260319.csv',
+            uploadedAt: '2026-03-21T16:00:00.000Z'
+          },
+          content: [
+            '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+            '19.03.2026 06:23;1540,00;CZK;8888997777/2010;000000-1234567890/0100;Comgate a.s.;Platba rezervace WEB-2001'
+          ].join('\n')
+        }
+      ],
+      reconciliationContext: {
+        runId: 'audit-browser-real-4-file-run',
+        requestedAt: '2026-03-21T16:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-21T16:00:00.000Z'
+    })
+
+    expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(1)
+    expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
+    expect(batch.reconciliation.workflowPlan?.payoutRows.length).toBeGreaterThan(0)
+    expect(batch.reconciliation.workflowPlan?.payoutBatches.length).toBeGreaterThan(0)
+    expect(batch.reconciliation.workflowPlan?.reservationSettlementMatches).toEqual([])
+    expect(batch.reconciliation.workflowPlan?.reservationSettlementNoMatches).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        noMatchReason: 'noCandidate',
+        candidateCount: 0
+      })
+    ])
+    expect(batch.reconciliation.payoutBatchMatches).toEqual([])
+    expect(batch.report.unmatchedPayoutBatches.length).toBeGreaterThan(0)
+
+    expect(state.reviewSections.matched).toEqual([])
+    expect(state.reviewSections.unmatched.length).toBeGreaterThan(0)
+    expect(batch.report.transactions).toHaveLength(4)
+    expect(state.reportTransactions).toHaveLength(4)
+    expect(state.reportTransactions).toEqual([
+      expect.objectContaining({
+        transactionId: expect.any(String),
+        labelCs: expect.any(String),
+        source: expect.any(String),
+        amount: expect.any(String),
+        status: expect.any(String)
+      }),
+      expect.objectContaining({
+        transactionId: expect.any(String),
+        labelCs: expect.any(String),
+        source: expect.any(String),
+        amount: expect.any(String),
+        status: expect.any(String)
+      }),
+      expect.objectContaining({
+        transactionId: expect.any(String),
+        labelCs: expect.any(String),
+        source: expect.any(String),
+        amount: expect.any(String),
+        status: expect.any(String)
+      }),
+      expect.objectContaining({
+        transactionId: expect.any(String),
+        labelCs: expect.any(String),
+        source: expect.any(String),
+        amount: expect.any(String),
+        status: expect.any(String)
+      })
+    ])
+    expect(state.reviewSections.matched).toHaveLength(0)
+    expect(state.reviewSections.unmatched).toHaveLength(4)
+    expect(state.reviewSections.suspicious).toHaveLength(0)
+    expect(state.reviewSections.missingDocuments).toHaveLength(0)
+    expect(state.reportSummary.matchedGroupCount).toBe(batch.reconciliation.summary.matchedGroupCount)
   })
 
   it('surfaces unmatched payout batches in browser runtime review sections without debug wording', async () => {
