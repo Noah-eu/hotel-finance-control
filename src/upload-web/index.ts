@@ -699,6 +699,9 @@ export function placeholder() {
 }
 
 function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): string {
+  const payoutBatchMatchedCount = run.review.payoutBatchMatched.length
+  const payoutBatchUnmatchedCount = run.review.payoutBatchUnmatched.length
+
   return `<!doctype html>
 <html lang="cs">
   <head>
@@ -801,6 +804,8 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
           <div class="metric"><strong>${run.batch.reconciliation.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
           <div class="metric"><strong>${run.batch.reconciliation.summary.matchedGroupCount}</strong><br />Spárované skupiny</div>
           <div class="metric"><strong>${run.batch.reconciliation.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
+          <div class="metric"><strong>${payoutBatchMatchedCount}</strong><br />Spárované Airbnb / OTA payout dávky</div>
+          <div class="metric"><strong>${payoutBatchUnmatchedCount}</strong><br />Nespárované payout dávky</div>
           <div class="metric"><strong>${run.importedFiles.length}</strong><br />Nahrané soubory</div>
           <div class="metric"><strong>${run.report.transactions.length}</strong><br />Řádků v reportu</div>
           <div class="metric"><strong>${run.exports.files.length}</strong><br />Připravené exporty</div>
@@ -826,7 +831,9 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
         <h2>Kontrolní sekce</h2>
         <div class="section-grid">
           ${renderReviewSection('Spárované položky', 'matched', run.review.matched)}
+          ${renderReviewSection('Spárované Airbnb / OTA payout dávky', 'matched', run.review.payoutBatchMatched)}
           ${renderReviewSection('Nespárované položky', 'unmatched', run.review.unmatched)}
+          ${renderReviewSection('Nespárované payout dávky', 'unmatched', run.review.payoutBatchUnmatched)}
           ${renderReviewSection('Podezřelé položky', 'suspicious', run.review.suspicious)}
           ${renderReviewSection('Chybějící doklady', 'missing', run.review.missingDocuments)}
         </div>

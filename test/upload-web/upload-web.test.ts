@@ -1256,6 +1256,8 @@ describe('buildUploadWebFlow', () => {
 
     expect(uploadedRun.html).toContain('<h3>Spárované Airbnb / OTA payout dávky</h3>')
     expect(uploadedRun.html).toContain('<h3>Nespárované payout dávky</h3>')
+    expect(uploadedRun.html).toContain('<strong>15</strong><br />Spárované Airbnb / OTA payout dávky')
+    expect(uploadedRun.html).toContain('<strong>2</strong><br />Nespárované payout dávky')
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-OC3WJE3SIXRO5')
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-OLIOSSDGKKF3X')
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-IZLCELA7C5EFN')
