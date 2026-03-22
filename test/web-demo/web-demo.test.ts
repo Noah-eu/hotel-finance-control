@@ -803,6 +803,44 @@ describe('buildWebDemo', () => {
     expect(internallyUnmatchedButNotVisible).toEqual([])
   })
 
+  it('accounts for all 17 extracted Airbnb payout refs across the visible matched and unmatched payout-batch panels', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:11:00.000Z'
+    })
+
+    const extractedAirbnbReferences = result.browserRun.run.batch.extractedRecords
+      .filter((record) => record.sourceDocumentId.includes('airbnb'))
+      .map((record) => String(record.data.payoutReference ?? ''))
+
+    const visibleMatchedReferences = result.browserRun.run.review.payoutBatchMatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+    const visibleUnmatchedReferences = result.browserRun.run.review.payoutBatchUnmatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+
+    const visibleReferences = [...visibleMatchedReferences, ...visibleUnmatchedReferences]
+    const missingFromVisiblePanels = extractedAirbnbReferences.filter((reference) => !visibleReferences.includes(reference))
+
+    expect(extractedAirbnbReferences).toHaveLength(17)
+    expect(visibleMatchedReferences).toHaveLength(15)
+    expect(visibleUnmatchedReferences).toHaveLength(2)
+    expect(visibleReferences).toEqual(extractedAirbnbReferences)
+    expect(missingFromVisiblePanels).toEqual([])
+  })
+
+  it('keeps synthetic Airbnb transfer descriptors only in detail text and never as the primary visible payout-batch title', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:11:30.000Z'
+    })
+
+    const visibleTitles = [
+      ...result.browserRun.run.review.payoutBatchMatched.map((item) => item.title),
+      ...result.browserRun.run.review.payoutBatchUnmatched.map((item) => item.title)
+    ]
+
+    expect(visibleTitles.every((title) => title.startsWith('Airbnb payout dávka G-'))).toBe(true)
+    expect(result.html).not.toContain('AIRBNB-TRANSFER:jokeland.s.r.o.:IBAN-5956-(CZK)</strong>')
+  })
+
   it('keeps the visible summary counts aligned with the same payout-batch lists shown to the operator', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:12:00.000Z'
