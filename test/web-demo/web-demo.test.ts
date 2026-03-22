@@ -863,12 +863,31 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('id="build-fingerprint"')
-    expect(result.html).toContain('Build: <strong>1d054a0</strong>')
-    expect(result.html).toContain('Renderer: <strong>web-demo-operator-v2</strong>')
+    expect(result.runtimeAssetPath).toBeUndefined()
+    expect(result.html).toContain('Build: <strong>browser-runtime</strong>')
+    expect(result.html).toContain('Renderer: <strong>web-demo-operator-v3</strong>')
     expect(result.html).toContain('Payout matched: <strong>15</strong>')
     expect(result.html).toContain('Payout unmatched: <strong>2</strong>')
     expect(result.html).toContain("const buildFingerprint = document.getElementById('build-fingerprint');")
     expect(result.html).toContain('buildFingerprint.innerHTML = buildFingerprintMarkup(state);')
+    expect(result.html).toContain('const buildFingerprintVersion = "browser-runtime";')
+  })
+
+  it('shows the emitted hashed runtime asset fingerprint in the published demo output path', async () => {
+    const outputPath = resolve('dist/test-web-demo-fingerprint/index.html')
+    rmSync(resolve('dist/test-web-demo-fingerprint'), {
+      recursive: true,
+      force: true
+    })
+
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:12:45.000Z',
+      outputPath
+    })
+
+    expect(result.runtimeAssetPath).toMatch(/^\.\/browser-runtime\.[a-f0-9]{12}\.js$/)
+    expect(readFileSync(outputPath, 'utf8')).toContain(`Build: <strong>${result.runtimeAssetPath!.slice(2, -3)}</strong>`)
+    expect(readFileSync(outputPath, 'utf8')).toContain('Renderer: <strong>web-demo-operator-v3</strong>')
   })
 
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
