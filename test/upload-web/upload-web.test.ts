@@ -1070,6 +1070,51 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('proves the exact real two-file path carries all 15 matched and 2 unmatched Airbnb payout-batch detail items visibly', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-22T11:00:04.000Z'
+    })
+
+    expect(result.extractedRecords.map((item) => ({ fileName: item.fileName, extractedCount: item.extractedCount }))).toEqual([
+      { fileName: 'airbnb.csv', extractedCount: 17 },
+      { fileName: 'Pohyby_5599955956_202603191023.csv', extractedCount: 16 }
+    ])
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(15)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(15)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+    expect(result.reviewSections.payoutBatchMatched.map((item) => item.title)).toEqual([
+      'Airbnb payout dávka G-OC3WJE3SIXRO5',
+      'Airbnb payout dávka G-DXVK4YVI7MJVL',
+      'Airbnb payout dávka G-ZD5RVTGOHW3GE',
+      'Airbnb payout dávka G-ZWNWMP6UYWNI7',
+      'Airbnb payout dávka G-WLT46RY3MOZIF',
+      'Airbnb payout dávka G-L4RVQL6SE24XJ',
+      'Airbnb payout dávka G-TGCGGWASBTWWW',
+      'Airbnb payout dávka G-TKC6CS3OTDMGN',
+      'Airbnb payout dávka G-2F2LZZKYTRZ6E',
+      'Airbnb payout dávka G-MUEMMKRWRPQNQ',
+      'Airbnb payout dávka G-RFF4BW3JFXE6T',
+      'Airbnb payout dávka G-EPATNPP5RBQDW',
+      'Airbnb payout dávka G-JWVQXQVW6DET3',
+      'Airbnb payout dávka G-FE2CKQSBT6E7N',
+      'Airbnb payout dávka G-OLIOSSDGKKF3X'
+    ])
+    expect(result.reviewSections.payoutBatchUnmatched.map((item) => item.title)).toEqual([
+      'Airbnb payout dávka G-IZLCELA7C5EFN',
+      'Airbnb payout dávka G-6G5WFOJO5DJCI'
+    ])
+    expect(result.reviewSections.payoutBatchMatched.every((item) => item.detail.includes('Bankovní účet: 5599955956/5500.'))).toBe(true)
+    expect(result.reviewSections.payoutBatchMatched.every((item) => item.detail.includes('Shoda dávky a bankovního přípisu'))).toBe(true)
+    expect(result.reviewSections.payoutBatchUnmatched.every((item) => item.detail.includes('Žádná bankovní položka se stejnou částkou.'))).toBe(true)
+  })
+
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
