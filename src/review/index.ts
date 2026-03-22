@@ -1,5 +1,6 @@
 import type { ExceptionCase } from '../domain'
 import type { MonthlyBatchResult } from '../monthly-batch'
+import { formatAmountMinorCs } from '../shared/money'
 
 export interface ReviewSectionItem {
   id: string
@@ -65,7 +66,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     id: `payout-batch:${match.payoutBatchKey}`,
     kind: 'matched' as const,
     title: `${match.platform} payout dávka ${match.payoutReference}`,
-    detail: `${match.reason} Bankovní účet: ${match.bankAccountId}. Částka: ${match.amountMinor} ${match.currency}.`,
+    detail: buildPayoutBatchMatchDetail(input.batch, match),
     transactionIds: [],
     sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
   }))
@@ -74,7 +75,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     id: `payout-batch-unmatched:${batch.payoutBatchKey}`,
     kind: 'unmatched' as const,
     title: `${batch.platform} payout dávka ${batch.payoutReference}`,
-    detail: `${batch.reason} Datum payoutu: ${batch.payoutDate}. Očekávaná částka: ${batch.amountMinor} ${batch.currency}. Směřování: ${batch.bankRoutingLabel}.`,
+    detail: buildPayoutBatchUnmatchedDetail(input.batch, batch),
     transactionIds: [],
     sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, batch.payoutBatchKey)
   }))
@@ -121,6 +122,62 @@ function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payou
   }
 
   return [...ids]
+}
+
+function buildPayoutBatchMatchDetail(
+  batch: MonthlyBatchResult,
+  match: MonthlyBatchResult['report']['payoutBatchMatches'][number]
+): string {
+  const detailParts = [
+    match.reason,
+    `Bankovní účet: ${match.bankAccountId}.`,
+    `Částka: ${formatAmountMinorCs(match.amountMinor, match.currency)}.`
+  ]
+
+  const descriptor = findTransferBatchDescriptor(batch, match.payoutBatchKey)
+  if (descriptor) {
+    detailParts.push(`Zdrojový transfer: ${descriptor}.`)
+  }
+
+  return detailParts.join(' ')
+}
+
+function buildPayoutBatchUnmatchedDetail(
+  batch: MonthlyBatchResult,
+  unmatched: MonthlyBatchResult['report']['unmatchedPayoutBatches'][number]
+): string {
+  const detailParts = [
+    unmatched.reason,
+    `Datum payoutu: ${unmatched.payoutDate}.`,
+    `Očekávaná částka: ${formatAmountMinorCs(unmatched.amountMinor, unmatched.currency)}.`,
+    `Směřování: ${unmatched.bankRoutingLabel}.`
+  ]
+
+  const descriptor = findTransferBatchDescriptor(batch, unmatched.payoutBatchKey)
+  if (descriptor) {
+    detailParts.push(`Zdrojový transfer: ${descriptor}.`)
+  }
+
+  return detailParts.join(' ')
+}
+
+function findTransferBatchDescriptor(batch: MonthlyBatchResult, payoutBatchKey: string): string | undefined {
+  const payoutRow = batch.reconciliation.workflowPlan?.payoutRows.find((row) => row.payoutBatchKey === payoutBatchKey)
+
+  if (!payoutRow) {
+    return undefined
+  }
+
+  const extractedRecord = batch.extractedRecords.find((record) =>
+    record.sourceDocumentId === payoutRow.sourceDocumentId
+    && record.data.payoutBatchKey === payoutBatchKey
+  )
+
+  const descriptor = extractedRecord?.data.transferBatchDescriptor
+
+  return typeof descriptor === 'string' && descriptor.trim()
+    ? descriptor.trim()
+    : undefined
 }
 
 export function placeholder() {

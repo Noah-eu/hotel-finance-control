@@ -1115,6 +1115,153 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched.every((item) => item.detail.includes('Žádná bankovní položka se stejnou částkou.'))).toBe(true)
   })
 
+  it('keeps the exact real two-file Airbnb to RB reference lists identical from extraction through rendered payout-batch sections', async () => {
+    const airbnbContent = buildActualUploadedAirbnbContent()
+    const rbContent = buildActualUploadedRbCitiContent()
+
+    const preview = buildUploadedBatchPreview({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: airbnbContent,
+          uploadedAt: '2026-03-22T11:00:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: rbContent,
+          uploadedAt: '2026-03-22T11:00:01.000Z'
+        }
+      ],
+      runId: 'browser-runtime-upload-2026-03',
+      generatedAt: '2026-03-22T11:00:04.000Z'
+    })
+
+    const runtimeState = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', airbnbContent),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', rbContent)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-22T11:00:04.000Z'
+    })
+
+    const uploadedRun = buildBrowserUploadedMonthlyRun({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: airbnbContent,
+          uploadedAt: '2026-03-22T11:00:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: rbContent,
+          uploadedAt: '2026-03-22T11:00:01.000Z'
+        }
+      ],
+      runId: 'browser-runtime-upload-2026-03',
+      generatedAt: '2026-03-22T11:00:04.000Z'
+    })
+
+    const airbnbSourceDocumentId = preview.importedFiles.find((file) => file.sourceDocument.fileName === 'airbnb.csv')?.sourceDocument.id
+
+    expect(airbnbSourceDocumentId).toBeDefined()
+
+    const extractedAirbnbReferences = preview.batch.extractedRecords
+      .filter((record) => record.sourceDocumentId === airbnbSourceDocumentId)
+      .map((record) => String(record.data.payoutReference ?? ''))
+
+    const extractedRbCitibankReferences = preview.batch.extractedRecords
+      .filter((record) => record.sourceDocumentId !== airbnbSourceDocumentId)
+      .filter((record) => String(record.data.counterparty ?? '').toLowerCase().includes('citibank'))
+      .map((record) => String(record.data.reference ?? record.rawReference ?? ''))
+
+    const internallyMatchedReferences = preview.batch.report.payoutBatchMatches
+      .filter((match) => match.platform === 'Airbnb')
+      .map((match) => match.payoutReference)
+
+    const internallyUnmatchedReferences = preview.batch.report.unmatchedPayoutBatches
+      .filter((batch) => batch.platform === 'Airbnb')
+      .map((batch) => batch.payoutReference)
+
+    const renderedMatchedReferences = runtimeState.reviewSections.payoutBatchMatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+
+    const renderedUnmatchedReferences = runtimeState.reviewSections.payoutBatchUnmatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+
+    expect(extractedAirbnbReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE',
+      'G-ZWNWMP6UYWNI7',
+      'G-WLT46RY3MOZIF',
+      'G-L4RVQL6SE24XJ',
+      'G-TGCGGWASBTWWW',
+      'G-TKC6CS3OTDMGN',
+      'G-2F2LZZKYTRZ6E',
+      'G-MUEMMKRWRPQNQ',
+      'G-RFF4BW3JFXE6T',
+      'G-EPATNPP5RBQDW',
+      'G-JWVQXQVW6DET3',
+      'G-FE2CKQSBT6E7N',
+      'G-OLIOSSDGKKF3X',
+      'G-IZLCELA7C5EFN',
+      'G-6G5WFOJO5DJCI'
+    ])
+
+    expect(extractedRbCitibankReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE',
+      'G-ZWNWMP6UYWNI7',
+      'G-WLT46RY3MOZIF',
+      'G-L4RVQL6SE24XJ',
+      'G-TGCGGWASBTWWW',
+      'G-TKC6CS3OTDMGN',
+      'G-2F2LZZKYTRZ6E',
+      'G-MUEMMKRWRPQNQ',
+      'G-RFF4BW3JFXE6T',
+      'G-EPATNPP5RBQDW',
+      'G-JWVQXQVW6DET3',
+      'G-FE2CKQSBT6E7N',
+      'G-OLIOSSDGKKF3X',
+      'NON-MATCHING-CITIBANK-ROW'
+    ])
+
+    expect(internallyMatchedReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE',
+      'G-ZWNWMP6UYWNI7',
+      'G-WLT46RY3MOZIF',
+      'G-L4RVQL6SE24XJ',
+      'G-TGCGGWASBTWWW',
+      'G-TKC6CS3OTDMGN',
+      'G-2F2LZZKYTRZ6E',
+      'G-MUEMMKRWRPQNQ',
+      'G-RFF4BW3JFXE6T',
+      'G-EPATNPP5RBQDW',
+      'G-JWVQXQVW6DET3',
+      'G-FE2CKQSBT6E7N',
+      'G-OLIOSSDGKKF3X'
+    ])
+
+    expect(internallyUnmatchedReferences).toEqual([
+      'G-IZLCELA7C5EFN',
+      'G-6G5WFOJO5DJCI'
+    ])
+
+    expect(renderedMatchedReferences).toEqual(internallyMatchedReferences)
+    expect(renderedUnmatchedReferences).toEqual(internallyUnmatchedReferences)
+
+    expect(uploadedRun.html).toContain('<h3>Spárované Airbnb / OTA payout dávky</h3>')
+    expect(uploadedRun.html).toContain('<h3>Nespárované payout dávky</h3>')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-OC3WJE3SIXRO5')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-OLIOSSDGKKF3X')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-IZLCELA7C5EFN')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-6G5WFOJO5DJCI')
+  })
+
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
