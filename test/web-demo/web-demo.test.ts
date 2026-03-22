@@ -857,6 +857,20 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Nespárované payout dávky:</strong> 2')
   })
 
+  it('shows a visible build fingerprint for the exact operator renderer and payout-count source', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:12:30.000Z'
+    })
+
+    expect(result.html).toContain('id="build-fingerprint"')
+    expect(result.html).toContain('Build: <strong>1d054a0</strong>')
+    expect(result.html).toContain('Renderer: <strong>web-demo-operator-v2</strong>')
+    expect(result.html).toContain('Payout matched: <strong>15</strong>')
+    expect(result.html).toContain('Payout unmatched: <strong>2</strong>')
+    expect(result.html).toContain("const buildFingerprint = document.getElementById('build-fingerprint');")
+    expect(result.html).toContain('buildFingerprint.innerHTML = buildFingerprintMarkup(state);')
+  })
+
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-20T11:40:00.000Z'

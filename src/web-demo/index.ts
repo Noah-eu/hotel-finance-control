@@ -39,6 +39,9 @@ export interface FixtureWebDemoResult {
   outputPath?: string
 }
 
+const WEB_DEMO_RENDERER_MARKER = 'web-demo-operator-v2'
+const WEB_DEMO_BUILD_COMMIT = '1d054a0'
+
 export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<WebDemoResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
   const runtimeDemoFiles = [
@@ -102,6 +105,8 @@ function renderOperatorWebDemoHtml(input: {
   runtimeAssetPath: string
   debugMode?: boolean
 }): string {
+  const initialPayoutMatchedCount = input.browserRun.run.review.payoutBatchMatched.length
+  const initialPayoutUnmatchedCount = input.browserRun.run.review.payoutBatchUnmatched.length
   const preparedFiles = input.browserRun.run.importedFiles
     .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
     .join('')
@@ -319,6 +324,7 @@ ${input.debugMode ? `
         <h1>Hotel Finance Control – měsíční workflow pro operátora</h1>
         <p>Hlavní viditelný vstup teď odpovídá reálným možnostem současného browser/runtime režimu: operátor vybírá soubory, spouští sdílený měsíční běh, kontroluje výsledek, čte náhled reportu a předává exporty.</p>
         <p><strong>Vygenerováno:</strong> ${escapeHtml(input.generatedAt)}</p>
+        <p id="build-fingerprint" class="hint">Build: <strong>${escapeHtml(WEB_DEMO_BUILD_COMMIT)}</strong> · Renderer: <strong>${escapeHtml(WEB_DEMO_RENDERER_MARKER)}</strong> · Payout matched: <strong>${initialPayoutMatchedCount}</strong> · Payout unmatched: <strong>${initialPayoutUnmatchedCount}</strong></p>
       </section>
 
       <section class="card">
@@ -451,6 +457,7 @@ ${input.debugMode ? `
       const button = document.getElementById('prepare-upload');
       const runtimeOutput = document.getElementById('runtime-output');
   const runtimeStageCopy = document.getElementById('runtime-stage-copy');
+  const buildFingerprint = document.getElementById('build-fingerprint');
   const runtimeSummaryUploadedFiles = document.getElementById('runtime-summary-uploaded-files');
   const runtimeSummaryNormalizedTransactions = document.getElementById('runtime-summary-normalized-transactions');
   const runtimeSummaryReviewItems = document.getElementById('runtime-summary-review-items');
@@ -557,6 +564,13 @@ ${input.debugMode ? `
         ].join('');
       }
 
+      function buildFingerprintMarkup(state) {
+        const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
+        const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;
+
+        return 'Build: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_BUILD_COMMIT)}) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>' + escapeHtml(String(payoutBatchMatchedCount)) + '</strong> · Payout unmatched: <strong>' + escapeHtml(String(payoutBatchUnmatchedCount)) + '</strong>';
+      }
+
       function buildReportRowsMarkup(state) {
         if (state.reportTransactions.length === 0) {
           return '<tr><td colspan="4"><span class="hint">Runtime běh zatím nevygeneroval žádné transakce pro náhled reportu.</span></td></tr>';
@@ -649,6 +663,9 @@ ${input.debugMode ? `
         if (runtimeSummaryExportFiles) {
           runtimeSummaryExportFiles.textContent = String((state.exportFiles || []).length);
         }
+        if (buildFingerprint) {
+          buildFingerprint.innerHTML = buildFingerprintMarkup(state);
+        }
 
         preparedFilesContent.innerHTML = buildPreparedFilesMarkup(state);
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(state);
@@ -678,6 +695,9 @@ ${input.debugMode ? `
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(files.length);
+        }
+        if (buildFingerprint) {
+          buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_BUILD_COMMIT)}) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>načítám…</strong> · Payout unmatched: <strong>načítám…</strong>';
         }
 
         preparedFilesContent.innerHTML = '<p class="hint">Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.</p><ul>' + fileNames + '</ul>';
@@ -713,6 +733,9 @@ ${input.debugMode ? `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací není k dispozici, protože runtime běh selhal.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
+        if (buildFingerprint) {
+          buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_BUILD_COMMIT)}) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
+        }
       }
 
       function renderInitialVisibleState() {
