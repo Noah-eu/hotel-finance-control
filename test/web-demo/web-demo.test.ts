@@ -714,6 +714,21 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain("['Nespárované položky', unmatchedCount]")
   })
 
+  it('renders dedicated payout-batch detail panels in the operator UI and wires them to shared runtime sections', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T10:35:00.000Z'
+    })
+
+    expect(result.html).toContain('id="matched-payout-batches-section"')
+    expect(result.html).toContain('id="matched-payout-batches-content"')
+    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky')
+    expect(result.html).toContain('id="unmatched-payout-batches-section"')
+    expect(result.html).toContain('id="unmatched-payout-batches-content"')
+    expect(result.html).toContain('Nespárované payout dávky')
+    expect(result.html).toContain("matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchMatched) || []);")
+    expect(result.html).toContain("unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []);")
+  })
+
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-20T11:40:00.000Z'

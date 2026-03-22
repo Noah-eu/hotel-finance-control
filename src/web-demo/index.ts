@@ -126,9 +126,9 @@ function renderOperatorWebDemoHtml(input: {
     .join('')
 
   const reviewSummaryItems = [
-    ['Spárované položky', input.browserRun.run.review.matched.length],
+    ['Spárované položky', input.browserRun.run.review.matched.length + input.browserRun.run.review.payoutBatchMatched.length],
     ['Nespárované rezervace k úhradě', input.browserRun.run.review.unmatchedReservationSettlements.length],
-    ['Nespárované položky', input.browserRun.run.review.unmatched.length],
+    ['Nespárované položky', input.browserRun.run.review.unmatched.length + input.browserRun.run.review.payoutBatchUnmatched.length],
     ['Podezřelé položky', input.browserRun.run.review.suspicious.length],
     ['Chybějící doklady', input.browserRun.run.review.missingDocuments.length]
   ]
@@ -407,6 +407,18 @@ ${input.debugMode ? `
       <section class="card">
         <h2>Detail kontrolních sekcí</h2>
         <div class="detail-grid">
+          <section id="matched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Spárované Airbnb / OTA payout dávky</h3>
+            <div id="matched-payout-batches-content">
+              <p class="hint">Po spuštění se zde zobrazí business-facing přehled spárovaných payout dávek včetně reference, bankovního přípisu a částky.</p>
+            </div>
+          </section>
+          <section id="unmatched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované payout dávky</h3>
+            <div id="unmatched-payout-batches-content">
+              <p class="hint">Po spuštění se zde zobrazí payout dávky, které stále čekají na dohledání v bance.</p>
+            </div>
+          </section>
           <section id="reservation-settlement-overview-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Hlavní ubytovací rezervace</h3>
             <div id="reservation-settlement-overview-content">
@@ -460,6 +472,10 @@ ${input.debugMode ? `
   const reservationSettlementOverviewContent = document.getElementById('reservation-settlement-overview-content');
   const ancillarySettlementOverviewSection = document.getElementById('ancillary-settlement-overview-section');
   const ancillarySettlementOverviewContent = document.getElementById('ancillary-settlement-overview-content');
+  const matchedPayoutBatchesSection = document.getElementById('matched-payout-batches-section');
+  const matchedPayoutBatchesContent = document.getElementById('matched-payout-batches-content');
+  const unmatchedPayoutBatchesSection = document.getElementById('unmatched-payout-batches-section');
+  const unmatchedPayoutBatchesContent = document.getElementById('unmatched-payout-batches-content');
   const unmatchedReservationsSection = document.getElementById('unmatched-reservations-section');
   const unmatchedReservationsContent = document.getElementById('unmatched-reservations-content');
   const exportHandoffSection = document.getElementById('export-handoff-section');
@@ -588,6 +604,16 @@ ${input.debugMode ? `
         ).join('') + '</ul>';
       }
 
+      function buildPayoutBatchDetailMarkup(items) {
+        if (!items || items.length === 0) {
+          return '<p class="hint">Žádné položky v této sekci.</p>';
+        }
+
+        return '<ul>' + items.map((item) =>
+          '<li><strong>' + escapeHtml(item.title) + '</strong><br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+        ).join('') + '</ul>';
+      }
+
       function buildExportMarkup(state) {
         const exports = state.exportFiles.length === 0
           ? '<li>Žádné exporty.</li>'
@@ -614,6 +640,8 @@ ${input.debugMode ? `
         preparedFilesSection.setAttribute('data-runtime-phase', phase);
         reviewSummarySection.setAttribute('data-runtime-phase', phase);
         reportPreviewBody.setAttribute('data-runtime-phase', phase);
+  matchedPayoutBatchesSection.setAttribute('data-runtime-phase', phase);
+  unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', phase);
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', phase);
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', phase);
   unmatchedReservationsSection.setAttribute('data-runtime-phase', phase);
@@ -635,6 +663,8 @@ ${input.debugMode ? `
         preparedFilesContent.innerHTML = buildPreparedFilesMarkup(state);
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(state);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(state);
+  matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchMatched) || []);
+  unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []);
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.reservationSettlementOverview) || []);
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.ancillarySettlementOverview) || []);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(state);
@@ -649,6 +679,8 @@ ${input.debugMode ? `
         preparedFilesSection.setAttribute('data-runtime-phase', 'running');
         reviewSummarySection.setAttribute('data-runtime-phase', 'running');
         reportPreviewBody.setAttribute('data-runtime-phase', 'running');
+  matchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'running');
+  unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'running');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
   unmatchedReservationsSection.setAttribute('data-runtime-phase', 'running');
@@ -661,6 +693,8 @@ ${input.debugMode ? `
         preparedFilesContent.innerHTML = '<p class="hint">Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.</p><ul>' + fileNames + '</ul>';
         reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Report preview se právě nahrazuje runtime výsledkem…</span></td></tr>';
+  matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
+  unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…</p>';
@@ -673,6 +707,8 @@ ${input.debugMode ? `
         preparedFilesSection.setAttribute('data-runtime-phase', 'failed');
         reviewSummarySection.setAttribute('data-runtime-phase', 'failed');
         reportPreviewBody.setAttribute('data-runtime-phase', 'failed');
+  matchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'failed');
+  unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'failed');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
   unmatchedReservationsSection.setAttribute('data-runtime-phase', 'failed');
@@ -681,6 +717,8 @@ ${input.debugMode ? `
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Runtime běh selhal: ' + message + '</span></td></tr>';
+  matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
+  unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací není k dispozici, protože runtime běh selhal.</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací není k dispozici, protože runtime běh selhal.</p>';
