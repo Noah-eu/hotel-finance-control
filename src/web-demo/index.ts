@@ -532,10 +532,14 @@ ${input.debugMode ? `
       }
 
       function buildReviewSummaryMarkup(state) {
+        const matchedCount = ((state.reviewSections && state.reviewSections.matched) || []).length
+          + ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
+        const unmatchedCount = ((state.reviewSections && state.reviewSections.unmatched) || []).length
+          + ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;
         const reviewSummaryItems = [
-          ['Spárované položky', state.reviewSections.matched.length],
+          ['Spárované položky', matchedCount],
           ['Nespárované rezervace k úhradě', state.reviewSections.unmatchedReservationSettlements.length],
-          ['Nespárované položky', state.reviewSections.unmatched.length],
+          ['Nespárované položky', unmatchedCount],
           ['Podezřelé položky', state.reviewSections.suspicious.length],
           ['Chybějící doklady', state.reviewSections.missingDocuments.length]
         ].map((entry) => '<li><strong>' + escapeHtml(entry[0]) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>').join('');

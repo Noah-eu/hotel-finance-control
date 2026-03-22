@@ -701,6 +701,19 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('reviewSections: state.reviewSections')
   })
 
+  it('includes payout-batch matches and unmatched payout batches in the visible operator review summary counts', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T10:30:00.000Z'
+    })
+
+    expect(result.html).toContain('const matchedCount = ((state.reviewSections && state.reviewSections.matched) || []).length')
+    expect(result.html).toContain('+ ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;')
+    expect(result.html).toContain('const unmatchedCount = ((state.reviewSections && state.reviewSections.unmatched) || []).length')
+    expect(result.html).toContain('+ ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;')
+    expect(result.html).toContain("['Spárované položky', matchedCount]")
+    expect(result.html).toContain("['Nespárované položky', unmatchedCount]")
+  })
+
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-20T11:40:00.000Z'
