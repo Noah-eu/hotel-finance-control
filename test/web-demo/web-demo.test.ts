@@ -890,6 +890,23 @@ describe('buildWebDemo', () => {
     expect(readFileSync(outputPath, 'utf8')).toContain('Renderer: <strong>web-demo-operator-v3</strong>')
   })
 
+  it('renders a visible runtime payout diagnostics block wired to the live runtime source', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:13:00.000Z'
+    })
+
+    expect(result.html).toContain('id="runtime-payout-diagnostics-section"')
+    expect(result.html).toContain('id="runtime-payout-diagnostics-content"')
+    expect(result.html).toContain('function buildRuntimePayoutDiagnosticsMarkup(state)')
+    expect(result.html).toContain('runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);')
+    expect(result.html).toContain('Runtime matched refs count:')
+    expect(result.html).toContain('Runtime unmatched refs count:')
+    expect(result.html).toContain('Runtime matched refs')
+    expect(result.html).toContain('Runtime unmatched refs')
+    expect(result.html).toContain('Runtime matched titles')
+    expect(result.html).toContain('Runtime unmatched titles')
+  })
+
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-20T11:40:00.000Z'
