@@ -118,9 +118,9 @@ function renderOperatorWebDemoHtml(input: {
     .join('')
 
   const reviewSummaryItems = [
-    ['Spárované položky', input.browserRun.run.review.matched.length + input.browserRun.run.review.payoutBatchMatched.length],
+    ['Spárované Airbnb / OTA payout dávky', input.browserRun.run.review.payoutBatchMatched.length],
+    ['Nespárované payout dávky', input.browserRun.run.review.payoutBatchUnmatched.length],
     ['Nespárované rezervace k úhradě', input.browserRun.run.review.unmatchedReservationSettlements.length],
-    ['Nespárované položky', input.browserRun.run.review.unmatched.length + input.browserRun.run.review.payoutBatchUnmatched.length],
     ['Podezřelé položky', input.browserRun.run.review.suspicious.length],
     ['Chybějící doklady', input.browserRun.run.review.missingDocuments.length]
   ]
@@ -540,14 +540,12 @@ ${input.debugMode ? `
       }
 
       function buildReviewSummaryMarkup(state) {
-        const matchedCount = ((state.reviewSections && state.reviewSections.matched) || []).length
-          + ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
-        const unmatchedCount = ((state.reviewSections && state.reviewSections.unmatched) || []).length
-          + ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;
+        const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
+        const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;
         const reviewSummaryItems = [
-          ['Spárované položky', matchedCount],
+          ['Spárované Airbnb / OTA payout dávky', payoutBatchMatchedCount],
+          ['Nespárované payout dávky', payoutBatchUnmatchedCount],
           ['Nespárované rezervace k úhradě', state.reviewSections.unmatchedReservationSettlements.length],
-          ['Nespárované položky', unmatchedCount],
           ['Podezřelé položky', state.reviewSections.suspicious.length],
           ['Chybějící doklady', state.reviewSections.missingDocuments.length]
         ].map((entry) => '<li><strong>' + escapeHtml(entry[0]) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>').join('');

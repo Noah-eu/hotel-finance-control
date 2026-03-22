@@ -674,7 +674,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('bank / bank_statement')
     expect(result.html).toContain('Účet:')
     expect(result.html).toContain('Airbnb payout')
-    expect(result.html).toContain('Spárované položky:')
+    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky:')
+    expect(result.html).toContain('Nespárované payout dávky:')
     expect(result.html).toContain('Položky ke kontrole')
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
     expect(result.html).not.toContain('Technický tvar exportu (debug):')
@@ -699,12 +700,12 @@ describe('buildWebDemo', () => {
       generatedAt: '2026-03-22T10:30:00.000Z'
     })
 
-    expect(result.html).toContain('const matchedCount = ((state.reviewSections && state.reviewSections.matched) || []).length')
-    expect(result.html).toContain('+ ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;')
-    expect(result.html).toContain('const unmatchedCount = ((state.reviewSections && state.reviewSections.unmatched) || []).length')
-    expect(result.html).toContain('+ ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;')
-    expect(result.html).toContain("['Spárované položky', matchedCount]")
-    expect(result.html).toContain("['Nespárované položky', unmatchedCount]")
+    expect(result.html).toContain('const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;')
+    expect(result.html).toContain('const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;')
+    expect(result.html).toContain("['Spárované Airbnb / OTA payout dávky', payoutBatchMatchedCount]")
+    expect(result.html).toContain("['Nespárované payout dávky', payoutBatchUnmatchedCount]")
+    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky:</strong> 15')
+    expect(result.html).toContain('Nespárované payout dávky:</strong> 2')
   })
 
   it('renders dedicated payout-batch detail panels in the operator UI and wires them to shared runtime sections', async () => {
@@ -800,6 +801,22 @@ describe('buildWebDemo', () => {
     expect(visibleUnmatchedReferences).toEqual(internalUnmatchedReferences)
     expect(internallyMatchedButNotVisible).toEqual([])
     expect(internallyUnmatchedButNotVisible).toEqual([])
+  })
+
+  it('keeps the visible summary counts aligned with the same payout-batch lists shown to the operator', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:12:00.000Z'
+    })
+
+    const visibleMatchedReferences = result.browserRun.run.review.payoutBatchMatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+    const visibleUnmatchedReferences = result.browserRun.run.review.payoutBatchUnmatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+
+    expect(visibleMatchedReferences).toHaveLength(15)
+    expect(visibleUnmatchedReferences).toHaveLength(2)
+    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky:</strong> 15')
+    expect(result.html).toContain('Nespárované payout dávky:</strong> 2')
   })
 
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
