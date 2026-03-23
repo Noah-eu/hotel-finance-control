@@ -53,7 +53,7 @@ const REAL_AIRBNB_HEADER_ALIASES = {
   guestName: ['Host'],
   listingName: ['Nabídka'],
   details: ['Podrobnosti'],
-  referenceCode: ['Referenční kód'],
+  referenceCode: ['Referenční kód', 'Referencni kod', 'Reference code', 'Reference Code'],
   confirmationCode: ['Potvrzující kód'],
   currency: ['Měna'],
   amountMinor: ['Částka'],

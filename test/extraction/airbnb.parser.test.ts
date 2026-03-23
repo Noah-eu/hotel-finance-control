@@ -485,6 +485,42 @@ describe('parseAirbnbPayoutExport', () => {
     })
   })
 
+  it('preserves real Airbnb payout references when browser-upload uses English reference column naming', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    const records = parseAirbnbPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Reference code;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+        '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;980,00;0,00;980,00',
+        '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 2;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-DXVK4YVI7MJVL;;CZK;;1 120,00;0,00;1 120,00'
+      ].join('\n'),
+      extractedAt: '2026-03-23T13:20:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      rawReference: 'G-OC3WJE3SIXRO5',
+      data: {
+        rowKind: 'transfer',
+        referenceCode: 'G-OC3WJE3SIXRO5',
+        reference: 'G-OC3WJE3SIXRO5',
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        payoutBatchKey: 'G-OC3WJE3SIXRO5'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      rawReference: 'G-DXVK4YVI7MJVL',
+      data: {
+        rowKind: 'transfer',
+        referenceCode: 'G-DXVK4YVI7MJVL',
+        reference: 'G-DXVK4YVI7MJVL',
+        payoutReference: 'G-DXVK4YVI7MJVL',
+        payoutBatchKey: 'G-DXVK4YVI7MJVL'
+      }
+    })
+  })
+
   it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 

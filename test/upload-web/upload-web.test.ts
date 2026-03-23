@@ -1415,6 +1415,43 @@ describe('buildUploadWebFlow', () => {
     expect(uploadedRun.html).not.toContain('AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)')
   })
 
+  it('preserves Airbnb G references through the browser-upload runtime when the uploaded reference column uses English naming', async () => {
+    const airbnbContent = [
+      'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Reference code;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+      '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;3 961,05;0,00;3 961,05',
+      '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 2;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-DXVK4YVI7MJVL;;CZK;;4 456,97;0,00;4 456,97',
+      '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 3;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-ZD5RVTGOHW3GE;;CZK;;7 059,94;0,00;7 059,94'
+    ].join('\n')
+
+    const runtimeState = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [createRuntimeFile('airbnb.csv', airbnbContent)],
+      month: '2026-03',
+      generatedAt: '2026-03-23T13:22:00.000Z'
+    })
+
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbRawReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE'
+    ])
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbReferenceCodes).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE'
+    ])
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbPayoutReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE'
+    ])
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutBatchKeys).toEqual([
+      'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+      'airbnb-batch:2026-03-15:G-DXVK4YVI7MJVL',
+      'airbnb-batch:2026-03-15:G-ZD5RVTGOHW3GE'
+    ])
+    expect(new Set(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutBatchKeys).size).toBe(3)
+  })
+
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
