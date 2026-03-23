@@ -583,23 +583,40 @@ ${input.debugMode ? `
       }
 
       function collectRuntimePayoutDiagnosticData(state) {
-        const extractedAirbnbPayoutRefs = (state.extractedRecords || [])
+        const batch = (state && state.__batch) || {};
+        const extractedRecords = batch.extractedRecords || [];
+        const workflowPlan = (batch.reconciliation && batch.reconciliation.workflowPlan) || {};
+        const report = batch.report || {};
+        const reviewSections = (state.reviewSections || {});
+        const airbnbSourceDocumentIds = (state.preparedFiles || [])
           .filter((file) => String(file.fileName || '').toLowerCase() === 'airbnb.csv')
-          .flatMap((file) => file.extractedRecordIds || []);
-        const reportMatchedRefs = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || [])
+          .map((file) => file.sourceDocumentId);
+        const extractedAirbnbRecords = extractedRecords.filter((record) => airbnbSourceDocumentIds.includes(record.sourceDocumentId));
+        const extractedAirbnbTransferRecords = extractedAirbnbRecords.filter((record) => String(record.data && record.data.rowKind || '') === 'transfer');
+        const workflowAirbnbPayoutRows = (workflowPlan.payoutRows || []).filter((row) => String(row.platform || '').toLowerCase() === 'airbnb');
+        const reportMatchedAirbnb = (report.payoutBatchMatches || []).filter((item) => String(item.platform || '').toLowerCase() === 'airbnb');
+        const reportUnmatchedAirbnb = (report.unmatchedPayoutBatches || []).filter((item) => String(item.platform || '').toLowerCase() === 'airbnb');
+        const runtimeMatchedTitleSourceValues = ((reviewSections.payoutBatchMatched) || [])
+          .filter((item) => String(item.title || '').startsWith('Airbnb payout dávka '))
           .map((item) => String(item.title || '').replace(/^Airbnb payout dávka\s+/, ''));
-        const reportUnmatchedRefs = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || [])
+        const runtimeUnmatchedTitleSourceValues = ((reviewSections.payoutBatchUnmatched) || [])
+          .filter((item) => String(item.title || '').startsWith('Airbnb payout dávka '))
           .map((item) => String(item.title || '').replace(/^Airbnb payout dávka\s+/, ''));
 
         return {
-          extractedAirbnbPayoutRefs,
-          workflowPayoutBatchRefs: reportMatchedRefs.concat(reportUnmatchedRefs),
-          reportMatchedRefs,
-          reportUnmatchedRefs,
-          runtimeMatchedRefs: reportMatchedRefs,
-          runtimeUnmatchedRefs: reportUnmatchedRefs,
-          runtimeMatchedTitles: ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).map((item) => item.title),
-          runtimeUnmatchedTitles: ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).map((item) => item.title)
+          extractedRecordIds: extractedAirbnbTransferRecords.map((record) => String(record.id || '')),
+          extractedRawReferences: extractedAirbnbTransferRecords.map((record) => String(record.rawReference || '')),
+          extractedDataReferences: extractedAirbnbTransferRecords.map((record) => String((record.data && record.data.reference) || '')),
+          extractedReferenceCodes: extractedAirbnbTransferRecords.map((record) => String((record.data && record.data.referenceCode) || '')),
+          extractedPayoutReferences: extractedAirbnbTransferRecords.map((record) => String((record.data && record.data.payoutReference) || '')),
+          workflowPayoutBatchKeys: workflowAirbnbPayoutRows.map((row) => String(row.payoutBatchKey || '')),
+          workflowPayoutReferences: workflowAirbnbPayoutRows.map((row) => String(row.payoutReference || '')),
+          reportMatchedReferences: reportMatchedAirbnb.map((item) => String(item.payoutReference || '')),
+          reportUnmatchedReferences: reportUnmatchedAirbnb.map((item) => String(item.payoutReference || '')),
+          runtimeMatchedTitleSourceValues,
+          runtimeUnmatchedTitleSourceValues,
+          runtimeMatchedTitles: ((reviewSections.payoutBatchMatched) || []).map((item) => item.title),
+          runtimeUnmatchedTitles: ((reviewSections.payoutBatchUnmatched) || []).map((item) => item.title)
         };
       }
 
@@ -615,16 +632,21 @@ ${input.debugMode ? `
         const diagnostics = collectRuntimePayoutDiagnosticData(state);
 
         return [
-          '<p class="hint">Tento blok ukazuje přesně ty payout refy a titulky, které aktuální runtime běh po uploadu skutečně používá.</p>',
+          '<p class="hint">Tento blok ukazuje přesné runtime hodnoty pro Airbnb payout rows po uploadu, odděleně od interních extracted record ID.</p>',
           '<ul class="diagnostic-list">',
-          '<li><strong>Runtime matched refs count:</strong> ' + escapeHtml(String(diagnostics.runtimeMatchedRefs.length)) + '</li>',
-          '<li><strong>Runtime unmatched refs count:</strong> ' + escapeHtml(String(diagnostics.runtimeUnmatchedRefs.length)) + '</li>',
-          buildDiagnosticListMarkup('Extracted Airbnb payout refs', diagnostics.extractedAirbnbPayoutRefs),
-          buildDiagnosticListMarkup('Workflow payout batch refs', diagnostics.workflowPayoutBatchRefs),
-          buildDiagnosticListMarkup('Report payoutBatchMatches refs', diagnostics.reportMatchedRefs),
-          buildDiagnosticListMarkup('Report unmatchedPayoutBatches refs', diagnostics.reportUnmatchedRefs),
-          buildDiagnosticListMarkup('Runtime matched refs', diagnostics.runtimeMatchedRefs),
-          buildDiagnosticListMarkup('Runtime unmatched refs', diagnostics.runtimeUnmatchedRefs),
+          '<li><strong>Runtime matched refs count:</strong> ' + escapeHtml(String(diagnostics.runtimeMatchedTitleSourceValues.length)) + '</li>',
+          '<li><strong>Runtime unmatched refs count:</strong> ' + escapeHtml(String(diagnostics.runtimeUnmatchedTitleSourceValues.length)) + '</li>',
+          buildDiagnosticListMarkup('Extracted Airbnb payout row ids', diagnostics.extractedRecordIds),
+          buildDiagnosticListMarkup('Extracted Airbnb rawReference values', diagnostics.extractedRawReferences),
+          buildDiagnosticListMarkup('Extracted Airbnb data.reference values', diagnostics.extractedDataReferences),
+          buildDiagnosticListMarkup('Extracted Airbnb data.referenceCode values', diagnostics.extractedReferenceCodes),
+          buildDiagnosticListMarkup('Extracted Airbnb data.payoutReference values', diagnostics.extractedPayoutReferences),
+          buildDiagnosticListMarkup('Workflow payout batch keys', diagnostics.workflowPayoutBatchKeys),
+          buildDiagnosticListMarkup('Workflow payout references', diagnostics.workflowPayoutReferences),
+          buildDiagnosticListMarkup('Report payoutBatchMatches payoutReference values', diagnostics.reportMatchedReferences),
+          buildDiagnosticListMarkup('Report unmatchedPayoutBatches payoutReference values', diagnostics.reportUnmatchedReferences),
+          buildDiagnosticListMarkup('Runtime matched panel title source values', diagnostics.runtimeMatchedTitleSourceValues),
+          buildDiagnosticListMarkup('Runtime unmatched panel title source values', diagnostics.runtimeUnmatchedTitleSourceValues),
           buildDiagnosticListMarkup('Runtime matched titles', diagnostics.runtimeMatchedTitles),
           buildDiagnosticListMarkup('Runtime unmatched titles', diagnostics.runtimeUnmatchedTitles),
           '</ul>'

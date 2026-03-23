@@ -901,10 +901,42 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);')
     expect(result.html).toContain('Runtime matched refs count:')
     expect(result.html).toContain('Runtime unmatched refs count:')
-    expect(result.html).toContain('Runtime matched refs')
-    expect(result.html).toContain('Runtime unmatched refs')
+    expect(result.html).toContain('Extracted Airbnb payout row ids')
+    expect(result.html).toContain('Extracted Airbnb rawReference values')
+    expect(result.html).toContain('Extracted Airbnb data.reference values')
+    expect(result.html).toContain('Extracted Airbnb data.referenceCode values')
+    expect(result.html).toContain('Extracted Airbnb data.payoutReference values')
+    expect(result.html).toContain('Workflow payout batch keys')
+    expect(result.html).toContain('Workflow payout references')
+    expect(result.html).toContain('Report payoutBatchMatches payoutReference values')
+    expect(result.html).toContain('Report unmatchedPayoutBatches payoutReference values')
+    expect(result.html).toContain('Runtime matched panel title source values')
+    expect(result.html).toContain('Runtime unmatched panel title source values')
     expect(result.html).toContain('Runtime matched titles')
     expect(result.html).toContain('Runtime unmatched titles')
+  })
+
+  it('keeps runtime payout diagnostics grounded in true payout references rather than extracted record ids', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:13:15.000Z'
+    })
+
+    expect(result.browserRun.run.batch.extractedRecords
+      .filter((record) => record.sourceDocumentId.includes('airbnb'))
+      .filter((record) => record.data.rowKind === 'transfer')
+      .map((record) => record.id)
+    ).toContain('airbnb-payout-2')
+
+    expect(result.browserRun.run.batch.extractedRecords
+      .filter((record) => record.sourceDocumentId.includes('airbnb'))
+      .filter((record) => record.data.rowKind === 'transfer')
+      .map((record) => String(record.rawReference))
+    ).toContain('G-OC3WJE3SIXRO5')
+
+    expect(result.html).toContain('Extracted Airbnb payout row ids')
+    expect(result.html).toContain('airbnb-payout-2')
+    expect(result.html).toContain('Extracted Airbnb rawReference values')
+    expect(result.html).toContain('G-OC3WJE3SIXRO5')
   })
 
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
