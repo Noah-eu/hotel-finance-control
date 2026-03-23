@@ -144,6 +144,8 @@ function mapHeaders(rawHeaders: string[], canonicalHeaders?: CanonicalHeaderMap)
 
 function normalizeHeaderKey(value: string): string {
   return normalizeHeaderCell(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[ _-]+/g, '')
 }

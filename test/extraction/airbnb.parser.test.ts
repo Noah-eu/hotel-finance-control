@@ -457,6 +457,34 @@ describe('parseAirbnbPayoutExport', () => {
     })
   })
 
+  it('preserves real Airbnb payout references when browser-upload headers drop Czech diacritics', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    const records = parseAirbnbPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum;Bude pripsan do dne;Typ;Datum zahajeni;Datum ukonceni;Host;Nabidka;Podrobnosti;Referencni kod;Potvrzujici kod;Mena;Castka;Vyplaceno;Servisni poplatek;Hrube vydelky',
+        '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;980,00;0,00;980,00'
+      ].join('\n'),
+      extractedAt: '2026-03-21T17:45:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      rawReference: 'G-OC3WJE3SIXRO5',
+      amountMinor: 98000,
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        reference: 'G-OC3WJE3SIXRO5',
+        referenceCode: 'G-OC3WJE3SIXRO5',
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        payoutBatchKey: 'G-OC3WJE3SIXRO5',
+        transferBatchDescriptor: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+      }
+    })
+  })
+
   it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 

@@ -1264,6 +1264,117 @@ describe('buildUploadWebFlow', () => {
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-6G5WFOJO5DJCI')
   })
 
+  it('preserves Airbnb G references through the browser-upload runtime when localized headers arrive without diacritics', async () => {
+    const airbnbContent = buildActualUploadedAirbnbContentWithoutDiacritics()
+    const rbContent = buildActualUploadedRbCitiContent()
+
+    const preview = buildUploadedBatchPreview({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: airbnbContent,
+          uploadedAt: '2026-03-22T11:10:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: rbContent,
+          uploadedAt: '2026-03-22T11:10:01.000Z'
+        }
+      ],
+      runId: 'browser-runtime-upload-no-diacritics-2026-03',
+      generatedAt: '2026-03-22T11:10:04.000Z'
+    })
+
+    const runtimeState = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', airbnbContent),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', rbContent)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-22T11:10:04.000Z'
+    })
+
+    const uploadedRun = buildBrowserUploadedMonthlyRun({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: airbnbContent,
+          uploadedAt: '2026-03-22T11:10:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: rbContent,
+          uploadedAt: '2026-03-22T11:10:01.000Z'
+        }
+      ],
+      runId: 'browser-runtime-upload-no-diacritics-2026-03',
+      generatedAt: '2026-03-22T11:10:04.000Z'
+    })
+
+    const airbnbSourceDocumentId = preview.importedFiles.find((file) => file.sourceDocument.fileName === 'airbnb.csv')?.sourceDocument.id
+
+    expect(airbnbSourceDocumentId).toBeDefined()
+
+    const extractedAirbnbReferences = preview.batch.extractedRecords
+      .filter((record) => record.sourceDocumentId === airbnbSourceDocumentId)
+      .map((record) => String(record.data.payoutReference ?? ''))
+
+    expect(extractedAirbnbReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE',
+      'G-ZWNWMP6UYWNI7',
+      'G-WLT46RY3MOZIF',
+      'G-L4RVQL6SE24XJ',
+      'G-TGCGGWASBTWWW',
+      'G-TKC6CS3OTDMGN',
+      'G-2F2LZZKYTRZ6E',
+      'G-MUEMMKRWRPQNQ',
+      'G-RFF4BW3JFXE6T',
+      'G-EPATNPP5RBQDW',
+      'G-JWVQXQVW6DET3',
+      'G-FE2CKQSBT6E7N',
+      'G-OLIOSSDGKKF3X',
+      'G-IZLCELA7C5EFN',
+      'G-6G5WFOJO5DJCI'
+    ])
+
+    const renderedMatchedReferences = runtimeState.reviewSections.payoutBatchMatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+
+    const renderedUnmatchedReferences = runtimeState.reviewSections.payoutBatchUnmatched
+      .map((item) => item.title.replace('Airbnb payout dávka ', ''))
+
+    expect(renderedMatchedReferences).toEqual([
+      'G-OC3WJE3SIXRO5',
+      'G-DXVK4YVI7MJVL',
+      'G-ZD5RVTGOHW3GE',
+      'G-ZWNWMP6UYWNI7',
+      'G-WLT46RY3MOZIF',
+      'G-L4RVQL6SE24XJ',
+      'G-TGCGGWASBTWWW',
+      'G-TKC6CS3OTDMGN',
+      'G-2F2LZZKYTRZ6E',
+      'G-MUEMMKRWRPQNQ',
+      'G-RFF4BW3JFXE6T',
+      'G-EPATNPP5RBQDW',
+      'G-JWVQXQVW6DET3',
+      'G-FE2CKQSBT6E7N',
+      'G-OLIOSSDGKKF3X'
+    ])
+
+    expect(renderedUnmatchedReferences).toEqual([
+      'G-IZLCELA7C5EFN',
+      'G-6G5WFOJO5DJCI'
+    ])
+
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-OC3WJE3SIXRO5')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-OLIOSSDGKKF3X')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-IZLCELA7C5EFN')
+    expect(uploadedRun.html).toContain('Airbnb payout dávka G-6G5WFOJO5DJCI')
+    expect(uploadedRun.html).not.toContain('AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)')
+  })
+
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -1838,6 +1949,29 @@ function buildActualUploadedAirbnbContent(): string {
     '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 15;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OLIOSSDGKKF3X;;CZK;;1 475,08;0,00;1 475,08',
     '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 16;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-IZLCELA7C5EFN;;CZK;;8 241,96;0,00;8 241,96',
     '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 17;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-6G5WFOJO5DJCI;;CZK;;1 117,01;0,00;1 117,01'
+  ].join('\n')
+}
+
+function buildActualUploadedAirbnbContentWithoutDiacritics(): string {
+  return [
+    'Datum;Bude pripsan do dne;Typ;Datum zahajeni;Datum ukonceni;Host;Nabidka;Podrobnosti;Referencni kod;Potvrzujici kod;Mena;Castka;Vyplaceno;Servisni poplatek;Hrube vydelky',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;3 961,05;0,00;3 961,05',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 2;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-DXVK4YVI7MJVL;;CZK;;4 456,97;0,00;4 456,97',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 3;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-ZD5RVTGOHW3GE;;CZK;;7 059,94;0,00;7 059,94',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 4;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-ZWNWMP6UYWNI7;;CZK;;15 701,41;0,00;15 701,41',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 5;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-WLT46RY3MOZIF;;CZK;;1 112,59;0,00;1 112,59',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 6;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-L4RVQL6SE24XJ;;CZK;;1 152,81;0,00;1 152,81',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 7;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-TGCGGWASBTWWW;;CZK;;970,36;0,00;970,36',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 8;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-TKC6CS3OTDMGN;;CZK;;9 785,73;0,00;9 785,73',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 9;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-2F2LZZKYTRZ6E;;CZK;;3 518,94;0,00;3 518,94',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 10;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-MUEMMKRWRPQNQ;;CZK;;12 123,52;0,00;12 123,52',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 11;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-RFF4BW3JFXE6T;;CZK;;2 248,17;0,00;2 248,17',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 12;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-EPATNPP5RBQDW;;CZK;;2 492,32;0,00;2 492,32',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 13;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-JWVQXQVW6DET3;;CZK;;18 912,42;0,00;18 912,42',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 14;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-FE2CKQSBT6E7N;;CZK;;9 771,27;0,00;9 771,27',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 15;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-OLIOSSDGKKF3X;;CZK;;1 475,08;0,00;1 475,08',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 16;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-IZLCELA7C5EFN;;CZK;;8 241,96;0,00;8 241,96',
+    '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 17;Jokeland apartment;Prevod Jokeland s.r.o., IBAN 5956 (CZK);G-6G5WFOJO5DJCI;;CZK;;1 117,01;0,00;1 117,01'
   ].join('\n')
 }
 
