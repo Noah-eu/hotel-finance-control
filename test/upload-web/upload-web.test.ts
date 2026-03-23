@@ -1452,6 +1452,100 @@ describe('buildUploadWebFlow', () => {
     expect(new Set(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutBatchKeys).size).toBe(3)
   })
 
+  it('preserves the exact Czech Referenční kód values through the real two-file browser upload byte path', async () => {
+    const airbnbContent = buildActualUploadedAirbnbContent()
+    const rbContent = buildActualUploadedRbCitiContent()
+    const encoded = new TextEncoder().encode(airbnbContent)
+    const expectedReferences = airbnbContent
+      .split('\n')
+      .slice(1)
+      .map((line) => line.split(';')[8] ?? '')
+    const expectedMatchedReferences = rbContent
+      .split('\n')
+      .slice(1)
+      .map((line) => line.split(';').at(-1) ?? '')
+      .filter((reference) => reference.startsWith('G-'))
+    const expectedUnmatchedReferences = expectedReferences.filter(
+      (reference) => !expectedMatchedReferences.includes(reference)
+    )
+
+    const runtimeState = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'airbnb.csv',
+          text: async () => 'corrupted fallback that does not contain Referencni values',
+          arrayBuffer: async () => encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)
+        },
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', rbContent)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-23T17:00:00.000Z'
+    })
+
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbReferenceCodes).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbRawReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbDataReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbPayoutReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutBatchKeys).toEqual(
+      expectedReferences.map((reference) => `airbnb-batch:2026-03-15:${reference}`)
+    )
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.reportMatchedPayoutReferences).toEqual(expectedMatchedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.reportUnmatchedPayoutReferences).toEqual(expectedUnmatchedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toEqual(expectedMatchedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeUnmatchedTitleSourceValues).toEqual(expectedUnmatchedReferences)
+    expect(runtimeState.reviewSections.payoutBatchMatched.map((item) => item.title)).toEqual(
+      expectedMatchedReferences.map((reference) => `Airbnb payout dávka ${reference}`)
+    )
+    expect(runtimeState.reviewSections.payoutBatchUnmatched.map((item) => item.title)).toEqual(
+      expectedUnmatchedReferences.map((reference) => `Airbnb payout dávka ${reference}`)
+    )
+  })
+
+  it('prefers byte decoding over mis-decoded text when the uploaded Czech header would otherwise lose diacritics in browser upload', async () => {
+    const cp1250HeaderBytes = Uint8Array.from([
+      0x44, 0x61, 0x74, 0x75, 0x6d, 0x3b, 0x42, 0x75, 0x64, 0x65, 0x20, 0x70, 0xf8, 0x69, 0x70, 0x73, 0xe1, 0x6e, 0x20, 0x64, 0x6f, 0x20, 0x64, 0x6e, 0x65, 0x3b,
+      0x54, 0x79, 0x70, 0x3b, 0x44, 0x61, 0x74, 0x75, 0x6d, 0x20, 0x7a, 0x61, 0x68, 0xe1, 0x6a, 0x65, 0x6e, 0xed, 0x3b, 0x44, 0x61, 0x74, 0x75, 0x6d, 0x20, 0x75, 0x6b, 0x6f, 0x6e, 0xe8, 0x65, 0x6e, 0xed, 0x3b,
+      0x48, 0x6f, 0x73, 0x74, 0x3b, 0x4e, 0x61, 0x62, 0xed, 0x64, 0x6b, 0x61, 0x3b, 0x50, 0x6f, 0x64, 0x72, 0x6f, 0x62, 0x6e, 0x6f, 0x73, 0x74, 0x69, 0x3b,
+      0x52, 0x65, 0x66, 0x65, 0x72, 0x65, 0x6e, 0xe8, 0x6e, 0xed, 0x20, 0x6b, 0xf3, 0x64, 0x3b, 0x50, 0x6f, 0x74, 0x76, 0x72, 0x7a, 0x75, 0x6a, 0xed, 0x63, 0xed, 0x20, 0x6b, 0xf3, 0x64, 0x3b,
+      0x4d, 0xec, 0x6e, 0x61, 0x3b, 0xc8, 0xe1, 0x73, 0x74, 0x6b, 0x61, 0x3b, 0x56, 0x79, 0x70, 0x6c, 0x61, 0x63, 0x65, 0x6e, 0x6f, 0x3b, 0x53, 0x65, 0x72, 0x76, 0x69, 0x73, 0x6e, 0xed, 0x20, 0x70, 0x6f, 0x70, 0x6c, 0x61, 0x74, 0x65, 0x6b, 0x3b, 0x48, 0x72, 0x75, 0x62, 0xe9, 0x20, 0x76, 0xfd, 0x64, 0xec, 0x6c, 0x6b, 0x79, 0x0a,
+      0x32, 0x30, 0x32, 0x36, 0x2d, 0x30, 0x33, 0x2d, 0x31, 0x32, 0x3b, 0x32, 0x30, 0x32, 0x36, 0x2d, 0x30, 0x33, 0x2d, 0x31, 0x35, 0x3b, 0x50, 0x61, 0x79, 0x6f, 0x75, 0x74, 0x3b, 0x32, 0x30, 0x32, 0x36, 0x2d, 0x30, 0x33, 0x2d, 0x31, 0x30, 0x3b, 0x32, 0x30, 0x32, 0x36, 0x2d, 0x30, 0x33, 0x2d, 0x31, 0x32, 0x3b,
+      0x4a, 0x61, 0x6e, 0x20, 0x4e, 0x6f, 0x76, 0x61, 0x6b, 0x3b, 0x4a, 0x6f, 0x6b, 0x65, 0x6c, 0x61, 0x6e, 0x64, 0x20, 0x61, 0x70, 0x61, 0x72, 0x74, 0x6d, 0x65, 0x6e, 0x74, 0x3b,
+      0x50, 0xf8, 0x65, 0x76, 0x6f, 0x64, 0x20, 0x4a, 0x6f, 0x6b, 0x65, 0x6c, 0x61, 0x6e, 0x64, 0x20, 0x73, 0x2e, 0x72, 0x2e, 0x6f, 0x2e, 0x2c, 0x20, 0x49, 0x42, 0x41, 0x4e, 0x20, 0x35, 0x39, 0x35, 0x36, 0x20, 0x28, 0x43, 0x5a, 0x4b, 0x29, 0x3b,
+      0x47, 0x2d, 0x4f, 0x43, 0x33, 0x57, 0x4a, 0x45, 0x33, 0x53, 0x49, 0x58, 0x52, 0x4f, 0x35, 0x3b, 0x3b, 0x43, 0x5a, 0x4b, 0x3b, 0x3b, 0x33, 0x20, 0x39, 0x36, 0x31, 0x2c, 0x30, 0x35, 0x3b, 0x30, 0x2c, 0x30, 0x30, 0x3b, 0x33, 0x20, 0x39, 0x36, 0x31, 0x2c, 0x30, 0x35
+    ])
+    const expectedReferences = ['G-OC3WJE3SIXRO5']
+
+    const runtimeState = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'airbnb.csv',
+          text: async () => 'Datum;Bude p�ips�n do dne;Typ;Datum zah�jen�;Datum ukon�en�;Host;Nab�dka;Podrobnosti;Referen�n� k�d;Potvrzuj�c� k�d;M�na;��stka;Vyplaceno;Servisn� poplatek;Hrub� v�d�lky\n2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Jan Novak;Jokeland apartment;P�evod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;3 961,05;0,00;3 961,05',
+          arrayBuffer: async () => cp1250HeaderBytes.buffer.slice(cp1250HeaderBytes.byteOffset, cp1250HeaderBytes.byteOffset + cp1250HeaderBytes.byteLength)
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-23T17:15:00.000Z'
+    })
+
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbReferenceCodes).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbRawReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbDataReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.extractedAirbnbPayoutReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.workflowPayoutBatchKeys).toEqual([
+      'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5'
+    ])
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.reportMatchedPayoutReferences).toEqual([])
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.reportUnmatchedPayoutReferences).toEqual(expectedReferences)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toEqual([])
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeUnmatchedTitleSourceValues).toEqual(expectedReferences)
+    expect(runtimeState.reviewSections.payoutBatchMatched.map((item) => item.title)).toEqual([])
+    expect(runtimeState.reviewSections.payoutBatchUnmatched.map((item) => item.title)).toEqual([
+      'Airbnb payout dávka G-OC3WJE3SIXRO5'
+    ])
+  })
+
   it('parses the real Airbnb-only browser runtime path when reservation rows have empty Vyplaceno and non-money transfer-class rows are skipped', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [

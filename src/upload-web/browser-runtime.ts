@@ -24,14 +24,16 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
   ensureBrowserCompatibleBuffer()
 
   const uploadedFiles = await Promise.all(
-    input.files.map(async (file) => ({
-      name: file.name,
-      content: typeof file.text === 'function' ? await file.text() : '',
-      uploadedAt: input.generatedAt,
-      binaryContentBase64: typeof file.arrayBuffer === 'function'
-        ? arrayBufferToBase64(await file.arrayBuffer())
-        : undefined
-    }))
+    input.files.map(async (file) => {
+      const uploadedFileContent = await readUploadedFileContent(file)
+
+      return {
+        name: file.name,
+        content: uploadedFileContent.content,
+        uploadedAt: input.generatedAt,
+        binaryContentBase64: uploadedFileContent.binaryContentBase64
+      }
+    })
   )
 
   return buildBrowserRuntimeUploadStateFromFiles({
@@ -47,6 +49,74 @@ export function createBrowserRuntime(): BrowserRuntimeBridge {
       return buildBrowserRuntimeStateFromSelectedFiles(input)
     }
   }
+}
+
+async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
+  content: string
+  binaryContentBase64?: string
+}> {
+  if (typeof file.arrayBuffer === 'function') {
+    const buffer = await file.arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+
+    return {
+      content: decodeUploadedTextBytes(bytes),
+      binaryContentBase64: arrayBufferToBase64(buffer)
+    }
+  }
+
+  if (typeof file.text === 'function') {
+    return {
+      content: await file.text()
+    }
+  }
+
+  return {
+    content: ''
+  }
+}
+
+function decodeUploadedTextBytes(bytes: Uint8Array): string {
+  if (bytes.length === 0) {
+    return ''
+  }
+
+  const attempted = [
+    decodeBytes(bytes, 'utf-8'),
+    decodeBytes(bytes, 'windows-1250'),
+    decodeBytes(bytes, 'iso-8859-2')
+  ].filter((value): value is string => typeof value === 'string')
+
+  const exactCzechHeader = 'Referenční kód'
+  const bestMatch = attempted.find((value) => value.includes(exactCzechHeader))
+  if (bestMatch) {
+    return bestMatch
+  }
+
+  const usable = attempted.find((value) => !value.includes('�'))
+  return usable ?? attempted[0] ?? fallbackDecodeBytesAsLatin1(bytes)
+}
+
+function decodeBytes(bytes: Uint8Array, encoding: string): string | undefined {
+  if (typeof TextDecoder !== 'function') {
+    return undefined
+  }
+
+  try {
+    return new TextDecoder(encoding, { fatal: false }).decode(bytes)
+  } catch {
+    return undefined
+  }
+}
+
+function fallbackDecodeBytesAsLatin1(bytes: Uint8Array): string {
+  let text = ''
+
+  for (const byte of bytes) {
+    text += String.fromCharCode(byte)
+  }
+
+  return text
 }
 
 function buildBrowserRuntimeRunId(month?: string): string {
