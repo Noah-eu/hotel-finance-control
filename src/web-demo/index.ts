@@ -105,36 +105,6 @@ function renderOperatorWebDemoHtml(input: {
   debugMode?: boolean
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
-  const initialPayoutMatchedCount = input.browserRun.run.review.payoutBatchMatched.length
-  const initialPayoutUnmatchedCount = input.browserRun.run.review.payoutBatchUnmatched.length
-  const preparedFiles = input.browserRun.run.importedFiles
-    .map((file) => `<li><strong>${escapeHtml(file.sourceDocument.fileName)}</strong><br /><span class="hint">${escapeHtml(file.sourceDocument.sourceSystem)} / ${escapeHtml(file.sourceDocument.documentType)}</span><br /><code>${escapeHtml(file.sourceDocument.id)}</code></li>`)
-    .join('')
-
-  const reportRows = input.browserRun.run.report.transactions
-    .slice(0, 5)
-    .map((transaction) => `
-      <tr>
-        <td><code>${escapeHtml(transaction.transactionId)}</code></td>
-        <td>${escapeHtml(transaction.source)}</td>
-        <td><span class="amount">${escapeHtml(formatAmountMinorCs(transaction.amountMinor, transaction.currency))}</span></td>
-        <td>${escapeHtml(transaction.status)}</td>
-      </tr>`)
-    .join('')
-
-  const reviewSummaryItems = [
-    ['Spárované Airbnb / OTA payout dávky', input.browserRun.run.review.payoutBatchMatched.length],
-    ['Nespárované payout dávky', input.browserRun.run.review.payoutBatchUnmatched.length],
-    ['Nespárované rezervace k úhradě', input.browserRun.run.review.unmatchedReservationSettlements.length],
-    ['Podezřelé položky', input.browserRun.run.review.suspicious.length],
-    ['Chybějící doklady', input.browserRun.run.review.missingDocuments.length]
-  ]
-    .map(([label, count]) => `<li><strong>${escapeHtml(String(label))}:</strong> ${escapeHtml(String(count))}</li>`)
-    .join('')
-
-  const exportItems = input.browserRun.run.exports.files
-    .map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong> — <code>${escapeHtml(file.fileName)}</code></li>`)
-    .join('')
   const buildExtractedRecordsMarkupFunction = input.debugMode
     ? buildDebugExtractedRecordsMarkupFunctionSource()
     : buildDefaultExtractedRecordsMarkupFunctionSource()
@@ -142,46 +112,33 @@ function renderOperatorWebDemoHtml(input: {
   const initialRuntimeState = {
     debugMode: Boolean(input.debugMode),
     generatedAt: input.generatedAt,
-    runId: 'browser-runtime-upload-2026-03',
-    monthLabel: 'ukázkový snapshot',
-    preparedFiles: input.browserRun.run.importedFiles.map((file) => ({
-      fileName: file.sourceDocument.fileName,
-      sourceDocumentId: file.sourceDocument.id,
-      sourceSystem: file.sourceDocument.sourceSystem,
-      documentType: file.sourceDocument.documentType
-    })),
-    extractedRecords: input.browserRun.run.batch.files.map((fileResult) => ({
-      fileName: fileNameFromSourceDocumentId(input.browserRun, fileResult.sourceDocumentId),
-      extractedCount: fileResult.extractedCount,
-      extractedRecordIds: fileResult.extractedRecordIds,
-      accountLabelCs: buildVisibleAccountLabel(
-        input.browserRun.run.batch.extractedRecords.find((record) => record.sourceDocumentId === fileResult.sourceDocumentId)?.data.accountId,
-        fileNameFromSourceDocumentId(input.browserRun, fileResult.sourceDocumentId),
-        sourceSystemFromSourceDocumentId({ browserRun: input.browserRun }, fileResult.sourceDocumentId),
-        documentTypeFromSourceDocumentId({ browserRun: input.browserRun }, fileResult.sourceDocumentId)
-      ),
-      parserDebugLabel: toOptionalString(
-        input.browserRun.run.batch.extractedRecords.find((record) => record.sourceDocumentId === fileResult.sourceDocumentId)?.data.bankParserVariant
-      )
-    })),
-    reviewSummary: input.browserRun.run.review.summary,
-    reviewSections: input.browserRun.run.review,
-    reportTransactions: input.browserRun.run.report.transactions.slice(0, 5).map((transaction) => ({
-      transactionId: transaction.transactionId,
-      labelCs: buildVisibleTransactionLabel(
-        transaction.transactionId,
-        transaction.source,
-        findVisibleTransactionSubtype(input.browserRun, transaction.transactionId, transaction.source)
-      ),
-      source: transaction.source,
-      subtype: findVisibleTransactionSubtype(input.browserRun, transaction.transactionId, transaction.source),
-      amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
-      status: transaction.status
-    })),
-    exportFiles: input.browserRun.run.exports.files.map((file) => ({
-      labelCs: file.labelCs,
-      fileName: file.fileName
-    }))
+    runId: 'web-demo-empty-initial-state',
+    monthLabel: '',
+    preparedFiles: [],
+    extractedRecords: [],
+    reviewSummary: {
+      matchedGroupCount: 0,
+      exceptionCount: 0,
+      unsupportedFileCount: 0,
+      preparedFileCount: 0,
+      extractedRecordCount: 0,
+      normalizedTransactionCount: 0,
+      payoutBatchMatchCount: 0,
+      unmatchedPayoutBatchCount: 0
+    },
+    reviewSections: {
+      matched: [],
+      reservationSettlementOverview: [],
+      ancillarySettlementOverview: [],
+      unmatchedReservationSettlements: [],
+      payoutBatchMatched: [],
+      payoutBatchUnmatched: [],
+      unmatched: [],
+      suspicious: [],
+      missingDocuments: []
+    },
+    reportTransactions: [],
+    exportFiles: []
   }
 
   return `<!doctype html>
@@ -332,7 +289,7 @@ ${input.debugMode ? `
         <h1>Hotel Finance Control – měsíční workflow pro operátora</h1>
         <p>Hlavní viditelný vstup teď odpovídá reálným možnostem současného browser/runtime režimu: operátor vybírá soubory, spouští sdílený měsíční běh, kontroluje výsledek, čte náhled reportu a předává exporty.</p>
         <p><strong>Vygenerováno:</strong> ${escapeHtml(input.generatedAt)}</p>
-  <p id="build-fingerprint" class="hint">Build: <strong>${escapeHtml(buildFingerprintVersion)}</strong> · Renderer: <strong>${escapeHtml(WEB_DEMO_RENDERER_MARKER)}</strong> · Payout matched: <strong>${initialPayoutMatchedCount}</strong> · Payout unmatched: <strong>${initialPayoutUnmatchedCount}</strong></p>
+  <p id="build-fingerprint" class="hint">Build: <strong>${escapeHtml(buildFingerprintVersion)}</strong> · Renderer: <strong>${escapeHtml(WEB_DEMO_RENDERER_MARKER)}</strong> · Payout matched: <strong>žádný upload</strong> · Payout unmatched: <strong>žádný upload</strong></p>
       </section>
 
       <section class="card">
@@ -363,16 +320,16 @@ ${input.debugMode ? `
           <button id="prepare-upload" type="button">Spustit přípravu a měsíční workflow</button>
         </p>
         <div id="runtime-output" class="operator-panel runtime-output">
-          <p class="hint">Měsíční workflow čeká na skutečně vybrané soubory a měsíc operátora.</p>
+          <p class="hint">Měsíční workflow zatím neběželo. Výsledek se zobrazí až po výběru skutečných souborů a spuštění uploadu.</p>
         </div>
         <div id="runtime-stage-banner" class="operator-panel">
           <h3>Aktuální testovatelný stav v prohlížeči</h3>
           <p id="runtime-stage-copy" class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
           <div class="summary-grid">
-            <div class="metric"><strong id="runtime-summary-uploaded-files">${input.browserRun.run.importedFiles.length}</strong><br />Ukázkové nahrané soubory</div>
-            <div class="metric"><strong id="runtime-summary-normalized-transactions">${input.browserRun.run.report.summary.normalizedTransactionCount}</strong><br />Normalizované transakce</div>
-            <div class="metric"><strong id="runtime-summary-review-items">${input.browserRun.run.review.summary.exceptionCount}</strong><br />Položky ke kontrole</div>
-            <div class="metric"><strong id="runtime-summary-export-files">${input.browserRun.run.exports.files.length}</strong><br />Připravené exporty</div>
+            <div class="metric"><strong id="runtime-summary-uploaded-files">0</strong><br />Nahrané soubory</div>
+            <div class="metric"><strong id="runtime-summary-normalized-transactions">0</strong><br />Normalizované transakce</div>
+            <div class="metric"><strong id="runtime-summary-review-items">0</strong><br />Položky ke kontrole</div>
+            <div class="metric"><strong id="runtime-summary-export-files">0</strong><br />Připravené exporty</div>
           </div>
         </div>
       </section>
@@ -384,15 +341,14 @@ ${input.debugMode ? `
             <h3>Připravené soubory a trasování</h3>
             <div id="prepared-files-content">
               <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
-              <ul>${preparedFiles}</ul>
+              <p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh.</p>
             </div>
           </section>
           <section id="review-summary-section" class="metric" data-runtime-phase="placeholder">
             <h3>Kontrolní přehled</h3>
             <div id="review-summary-content">
-              <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
-              <ul>${reviewSummaryItems}</ul>
-              <p class="hint">Viditelný přehled vychází z téhož sdíleného výsledku jako detailní review a reporting.</p>
+              <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+              <p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>
             </div>
           </section>
         </div>
@@ -406,7 +362,7 @@ ${input.debugMode ? `
               <th>Stav</th>
             </tr>
           </thead>
-          <tbody id="report-preview-body" data-runtime-phase="placeholder">${reportRows}</tbody>
+          <tbody id="report-preview-body" data-runtime-phase="placeholder"><tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr></tbody>
         </table>
       </section>
 
@@ -450,9 +406,8 @@ ${input.debugMode ? `
       <section id="export-handoff-section" class="card" data-runtime-phase="placeholder">
         <h2>Exportní handoff</h2>
         <div id="export-handoff-content">
-          <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
-          <ul>${exportItems}</ul>
-          <p class="hint">Exporty vznikají z téhož sdíleného výsledku jako kontrolní sekce a report.</p>
+          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p>
+          <p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>
         </div>
         <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
       </section>
@@ -460,7 +415,8 @@ ${input.debugMode ? `
       <section id="runtime-payout-diagnostics-section" class="card" data-runtime-phase="placeholder">
         <h2>Diagnostika runtime payout dávek</h2>
         <div id="runtime-payout-diagnostics-content">
-          <p class="hint">Po spuštění zde uvidíte přesně ty refy a titulky, které aktuální runtime běh skutečně používá pro payout dávky.</p>
+          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+          <p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>
         </div>
       </section>
     </main>
@@ -834,7 +790,36 @@ ${input.debugMode ? `
       }
 
       function renderInitialVisibleState() {
-        applyVisibleRuntimeState(initialRuntimeState, 'placeholder');
+        preparedFilesSection.setAttribute('data-runtime-phase', 'placeholder');
+        reviewSummarySection.setAttribute('data-runtime-phase', 'placeholder');
+        reportPreviewBody.setAttribute('data-runtime-phase', 'placeholder');
+        matchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'placeholder');
+        unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'placeholder');
+        reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'placeholder');
+        ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'placeholder');
+        unmatchedReservationsSection.setAttribute('data-runtime-phase', 'placeholder');
+        exportHandoffSection.setAttribute('data-runtime-phase', 'placeholder');
+        runtimePayoutDiagnosticsSection.setAttribute('data-runtime-phase', 'placeholder');
+
+        runtimeStageCopy.innerHTML = 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
+        if (runtimeSummaryUploadedFiles) runtimeSummaryUploadedFiles.textContent = '0';
+        if (runtimeSummaryNormalizedTransactions) runtimeSummaryNormalizedTransactions.textContent = '0';
+        if (runtimeSummaryReviewItems) runtimeSummaryReviewItems.textContent = '0';
+        if (runtimeSummaryExportFiles) runtimeSummaryExportFiles.textContent = '0';
+        if (buildFingerprint) {
+          buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>žádný upload</strong> · Payout unmatched: <strong>žádný upload</strong>';
+        }
+
+        preparedFilesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh.</p>';
+        reviewSummaryContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>';
+        reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr>';
+        matchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.</p>';
+        unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované payout dávky.</p>';
+        reservationSettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro hlavní rezervace.</p>';
+        ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro doplňkové položky.</p>';
+        unmatchedReservationsContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované rezervace.</p>';
+        exportHandoffContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p><p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>';
+        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>';
       }
 
       async function startMainWorkflow() {
@@ -855,7 +840,7 @@ ${input.debugMode ? `
 
         if (!browserRuntime) {
           runtimeOutput.innerHTML = '<p class="hint">Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.</p>';
-          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime ještě není připravený</strong>. Viditelný výsledek zatím zůstává ve výchozím ukázkovém stavu.';
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime ještě není připravený</strong>. Viditelné sekce zůstávají v neutrálním stavu bez předvyplněných payout výsledků.';
           renderInitialVisibleState();
           return;
         }

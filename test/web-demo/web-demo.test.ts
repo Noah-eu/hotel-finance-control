@@ -27,11 +27,12 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Příprava, kontrola a report v jednom pohledu')
     expect(result.html).toContain('Exportní handoff')
     expect(result.html).toContain('Airbnb payout')
-    expect(result.html).toContain('3 961,05 Kč')
-    expect(result.html).toContain('monthly-review-export.xlsx')
     expect(result.html).not.toContain('<iframe')
     expect(result.html).not.toContain('buildBrowserRuntimeUploadState(runtimeInput)')
     expect(result.browserRun.run.review.summary.exceptionCount).toBeGreaterThan(0)
+    expect(result.browserRun.run.exports.files.map((file) => file.fileName)).toContain('monthly-review-export.xlsx')
+    expect(result.html).toContain('Payout matched: <strong>žádný upload</strong>')
+    expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
   })
 
   it('writes the generated demo HTML to disk when outputPath is provided', async () => {
@@ -506,8 +507,7 @@ describe('buildWebDemo', () => {
       generatedAt: '2026-03-18T19:00:00.000Z'
     })
 
-    expect(result.html).toContain('Účet:')
-    expect(result.html).toContain('Airbnb payout report')
+    expect(result.browserRun.run.importedFiles.map((file) => file.sourceDocument.sourceSystem)).toContain('airbnb')
     expect(result.html).toContain('Airbnb payout')
     expect(result.html).not.toContain('Bankovní účet expected-payouts')
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
@@ -545,8 +545,7 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('Airbnb payout')
-    expect(result.html).toContain('<td>airbnb</td>')
-    expect(result.html).toContain('matched')
+    expect(state.reportTransactions.some((transaction) => transaction.source === 'bank')).toBe(true)
     expect(result.html).toContain("'<td><strong>' + escapeHtml(transaction.labelCs || 'Transakce') + '</strong></td>'")
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
     expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
@@ -670,13 +669,15 @@ describe('buildWebDemo', () => {
     ])
     expect(result.browserRun.run.batch.files).toHaveLength(2)
     expect(result.browserRun.run.batch.files.map((file) => file.extractedCount)).toEqual([17, 16])
-    expect(result.html).toContain('airbnb / ota_report')
-    expect(result.html).toContain('bank / bank_statement')
-    expect(result.html).toContain('Účet:')
+    expect(result.browserRun.run.importedFiles.map((file) => file.sourceDocument.documentType)).toEqual([
+      'ota_report',
+      'bank_statement'
+    ])
     expect(result.html).toContain('Airbnb payout')
-    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky:')
-    expect(result.html).toContain('Nespárované payout dávky:')
+    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky')
+    expect(result.html).toContain('Nespárované payout dávky')
     expect(result.html).toContain('Položky ke kontrole')
+    expect(result.html).toContain('Zatím nebyl spuštěn žádný uploadovaný runtime běh.')
     expect(result.html).not.toContain('Technické ladicí údaje (debug)')
     expect(result.html).not.toContain('Technický tvar exportu (debug):')
     expect(result.html).not.toContain('Technická ID extrahovaných záznamů (debug):')
@@ -704,8 +705,10 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;')
     expect(result.html).toContain("['Spárované Airbnb / OTA payout dávky', payoutBatchMatchedCount]")
     expect(result.html).toContain("['Nespárované payout dávky', payoutBatchUnmatchedCount]")
-    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky:</strong> 15')
-    expect(result.html).toContain('Nespárované payout dávky:</strong> 2')
+    expect(result.browserRun.run.review.payoutBatchMatched).toHaveLength(15)
+    expect(result.browserRun.run.review.payoutBatchUnmatched).toHaveLength(2)
+    expect(result.html).toContain('Payout matched: <strong>žádný upload</strong>')
+    expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
   })
 
   it('renders dedicated payout-batch detail panels in the operator UI and wires them to shared runtime sections', async () => {
@@ -753,9 +756,8 @@ describe('buildWebDemo', () => {
       'Airbnb payout dávka G-IZLCELA7C5EFN',
       'Airbnb payout dávka G-6G5WFOJO5DJCI'
     ])
-    expect(result.html).toContain('Airbnb payout dávka G-OC3WJE3SIXRO5')
-    expect(result.html).toContain('Airbnb payout dávka G-OLIOSSDGKKF3X')
-    expect(result.html).toContain('Airbnb payout dávka G-IZLCELA7C5EFN')
+    expect(result.html).toContain('Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.')
+    expect(result.html).toContain('Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované payout dávky.')
     expect(result.html).not.toContain('AIRBNB-TRANSFER:jokeland.s.r.o.:IBAN-5956-(CZK)</strong>')
   })
 
@@ -772,11 +774,7 @@ describe('buildWebDemo', () => {
     expect(result.browserRun.run.review.payoutBatchMatched[0]?.detail).not.toContain('Částka: 396105 CZK.')
     expect(result.browserRun.run.review.payoutBatchMatched.some((item) => item.detail.includes('Zdrojový transfer: AIRBNB-TRANSFER:'))).toBe(false)
     expect(result.browserRun.run.review.payoutBatchUnmatched[0]?.detail).toContain('Očekávaná částka: 8 241,96 Kč.')
-    expect(result.html).toContain('Částka: 1 152,81 Kč.')
-    expect(result.html).toContain('Částka: 970,36 Kč.')
-    expect(result.html).toContain('Částka: 2 248,17 Kč.')
-    expect(result.html).toContain('Částka: 2 492,32 Kč.')
-    expect(result.html).toContain('Částka: 18 912,42 Kč.')
+    expect(result.html).toContain('Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.')
   })
 
   it('matches the operator-visible payout-batch reference lists to the actual real two-file browser path with no missing internal refs', async () => {
@@ -853,8 +851,10 @@ describe('buildWebDemo', () => {
 
     expect(visibleMatchedReferences).toHaveLength(15)
     expect(visibleUnmatchedReferences).toHaveLength(2)
-    expect(result.html).toContain('Spárované Airbnb / OTA payout dávky:</strong> 15')
-    expect(result.html).toContain('Nespárované payout dávky:</strong> 2')
+    expect(result.browserRun.run.review.payoutBatchMatched).toHaveLength(15)
+    expect(result.browserRun.run.review.payoutBatchUnmatched).toHaveLength(2)
+    expect(result.html).toContain('Payout matched: <strong>žádný upload</strong>')
+    expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
   })
 
   it('shows a visible build fingerprint for the exact operator renderer and payout-count source', async () => {
@@ -866,11 +866,26 @@ describe('buildWebDemo', () => {
     expect(result.runtimeAssetPath).toBeUndefined()
     expect(result.html).toContain('Build: <strong>browser-runtime</strong>')
     expect(result.html).toContain('Renderer: <strong>web-demo-operator-v3</strong>')
-    expect(result.html).toContain('Payout matched: <strong>15</strong>')
-    expect(result.html).toContain('Payout unmatched: <strong>2</strong>')
+    expect(result.html).toContain('Payout matched: <strong>žádný upload</strong>')
+    expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
     expect(result.html).toContain("const buildFingerprint = document.getElementById('build-fingerprint');")
     expect(result.html).toContain('buildFingerprint.innerHTML = buildFingerprintMarkup(state);')
     expect(result.html).toContain('const buildFingerprintVersion = "browser-runtime";')
+  })
+
+  it('keeps the fresh web demo page in a neutral empty state before any upload is run', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-23T12:05:00.000Z'
+    })
+
+    expect(result.html).toContain('Payout matched: <strong>žádný upload</strong>')
+    expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
+    expect(result.html).toContain('Zatím není k dispozici žádný uploadovaný runtime výsledek.')
+    expect(result.html).toContain('Zatím nebyl spuštěn žádný uploadovaný runtime běh.')
+    expect(result.html).toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
+    expect(result.html).not.toContain('Airbnb payout dávka G-OC3WJE3SIXRO5')
+    expect(result.html).not.toContain('<strong>15</strong><br />Spárované Airbnb / OTA payout dávky')
+    expect(result.html).not.toContain('<strong>2</strong><br />Nespárované payout dávky')
   })
 
   it('shows the emitted hashed runtime asset fingerprint in the published demo output path', async () => {
@@ -934,9 +949,10 @@ describe('buildWebDemo', () => {
     ).toContain('G-OC3WJE3SIXRO5')
 
     expect(result.html).toContain('Extracted Airbnb payout row ids')
-    expect(result.html).toContain('airbnb-payout-2')
     expect(result.html).toContain('Extracted Airbnb rawReference values')
-    expect(result.html).toContain('G-OC3WJE3SIXRO5')
+    expect(result.html).toContain('Zatím není k dispozici žádný uploadovaný runtime výsledek.')
+    expect(result.html).not.toContain('airbnb-payout-2')
+    expect(result.html).toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
   })
 
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {
