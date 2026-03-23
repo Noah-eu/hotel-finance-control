@@ -54,6 +54,21 @@ export interface BrowserRuntimeUploadState {
   generatedAt: string
   runId: string
   monthLabel: string
+  runtimeAudit: {
+    payoutDiagnostics: {
+      extractedAirbnbPayoutRowRefs: string[]
+      extractedAirbnbRawReferences: string[]
+      extractedAirbnbDataReferences: string[]
+      extractedAirbnbReferenceCodes: string[]
+      extractedAirbnbPayoutReferences: string[]
+      workflowPayoutBatchKeys: string[]
+      workflowPayoutReferences: string[]
+      reportMatchedPayoutReferences: string[]
+      reportUnmatchedPayoutReferences: string[]
+      runtimeMatchedTitleSourceValues: string[]
+      runtimeUnmatchedTitleSourceValues: string[]
+    }
+  }
   preparedFiles: Array<{
     fileName: string
     sourceDocumentId: string

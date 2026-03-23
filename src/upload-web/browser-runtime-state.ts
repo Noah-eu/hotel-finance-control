@@ -34,11 +34,13 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     batch,
     review
   })
+  const runtimeAudit = buildRuntimeAudit(importedFiles, batch, review)
 
   return {
     generatedAt: input.generatedAt,
     runId: input.runId,
     monthLabel: deriveMonthLabel(input.runId),
+    runtimeAudit,
     preparedFiles: importedFiles.map((file) => ({
       fileName: file.sourceDocument.fileName,
       sourceDocumentId: file.sourceDocument.id,
@@ -93,6 +95,57 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       labelCs: file.labelCs,
       fileName: file.fileName
     }))
+  }
+}
+
+function buildRuntimeAudit(
+  importedFiles: ReturnType<typeof prepareUploadedMonthlyFiles>,
+  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  review: ReturnType<typeof buildReviewScreen>
+): BrowserRuntimeUploadState['runtimeAudit'] {
+  const airbnbSourceDocumentIds = importedFiles
+    .filter((file) => file.sourceDocument.sourceSystem === 'airbnb')
+    .map((file) => file.sourceDocument.id)
+
+  const extractedAirbnbTransferRecords = batch.extractedRecords.filter((record) => {
+    if (!airbnbSourceDocumentIds.includes(record.sourceDocumentId)) {
+      return false
+    }
+
+    return String(record.data.rowKind ?? '') === 'transfer'
+  })
+
+  const workflowAirbnbPayoutRows = (batch.reconciliation.workflowPlan?.payoutRows ?? [])
+    .filter((row) => String(row.platform).toLowerCase() === 'airbnb')
+
+  const reportMatchedAirbnb = batch.report.payoutBatchMatches
+    .filter((item) => String(item.platform).toLowerCase() === 'airbnb')
+
+  const reportUnmatchedAirbnb = batch.report.unmatchedPayoutBatches
+    .filter((item) => String(item.platform).toLowerCase() === 'airbnb')
+
+  const runtimeMatchedTitleSourceValues = review.payoutBatchMatched
+    .filter((item) => String(item.title).startsWith('Airbnb payout dávka '))
+    .map((item) => String(item.title).replace(/^Airbnb payout dávka\s+/, ''))
+
+  const runtimeUnmatchedTitleSourceValues = review.payoutBatchUnmatched
+    .filter((item) => String(item.title).startsWith('Airbnb payout dávka '))
+    .map((item) => String(item.title).replace(/^Airbnb payout dávka\s+/, ''))
+
+  return {
+    payoutDiagnostics: {
+      extractedAirbnbPayoutRowRefs: extractedAirbnbTransferRecords.map((record) => String(record.id ?? '')),
+      extractedAirbnbRawReferences: extractedAirbnbTransferRecords.map((record) => String(record.rawReference ?? '')),
+      extractedAirbnbDataReferences: extractedAirbnbTransferRecords.map((record) => String(record.data.reference ?? '')),
+      extractedAirbnbReferenceCodes: extractedAirbnbTransferRecords.map((record) => String(record.data.referenceCode ?? '')),
+      extractedAirbnbPayoutReferences: extractedAirbnbTransferRecords.map((record) => String(record.data.payoutReference ?? '')),
+      workflowPayoutBatchKeys: workflowAirbnbPayoutRows.map((row) => String(row.payoutBatchKey ?? '')),
+      workflowPayoutReferences: workflowAirbnbPayoutRows.map((row) => String(row.payoutReference ?? '')),
+      reportMatchedPayoutReferences: reportMatchedAirbnb.map((item) => String(item.payoutReference ?? '')),
+      reportUnmatchedPayoutReferences: reportUnmatchedAirbnb.map((item) => String(item.payoutReference ?? '')),
+      runtimeMatchedTitleSourceValues,
+      runtimeUnmatchedTitleSourceValues
+    }
   }
 }
 

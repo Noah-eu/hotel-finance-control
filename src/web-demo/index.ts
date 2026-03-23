@@ -126,6 +126,21 @@ function renderOperatorWebDemoHtml(input: {
       payoutBatchMatchCount: 0,
       unmatchedPayoutBatchCount: 0
     },
+    runtimeAudit: {
+      payoutDiagnostics: {
+        extractedAirbnbPayoutRowRefs: [],
+        extractedAirbnbRawReferences: [],
+        extractedAirbnbDataReferences: [],
+        extractedAirbnbReferenceCodes: [],
+        extractedAirbnbPayoutReferences: [],
+        workflowPayoutBatchKeys: [],
+        workflowPayoutReferences: [],
+        reportMatchedPayoutReferences: [],
+        reportUnmatchedPayoutReferences: [],
+        runtimeMatchedTitleSourceValues: [],
+        runtimeUnmatchedTitleSourceValues: []
+      }
+    },
     reviewSections: {
       matched: [],
       reservationSettlementOverview: [],
@@ -539,36 +554,29 @@ ${input.debugMode ? `
       }
 
       function collectRuntimePayoutDiagnosticData(state) {
-        const batch = (state && state.__batch) || {};
-        const extractedRecords = batch.extractedRecords || [];
-        const workflowPlan = (batch.reconciliation && batch.reconciliation.workflowPlan) || {};
-        const report = batch.report || {};
+        const runtimeAudit = (state && state.runtimeAudit && state.runtimeAudit.payoutDiagnostics) || {};
         const reviewSections = (state.reviewSections || {});
-        const airbnbSourceDocumentIds = (state.preparedFiles || [])
-          .filter((file) => String(file.fileName || '').toLowerCase() === 'airbnb.csv')
-          .map((file) => file.sourceDocumentId);
-        const extractedAirbnbRecords = extractedRecords.filter((record) => airbnbSourceDocumentIds.includes(record.sourceDocumentId));
-        const extractedAirbnbTransferRecords = extractedAirbnbRecords.filter((record) => String(record.data && record.data.rowKind || '') === 'transfer');
-        const workflowAirbnbPayoutRows = (workflowPlan.payoutRows || []).filter((row) => String(row.platform || '').toLowerCase() === 'airbnb');
-        const reportMatchedAirbnb = (report.payoutBatchMatches || []).filter((item) => String(item.platform || '').toLowerCase() === 'airbnb');
-        const reportUnmatchedAirbnb = (report.unmatchedPayoutBatches || []).filter((item) => String(item.platform || '').toLowerCase() === 'airbnb');
-        const runtimeMatchedTitleSourceValues = ((reviewSections.payoutBatchMatched) || [])
-          .filter((item) => String(item.title || '').startsWith('Airbnb payout dávka '))
-          .map((item) => String(item.title || '').replace(/^Airbnb payout dávka\s+/, ''));
-        const runtimeUnmatchedTitleSourceValues = ((reviewSections.payoutBatchUnmatched) || [])
-          .filter((item) => String(item.title || '').startsWith('Airbnb payout dávka '))
-          .map((item) => String(item.title || '').replace(/^Airbnb payout dávka\s+/, ''));
+        const runtimeMatchedTitleSourceValues = ((runtimeAudit.runtimeMatchedTitleSourceValues) || []).length > 0
+          ? runtimeAudit.runtimeMatchedTitleSourceValues
+          : ((reviewSections.payoutBatchMatched) || [])
+            .filter((item) => String(item.title || '').startsWith('Airbnb payout dávka '))
+            .map((item) => String(item.title || '').replace(/^Airbnb payout dávka\s+/, ''));
+        const runtimeUnmatchedTitleSourceValues = ((runtimeAudit.runtimeUnmatchedTitleSourceValues) || []).length > 0
+          ? runtimeAudit.runtimeUnmatchedTitleSourceValues
+          : ((reviewSections.payoutBatchUnmatched) || [])
+            .filter((item) => String(item.title || '').startsWith('Airbnb payout dávka '))
+            .map((item) => String(item.title || '').replace(/^Airbnb payout dávka\s+/, ''));
 
         return {
-          extractedRecordIds: extractedAirbnbTransferRecords.map((record) => String(record.id || '')),
-          extractedRawReferences: extractedAirbnbTransferRecords.map((record) => String(record.rawReference || '')),
-          extractedDataReferences: extractedAirbnbTransferRecords.map((record) => String((record.data && record.data.reference) || '')),
-          extractedReferenceCodes: extractedAirbnbTransferRecords.map((record) => String((record.data && record.data.referenceCode) || '')),
-          extractedPayoutReferences: extractedAirbnbTransferRecords.map((record) => String((record.data && record.data.payoutReference) || '')),
-          workflowPayoutBatchKeys: workflowAirbnbPayoutRows.map((row) => String(row.payoutBatchKey || '')),
-          workflowPayoutReferences: workflowAirbnbPayoutRows.map((row) => String(row.payoutReference || '')),
-          reportMatchedReferences: reportMatchedAirbnb.map((item) => String(item.payoutReference || '')),
-          reportUnmatchedReferences: reportUnmatchedAirbnb.map((item) => String(item.payoutReference || '')),
+          extractedRecordIds: (runtimeAudit.extractedAirbnbPayoutRowRefs) || [],
+          extractedRawReferences: (runtimeAudit.extractedAirbnbRawReferences) || [],
+          extractedDataReferences: (runtimeAudit.extractedAirbnbDataReferences) || [],
+          extractedReferenceCodes: (runtimeAudit.extractedAirbnbReferenceCodes) || [],
+          extractedPayoutReferences: (runtimeAudit.extractedAirbnbPayoutReferences) || [],
+          workflowPayoutBatchKeys: (runtimeAudit.workflowPayoutBatchKeys) || [],
+          workflowPayoutReferences: (runtimeAudit.workflowPayoutReferences) || [],
+          reportMatchedReferences: (runtimeAudit.reportMatchedPayoutReferences) || [],
+          reportUnmatchedReferences: (runtimeAudit.reportUnmatchedPayoutReferences) || [],
           runtimeMatchedTitleSourceValues,
           runtimeUnmatchedTitleSourceValues,
           runtimeMatchedTitles: ((reviewSections.payoutBatchMatched) || []).map((item) => item.title),
@@ -860,6 +868,7 @@ ${input.debugMode ? `
             generatedAt: state.generatedAt,
             runId: state.runId,
             monthLabel: state.monthLabel,
+            runtimeAudit: state.runtimeAudit,
             preparedFiles: state.preparedFiles,
             extractedRecords: state.extractedRecords,
             reviewSummary: state.reviewSummary,

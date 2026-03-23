@@ -7,6 +7,24 @@ import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
 import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
 
+function collectRuntimePayoutDiagnosticDataFromState(state: Awaited<ReturnType<typeof buildBrowserRuntimeStateFromSelectedFiles>>) {
+  const runtimeAudit = state.runtimeAudit.payoutDiagnostics
+
+  return {
+    extractedAirbnbPayoutRowRefs: runtimeAudit.extractedAirbnbPayoutRowRefs,
+    extractedAirbnbRawReferences: runtimeAudit.extractedAirbnbRawReferences,
+    extractedAirbnbDataReferences: runtimeAudit.extractedAirbnbDataReferences,
+    extractedAirbnbReferenceCodes: runtimeAudit.extractedAirbnbReferenceCodes,
+    extractedAirbnbPayoutReferences: runtimeAudit.extractedAirbnbPayoutReferences,
+    workflowPayoutBatchKeys: runtimeAudit.workflowPayoutBatchKeys,
+    workflowPayoutReferences: runtimeAudit.workflowPayoutReferences,
+    reportMatchedPayoutReferences: runtimeAudit.reportMatchedPayoutReferences,
+    reportUnmatchedPayoutReferences: runtimeAudit.reportUnmatchedPayoutReferences,
+    runtimeMatchedTitleSourceValues: runtimeAudit.runtimeMatchedTitleSourceValues,
+    runtimeUnmatchedTitleSourceValues: runtimeAudit.runtimeUnmatchedTitleSourceValues
+  }
+}
+
 describe('buildWebDemo', () => {
   it('renders the uploaded monthly browser flow into browser-visible HTML', async () => {
     const result = await buildWebDemo({
@@ -953,6 +971,64 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Zatím není k dispozici žádný uploadovaný runtime výsledek.')
     expect(result.html).not.toContain('airbnb-payout-2')
     expect(result.html).toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
+  })
+
+  it('propagates non-empty upstream payout audit layers through the live browser-upload runtime state', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'airbnb.csv',
+          text: async () => getRealInputFixture('airbnb-payout-export').rawInput.content
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          text: async () => getRealInputFixture('raiffeisenbank-statement').rawInput.content
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-23T12:35:00.000Z'
+    })
+
+    const diagnostics = collectRuntimePayoutDiagnosticDataFromState(state)
+    const runtimePayoutItemCount = state.reviewSections.payoutBatchMatched.length + state.reviewSections.payoutBatchUnmatched.length
+
+    expect(runtimePayoutItemCount).toBeGreaterThan(0)
+    expect(diagnostics.extractedAirbnbPayoutRowRefs.length).toBeGreaterThan(0)
+    expect(diagnostics.extractedAirbnbRawReferences.length).toBeGreaterThan(0)
+    expect(diagnostics.extractedAirbnbDataReferences.length).toBeGreaterThan(0)
+    expect(diagnostics.extractedAirbnbReferenceCodes.length).toBeGreaterThan(0)
+    expect(diagnostics.extractedAirbnbPayoutReferences.length).toBeGreaterThan(0)
+    expect(diagnostics.workflowPayoutBatchKeys.length).toBeGreaterThan(0)
+    expect(diagnostics.workflowPayoutReferences.length).toBeGreaterThan(0)
+    expect(diagnostics.reportMatchedPayoutReferences.length + diagnostics.reportUnmatchedPayoutReferences.length).toBeGreaterThan(0)
+    expect(diagnostics.runtimeMatchedTitleSourceValues.length + diagnostics.runtimeUnmatchedTitleSourceValues.length).toBeGreaterThan(0)
+  })
+
+  it('does not allow blank upstream payout audit lists when runtime payout review items exist', async () => {
+    const state = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        {
+          name: 'airbnb.csv',
+          text: async () => getRealInputFixture('airbnb-payout-export').rawInput.content
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          text: async () => getRealInputFixture('raiffeisenbank-statement').rawInput.content
+        }
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-23T12:36:00.000Z'
+    })
+
+    const diagnostics = collectRuntimePayoutDiagnosticDataFromState(state)
+
+    if (state.reviewSections.payoutBatchMatched.length + state.reviewSections.payoutBatchUnmatched.length > 0) {
+      expect(diagnostics.extractedAirbnbPayoutRowRefs).not.toEqual([])
+      expect(diagnostics.workflowPayoutReferences).not.toEqual([])
+      expect(
+        diagnostics.reportMatchedPayoutReferences.length + diagnostics.reportUnmatchedPayoutReferences.length
+      ).toBeGreaterThan(0)
+    }
   })
 
   it('renders the dedicated unmatched reservation section in the main browser UI with concrete item details', async () => {

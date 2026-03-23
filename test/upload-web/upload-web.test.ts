@@ -69,12 +69,52 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
     expect(result.reportTransactions.length).toBeGreaterThan(0)
     expect(result.reviewSections.matched.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.workflowPayoutReferences.length).toBeGreaterThanOrEqual(0)
     expect(result.supportedExpenseLinks.length).toBeGreaterThanOrEqual(0)
     expect(result.exportFiles.map((file) => file.fileName)).toEqual([
       'reconciliation-transactions.csv',
       'review-items.csv',
       'monthly-review-export.xlsx'
     ])
+  })
+
+  it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: airbnb.rawInput.content,
+          uploadedAt: '2026-03-23T12:30:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-23T12:30:00.000Z'
+        }
+      ],
+      runId: 'browser-runtime-upload-2026-03',
+      generatedAt: '2026-03-23T12:30:00.000Z'
+    })
+
+    expect(result.reviewSections.payoutBatchMatched.length + result.reviewSections.payoutBatchUnmatched.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.extractedAirbnbPayoutRowRefs.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.extractedAirbnbRawReferences.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.extractedAirbnbDataReferences.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.extractedAirbnbReferenceCodes.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.extractedAirbnbPayoutReferences.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.workflowPayoutBatchKeys.length).toBeGreaterThan(0)
+    expect(result.runtimeAudit.payoutDiagnostics.workflowPayoutReferences.length).toBeGreaterThan(0)
+    expect(
+      result.runtimeAudit.payoutDiagnostics.reportMatchedPayoutReferences.length
+      + result.runtimeAudit.payoutDiagnostics.reportUnmatchedPayoutReferences.length
+    ).toBeGreaterThan(0)
+    expect(
+      result.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues.length
+      + result.runtimeAudit.payoutDiagnostics.runtimeUnmatchedTitleSourceValues.length
+    ).toBeGreaterThan(0)
   })
 
   it('renders the upload page without baked-in runtime results and with selected-file-driven adapter logic', () => {
