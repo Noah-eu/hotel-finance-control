@@ -53,6 +53,7 @@ export interface NormalizedTransaction {
   reference?: string
   reservationId?: string
   bookingPayoutBatchKey?: string
+  payoutBatchIdentity?: string
   invoiceNumber?: string
   extractedRecordIds: string[]
   sourceDocumentIds: DocumentId[]

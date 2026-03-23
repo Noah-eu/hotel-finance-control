@@ -105,7 +105,11 @@ function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpect
             payoutDate: transaction.bookedAt,
             payoutBatchKey:
                 transaction.bookingPayoutBatchKey
-                ?? buildGenericPayoutBatchKey(transaction.source, transaction.bookedAt, transaction.reference ?? transaction.id),
+                ?? buildGenericPayoutBatchKey(
+                    transaction.source,
+                    transaction.bookedAt,
+                    transaction.payoutBatchIdentity ?? transaction.reference ?? transaction.id
+                ),
             amountMinor: transaction.amountMinor,
             currency: transaction.currency,
             bankRoutingTarget: 'rb_bank_inflow'

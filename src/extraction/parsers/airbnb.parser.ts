@@ -154,7 +154,7 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
       throw new DeterministicParserError('Airbnb real export transfer row is missing required availableUntilDate')
     }
 
-    const payoutDate = rowKind === 'transfer' ? availableUntilDate : bookedAt
+    const payoutDate = rowKind === 'transfer' ? availableUntilDate! : bookedAt
     const amountMinor = parseRealAirbnbRowAmount(row, rowKind)
     const serviceFeeMinor = parseOptionalSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseOptionalSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
@@ -172,6 +172,15 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
       : undefined
     const exactPayoutReference = rowKind === 'transfer'
       ? buildRealAirbnbExactPayoutReference(referenceCode, parsedTransfer!.transferReference)
+      : undefined
+    const payoutBatchIdentity = rowKind === 'transfer'
+      ? buildRealAirbnbPayoutBatchIdentity({
+        referenceCode,
+        fallbackTransferReference: parsedTransfer!.transferReference,
+        sourceDate: bookedAt,
+        payoutDate,
+        paidOutAmountMinor: paidOutAmountMinor!
+      })
       : undefined
     const reference = rowKind === 'transfer'
       ? exactPayoutReference!
@@ -212,6 +221,7 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
             transferDescriptor: parsedTransfer.transferDescriptor,
             payoutReference: exactPayoutReference,
             payoutBatchKey: exactPayoutReference,
+            ...(payoutBatchIdentity !== exactPayoutReference ? { payoutBatchIdentity } : {}),
             transferBatchDescriptor: parsedTransfer.transferReference
           }
           : {})
@@ -281,6 +291,22 @@ function buildRealAirbnbExactPayoutReference(referenceCode: string, fallbackTran
   }
 
   return fallbackTransferReference
+}
+
+function buildRealAirbnbPayoutBatchIdentity(input: {
+  referenceCode: string
+  fallbackTransferReference: string
+  sourceDate: string
+  payoutDate: string
+  paidOutAmountMinor: number
+}): string {
+  const exactPayoutReference = buildRealAirbnbExactPayoutReference(input.referenceCode, input.fallbackTransferReference)
+
+  if (exactPayoutReference !== input.fallbackTransferReference) {
+    return exactPayoutReference
+  }
+
+  return `${input.fallbackTransferReference}:SOURCE-${input.sourceDate}:PAYOUT-${input.payoutDate}:AMOUNT-${input.paidOutAmountMinor}`
 }
 
 function buildRealAirbnbReservationId(

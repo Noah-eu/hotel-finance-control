@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtractedRecord, NormalizedTransaction } from '../../src/domain'
+import { parseAirbnbPayoutExport } from '../../src/extraction'
 import { buildReconciliationWorkflowPlan, reconcileExtractedRecords } from '../../src/reconciliation'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
@@ -115,6 +116,63 @@ describe('buildReconciliationWorkflowPlan', () => {
                 rowIds: ['txn:payout:airbnb-payout-4'],
                 expectedTotalMinor: 705994,
                 currency: 'CZK'
+            })
+        ])
+    })
+
+    it('keeps real Airbnb payout rows distinct when payout dates and transfer descriptors repeat but paid-out amounts differ', () => {
+        const sourceDocument = getRealInputFixture('airbnb-payout-export').sourceDocument
+        const extractedRecords = parseAirbnbPayoutExport({
+            sourceDocument,
+            content: [
+                'Datum;Bude připsán do dne;Typ;Potvrzující kód;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+                '2026-03-18;2026-03-20;Payout;;;;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);CZK;;3 961,05;0,00;3 961,05',
+                '2026-03-18;2026-03-20;Payout;;;;Host 2;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);CZK;;4 456,97;0,00;4 456,97',
+                '2026-03-18;2026-03-20;Payout;;;;Host 3;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);CZK;;7 059,94;0,00;7 059,94'
+            ].join('\n'),
+            extractedAt: '2026-03-24T08:00:00.000Z'
+        })
+
+        const reconciliation = reconcileExtractedRecords(
+            { extractedRecords },
+            {
+                runId: 'real-airbnb-shared-payout-date',
+                requestedAt: '2026-03-24T08:00:00.000Z'
+            }
+        )
+
+        const plan = reconciliation.workflowPlan!
+
+        expect(extractedRecords.map((record) => String(record.data.payoutReference ?? ''))).toEqual([
+            'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+            'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+            'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+        ])
+        expect(plan.payoutRows.map((row) => row.payoutReference)).toEqual([
+            'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+            'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+            'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+        ])
+        expect(plan.payoutRows.map((row) => row.payoutBatchKey)).toEqual([
+            'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+            'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-445697',
+            'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-705994'
+        ])
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                expectedTotalMinor: 396105
+            }),
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-445697',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                expectedTotalMinor: 445697
+            }),
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-705994',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                expectedTotalMinor: 705994
             })
         ])
     })
