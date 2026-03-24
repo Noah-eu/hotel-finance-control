@@ -181,6 +181,10 @@ function buildRuntimeAudit(
     fileIntakeDiagnostics: uploadedFiles.map((file, index) => {
       const route = fileRoutes[index]
       const browserTextExtraction = file.sourceDescriptor?.browserTextExtraction
+      const parsedSupplement = findParsedBookingPayoutSupplementRecord(
+        batch,
+        route?.sourceDocumentId
+      )
 
       return {
         fileName: file.name,
@@ -198,6 +202,18 @@ function buildRuntimeAudit(
         missingSignals: route?.decision.missingSignals ?? [],
         parserSupported: route?.decision.parserSupported ?? false,
         decisionConfidence: route?.decision.confidence ?? 'none',
+        parsedPaymentId: parseSupplementStringField(parsedSupplement?.data.paymentId),
+        parsedPayoutDate: parseSupplementStringField(parsedSupplement?.data.payoutDate),
+        parsedPayoutTotal: buildParsedMoneyDebugLabel(
+          parseSupplementNumberField(parsedSupplement?.data.payoutTotalAmountMinor),
+          parseSupplementStringField(parsedSupplement?.data.payoutTotalCurrency)
+        ),
+        parsedLocalTotal: buildParsedMoneyDebugLabel(
+          parseSupplementNumberField(parsedSupplement?.data.localAmountMinor),
+          parseSupplementStringField(parsedSupplement?.data.localCurrency)
+        ),
+        parsedIbanHint: parseSupplementStringField(parsedSupplement?.data.ibanSuffix),
+        parsedExchangeRate: parseSupplementStringField(parsedSupplement?.data.exchangeRate),
         sourceSystem: route?.sourceSystem ?? 'unknown',
         documentType: route?.documentType ?? 'other',
         classificationBasis: route?.classificationBasis ?? 'unknown',
@@ -254,6 +270,40 @@ function buildFileIntakeKeywordHits(
   }
 
   return []
+}
+
+function findParsedBookingPayoutSupplementRecord(
+  batch: IngestionBatch,
+  sourceDocumentId: string | undefined
+): IngestionBatch['extractedRecords'][number] | undefined {
+  if (!sourceDocumentId) {
+    return undefined
+  }
+
+  return batch.extractedRecords.find((record) =>
+    record.sourceDocumentId === sourceDocumentId
+    && record.recordType === 'payout-supplement'
+    && String(record.data.platform ?? '').toLowerCase() === 'booking'
+    && String(record.data.supplementRole ?? '').toLowerCase() === 'payout_statement'
+  )
+}
+
+function parseSupplementStringField(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim()
+    ? value.trim()
+    : undefined
+}
+
+function parseSupplementNumberField(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined
+}
+
+function buildParsedMoneyDebugLabel(amountMinor: number | undefined, currency: string | undefined): string | undefined {
+  if (amountMinor === undefined || !currency) {
+    return undefined
+  }
+
+  return `${(amountMinor / 100).toFixed(2)} ${currency}`
 }
 
 function findBatchFileExtractedCount(

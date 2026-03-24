@@ -897,6 +897,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Signály: ' + escapeHtml((file.detectedSignals && file.detectedSignals.length > 0 ? file.detectedSignals.join(', ') : 'žádné')) + '</span>',
           '<br /><span class="hint">Rozhodnutí klasifikátoru: ' + escapeHtml(buildDebugClassifierDecisionLabel(file)) + '</span>',
           '<br /><span class="hint">Decision reason: ' + escapeHtml(buildDebugDecisionReasonLabel(file)) + '</span>',
+          file.parsedPaymentId ? '<br /><span class="hint">Parser paymentId: ' + escapeHtml(file.parsedPaymentId) + '</span>' : '',
+          file.parsedPayoutDate ? '<br /><span class="hint">Parser payoutDate: ' + escapeHtml(file.parsedPayoutDate) + '</span>' : '',
+          file.parsedPayoutTotal ? '<br /><span class="hint">Parser payoutTotal: ' + escapeHtml(file.parsedPayoutTotal) + '</span>' : '',
+          file.parsedLocalTotal ? '<br /><span class="hint">Parser localTotal: ' + escapeHtml(file.parsedLocalTotal) + '</span>' : '',
+          file.parsedIbanHint ? '<br /><span class="hint">Parser ibanHint: ' + escapeHtml(file.parsedIbanHint) + '</span>' : '',
+          file.parsedExchangeRate ? '<br /><span class="hint">Parser exchangeRate: ' + escapeHtml(file.parsedExchangeRate) + '</span>' : '',
           '<br /><span class="hint">Routování: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(String(file.role || 'primary')) + '</span>',
           '<br /><span class="hint">Finální bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
           '</li>'

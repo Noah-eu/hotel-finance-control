@@ -1473,6 +1473,89 @@ describe('runMonthlyReconciliationBatch', () => {
       })
     ])
   })
+
+  it('extracts Czech Booking payout PDF core fields and keeps the supplement parsed instead of failing ingest', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'booking35k.csv',
+          content: buildBooking35kBrowserUploadContent(),
+          uploadedAt: '2026-03-24T19:22:00.000Z'
+        },
+        {
+          name: 'Bookinng35k.pdf',
+          content: buildCzechLateCueBookingPayoutStatementContent(),
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-24T19:22:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-czech-pdf-supplement',
+        requestedAt: '2026-03-24T19:23:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-24T19:24:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental',
+        classificationBasis: 'content',
+        parserId: 'booking-payout-statement-pdf',
+        extractedCount: 1
+      })
+    ])
+    expect(result.batch.extractedRecords).toContainEqual(
+      expect.objectContaining({
+        id: 'booking-payout-statement-1',
+        rawReference: '010638445054',
+        amountMinor: 3553012,
+        currency: 'CZK',
+        occurredAt: '2026-03-12',
+        data: expect.objectContaining({
+          paymentId: '010638445054',
+          payoutDate: '2026-03-12',
+          payoutTotalAmountMinor: 145642,
+          payoutTotalCurrency: 'EUR',
+          localAmountMinor: 3553012,
+          localCurrency: 'CZK',
+          ibanSuffix: '5956',
+          reservationIds: ['RES-BOOK-8841']
+        })
+      })
+    )
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        payoutSupplementPaymentId: '010638445054',
+        payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReservationIds: ['RES-BOOK-8841'],
+        payoutSupplementSourceDocumentIds: ['uploaded:booking:2:bookinng35k-pdf']
+      })
+    ])
+    expect(result.batch.report.summary.payoutBatchMatchCount).toBe(0)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.batch.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        display: {
+          title: 'Booking payout 010638445054 / 35 530,12 Kč',
+          context: 'Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1'
+        }
+      })
+    ])
+  })
 })
 
 function buildActualUploadedAirbnbContent(): string {
@@ -1516,6 +1599,13 @@ function buildBookingPayoutStatementVariantContent(): string {
     'Included',
     'reservations',
     'RES-BOOK-8841 1 250,00 CZK'
+  ].join('\n')
+}
+
+function buildBooking35kBrowserUploadContent(): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;35530,12;12 Mar 2026;PAYOUT-BOOK-20260310'
   ].join('\n')
 }
 

@@ -17,11 +17,16 @@ export type { ParseFioStatementInput } from './parsers/fio.parser'
 export { FioParser, parseFioStatement } from './parsers/fio.parser'
 export type { ParseBookingPayoutExportInput } from './parsers/booking.parser'
 export { BookingPayoutParser, parseBookingPayoutExport } from './parsers/booking.parser'
-export type { BookingPayoutStatementSignals, ParseBookingPayoutStatementPdfInput } from './parsers/booking-payout-statement.parser'
+export type {
+  BookingPayoutStatementFields,
+  BookingPayoutStatementSignals,
+  ParseBookingPayoutStatementPdfInput
+} from './parsers/booking-payout-statement.parser'
 export {
   BookingPayoutStatementPdfParser,
   detectBookingPayoutStatementKeywordHits,
   detectBookingPayoutStatementSignals,
+  extractBookingPayoutStatementFields,
   parseBookingPayoutStatementPdf
 } from './parsers/booking-payout-statement.parser'
 export type { ParseAirbnbPayoutExportInput } from './parsers/airbnb.parser'

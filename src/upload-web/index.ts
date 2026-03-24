@@ -92,6 +92,12 @@ export interface BrowserRuntimeUploadState {
       missingSignals: string[]
       parserSupported: boolean
       decisionConfidence: 'none' | 'hint' | 'strong'
+      parsedPaymentId?: string
+      parsedPayoutDate?: string
+      parsedPayoutTotal?: string
+      parsedLocalTotal?: string
+      parsedIbanHint?: string
+      parsedExchangeRate?: string
       sourceSystem: string
       documentType: string
       classificationBasis: string

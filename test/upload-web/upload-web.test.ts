@@ -2400,6 +2400,11 @@ describe('buildUploadWebFlow', () => {
         missingSignals: expect.any(Array),
         parserSupported: true,
         decisionConfidence: 'strong',
+        parsedPaymentId: '010638445054',
+        parsedPayoutDate: '2026-03-12',
+        parsedPayoutTotal: '1456.42 EUR',
+        parsedLocalTotal: '35530.12 CZK',
+        parsedIbanHint: '5956',
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'booking',
@@ -2486,6 +2491,62 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched).toEqual([
       expect.objectContaining({
         title: 'Booking payout PAYOUT-BOOK-20260310 / 1 250,00 Kč',
+        detail: expect.stringContaining('Kontext payoutu: Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1.')
+      })
+    ])
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
+  })
+
+  it('parses Czech Booking payout PDF core fields without leaving the supplemental document in ingest failure and enriches the unmatched Booking payout item', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T19:20:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 2,
+      supportedFileCount: 2,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        parsedPaymentId: '010638445054',
+        parsedPayoutDate: '2026-03-12',
+        parsedPayoutTotal: '1456.42 EUR',
+        parsedLocalTotal: '35530.12 CZK',
+        parsedIbanHint: '5956',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    )
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč',
         detail: expect.stringContaining('Kontext payoutu: Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1.')
       })
     ])
@@ -3024,6 +3085,13 @@ function buildBookingPayoutStatementVariantPdfLines(): string[] {
     'Included reservations:',
     'RES-BOOK-8841 1 250,00 CZK'
   ]
+}
+
+function buildBooking35kBrowserUploadContent(): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;35530,12;12 Mar 2026;PAYOUT-BOOK-20260310'
+  ].join('\n')
 }
 
 function buildCzechLateCueBookingPayoutStatementPdfLines(): string[] {

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { detectBookingPayoutStatementKeywordHits, detectBookingPayoutStatementSignals, parseBookingPayoutStatementPdf } from '../../src/extraction'
+import {
+  detectBookingPayoutStatementKeywordHits,
+  detectBookingPayoutStatementSignals,
+  extractBookingPayoutStatementFields,
+  parseBookingPayoutStatementPdf
+} from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 describe('parseBookingPayoutStatementPdf', () => {
@@ -15,6 +20,7 @@ describe('parseBookingPayoutStatementPdf', () => {
     expect(records).toEqual([
       expect.objectContaining({
         ...fixture.expectedExtractedRecords[0],
+        data: expect.objectContaining(fixture.expectedExtractedRecords[0]?.data ?? {}),
         extractedAt: '2026-03-24T11:20:00.000Z'
       })
     ])
@@ -49,6 +55,7 @@ describe('parseBookingPayoutStatementPdf', () => {
     expect(records).toEqual([
       expect.objectContaining({
         ...fixture.expectedExtractedRecords[0],
+        data: expect.objectContaining(fixture.expectedExtractedRecords[0]?.data ?? {}),
         extractedAt: '2026-03-24T11:20:30.000Z'
       })
     ])
@@ -66,6 +73,7 @@ describe('parseBookingPayoutStatementPdf', () => {
     expect(records).toEqual([
       expect.objectContaining({
         ...fixture.expectedExtractedRecords[0],
+        data: expect.objectContaining(fixture.expectedExtractedRecords[0]?.data ?? {}),
         extractedAt: '2026-03-24T11:20:45.000Z'
       })
     ])
@@ -79,8 +87,10 @@ describe('parseBookingPayoutStatementPdf', () => {
       hasStatementWording: true,
       paymentId: '010638445054',
       payoutDateRaw: '2026-03-12',
-      payoutTotalRaw: '35530.12 CZK',
+      payoutTotalRaw: '1456.42 EUR',
+      localTotalRaw: '35530.12 CZK',
       ibanValue: 'CZ65 5500 0000 0000 5599 555956',
+      exchangeRate: undefined,
       reservationIds: ['RES-BOOK-8841']
     })
     expect(detectBookingPayoutStatementKeywordHits(buildCzechBookingPayoutStatementLateCueContent())).toEqual([
@@ -93,6 +103,30 @@ describe('parseBookingPayoutStatementPdf', () => {
       'IBAN',
       'Reservation reference'
     ])
+  })
+
+  it('extracts real Booking payout statement core fields, local payout total, IBAN hint, and exchange rate from normalized Czech browser text', () => {
+    const fields = extractBookingPayoutStatementFields([
+      buildCzechBookingPayoutStatementLateCueContent(),
+      'Směnný kurz 24,3941'
+    ].join('\n'))
+
+    expect(fields).toEqual({
+      hasBookingBranding: true,
+      hasStatementWording: true,
+      paymentId: '010638445054',
+      payoutDate: '2026-03-12',
+      payoutTotalRaw: '1456.42 EUR',
+      payoutTotalAmountMinor: 145642,
+      payoutTotalCurrency: 'EUR',
+      localTotalRaw: '35530.12 CZK',
+      localAmountMinor: 3553012,
+      localCurrency: 'CZK',
+      ibanValue: 'CZ65 5500 0000 0000 5599 555956',
+      ibanSuffix: '5956',
+      exchangeRate: '24.3941',
+      reservationIds: ['RES-BOOK-8841']
+    })
   })
 
   it('parses Czech Booking payout statement text by using the full normalized document instead of only the header prefix', () => {
@@ -117,6 +151,12 @@ describe('parseBookingPayoutStatementPdf', () => {
           payoutDate: '2026-03-12',
           amountMinor: 3553012,
           currency: 'CZK',
+          payoutTotalRaw: '1456.42 EUR',
+          payoutTotalAmountMinor: 145642,
+          payoutTotalCurrency: 'EUR',
+          localTotalRaw: '35530.12 CZK',
+          localAmountMinor: 3553012,
+          localCurrency: 'CZK',
           ibanSuffix: '5956',
           reservationIds: ['RES-BOOK-8841']
         })
