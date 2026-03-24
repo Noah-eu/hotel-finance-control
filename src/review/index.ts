@@ -65,7 +65,13 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   const payoutBatchMatched = input.batch.report.payoutBatchMatches.map((match) => ({
     id: `payout-batch:${match.payoutBatchKey}`,
     kind: 'matched' as const,
-    title: `${match.platform} payout dávka ${match.payoutReference}`,
+    title: buildPayoutBatchReviewTitle({
+      platform: match.platform,
+      payoutReference: match.payoutReference,
+      payoutDate: inferPayoutBatchDate(input.batch, match.payoutBatchKey) ?? inferPayoutBatchDateFromKey(match.payoutBatchKey),
+      amountMinor: match.amountMinor,
+      currency: match.currency
+    }),
     detail: buildPayoutBatchMatchDetail(input.batch, match),
     transactionIds: [],
     sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
@@ -74,7 +80,13 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   const payoutBatchUnmatched = input.batch.report.unmatchedPayoutBatches.map((batch) => ({
     id: `payout-batch-unmatched:${batch.payoutBatchKey}`,
     kind: 'unmatched' as const,
-    title: `${batch.platform} payout dávka ${batch.payoutReference}`,
+    title: buildPayoutBatchReviewTitle({
+      platform: batch.platform,
+      payoutReference: batch.payoutReference,
+      payoutDate: batch.payoutDate,
+      amountMinor: batch.amountMinor,
+      currency: batch.currency
+    }),
     detail: buildPayoutBatchUnmatchedDetail(input.batch, batch),
     transactionIds: [],
     sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, batch.payoutBatchKey)
@@ -122,6 +134,38 @@ function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payou
   }
 
   return [...ids]
+}
+
+function buildPayoutBatchReviewTitle(input: {
+  platform: string
+  payoutReference: string
+  payoutDate?: string
+  amountMinor: number
+  currency: string
+}): string {
+  if (shouldUseAirbnbSyntheticTitleFallback(input.platform, input.payoutReference) && input.payoutDate) {
+    return `${input.platform} payout dávka ${input.payoutDate} / ${formatAmountMinorCs(input.amountMinor, input.currency)}`
+  }
+
+  return `${input.platform} payout dávka ${input.payoutReference}`
+}
+
+function shouldUseAirbnbSyntheticTitleFallback(platform: string, payoutReference: string): boolean {
+  return platform.trim().toLowerCase() === 'airbnb'
+    && payoutReference.trim().toUpperCase().startsWith('AIRBNB-TRANSFER:')
+}
+
+function inferPayoutBatchDate(batch: MonthlyBatchResult, payoutBatchKey: string): string | undefined {
+  return batch.reconciliation.workflowPlan?.payoutBatches.find((item) => item.payoutBatchKey === payoutBatchKey)?.payoutDate
+}
+
+function inferPayoutBatchDateFromKey(payoutBatchKey: string): string | undefined {
+  const segments = payoutBatchKey.split(':')
+  const payoutDate = segments[1]?.trim()
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(payoutDate ?? '')
+    ? payoutDate
+    : undefined
 }
 
 function buildPayoutBatchMatchDetail(

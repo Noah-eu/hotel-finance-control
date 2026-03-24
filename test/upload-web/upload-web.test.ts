@@ -1534,6 +1534,26 @@ describe('buildUploadWebFlow', () => {
     expect(runtimeState.reviewSections.payoutBatchUnmatched).toHaveLength(2)
     expect(matchedTitles).toHaveLength(15)
     expect(unmatchedTitles).toHaveLength(2)
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toContain('2026-03-20 / 3 961,05 Kč')
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toContain('2026-03-20 / 4 456,97 Kč')
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toContain('2026-03-20 / 7 059,94 Kč')
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toContain('2026-03-13 / 12 123,52 Kč')
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeMatchedTitleSourceValues).toContain('2026-03-13 / 2 248,17 Kč')
+    expect(runtimeState.runtimeAudit.payoutDiagnostics.runtimeUnmatchedTitleSourceValues).toEqual([
+      '2026-03-06 / 8 241,96 Kč',
+      '2026-03-06 / 1 117,01 Kč'
+    ])
+    expect(matchedTitles).not.toContain('Airbnb payout dávka AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)')
+    expect(unmatchedTitles).not.toContain('Airbnb payout dávka AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)')
+    expect(matchedTitles).toContain('Airbnb payout dávka 2026-03-20 / 3 961,05 Kč')
+    expect(matchedTitles).toContain('Airbnb payout dávka 2026-03-20 / 4 456,97 Kč')
+    expect(matchedTitles).toContain('Airbnb payout dávka 2026-03-20 / 7 059,94 Kč')
+    expect(matchedTitles).toContain('Airbnb payout dávka 2026-03-13 / 12 123,52 Kč')
+    expect(matchedTitles).toContain('Airbnb payout dávka 2026-03-13 / 2 248,17 Kč')
+    expect(unmatchedTitles).toEqual([
+      'Airbnb payout dávka 2026-03-06 / 8 241,96 Kč',
+      'Airbnb payout dávka 2026-03-06 / 1 117,01 Kč'
+    ])
 
     const sharedMarch20Keys = workflowBatchKeys.filter((key) => key.includes('PAYOUT-2026-03-20'))
     expect(sharedMarch20Keys).toEqual([

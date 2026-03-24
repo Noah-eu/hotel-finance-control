@@ -496,6 +496,150 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
+  it('uses payout date and amount as the visible Airbnb batch title when the payout reference is only a synthetic transfer descriptor', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-24T10:10:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            ancillaryRevenueSources: [],
+            reservationSettlementMatches: [],
+            reservationSettlementNoMatches: [],
+            payoutRows: [
+              {
+                rowId: 'txn:payout:airbnb-transfer-1',
+                platform: 'airbnb',
+                sourceDocumentId: toDocumentId('doc-airbnb-1'),
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                payoutDate: '2026-03-20',
+                payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+                amountMinor: 396105,
+                currency: 'CZK',
+                bankRoutingTarget: 'rb_bank_inflow'
+              }
+            ],
+            payoutBatches: [
+              {
+                payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                payoutDate: '2026-03-20',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:airbnb-transfer-1'],
+                expectedTotalMinor: 396105,
+                currency: 'CZK'
+              }
+            ],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+              payoutBatchRowIds: ['txn:payout:airbnb-transfer-1'],
+              bankTransactionId: 'txn:bank:rb-1' as never,
+              bankAccountId: 'raiffeisen-main',
+              amountMinor: 396105,
+              currency: 'CZK',
+              confidence: 0.97,
+              ruleKey: 'payout-bank:airbnb',
+              matched: true,
+              reasons: ['amountExact'],
+              evidence: []
+            }
+          ],
+          payoutBatchNoMatchDiagnostics: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-21:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-19:PAYOUT-2026-03-21:AMOUNT-824196',
+              payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+              platform: 'airbnb',
+              expectedTotalMinor: 824196,
+              currency: 'CZK',
+              payoutDate: '2026-03-21',
+              bankRoutingTarget: 'rb_bank_inflow',
+              eligibleCandidates: [],
+              allInboundBankCandidates: [],
+              noMatchReason: 'noExactAmount',
+              matched: false
+            }
+          ],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-24T10:10:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 1,
+            unmatchedPayoutBatchCount: 1,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+              platform: 'Airbnb',
+              payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+              bankAccountId: 'raiffeisen-main',
+              amountMinor: 396105,
+              currency: 'CZK',
+              status: 'matched',
+              confidence: 0.97,
+              reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
+              evidence: []
+            }
+          ],
+          unmatchedPayoutBatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-21:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-19:PAYOUT-2026-03-21:AMOUNT-824196',
+              platform: 'Airbnb',
+              payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+              payoutDate: '2026-03-21',
+              bankRoutingLabel: 'RB účet',
+              amountMinor: 824196,
+              currency: 'CZK',
+              status: 'unmatched',
+              reason: 'Žádná bankovní položka se stejnou částkou.'
+            }
+          ],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.payoutBatchMatched[0]?.title).toBe('Airbnb payout dávka 2026-03-20 / 3 961,05 Kč')
+    expect(review.payoutBatchUnmatched[0]?.title).toBe('Airbnb payout dávka 2026-03-21 / 8 241,96 Kč')
+    expect(review.payoutBatchMatched[0]?.detail).toContain('Částka: 3 961,05 Kč.')
+    expect(review.payoutBatchUnmatched[0]?.detail).toContain('Očekávaná částka: 8 241,96 Kč.')
+  })
+
   it('shows reservation-settlement no-matches as a separate business-facing review section without raw matcher codes', () => {
     const previo = getRealInputFixture('previo-reservation-export')
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
