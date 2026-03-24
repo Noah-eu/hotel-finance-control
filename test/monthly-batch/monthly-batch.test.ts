@@ -1161,6 +1161,57 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('maps Booking payout PDF branding plus statement wording to a supported supplemental decision instead of leaving the file unclassified', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Bookinng35k.pdf',
+        content: [
+          'Booking.com B.V.',
+          'Výkaz plateb',
+          'Payment ID: PAYOUT-BOOK-20260310',
+          'Payment date: 2026-03-12',
+          'Transfer total: 1 250,00 CZK'
+        ].join('\n'),
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-24T08:07:00.000Z',
+        sourceDescriptor: {
+          mimeType: 'application/pdf',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Booking.com B.V. Výkaz plateb',
+            detectedSignatures: ['booking-branding', 'booking-payout-statement-wording']
+          }
+        }
+      }
+    ])
+
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        parserId: 'booking-payout-statement-pdf',
+        role: 'supplemental',
+        decision: expect.objectContaining({
+          detectedSignals: expect.arrayContaining([
+            'booking-branding',
+            'booking-payout-statement-wording'
+          ]),
+          matchedRules: expect.arrayContaining(['booking-payout-core-fields']),
+          parserSupported: true,
+          resolvedSourceSystem: 'booking',
+          resolvedDocumentType: 'payout_statement',
+          resolvedRole: 'supplemental',
+          resolvedBucket: 'supplemental-supported'
+        })
+      })
+    ])
+  })
+
   it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {
     const booking = getRealInputFixture('booking-payout-export')
 

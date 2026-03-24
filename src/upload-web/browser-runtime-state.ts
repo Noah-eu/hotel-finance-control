@@ -74,7 +74,8 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       extractedRecordIds: file.extractedRecordIds ?? [],
       warnings: file.warnings,
       reason: file.reason,
-      errorMessage: file.errorMessage
+      errorMessage: file.errorMessage,
+      decision: file.decision
     })),
     extractedRecords: importedFiles.map((file) => ({
       fileName: file.sourceDocument.fileName,
@@ -191,7 +192,12 @@ function buildRuntimeAudit(
         textPreview: buildFileIntakeTextPreview(browserTextExtraction?.textPreview, file.content),
         textTailPreview: buildFileIntakeTextTailPreview(file.content),
         keywordHits: buildFileIntakeKeywordHits(file, browserTextExtraction?.detectedSignatures ?? []),
+        detectedSignals: route?.decision.detectedSignals ?? [],
         detectedSignatures: browserTextExtraction?.detectedSignatures ?? [],
+        matchedRules: route?.decision.matchedRules ?? [],
+        missingSignals: route?.decision.missingSignals ?? [],
+        parserSupported: route?.decision.parserSupported ?? false,
+        decisionConfidence: route?.decision.confidence ?? 'none',
         sourceSystem: route?.sourceSystem ?? 'unknown',
         documentType: route?.documentType ?? 'other',
         classificationBasis: route?.classificationBasis ?? 'unknown',

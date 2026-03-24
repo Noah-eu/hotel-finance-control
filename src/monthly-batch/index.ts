@@ -14,6 +14,9 @@ export type {
   PreparedUploadedMonthlyFilesResult,
   UploadedMonthlyIngestionResult,
   UploadedMonthlyFileClassificationBasis,
+  UploadedMonthlyFileDecision,
+  UploadedMonthlyFileDecisionBucket,
+  UploadedMonthlyFileDecisionConfidence,
   UploadedMonthlyFileSourceDescriptor,
   UploadedMonthlyFileRoute,
   UploadedMonthlyFile

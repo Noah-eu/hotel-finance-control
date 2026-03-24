@@ -20,6 +20,7 @@ import type {
   MonthlyBatchResult,
   MonthlyBatchService,
   PreparedUploadedMonthlyFilesResult,
+  UploadedMonthlyFileDecision,
   UploadedMonthlyIngestionResult,
   UploadedMonthlyFile
 } from './contracts'
@@ -357,7 +358,8 @@ function classifyUploadedMonthlyFile(
         extractedRecordIds: [],
         warnings: [],
         reason: classification.ingestError,
-        errorMessage: classification.ingestError
+        errorMessage: classification.ingestError,
+        decision: classification.decision
       }
     }
   }
@@ -376,7 +378,8 @@ function classifyUploadedMonthlyFile(
         extractedCount: 0,
         extractedRecordIds: [],
         warnings: [],
-        reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.'
+        reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.',
+        decision: classification.decision
       }
     }
   }
@@ -400,7 +403,8 @@ function classifyUploadedMonthlyFile(
         extractedCount: 0,
         extractedRecordIds: [],
         warnings: [],
-        reason: 'Pro tento rozpoznaný typ dokumentu zatím není nakonfigurovaný parser.'
+        reason: 'Pro tento rozpoznaný typ dokumentu zatím není nakonfigurovaný parser.',
+        decision: classification.decision
       }
     }
   }
@@ -421,7 +425,8 @@ function classifyUploadedMonthlyFile(
       role: classification.role,
       extractedCount: 0,
       extractedRecordIds: [],
-      warnings: []
+      warnings: [],
+      decision: classification.decision
     }
   }
 }
@@ -431,8 +436,11 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
   documentType: SourceDocument['documentType']
   classificationBasis: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['classificationBasis']
   role: 'primary' | 'supplemental'
+  decision: UploadedMonthlyFileDecision
   ingestError?: string
 } {
+  const bookingPdfDecision = buildBookingPayoutSupplementDecision(input)
+
   if (input.ingestError) {
     const sourceSystem = inferSourceSystemFromFileName(input.fileName)
     const role = inferSupplementRole(input.fileName, input.contentFormat)
@@ -444,18 +452,30 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         : inferDocumentType(sourceSystem),
       classificationBasis: 'file-name',
       role,
+      decision: {
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? [],
+        matchedRules: ['ingest-error'],
+        missingSignals: bookingPdfDecision?.missingSignals ?? [],
+        parserSupported: false,
+        confidence: 'none',
+        resolvedSourceSystem: sourceSystem,
+        resolvedDocumentType: role === 'supplemental' && sourceSystem === 'booking'
+          ? 'payout_statement'
+          : inferDocumentType(sourceSystem),
+        resolvedRole: role,
+        resolvedBucket: 'ingest-error'
+      },
       ingestError: input.ingestError
     }
   }
 
-  const bookingPdfByContent = inferBookingSupplementDocumentTypeFromDescriptor(input)
-
-  if (bookingPdfByContent) {
+  if (bookingPdfDecision?.resolvedSourceSystem === 'booking') {
     return {
       sourceSystem: 'booking',
       documentType: 'payout_statement',
       classificationBasis: 'content',
-      role: 'supplemental'
+      role: 'supplemental',
+      decision: bookingPdfDecision
     }
   }
 
@@ -466,7 +486,17 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       sourceSystem: byContent,
       documentType: inferDocumentType(byContent),
       classificationBasis: 'content',
-      role: 'primary'
+      role: 'primary',
+      decision: buildResolvedDecision({
+        sourceSystem: byContent,
+        documentType: inferDocumentType(byContent),
+        classificationBasis: 'content',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: ['content-signature'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
     }
   }
 
@@ -475,7 +505,17 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       sourceSystem: 'previo',
       documentType: 'reservation_export',
       classificationBasis: 'binary-workbook',
-      role: 'primary'
+      role: 'primary',
+      decision: buildResolvedDecision({
+        sourceSystem: 'previo',
+        documentType: 'reservation_export',
+        classificationBasis: 'binary-workbook',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: ['binary-workbook-signature'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
     }
   }
 
@@ -484,7 +524,17 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       sourceSystem: 'booking',
       documentType: 'payout_statement',
       classificationBasis: 'file-name',
-      role: 'supplemental'
+      role: 'supplemental',
+      decision: buildResolvedDecision({
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'file-name',
+        role: 'supplemental',
+        parserSupported: true,
+        matchedRules: ['file-name-pdf-fallback'],
+        missingSignals: bookingPdfDecision?.missingSignals ?? [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
     }
   }
 
@@ -495,7 +545,17 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       sourceSystem: byFileName,
       documentType: inferDocumentType(byFileName),
       classificationBasis: 'file-name',
-      role: 'primary'
+      role: 'primary',
+      decision: buildResolvedDecision({
+        sourceSystem: byFileName,
+        documentType: inferDocumentType(byFileName),
+        classificationBasis: 'file-name',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: ['file-name-signature'],
+        missingSignals: bookingPdfDecision?.missingSignals ?? [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
     }
   }
 
@@ -503,7 +563,13 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     sourceSystem: 'unknown',
     documentType: 'other',
     classificationBasis: 'unknown',
-    role: 'primary'
+    role: 'primary',
+    decision: bookingPdfDecision ?? buildUnknownDecision({
+      detectedSignals: [],
+      matchedRules: [],
+      missingSignals: [],
+      parserSupported: false
+    })
   }
 }
 
@@ -638,9 +704,9 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   return 'unknown'
 }
 
-function inferBookingSupplementDocumentTypeFromDescriptor(
+function buildBookingPayoutSupplementDecision(
   input: UploadedMonthlyFileClassificationDescriptor
-): 'payout_statement' | undefined {
+): UploadedMonthlyFileDecision | undefined {
   const isPdfLike = input.contentFormat === 'pdf-text'
     || input.sourceDescriptor?.browserTextExtraction?.mode === 'pdf-text'
     || input.sourceDescriptor?.mimeType === 'application/pdf'
@@ -651,39 +717,166 @@ function inferBookingSupplementDocumentTypeFromDescriptor(
   }
 
   const signals = detectBookingPayoutStatementSignals(input.content)
-  const detectedSignatures = new Set(input.sourceDescriptor?.browserTextExtraction?.detectedSignatures ?? [])
-  const signalCount = [
-    signals.hasBookingBranding || detectedSignatures.has('booking-branding'),
-    signals.hasStatementWording || detectedSignatures.has('booking-payout-statement-wording'),
-    Boolean(signals.paymentId) || detectedSignatures.has('booking-payment-id'),
-    Boolean(signals.payoutDateRaw) || detectedSignatures.has('booking-payout-date'),
-    Boolean(signals.payoutTotalRaw) || detectedSignatures.has('booking-payout-total'),
-    Boolean(signals.ibanValue) || detectedSignatures.has('iban-hint'),
-    signals.reservationIds.length > 0 || detectedSignatures.has('booking-reservation-reference')
-  ].filter(Boolean).length
+  const detectedSignals = collectBookingPayoutDecisionSignals(signals, input)
+  const detectedSignalSet = new Set(detectedSignals)
+  const hasBookingBranding = detectedSignalSet.has('booking-branding')
+  const hasStatementWording = detectedSignalSet.has('booking-payout-statement-wording')
+  const hasPaymentId = detectedSignalSet.has('booking-payment-id')
+  const hasPayoutDate = detectedSignalSet.has('booking-payout-date')
+  const hasPayoutTotal = detectedSignalSet.has('booking-payout-total')
+  const hasIban = detectedSignalSet.has('iban-hint')
+  const hasReservationReference = detectedSignalSet.has('booking-reservation-reference')
+  const signalCount = detectedSignals.length
+  const parserSupported = true
+  const matchedRules = ['pdf-like-upload']
+  const missingSignals = [
+    hasBookingBranding ? undefined : 'booking-branding',
+    hasStatementWording ? undefined : 'booking-payout-statement-wording',
+    hasPaymentId ? undefined : 'booking-payment-id',
+    hasPayoutDate ? undefined : 'booking-payout-date',
+    hasPayoutTotal ? undefined : 'booking-payout-total'
+  ].filter((value): value is string => Boolean(value))
 
   if (!input.content.trim() && signalCount === 0) {
-    return undefined
+    return buildUnknownDecision({
+      detectedSignals,
+      matchedRules,
+      missingSignals,
+      parserSupported
+    })
   }
 
-  if (
-    (signals.hasBookingBranding || detectedSignatures.has('booking-branding'))
-    && (Boolean(signals.paymentId) || detectedSignatures.has('booking-payment-id'))
-    && (Boolean(signals.payoutDateRaw) || detectedSignatures.has('booking-payout-date'))
-    && (Boolean(signals.payoutTotalRaw) || detectedSignatures.has('booking-payout-total'))
-  ) {
-    return 'payout_statement'
+  if (hasBookingBranding && hasPaymentId && hasPayoutDate && hasPayoutTotal) {
+    return buildResolvedDecision({
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      classificationBasis: 'content',
+      role: 'supplemental',
+      parserSupported,
+      matchedRules: [...matchedRules, 'booking-payout-core-fields'],
+      missingSignals,
+      detectedSignals
+    })
   }
 
-  if (
-    (signals.hasBookingBranding || detectedSignatures.has('booking-branding'))
-    && (signals.hasStatementWording || detectedSignatures.has('booking-payout-statement-wording'))
-    && signalCount >= 4
-  ) {
-    return 'payout_statement'
+  if (hasBookingBranding && hasStatementWording && signalCount >= 4) {
+    return buildResolvedDecision({
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      classificationBasis: 'content',
+      role: 'supplemental',
+      parserSupported,
+      matchedRules: [...matchedRules, 'booking-payout-threshold-reached'],
+      missingSignals,
+      detectedSignals
+    })
   }
 
-  return undefined
+  if (hasBookingBranding && hasStatementWording && parserSupported) {
+    return {
+      detectedSignals,
+      matchedRules: [...matchedRules, 'booking-payout-branding-and-wording', 'booking-payout-parser-supported'],
+      missingSignals,
+      parserSupported,
+      confidence: 'hint',
+      resolvedSourceSystem: 'booking',
+      resolvedDocumentType: 'payout_statement',
+      resolvedRole: 'supplemental',
+      resolvedBucket: 'supplemental-supported'
+    }
+  }
+
+  return buildUnknownDecision({
+    detectedSignals,
+    matchedRules: [
+      ...matchedRules,
+      ...(hasIban ? ['iban-hint'] : []),
+      ...(hasReservationReference ? ['booking-reservation-reference'] : [])
+    ],
+    missingSignals,
+    parserSupported
+  })
+}
+
+function collectBookingPayoutDecisionSignals(
+  signals: ReturnType<typeof detectBookingPayoutStatementSignals>,
+  input: UploadedMonthlyFileClassificationDescriptor
+): string[] {
+  const detectedSignals = new Set(input.sourceDescriptor?.browserTextExtraction?.detectedSignatures ?? [])
+
+  if (signals.hasBookingBranding) {
+    detectedSignals.add('booking-branding')
+  }
+
+  if (signals.hasStatementWording) {
+    detectedSignals.add('booking-payout-statement-wording')
+  }
+
+  if (signals.paymentId) {
+    detectedSignals.add('booking-payment-id')
+  }
+
+  if (signals.payoutDateRaw) {
+    detectedSignals.add('booking-payout-date')
+  }
+
+  if (signals.payoutTotalRaw) {
+    detectedSignals.add('booking-payout-total')
+  }
+
+  if (signals.ibanValue) {
+    detectedSignals.add('iban-hint')
+  }
+
+  if (signals.reservationIds.length > 0) {
+    detectedSignals.add('booking-reservation-reference')
+  }
+
+  return Array.from(detectedSignals)
+}
+
+function buildResolvedDecision(input: {
+  sourceSystem: SourceDocument['sourceSystem']
+  documentType: SourceDocument['documentType']
+  classificationBasis: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['classificationBasis']
+  role: 'primary' | 'supplemental'
+  parserSupported: boolean
+  matchedRules: string[]
+  missingSignals: string[]
+  detectedSignals: string[]
+}): UploadedMonthlyFileDecision {
+  return {
+    detectedSignals: input.detectedSignals,
+    matchedRules: input.matchedRules,
+    missingSignals: input.missingSignals,
+    parserSupported: input.parserSupported,
+    confidence: input.classificationBasis === 'content' ? 'strong' : 'hint',
+    resolvedSourceSystem: input.sourceSystem,
+    resolvedDocumentType: input.documentType,
+    resolvedRole: input.role,
+    resolvedBucket: input.role === 'supplemental'
+      ? 'supplemental-supported'
+      : 'recognized-supported'
+  }
+}
+
+function buildUnknownDecision(input: {
+  detectedSignals: string[]
+  matchedRules: string[]
+  missingSignals: string[]
+  parserSupported: boolean
+}): UploadedMonthlyFileDecision {
+  return {
+    detectedSignals: input.detectedSignals,
+    matchedRules: input.matchedRules,
+    missingSignals: input.missingSignals,
+    parserSupported: input.parserSupported,
+    confidence: input.detectedSignals.length > 0 ? 'hint' : 'none',
+    resolvedSourceSystem: 'unknown',
+    resolvedDocumentType: 'other',
+    resolvedRole: 'primary',
+    resolvedBucket: 'unclassified'
+  }
 }
 
 function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {

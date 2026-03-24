@@ -86,7 +86,12 @@ export interface BrowserRuntimeUploadState {
       textPreview?: string
       textTailPreview?: string
       keywordHits: string[]
+      detectedSignals: string[]
       detectedSignatures: string[]
+      matchedRules: string[]
+      missingSignals: string[]
+      parserSupported: boolean
+      decisionConfidence: 'none' | 'hint' | 'strong'
       sourceSystem: string
       documentType: string
       classificationBasis: string
@@ -120,6 +125,17 @@ export interface BrowserRuntimeUploadState {
     warnings: string[]
     reason?: string
     errorMessage?: string
+    decision: {
+      detectedSignals: string[]
+      matchedRules: string[]
+      missingSignals: string[]
+      parserSupported: boolean
+      confidence: 'none' | 'hint' | 'strong'
+      resolvedSourceSystem: string
+      resolvedDocumentType: string
+      resolvedRole: 'primary' | 'supplemental'
+      resolvedBucket: 'recognized-supported' | 'supplemental-supported' | 'unsupported' | 'unclassified' | 'ingest-error'
+    }
   }>
   extractedRecords: Array<{
     fileName: string

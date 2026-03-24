@@ -2386,6 +2386,20 @@ describe('buildUploadWebFlow', () => {
           'booking-payout-total',
           'iban-hint'
         ]),
+        detectedSignals: expect.arrayContaining([
+          'booking-branding',
+          'booking-payout-statement-wording',
+          'booking-payment-id',
+          'booking-payout-date',
+          'booking-payout-total'
+        ]),
+        matchedRules: expect.arrayContaining([
+          'pdf-like-upload',
+          'booking-payout-core-fields'
+        ]),
+        missingSignals: expect.any(Array),
+        parserSupported: true,
+        decisionConfidence: 'strong',
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'booking',

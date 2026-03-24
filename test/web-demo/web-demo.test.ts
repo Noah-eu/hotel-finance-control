@@ -1103,6 +1103,7 @@ describe('buildWebDemo', () => {
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Keyword hits: Booking.com B.V., Výkaz plateb, ID platby, Datum vyplacení částky, Celkem (CZK), Celková částka k vyplacení, IBAN, Reservation reference')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payout-total')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: booking / payout_statement / content')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Decision reason: confidence=strong · parser=ano · matched=pdf-like-upload, booking-payout-core-fields')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: supplemental supported · Podporovaný doplňkový payout dokument')
     expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
   })

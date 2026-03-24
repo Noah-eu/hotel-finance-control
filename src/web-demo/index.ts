@@ -675,6 +675,20 @@ ${showRuntimePayoutDiagnostics ? `
           + String(file.classificationBasis || 'unknown');
       }
 
+      function buildDebugDecisionReasonLabel(file) {
+        const matchedRules = Array.isArray(file.matchedRules) && file.matchedRules.length > 0
+          ? file.matchedRules.join(', ')
+          : 'žádné matched rules';
+        const missingSignals = Array.isArray(file.missingSignals) && file.missingSignals.length > 0
+          ? file.missingSignals.join(', ')
+          : 'žádné';
+
+        return 'confidence=' + String(file.decisionConfidence || 'none')
+          + ' · parser=' + buildDebugBooleanLabel(Boolean(file.parserSupported))
+          + ' · matched=' + matchedRules
+          + ' · missing=' + missingSignals;
+      }
+
       function syncRuntimeFileIntakeDiagnosticsVisibility() {
         runtimeFileIntakeDiagnosticsSection.hidden = !runtimeFileIntakeDebugMode;
       }
@@ -880,8 +894,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Text preview: ' + escapeHtml(buildDebugTextPreviewLabel(file.textPreview)) + '</span>',
           '<br /><span class="hint">Text tail: ' + escapeHtml(buildDebugTextPreviewLabel(file.textTailPreview)) + '</span>',
           '<br /><span class="hint">Keyword hits: ' + escapeHtml((file.keywordHits && file.keywordHits.length > 0 ? file.keywordHits.join(', ') : 'žádné')) + '</span>',
-          '<br /><span class="hint">Signály: ' + escapeHtml((file.detectedSignatures && file.detectedSignatures.length > 0 ? file.detectedSignatures.join(', ') : 'žádné')) + '</span>',
+          '<br /><span class="hint">Signály: ' + escapeHtml((file.detectedSignals && file.detectedSignals.length > 0 ? file.detectedSignals.join(', ') : 'žádné')) + '</span>',
           '<br /><span class="hint">Rozhodnutí klasifikátoru: ' + escapeHtml(buildDebugClassifierDecisionLabel(file)) + '</span>',
+          '<br /><span class="hint">Decision reason: ' + escapeHtml(buildDebugDecisionReasonLabel(file)) + '</span>',
           '<br /><span class="hint">Routování: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(String(file.role || 'primary')) + '</span>',
           '<br /><span class="hint">Finální bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
           '</li>'

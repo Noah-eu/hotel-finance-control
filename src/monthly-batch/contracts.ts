@@ -8,6 +8,30 @@ export type UploadedMonthlyFileClassificationBasis =
   | 'binary-workbook'
   | 'unknown'
 
+export type UploadedMonthlyFileDecisionConfidence =
+  | 'none'
+  | 'hint'
+  | 'strong'
+
+export type UploadedMonthlyFileDecisionBucket =
+  | 'recognized-supported'
+  | 'supplemental-supported'
+  | 'unsupported'
+  | 'unclassified'
+  | 'ingest-error'
+
+export interface UploadedMonthlyFileDecision {
+  detectedSignals: string[]
+  matchedRules: string[]
+  missingSignals: string[]
+  parserSupported: boolean
+  confidence: UploadedMonthlyFileDecisionConfidence
+  resolvedSourceSystem: SourceDocument['sourceSystem']
+  resolvedDocumentType: SourceDocument['documentType']
+  resolvedRole: 'primary' | 'supplemental'
+  resolvedBucket: UploadedMonthlyFileDecisionBucket
+}
+
 export interface UploadedMonthlyFileSourceDescriptor {
   mimeType?: string
   browserTextExtraction?: {
@@ -56,6 +80,7 @@ export interface UploadedMonthlyFileRoute {
   warnings: string[]
   reason?: string
   errorMessage?: string
+  decision: UploadedMonthlyFileDecision
 }
 
 export interface PreparedUploadedMonthlyFilesResult {
