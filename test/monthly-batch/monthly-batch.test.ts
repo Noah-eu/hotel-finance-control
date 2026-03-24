@@ -1047,6 +1047,44 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('recognizes Booking payout statement PDFs by text content even when the filename is misspelled', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Bookinng35k.pdf',
+        content: buildBookingPayoutStatementVariantContent(),
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-24T08:05:00.000Z'
+      }
+    ])
+
+    expect(prepared.importedFiles).toEqual([
+      expect.objectContaining({
+        sourceDocument: expect.objectContaining({
+          fileName: 'Bookinng35k.pdf',
+          sourceSystem: 'booking',
+          documentType: 'payout_statement'
+        }),
+        routing: expect.objectContaining({
+          classificationBasis: 'content',
+          parserId: 'booking-payout-statement-pdf',
+          role: 'supplemental'
+        })
+      })
+    ])
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        parserId: 'booking-payout-statement-pdf',
+        role: 'supplemental'
+      })
+    ])
+  })
+
   it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {
     const booking = getRealInputFixture('booking-payout-export')
 
@@ -1242,7 +1280,6 @@ describe('runMonthlyReconciliationBatch', () => {
 
   it('merges Booking payout PDF supplement metadata into the Booking payout batch without changing its batch key', () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
-    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
 
     const result = ingestUploadedMonthlyFiles({
       files: [
@@ -1252,9 +1289,8 @@ describe('runMonthlyReconciliationBatch', () => {
           uploadedAt: '2026-03-24T11:15:00.000Z'
         },
         {
-          name: bookingPdf.sourceDocument.fileName,
-          content: bookingPdf.rawInput.content,
-          binaryContentBase64: bookingPdf.rawInput.binaryContentBase64,
+          name: 'Bookinng35k.pdf',
+          content: buildBookingPayoutStatementVariantContent(),
           contentFormat: 'pdf-text',
           uploadedAt: '2026-03-24T11:15:30.000Z'
         }
@@ -1277,12 +1313,13 @@ describe('runMonthlyReconciliationBatch', () => {
         extractedCount: 1
       }),
       expect.objectContaining({
-        fileName: 'booking-payout-statement-2026-03.pdf',
+        fileName: 'Bookinng35k.pdf',
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'booking',
         documentType: 'payout_statement',
         role: 'supplemental',
+        classificationBasis: 'content',
         parserId: 'booking-payout-statement-pdf',
         extractedCount: 1
       })
@@ -1294,7 +1331,7 @@ describe('runMonthlyReconciliationBatch', () => {
         payoutSupplementPaymentId: 'PAYOUT-BOOK-20260310',
         payoutSupplementIbanSuffix: '5956',
         payoutSupplementReservationIds: ['RES-BOOK-8841'],
-        payoutSupplementSourceDocumentIds: ['uploaded:booking:2:booking-payout-statement-2026-03-pdf']
+        payoutSupplementSourceDocumentIds: ['uploaded:booking:2:bookinng35k-pdf']
       })
     ])
     expect(result.batch.report.summary.payoutBatchMatchCount).toBe(0)
@@ -1331,6 +1368,19 @@ function buildActualUploadedAirbnbContent(): string {
     '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 15;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OLIOSSDGKKF3X;;CZK;;1 475,08;0,00;1 475,08',
     '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 16;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-IZLCELA7C5EFN;;CZK;;8 241,96;0,00;8 241,96',
     '2026-03-12;2026-03-15;Payout;2026-03-10;2026-03-12;Host 17;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-6G5WFOJO5DJCI;;CZK;;1 117,01;0,00;1 117,01'
+  ].join('\n')
+}
+
+function buildBookingPayoutStatementVariantContent(): string {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: PAYOUT-BOOK-20260310',
+    'Payment date: 2026-03-12',
+    'Transfer total: 1 250,00 CZK',
+    'IBAN: CZ65 5500 0000 0000 5599 555956',
+    'Included reservations:',
+    'RES-BOOK-8841 1 250,00 CZK'
   ].join('\n')
 }
 

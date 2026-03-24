@@ -16,8 +16,8 @@ export class BookingPayoutStatementPdfParser {
   parse(input: ParseBookingPayoutStatementPdfInput): ExtractedRecord[] {
     const fields = parseLabeledDocumentText(input.content)
     const paymentId = pickRequiredField(fields, ['payment id', 'paymentid', 'booking payment id'])
-    const payoutDateRaw = pickRequiredField(fields, ['payment date', 'payout date', 'date'])
-    const payoutTotalRaw = pickRequiredField(fields, ['payout total', 'payment total', 'total payout'])
+    const payoutDateRaw = pickRequiredField(fields, ['payment date', 'payout date', 'transfer date', 'date'])
+    const payoutTotalRaw = pickRequiredField(fields, ['payout total', 'payment total', 'total payout', 'transfer total', 'total transfer'])
 
     if (!paymentId || !payoutDateRaw || !payoutTotalRaw) {
       throw new Error(

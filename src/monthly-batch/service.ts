@@ -443,7 +443,11 @@ function inferUploadedFileClassification(input: {
     }
   }
 
-  const bookingPdfByContent = inferBookingSupplementDocumentTypeFromContent(input.content)
+  const bookingPdfByContent = inferBookingSupplementDocumentTypeFromContent({
+    fileName: input.fileName,
+    content: input.content,
+    contentFormat: input.contentFormat
+  })
 
   if (bookingPdfByContent) {
     return {
@@ -633,21 +637,81 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   return 'unknown'
 }
 
-function inferBookingSupplementDocumentTypeFromContent(content: string): 'payout_statement' | undefined {
-  const normalized = content
+function inferBookingSupplementDocumentTypeFromContent(input: {
+  fileName: string
+  content: string
+  contentFormat?: UploadedMonthlyFile['contentFormat']
+}): 'payout_statement' | undefined {
+  const isPdfLike = input.contentFormat === 'pdf-text'
+    || (!input.contentFormat && input.fileName.toLowerCase().endsWith('.pdf'))
+
+  if (!isPdfLike) {
+    return undefined
+  }
+
+  const normalized = input.content
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase()
 
+  if (!normalized) {
+    return undefined
+  }
+
+  const bookingBranding = /\bbooking(?:\.com| com| bv)?\b/i.test(normalized)
+  const payoutStatementWording = [
+    'payout statement',
+    'payment statement',
+    'payment overview',
+    'payout overview',
+    'payment summary',
+    'payout summary'
+  ].some((value) => normalized.includes(value))
+  const hasPaymentId = hasAnyDocumentLabel(input.content, ['payment id', 'paymentid', 'booking payment id', 'payout id'])
+  const hasPayoutDate = hasAnyDocumentLabel(input.content, ['payment date', 'payout date', 'transfer date', 'date'])
+  const hasPayoutTotal = hasAnyDocumentLabel(input.content, ['payout total', 'payment total', 'total payout', 'transfer total', 'total transfer'])
+  const hasReservationHint =
+    /\bres-[a-z0-9-]+\b/i.test(input.content)
+    || normalized.includes('included reservations')
+    || normalized.includes('reservation reference')
+    || normalized.includes('reservation id')
+  const hasIbanHint = normalized.includes('iban') || normalized.includes('bank account')
+  const strongCueCount = [hasPaymentId, hasPayoutDate, hasPayoutTotal, hasReservationHint, hasIbanHint, payoutStatementWording]
+    .filter(Boolean)
+    .length
+
   if (
-    normalized.includes('booking.com payout statement')
-    && normalized.includes('payment id:')
-    && (normalized.includes('payout total:') || normalized.includes('payment total:'))
+    bookingBranding
+    && hasPaymentId
+    && hasPayoutDate
+    && hasPayoutTotal
+  ) {
+    return 'payout_statement'
+  }
+
+  if (
+    bookingBranding
+    && hasPayoutDate
+    && hasPayoutTotal
+    && (hasReservationHint || hasIbanHint)
+    && strongCueCount >= 4
   ) {
     return 'payout_statement'
   }
 
   return undefined
+}
+
+function hasAnyDocumentLabel(content: string, candidates: string[]): boolean {
+  const normalizedLines = content
+    .replace(/^\ufeff/, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim().toLowerCase())
+    .filter(Boolean)
+
+  return candidates.some((candidate) =>
+    normalizedLines.some((line) => line.startsWith(`${candidate}:`) || line.startsWith(`${candidate} -`))
+  )
 }
 
 function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {

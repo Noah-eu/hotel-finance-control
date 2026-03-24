@@ -20,6 +20,32 @@ describe('parseBookingPayoutStatementPdf', () => {
     ])
   })
 
+  it('accepts transfer-total wording from Booking payout statement variants', () => {
+    const fixture = getRealInputFixture('booking-payout-statement-pdf')
+
+    const records = parseBookingPayoutStatementPdf({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Booking.com',
+        'Payment overview',
+        'Payment ID: PAYOUT-BOOK-20260310',
+        'Payment date: 2026-03-12',
+        'Transfer total: 1 250,00 CZK',
+        'IBAN: CZ65 5500 0000 0000 5599 555956',
+        'Included reservations:',
+        'RES-BOOK-8841 1 250,00 CZK'
+      ].join('\n'),
+      extractedAt: '2026-03-24T11:20:30.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        ...fixture.expectedExtractedRecords[0],
+        extractedAt: '2026-03-24T11:20:30.000Z'
+      })
+    ])
+  })
+
   it('fails clearly when required labeled payout fields are missing', () => {
     expect(() =>
       parseBookingPayoutStatementPdf({

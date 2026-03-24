@@ -2016,14 +2016,13 @@ describe('buildUploadWebFlow', () => {
 
   it('accounts for all four selected files in the real mixed browser monthly flow and keeps the Booking PDF visible as a supplemental outcome', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
-    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
 
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
         createRuntimeFile('booking35k.csv', booking.rawInput.content),
         createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
         createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
-        createRuntimePdfFile('Bookinng35k.pdf', bookingPdf.rawInput.binaryContentBase64!)
+        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ],
       month: '2026-03',
       generatedAt: '2026-03-24T16:10:00.000Z'
@@ -2069,6 +2068,7 @@ describe('buildUploadWebFlow', () => {
         intakeStatus: 'parsed',
         sourceSystem: 'booking',
         documentType: 'payout_statement',
+        classificationBasis: 'content',
         parserId: 'booking-payout-statement-pdf',
         role: 'supplemental',
         extractedCount: 1
@@ -2133,12 +2133,11 @@ describe('buildUploadWebFlow', () => {
 
   it('uses Booking payout PDF metadata in the browser operator-facing unmatched payout item', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
-    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
 
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
         createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content),
-        createRuntimePdfFile(bookingPdf.sourceDocument.fileName, bookingPdf.rawInput.binaryContentBase64!)
+        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ],
       month: '2026-03',
       generatedAt: '2026-03-24T11:50:00.000Z'
@@ -2151,9 +2150,10 @@ describe('buildUploadWebFlow', () => {
         role: 'primary'
       }),
       expect.objectContaining({
-        fileName: 'booking-payout-statement-2026-03.pdf',
+        fileName: 'Bookinng35k.pdf',
         status: 'supported',
         documentType: 'payout_statement',
+        classificationBasis: 'content',
         role: 'supplemental'
       })
     ])
@@ -2525,6 +2525,10 @@ function createRuntimePdfFile(name: string, binaryContentBase64: string) {
   }
 }
 
+function createRuntimePdfFileFromTextLines(name: string, lines: string[]) {
+  return createRuntimePdfFile(name, buildRuntimePdfBase64FromTextLines(lines))
+}
+
 function createBrokenRuntimePdfFile(name: string) {
   return {
     name,
@@ -2536,6 +2540,65 @@ function createBrokenRuntimePdfFile(name: string) {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
+}
+
+function buildRuntimePdfBase64FromTextLines(lines: string[]): string {
+  const stream = [
+    'BT',
+    '/F1 12 Tf',
+    '50 780 Td',
+    ...lines.flatMap((line, index) => index === 0
+      ? [`<${encodeRuntimePdfHexString(line)}> Tj`]
+      : ['0 -18 Td', `<${encodeRuntimePdfHexString(line)}> Tj`]),
+    'ET'
+  ].join('\n')
+
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function encodeRuntimePdfHexString(value: string): string {
+  return Array.from(value)
+    .map((char) => char.charCodeAt(0).toString(16).padStart(4, '0'))
+    .join('')
+}
+
+function buildBookingPayoutStatementVariantPdfLines(): string[] {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: PAYOUT-BOOK-20260310',
+    'Payment date: 2026-03-12',
+    'Transfer total: 1 250,00 CZK',
+    'IBAN: CZ65 5500 0000 0000 5599 555956',
+    'Included reservations:',
+    'RES-BOOK-8841 1 250,00 CZK'
+  ]
 }
 
 function buildActualUploadedAirbnbContent(): string {
