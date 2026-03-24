@@ -2,6 +2,7 @@ import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
+  parseBookingPayoutStatementPdf,
   parseComgateExport,
   parseExpediaPayoutExport,
   parseFioStatement,
@@ -18,8 +19,10 @@ import type {
   MonthlyBatchResult,
   MonthlyBatchService,
   PreparedUploadedMonthlyFilesResult,
+  UploadedMonthlyIngestionResult,
   UploadedMonthlyFile
 } from './contracts'
+import { applyPayoutSupplements } from './payout-supplements'
 
 type Parser = (input: {
   sourceDocument: SourceDocument
@@ -28,43 +31,19 @@ type Parser = (input: {
   binaryContentBase64?: string
 }) => ExtractedRecord[]
 
+interface ParsedImportedMonthlySourceFile {
+  importedFile: ImportedMonthlySourceFile
+  extractedRecords: ExtractedRecord[]
+}
+
 export class DefaultMonthlyBatchService implements MonthlyBatchService {
   run(input: MonthlyBatchInput): MonthlyBatchResult {
-    const files = input.files.map((file) => {
-      const parser = selectParser(file.sourceDocument, file.content)
-      const extractedRecords = parser({
-        sourceDocument: file.sourceDocument,
-        content: file.content,
-        extractedAt: input.reconciliationContext.requestedAt,
-        binaryContentBase64: file.binaryContentBase64
-      })
+    const parsedFiles = input.files.map((file) => parseImportedMonthlySourceFile(file, input.reconciliationContext.requestedAt))
 
-      return {
-        sourceDocumentId: file.sourceDocument.id,
-        extractedRecords
-      }
+    return buildMonthlyBatchResultFromParsedFiles(parsedFiles, {
+      reconciliationContext: input.reconciliationContext,
+      reportGeneratedAt: input.reportGeneratedAt
     })
-
-    const extractedRecords = files.flatMap((file) => file.extractedRecords)
-    const reconciliation = reconcileExtractedRecords(
-      { extractedRecords },
-      input.reconciliationContext
-    )
-    const report = buildReconciliationReport({
-      reconciliation,
-      generatedAt: input.reportGeneratedAt
-    })
-
-    return {
-      extractedRecords,
-      reconciliation,
-      report,
-      files: files.map((file) => ({
-        sourceDocumentId: file.sourceDocumentId,
-        extractedRecordIds: file.extractedRecords.map((record) => record.id),
-        extractedCount: file.extractedRecords.length
-      }))
-    }
   }
 }
 
@@ -72,6 +51,66 @@ const defaultMonthlyBatchService = new DefaultMonthlyBatchService()
 
 export function runMonthlyReconciliationBatch(input: MonthlyBatchInput): MonthlyBatchResult {
   return defaultMonthlyBatchService.run(input)
+}
+
+export function ingestUploadedMonthlyFiles(input: {
+  files: UploadedMonthlyFile[]
+  reconciliationContext: MonthlyBatchInput['reconciliationContext']
+  reportGeneratedAt: MonthlyBatchInput['reportGeneratedAt']
+}): UploadedMonthlyIngestionResult {
+  const prepared = prepareUploadedMonthlyBatchFiles(input.files)
+  const fileRoutes = prepared.fileRoutes.map((file) => ({
+    ...file,
+    extractedCount: file.extractedCount ?? 0,
+    extractedRecordIds: file.extractedRecordIds ?? []
+  }))
+  const parsedFiles: ParsedImportedMonthlySourceFile[] = []
+
+  for (const importedFile of prepared.importedFiles) {
+    const routeIndex = fileRoutes.findIndex((file) => file.sourceDocumentId === importedFile.sourceDocument.id)
+
+    try {
+      const parsed = parseImportedMonthlySourceFile(importedFile, input.reconciliationContext.requestedAt)
+      parsedFiles.push(parsed)
+
+      if (routeIndex !== -1) {
+        fileRoutes[routeIndex] = {
+          ...fileRoutes[routeIndex]!,
+          status: 'supported',
+          intakeStatus: 'parsed',
+          extractedCount: parsed.extractedRecords.length,
+          extractedRecordIds: parsed.extractedRecords.map((record) => record.id),
+          reason: undefined,
+          errorMessage: undefined
+        }
+      }
+    } catch (error) {
+      if (routeIndex !== -1) {
+        const message = error instanceof Error ? error.message : String(error)
+        fileRoutes[routeIndex] = {
+          ...fileRoutes[routeIndex]!,
+          status: 'error',
+          intakeStatus: 'error',
+          extractedCount: 0,
+          extractedRecordIds: [],
+          reason: message,
+          errorMessage: message
+        }
+      }
+    }
+  }
+
+  const parsedImportedFiles = parsedFiles.map((file) => file.importedFile)
+  const batch = buildMonthlyBatchResultFromParsedFiles(parsedFiles, {
+    reconciliationContext: input.reconciliationContext,
+    reportGeneratedAt: input.reportGeneratedAt
+  })
+
+  return {
+    importedFiles: parsedImportedFiles,
+    fileRoutes,
+    batch
+  }
 }
 
 export function prepareUploadedMonthlyFiles(files: UploadedMonthlyFile[]): ImportedMonthlySourceFile[] {
@@ -105,7 +144,8 @@ export function prepareUploadedMonthlyBatchFiles(
       routing: {
         classificationBasis: classifiedFile.fileRoute.classificationBasis,
         parserId: classifiedFile.parserId,
-        warnings: [...classifiedFile.fileRoute.warnings, ...duplicateWarningsByIndex[index]]
+        warnings: [...classifiedFile.fileRoute.warnings, ...duplicateWarningsByIndex[index]],
+        role: classifiedFile.fileRoute.role
       }
     }]
   })
@@ -116,7 +156,64 @@ export function prepareUploadedMonthlyBatchFiles(
   }
 }
 
+function parseImportedMonthlySourceFile(
+  file: ImportedMonthlySourceFile,
+  extractedAt: string
+): ParsedImportedMonthlySourceFile {
+  const parser = selectParser(file.sourceDocument, file.content)
+  const extractedRecords = parser({
+    sourceDocument: file.sourceDocument,
+    content: file.content,
+    extractedAt,
+    binaryContentBase64: file.binaryContentBase64
+  })
+
+  return {
+    importedFile: file,
+    extractedRecords
+  }
+}
+
+function buildMonthlyBatchResultFromParsedFiles(
+  parsedFiles: ParsedImportedMonthlySourceFile[],
+  input: {
+    reconciliationContext: MonthlyBatchInput['reconciliationContext']
+    reportGeneratedAt: MonthlyBatchInput['reportGeneratedAt']
+  }
+): MonthlyBatchResult {
+  const extractedRecords = applyPayoutSupplements(
+    parsedFiles.flatMap((file) => file.extractedRecords)
+  )
+  const reconciliation = reconcileExtractedRecords(
+    { extractedRecords },
+    input.reconciliationContext
+  )
+  const report = buildReconciliationReport({
+    reconciliation,
+    generatedAt: input.reportGeneratedAt
+  })
+
+  return {
+    extractedRecords,
+    reconciliation,
+    report,
+    files: parsedFiles.map((file) => ({
+      sourceDocumentId: file.importedFile.sourceDocument.id,
+      extractedRecordIds: extractedRecords
+        .filter((record) => record.sourceDocumentId === file.importedFile.sourceDocument.id)
+        .map((record) => record.id),
+      extractedCount: extractedRecords.filter(
+        (record) => record.sourceDocumentId === file.importedFile.sourceDocument.id
+      ).length
+    }))
+  }
+}
+
 function selectParser(sourceDocument: SourceDocument, content: string): Parser {
+  if (sourceDocument.sourceSystem === 'booking' && sourceDocument.documentType === 'payout_statement') {
+    return parseBookingPayoutStatementPdf
+  }
+
   if (sourceDocument.sourceSystem === 'bank' && inferBankParserVariant(sourceDocument.fileName, content) === 'raiffeisenbank') {
     return parseRaiffeisenbankStatement
   }
@@ -174,7 +271,7 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
     (hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
       || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'název protiúčtu', 'protiúčet', 'typ'])
       || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ']))
-    && !hasAnyHeaderFields(headerFields, ['číslo protiúčtu', 'název protiúčtu', 'cislo protiuctu', 'nazev protiuctu'])
+    && !hasAnyHeaderFields(headerFields, ['číslo protiúčtu', 'cislo protiuctu'])
 
   if (isCanonicalBankHeader) {
     return 'raiffeisenbank'
@@ -202,15 +299,17 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
 function buildSourceDocument(
   file: UploadedMonthlyFile,
   index: number,
-  sourceSystem: SourceDocument['sourceSystem']
+  classification: {
+    sourceSystem: SourceDocument['sourceSystem']
+    documentType: SourceDocument['documentType']
+  }
 ): SourceDocument {
   const fileName = file.name.trim()
-  const documentType = inferDocumentType(sourceSystem)
 
   return {
-    id: `uploaded:${sourceSystem}:${index + 1}:${slugify(fileName)}` as SourceDocument['id'],
-    sourceSystem,
-    documentType,
+    id: `uploaded:${classification.sourceSystem}:${index + 1}:${slugify(fileName)}` as SourceDocument['id'],
+    sourceSystem: classification.sourceSystem,
+    documentType: classification.documentType,
     fileName,
     uploadedAt: file.uploadedAt
   }
@@ -227,8 +326,30 @@ function classifyUploadedMonthlyFile(
   const classification = inferUploadedFileClassification({
     fileName: file.name,
     content: file.content,
-    binaryContentBase64: file.binaryContentBase64
+    binaryContentBase64: file.binaryContentBase64,
+    contentFormat: file.contentFormat,
+    ingestError: file.ingestError
   })
+
+  if (classification.ingestError) {
+    return {
+      fileRoute: {
+        fileName: file.name.trim(),
+        uploadedAt: file.uploadedAt,
+        status: 'error',
+        intakeStatus: 'error',
+        sourceSystem: classification.sourceSystem,
+        documentType: classification.documentType,
+        classificationBasis: classification.classificationBasis,
+        role: classification.role,
+        extractedCount: 0,
+        extractedRecordIds: [],
+        warnings: [],
+        reason: classification.ingestError,
+        errorMessage: classification.ingestError
+      }
+    }
+  }
 
   if (classification.sourceSystem === 'unknown') {
     return {
@@ -236,17 +357,42 @@ function classifyUploadedMonthlyFile(
         fileName: file.name.trim(),
         uploadedAt: file.uploadedAt,
         status: 'unsupported',
+        intakeStatus: 'unclassified',
         sourceSystem: 'unknown',
         documentType: 'other',
         classificationBasis: classification.classificationBasis,
+        role: 'primary',
+        extractedCount: 0,
+        extractedRecordIds: [],
         warnings: [],
         reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.'
       }
     }
   }
 
-  const sourceDocument = buildSourceDocument(file, index, classification.sourceSystem)
+  const sourceDocument = buildSourceDocument(file, index, classification)
   const parserId = resolveParserId(sourceDocument, file.content)
+
+  if (!parserId) {
+    return {
+      fileRoute: {
+        fileName: sourceDocument.fileName,
+        uploadedAt: sourceDocument.uploadedAt,
+        status: 'unsupported',
+        intakeStatus: 'unsupported',
+        sourceSystem: sourceDocument.sourceSystem,
+        documentType: sourceDocument.documentType,
+        classificationBasis: classification.classificationBasis,
+        parserId: undefined,
+        sourceDocumentId: sourceDocument.id,
+        role: classification.role,
+        extractedCount: 0,
+        extractedRecordIds: [],
+        warnings: [],
+        reason: 'Pro tento rozpoznaný typ dokumentu zatím není nakonfigurovaný parser.'
+      }
+    }
+  }
 
   return {
     sourceDocument,
@@ -255,11 +401,15 @@ function classifyUploadedMonthlyFile(
       fileName: sourceDocument.fileName,
       uploadedAt: sourceDocument.uploadedAt,
       status: 'supported',
+      intakeStatus: 'parsed',
       sourceSystem: sourceDocument.sourceSystem,
       documentType: sourceDocument.documentType,
       classificationBasis: classification.classificationBasis,
       parserId,
       sourceDocumentId: sourceDocument.id,
+      role: classification.role,
+      extractedCount: 0,
+      extractedRecordIds: [],
       warnings: []
     }
   }
@@ -269,23 +419,67 @@ function inferUploadedFileClassification(input: {
   fileName: string
   content: string
   binaryContentBase64?: string
+  contentFormat?: UploadedMonthlyFile['contentFormat']
+  ingestError?: string
 }): {
   sourceSystem: SourceDocument['sourceSystem']
+  documentType: SourceDocument['documentType']
   classificationBasis: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['classificationBasis']
+  role: 'primary' | 'supplemental'
+  ingestError?: string
 } {
+  if (input.ingestError) {
+    const sourceSystem = inferSourceSystemFromFileName(input.fileName)
+    const role = inferSupplementRole(input.fileName, input.contentFormat)
+
+    return {
+      sourceSystem,
+      documentType: role === 'supplemental' && sourceSystem === 'booking'
+        ? 'payout_statement'
+        : inferDocumentType(sourceSystem),
+      classificationBasis: 'file-name',
+      role,
+      ingestError: input.ingestError
+    }
+  }
+
+  const bookingPdfByContent = inferBookingSupplementDocumentTypeFromContent(input.content)
+
+  if (bookingPdfByContent) {
+    return {
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      classificationBasis: 'content',
+      role: 'supplemental'
+    }
+  }
+
   const byContent = inferSourceSystemFromContent(input.content)
 
   if (byContent !== 'unknown') {
     return {
       sourceSystem: byContent,
-      classificationBasis: 'content'
+      documentType: inferDocumentType(byContent),
+      classificationBasis: 'content',
+      role: 'primary'
     }
   }
 
   if (input.binaryContentBase64 && input.fileName.toLowerCase().includes('prehled_rezervaci')) {
     return {
       sourceSystem: 'previo',
-      classificationBasis: 'binary-workbook'
+      documentType: 'reservation_export',
+      classificationBasis: 'binary-workbook',
+      role: 'primary'
+    }
+  }
+
+  if (looksLikeBookingPayoutStatementPdf(input.fileName, input.contentFormat)) {
+    return {
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      classificationBasis: 'file-name',
+      role: 'supplemental'
     }
   }
 
@@ -294,13 +488,17 @@ function inferUploadedFileClassification(input: {
   if (byFileName !== 'unknown') {
     return {
       sourceSystem: byFileName,
-      classificationBasis: 'file-name'
+      documentType: inferDocumentType(byFileName),
+      classificationBasis: 'file-name',
+      role: 'primary'
     }
   }
 
   return {
     sourceSystem: 'unknown',
-    classificationBasis: 'unknown'
+    documentType: 'other',
+    classificationBasis: 'unknown',
+    role: 'primary'
   }
 }
 
@@ -373,6 +571,7 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
     || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
     || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
+    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'název protiúčtu', 'protiúčet', 'typ'])
     || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])
     || matchesAnyHeaderSignature(normalizedHeaderSample, [
       'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
@@ -432,6 +631,23 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   }
 
   return 'unknown'
+}
+
+function inferBookingSupplementDocumentTypeFromContent(content: string): 'payout_statement' | undefined {
+  const normalized = content
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+
+  if (
+    normalized.includes('booking.com payout statement')
+    && normalized.includes('payment id:')
+    && (normalized.includes('payout total:') || normalized.includes('payment total:'))
+  ) {
+    return 'payout_statement'
+  }
+
+  return undefined
 }
 
 function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {
@@ -510,12 +726,35 @@ function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): Source
   }
 }
 
-function resolveParserId(sourceDocument: SourceDocument, content: string): string {
+function resolveParserId(sourceDocument: SourceDocument, content: string): string | undefined {
+  if (sourceDocument.sourceSystem === 'booking' && sourceDocument.documentType === 'payout_statement') {
+    return 'booking-payout-statement-pdf'
+  }
+
   if (sourceDocument.sourceSystem === 'bank') {
-    return inferBankParserVariant(sourceDocument.fileName, content)
+    const variant = inferBankParserVariant(sourceDocument.fileName, content)
+    return variant === 'unknown' ? undefined : variant
   }
 
   return sourceDocument.sourceSystem
+}
+
+function looksLikeBookingPayoutStatementPdf(
+  fileName: string,
+  contentFormat?: UploadedMonthlyFile['contentFormat']
+): boolean {
+  const normalizedFileName = fileName.toLowerCase()
+
+  return normalizedFileName.endsWith('.pdf')
+    && normalizedFileName.includes('booking')
+    && contentFormat === 'pdf-text'
+}
+
+function inferSupplementRole(
+  fileName: string,
+  contentFormat?: UploadedMonthlyFile['contentFormat']
+): 'primary' | 'supplemental' {
+  return looksLikeBookingPayoutStatementPdf(fileName, contentFormat) ? 'supplemental' : 'primary'
 }
 
 function collectDuplicateWarnings(

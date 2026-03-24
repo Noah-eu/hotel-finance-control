@@ -8,6 +8,7 @@ export interface RealInputFixture {
   | 'booking-payout-export'
   | 'booking-payout-export-browser-upload-shape'
   | 'booking-payout-export-browser-upload-batch-shape'
+  | 'booking-payout-statement-pdf'
   | 'airbnb-payout-export'
   | 'expedia-payout-export'
   | 'previo-reservation-export'
@@ -70,6 +71,53 @@ function workbookBase64(sheets: Array<{ name: string, rows: Array<Record<string,
   }
 
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
+function pdfBase64FromTextLines(lines: string[]): string {
+  const stream = [
+    'BT',
+    '/F1 12 Tf',
+    '50 780 Td',
+    ...lines.flatMap((line, index) => index === 0
+      ? [`(${escapePdfLiteral(line)}) Tj`]
+      : ['0 -18 Td', `(${escapePdfLiteral(line)}) Tj`]),
+    'ET'
+  ].join('\n')
+
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function escapePdfLiteral(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
 }
 
 export const realInputFixtures: RealInputFixture[] = [
@@ -419,6 +467,58 @@ export const realInputFixtures: RealInputFixture[] = [
         bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
         extractedRecordIds: ['booking-payout-2'],
         sourceDocumentIds: ['doc-booking-browser-upload-batch-shape-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'booking-payout-statement-pdf',
+    description: 'Representative Booking payout statement PDF captured as deterministic extracted text plus a text-selectable PDF binary for browser upload supplements.',
+    sourceDocument: sourceDocument({
+      id: 'doc-booking-payout-statement-2026-03' as SourceDocument['id'],
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      fileName: 'booking-payout-statement-2026-03.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Booking.com payout statement',
+        'Payment ID: PAYOUT-BOOK-20260310',
+        'Payment date: 2026-03-12',
+        'Payout total: 1 250,00 CZK',
+        'IBAN: CZ65 5500 0000 0000 5599 555956',
+        'Included reservations:',
+        'RES-BOOK-8841 1 250,00 CZK'
+      ].join('\n'),
+      binaryContentBase64: pdfBase64FromTextLines([
+        'Booking.com payout statement',
+        'Payment ID: PAYOUT-BOOK-20260310',
+        'Payment date: 2026-03-12',
+        'Payout total: 1 250,00 CZK',
+        'IBAN: CZ65 5500 0000 0000 5599 555956',
+        'Included reservations:',
+        'RES-BOOK-8841 1 250,00 CZK'
+      ])
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'booking-payout-statement-1',
+        sourceDocumentId: 'doc-booking-payout-statement-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-supplement',
+        rawReference: 'PAYOUT-BOOK-20260310',
+        amountMinor: 125000,
+        currency: 'CZK',
+        occurredAt: '2026-03-12',
+        data: {
+          platform: 'booking',
+          supplementRole: 'payout_statement',
+          paymentId: 'PAYOUT-BOOK-20260310',
+          payoutDate: '2026-03-12',
+          amountMinor: 125000,
+          currency: 'CZK',
+          ibanSuffix: '5956',
+          reservationIds: ['RES-BOOK-8841']
+        }
       })
     ]
   },

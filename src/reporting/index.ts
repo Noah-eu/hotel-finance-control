@@ -164,6 +164,9 @@ function buildUnmatchedPayoutBatchEntries(
 ): ReconciliationUnmatchedPayoutBatchEntry[] {
   return (reconciliation.payoutBatchNoMatchDiagnostics ?? []).map((diagnostic) => {
     const platformLabel = toPlatformLabel(diagnostic.platform)
+    const batch = reconciliation.workflowPlan?.payoutBatches.find(
+      (item) => item.payoutBatchKey === diagnostic.payoutBatchKey
+    )
 
     return {
       payoutBatchKey: diagnostic.payoutBatchKey,
@@ -181,7 +184,10 @@ function buildUnmatchedPayoutBatchEntries(
         payoutReference: diagnostic.payoutReference,
         payoutDate: diagnostic.payoutDate,
         amountMinor: diagnostic.expectedTotalMinor,
-        currency: diagnostic.currency
+        currency: diagnostic.currency,
+        payoutSupplementPaymentId: batch?.payoutSupplementPaymentId,
+        payoutSupplementIbanSuffix: batch?.payoutSupplementIbanSuffix,
+        payoutSupplementReservationIds: batch?.payoutSupplementReservationIds
       })
     }
   })
@@ -219,7 +225,10 @@ function buildPayoutBatchMatchEntries(
         payoutReference: batch.payoutReference,
         payoutDate: batch.payoutDate,
         amountMinor: match.amountMinor,
-        currency: match.currency
+        currency: match.currency,
+        payoutSupplementPaymentId: batch.payoutSupplementPaymentId,
+        payoutSupplementIbanSuffix: batch.payoutSupplementIbanSuffix,
+        payoutSupplementReservationIds: batch.payoutSupplementReservationIds
       })
     }]
   })
@@ -232,8 +241,28 @@ function buildPayoutBatchDisplayMetadata(input: {
   payoutDate?: string
   amountMinor: number
   currency: string
+  payoutSupplementPaymentId?: string
+  payoutSupplementIbanSuffix?: string
+  payoutSupplementReservationIds?: string[]
 }): PayoutBatchDisplayMetadata {
   const normalizedReference = input.payoutReference.trim()
+  const supplementPaymentId = input.payoutSupplementPaymentId?.trim()
+  const supplementIbanSuffix = input.payoutSupplementIbanSuffix?.trim()
+  const supplementReservationCount = input.payoutSupplementReservationIds?.length ?? 0
+
+  if (input.platform === 'booking' && (supplementPaymentId || supplementIbanSuffix)) {
+    const primaryId = supplementPaymentId || normalizedReference
+    const contextParts = [
+      input.payoutDate ? `Datum payoutu: ${input.payoutDate}` : undefined,
+      supplementIbanSuffix ? `IBAN ${supplementIbanSuffix}` : undefined,
+      supplementReservationCount > 0 ? `rezervace: ${supplementReservationCount}` : undefined
+    ].filter((value): value is string => typeof value === 'string')
+
+    return {
+      title: `${input.platformLabel} payout ${primaryId} / ${formatAmountMinorCs(input.amountMinor, input.currency)}`,
+      ...(contextParts.length > 0 ? { context: contextParts.join(' · ') } : {})
+    }
+  }
 
   if (hasNonSyntheticProviderReference(input.platform, normalizedReference)) {
     return {

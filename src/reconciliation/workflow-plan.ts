@@ -112,7 +112,11 @@ function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpect
                 ),
             amountMinor: transaction.amountMinor,
             currency: transaction.currency,
-            bankRoutingTarget: 'rb_bank_inflow'
+            bankRoutingTarget: 'rb_bank_inflow',
+            payoutSupplementPaymentId: transaction.payoutSupplementPaymentId,
+            payoutSupplementIbanSuffix: transaction.payoutSupplementIbanSuffix,
+            payoutSupplementSourceDocumentIds: transaction.payoutSupplementSourceDocumentIds,
+            payoutSupplementReservationIds: transaction.payoutSupplementReservationIds
         }))
 }
 
@@ -133,7 +137,15 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
         bankRoutingTarget: batchRows[0]!.bankRoutingTarget,
         rowIds: batchRows.map((row) => row.rowId),
         expectedTotalMinor: batchRows.reduce((sum, row) => sum + row.amountMinor, 0),
-        currency: batchRows[0]!.currency
+        currency: batchRows[0]!.currency,
+        payoutSupplementPaymentId: firstDefined(batchRows.map((row) => row.payoutSupplementPaymentId)),
+        payoutSupplementIbanSuffix: firstDefined(batchRows.map((row) => row.payoutSupplementIbanSuffix)),
+        payoutSupplementSourceDocumentIds: uniqueValues(
+          batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
+        ),
+        payoutSupplementReservationIds: uniqueValues(
+          batchRows.flatMap((row) => row.payoutSupplementReservationIds ?? [])
+        )
     }))
 }
 
@@ -288,4 +300,13 @@ function numberOrZero(...values: Array<unknown>): number {
 
 function optionalNumber(value: unknown): number | undefined {
     return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function firstDefined<T>(values: Array<T | undefined>): T | undefined {
+    return values.find((value) => value !== undefined)
+}
+
+function uniqueValues<T>(values: T[]): T[] | undefined {
+    const unique = Array.from(new Set(values))
+    return unique.length > 0 ? unique : undefined
 }

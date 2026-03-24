@@ -54,6 +54,10 @@ export interface NormalizedTransaction {
   reservationId?: string
   bookingPayoutBatchKey?: string
   payoutBatchIdentity?: string
+  payoutSupplementPaymentId?: string
+  payoutSupplementIbanSuffix?: string
+  payoutSupplementSourceDocumentIds?: DocumentId[]
+  payoutSupplementReservationIds?: string[]
   invoiceNumber?: string
   extractedRecordIds: string[]
   sourceDocumentIds: DocumentId[]
@@ -157,6 +161,10 @@ export interface PayoutRowExpectation {
   amountMinor: number
   currency: CurrencyCode
   bankRoutingTarget: 'rb_bank_inflow'
+  payoutSupplementPaymentId?: string
+  payoutSupplementIbanSuffix?: string
+  payoutSupplementSourceDocumentIds?: DocumentId[]
+  payoutSupplementReservationIds?: string[]
 }
 
 export interface PayoutBatchExpectation {
@@ -168,6 +176,10 @@ export interface PayoutBatchExpectation {
   rowIds: string[]
   expectedTotalMinor: number
   currency: CurrencyCode
+  payoutSupplementPaymentId?: string
+  payoutSupplementIbanSuffix?: string
+  payoutSupplementSourceDocumentIds?: DocumentId[]
+  payoutSupplementReservationIds?: string[]
 }
 
 export interface DirectBankSettlementExpectation {

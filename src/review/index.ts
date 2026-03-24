@@ -145,6 +145,10 @@ function buildPayoutBatchMatchDetail(
     detailParts.push(`Zdrojový transfer: ${descriptor}.`)
   }
 
+  if (match.display.context) {
+    detailParts.push(`Kontext payoutu: ${match.display.context}.`)
+  }
+
   return detailParts.join(' ')
 }
 
@@ -162,6 +166,10 @@ function buildPayoutBatchUnmatchedDetail(
   const descriptor = findTransferBatchDescriptor(batch, unmatched.payoutBatchKey)
   if (descriptor) {
     detailParts.push(`Zdrojový transfer: ${descriptor}.`)
+  }
+
+  if (unmatched.display.context) {
+    detailParts.push(`Kontext payoutu: ${unmatched.display.context}.`)
   }
 
   return detailParts.join(' ')

@@ -704,6 +704,43 @@ describe('buildReviewScreen', () => {
     expect(review.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
   })
 
+  it('uses Booking payout supplement display metadata in the unmatched payout review item', () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
+
+    const batch = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: booking.sourceDocument,
+          content: booking.rawInput.content
+        },
+        {
+          sourceDocument: bookingPdf.sourceDocument,
+          content: bookingPdf.rawInput.content,
+          binaryContentBase64: bookingPdf.rawInput.binaryContentBase64
+        }
+      ],
+      reconciliationContext: {
+        runId: 'review-booking-payout-pdf-supplement',
+        requestedAt: '2026-03-24T12:30:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-24T12:31:00.000Z'
+    })
+
+    const review = buildReviewScreen({
+      batch,
+      generatedAt: '2026-03-24T12:31:00.000Z'
+    })
+
+    expect(review.payoutBatchMatched).toEqual([])
+    expect(review.payoutBatchUnmatched).toEqual([
+      expect.objectContaining({
+        title: 'Booking payout PAYOUT-BOOK-20260310 / 1 250,00 Kč',
+        detail: expect.stringContaining('Kontext payoutu: Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1.')
+      })
+    ])
+  })
+
   it('surfaces separate accommodation and ancillary settlement overview items with expected path and candidate status', () => {
     const review = buildReviewScreen({
       generatedAt: '2026-03-22T09:00:00.000Z',

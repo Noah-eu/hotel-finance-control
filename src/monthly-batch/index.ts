@@ -12,6 +12,7 @@ export type {
   MonthlyBatchResult,
   MonthlyBatchService,
   PreparedUploadedMonthlyFilesResult,
+  UploadedMonthlyIngestionResult,
   UploadedMonthlyFileClassificationBasis,
   UploadedMonthlyFileRoute,
   UploadedMonthlyFile
@@ -19,6 +20,7 @@ export type {
 
 export {
   DefaultMonthlyBatchService,
+  ingestUploadedMonthlyFiles,
   prepareUploadedMonthlyBatchFiles,
   prepareUploadedMonthlyFiles,
   runMonthlyReconciliationBatch

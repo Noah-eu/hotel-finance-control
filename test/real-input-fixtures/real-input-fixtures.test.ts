@@ -9,6 +9,7 @@ describe('realInputFixtures', () => {
       'booking-payout-export',
       'booking-payout-export-browser-upload-shape',
       'booking-payout-export-browser-upload-batch-shape',
+      'booking-payout-statement-pdf',
       'airbnb-payout-export',
       'expedia-payout-export',
       'previo-reservation-export',
@@ -28,6 +29,7 @@ describe('realInputFixtures', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const booking = getRealInputFixture('booking-payout-export')
     const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
+    const bookingPayoutStatementPdf = getRealInputFixture('booking-payout-statement-pdf')
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
@@ -53,6 +55,16 @@ describe('realInputFixtures', () => {
       'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
       'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
     ])
+    expect(bookingPayoutStatementPdf.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'payout-supplement',
+      data: {
+        platform: 'booking',
+        supplementRole: 'payout_statement',
+        paymentId: 'PAYOUT-BOOK-20260310',
+        payoutDate: '2026-03-12',
+        ibanSuffix: '5956'
+      }
+    })
     expect(airbnb.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'payout-line',
       data: {

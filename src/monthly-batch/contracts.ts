@@ -13,6 +13,8 @@ export interface UploadedMonthlyFile {
   content: string
   uploadedAt: string
   binaryContentBase64?: string
+  contentFormat?: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
+  ingestError?: string
 }
 
 export interface ImportedMonthlySourceFile {
@@ -23,20 +25,26 @@ export interface ImportedMonthlySourceFile {
     classificationBasis: UploadedMonthlyFileClassificationBasis
     parserId: string
     warnings: string[]
+    role: 'primary' | 'supplemental'
   }
 }
 
 export interface UploadedMonthlyFileRoute {
   fileName: string
   uploadedAt: string
-  status: 'supported' | 'unsupported'
+  status: 'supported' | 'unsupported' | 'error'
+  intakeStatus: 'parsed' | 'unsupported' | 'unclassified' | 'error'
   sourceSystem: SourceDocument['sourceSystem']
   documentType: SourceDocument['documentType']
   classificationBasis: UploadedMonthlyFileClassificationBasis
   parserId?: string
   sourceDocumentId?: SourceDocument['id']
+  role: 'primary' | 'supplemental'
+  extractedCount?: number
+  extractedRecordIds?: ExtractedRecord['id'][]
   warnings: string[]
   reason?: string
+  errorMessage?: string
 }
 
 export interface PreparedUploadedMonthlyFilesResult {
@@ -61,6 +69,12 @@ export interface MonthlyBatchResult {
   reconciliation: ReconciliationResult
   report: ReconciliationReport
   files: MonthlyBatchFileResult[]
+}
+
+export interface UploadedMonthlyIngestionResult {
+  importedFiles: ImportedMonthlySourceFile[]
+  fileRoutes: UploadedMonthlyFileRoute[]
+  batch: MonthlyBatchResult
 }
 
 export interface MonthlyBatchService {

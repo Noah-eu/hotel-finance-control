@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import {
-  prepareUploadedMonthlyBatchFiles,
-  runMonthlyReconciliationBatch,
+  ingestUploadedMonthlyFiles,
   type ImportedMonthlySourceFile,
   type MonthlyBatchResult,
   type UploadedMonthlyFileRoute,
@@ -60,6 +59,7 @@ export interface BrowserRuntimeUploadState {
     uploadedFileCount: number
     supportedFileCount: number
     unsupportedFileCount: number
+    errorFileCount: number
   }
   runtimeAudit: {
     payoutDiagnostics: {
@@ -83,18 +83,24 @@ export interface BrowserRuntimeUploadState {
     documentType: string
     parserId?: string
     classificationBasis: string
+    role: 'primary' | 'supplemental'
     warnings: string[]
   }>
   fileRoutes: Array<{
     fileName: string
-    status: 'supported' | 'unsupported'
+    status: 'supported' | 'unsupported' | 'error'
+    intakeStatus: 'parsed' | 'unsupported' | 'unclassified' | 'error'
     sourceSystem: string
     documentType: string
     sourceDocumentId?: string
     parserId?: string
     classificationBasis: string
+    role: 'primary' | 'supplemental'
+    extractedCount: number
+    extractedRecordIds: string[]
     warnings: string[]
     reason?: string
+    errorMessage?: string
   }>
   extractedRecords: Array<{
     fileName: string
@@ -518,6 +524,7 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<div class="metric-grid">',
           '<div class="metric-tile"><strong>' + state.routingSummary.supportedFileCount + '</strong><br />Rozpoznané soubory</div>',
           '<div class="metric-tile"><strong>' + state.routingSummary.unsupportedFileCount + '</strong><br />Nepodporované soubory</div>',
+          '<div class="metric-tile"><strong>' + state.routingSummary.errorFileCount + '</strong><br />Soubory se selháním ingestu</div>',
           '<div class="metric-tile"><strong>' + state.reportSummary.normalizedTransactionCount + '</strong><br />Normalizované transakce</div>',
           '<div class="metric-tile"><strong>' + state.reviewSummary.exceptionCount + '</strong><br />Položky ke kontrole</div>',
           '<div class="metric-tile"><strong>' + state.exportFiles.length + '</strong><br />Připravené exporty</div>',
@@ -567,13 +574,22 @@ ${renderBrowserRuntimeClientBootstrap()}
         }
 
         return '<ul class="trace-list">' + fileRoutes.map((file) => {
+          const roleLine = file.role === 'supplemental' ? ' · doplňkový zdroj' : '';
           const statusLine = file.status === 'supported'
             ? 'Rozpoznáno jako ' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType)
+              + roleLine
               + (file.parserId ? ' · parser ' + escapeHtml(file.parserId) : '')
-            : 'Nepodporovaný nebo nerozpoznaný vstup';
+            : file.status === 'error'
+              ? 'Rozpoznaný vstup se selháním ingestu'
+              : file.intakeStatus === 'unsupported'
+                ? 'Rozpoznaný, ale nepodporovaný vstup'
+                : 'Nerozpoznaný vstup';
           const routingLine = 'Klasifikace: ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis));
           const identityLine = file.sourceDocumentId
             ? '<br /><code>' + escapeHtml(file.sourceDocumentId) + '</code>'
+            : '';
+          const extractedLine = file.status === 'supported'
+            ? '<br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount || 0)) + '</span>'
             : '';
           const reasonLine = file.reason
             ? '<br /><span class="hint">' + escapeHtml(file.reason) + '</span>'
@@ -582,7 +598,7 @@ ${renderBrowserRuntimeClientBootstrap()}
             ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
             : '';
 
-          return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">' + statusLine + '</span><br /><span class="hint">' + routingLine + '</span>' + identityLine + reasonLine + warningLine + '</li>';
+          return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">' + statusLine + '</span><br /><span class="hint">' + routingLine + '</span>' + identityLine + extractedLine + reasonLine + warningLine + '</li>';
         }).join('') + '</ul>';
       }
 
@@ -664,23 +680,23 @@ function deriveMonthLabel(runId: string): string {
 }
 
 export function buildUploadedBatchPreview(input: BuildUploadedBatchPreviewInput): UploadedBatchPreviewResult {
-  const prepared = prepareUploadedMonthlyBatchFiles(input.files)
-  const batch = runMonthlyReconciliationBatch({
-    files: prepared.importedFiles,
+  const ingestion = ingestUploadedMonthlyFiles({
+    files: input.files,
     reconciliationContext: {
       runId: input.runId,
       requestedAt: input.generatedAt
     },
     reportGeneratedAt: input.generatedAt
   })
+  const batch = ingestion.batch
   const review = buildReviewScreen({
     batch,
     generatedAt: input.generatedAt
   })
 
   return {
-    importedFiles: prepared.importedFiles,
-    fileRoutes: prepared.fileRoutes,
+    importedFiles: ingestion.importedFiles,
+    fileRoutes: ingestion.fileRoutes,
     batch,
     review
   }
@@ -785,6 +801,7 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
   const payoutBatchUnmatchedCount = run.review.payoutBatchUnmatched.length
   const supportedFileCount = run.fileRoutes.filter((file) => file.status === 'supported').length
   const unsupportedFileCount = run.fileRoutes.filter((file) => file.status === 'unsupported').length
+  const errorFileCount = run.fileRoutes.filter((file) => file.status === 'error').length
 
   return `<!doctype html>
 <html lang="cs">
@@ -892,6 +909,7 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
           <div class="metric"><strong>${payoutBatchUnmatchedCount}</strong><br />Nespárované payout dávky</div>
           <div class="metric"><strong>${supportedFileCount}</strong><br />Rozpoznané soubory</div>
           <div class="metric"><strong>${unsupportedFileCount}</strong><br />Nepodporované soubory</div>
+          <div class="metric"><strong>${errorFileCount}</strong><br />Soubory se selháním ingestu</div>
           <div class="metric"><strong>${run.fileRoutes.length}</strong><br />Nahrané soubory</div>
           <div class="metric"><strong>${run.report.transactions.length}</strong><br />Řádků v reportu</div>
           <div class="metric"><strong>${run.exports.files.length}</strong><br />Připravené exporty</div>
@@ -904,13 +922,14 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
           ${run.fileRoutes.map((file) => `
             <article class="trace-card">
               <h3>${escapeHtml(file.fileName)}</h3>
-              <p><strong>Stav:</strong> ${escapeHtml(file.status === 'supported' ? 'Rozpoznáno' : 'Nepodporováno')}</p>
+              <p><strong>Stav:</strong> ${escapeHtml(file.status === 'supported' ? 'Rozpoznáno a zpracováno' : file.status === 'error' ? 'Selhání ingestu' : file.intakeStatus === 'unsupported' ? 'Rozpoznáno, ale nepodporováno' : 'Nerozpoznáno')}</p>
+              <p><strong>Role:</strong> ${escapeHtml(file.role === 'supplemental' ? 'Doplňkový zdroj' : 'Primární zdroj')}</p>
               <p><strong>Zdroj:</strong> ${escapeHtml(file.sourceSystem)}</p>
               <p><strong>Typ:</strong> ${escapeHtml(file.documentType)}</p>
               <p><strong>Klasifikace:</strong> ${escapeHtml(buildUploadedFileClassificationLabel(file.classificationBasis))}</p>
               ${file.parserId ? `<p><strong>Parser:</strong> ${escapeHtml(file.parserId)}</p>` : ''}
               ${file.sourceDocumentId ? `<p><strong>ID zdrojového dokumentu:</strong> <code>${escapeHtml(file.sourceDocumentId)}</code></p>` : ''}
-              ${file.sourceDocumentId ? `<p><strong>Extrahované záznamy:</strong> ${escapeHtml(String(findBatchFileExtractedCount(run.batch, file.sourceDocumentId)))}</p>` : ''}
+              ${file.sourceDocumentId ? `<p><strong>Extrahované záznamy:</strong> ${escapeHtml(String(file.extractedCount ?? findBatchFileExtractedCount(run.batch, file.sourceDocumentId)))}</p>` : ''}
               ${file.reason ? `<p class="hint">${escapeHtml(file.reason)}</p>` : ''}
               ${file.warnings.length > 0 ? `<p class="hint">Varování: ${escapeHtml(file.warnings.join(' '))}</p>` : ''}
             </article>

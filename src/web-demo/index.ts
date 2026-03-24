@@ -127,7 +127,8 @@ function renderOperatorWebDemoHtml(input: {
     routingSummary: {
       uploadedFileCount: 0,
       supportedFileCount: 0,
-      unsupportedFileCount: 0
+      unsupportedFileCount: 0,
+      errorFileCount: 0
     },
     preparedFiles: [],
     fileRoutes: [],
@@ -558,6 +559,10 @@ ${showRuntimePayoutDiagnostics ? `
           return 'Bankovní výpis';
         }
 
+        if (sourceSystem === 'booking' && documentType === 'payout_statement') {
+          return 'Booking payout statement PDF';
+        }
+
         if (sourceSystem === 'booking') {
           return 'Booking payout report';
         }
@@ -593,10 +598,12 @@ ${showRuntimePayoutDiagnostics ? `
         const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
         const recognizedFiles = fileRoutes.filter((file) => file.status === 'supported');
         const unsupportedFiles = fileRoutes.filter((file) => file.status === 'unsupported');
+        const errorFiles = fileRoutes.filter((file) => file.status === 'error');
         const preparedFiles = recognizedFiles.length === 0
           ? '<li>Žádné rozpoznané soubory.</li>'
           : recognizedFiles.map((file) => {
             const parserLine = file.parserId ? ' · parser ' + escapeHtml(file.parserId) : '';
+            const roleLine = file.role === 'supplemental' ? ' · doplňkový zdroj' : '';
             const warningLine = file.warnings && file.warnings.length > 0
               ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
               : '';
@@ -604,8 +611,9 @@ ${showRuntimePayoutDiagnostics ? `
             return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
               + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
               + parserLine
+              + roleLine
               + ' · ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
-              + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code>'
+              + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount || 0)) + '</span>'
               + warningLine
               + '</li>';
           }).join('');
@@ -627,14 +635,33 @@ ${showRuntimePayoutDiagnostics ? `
                 + '</li>';
             }).join('') + '</ul>'
           ].join('');
+        const errorMarkup = errorFiles.length === 0
+          ? '<p class="hint">V tomto běhu se neobjevily žádné soubory se selháním ingestu.</p>'
+          : [
+            '<h4>Soubory se selháním ingestu</h4>',
+            '<ul>' + errorFiles.map((file) => {
+              const warningLine = file.warnings && file.warnings.length > 0
+                ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
+                : '';
+
+              return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
+                + escapeHtml(file.errorMessage || file.reason || 'Ingest souboru selhal.')
+                + '</span><br /><span class="hint">Klasifikace: '
+                + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
+                + '</span>'
+                + warningLine
+                + '</li>';
+            }).join('') + '</ul>'
+          ].join('');
 
         const extractedRecords = buildExtractedRecordsMarkup(state.extractedRecords, escapeHtml);
 
         return [
           '<p class="hint">Tato část po spuštění zobrazuje skutečný runtime výsledek místo původního snapshotu.</p>',
-          '<p class="hint">Rozpoznáno souborů: ' + escapeHtml(String((state.routingSummary && state.routingSummary.supportedFileCount) || recognizedFiles.length)) + ' · Nepodporováno: ' + escapeHtml(String((state.routingSummary && state.routingSummary.unsupportedFileCount) || unsupportedFiles.length)) + '</p>',
+          '<p class="hint">Rozpoznáno souborů: ' + escapeHtml(String((state.routingSummary && state.routingSummary.supportedFileCount) || recognizedFiles.length)) + ' · Nepodporováno: ' + escapeHtml(String((state.routingSummary && state.routingSummary.unsupportedFileCount) || unsupportedFiles.length)) + ' · Selhání ingestu: ' + escapeHtml(String((state.routingSummary && state.routingSummary.errorFileCount) || errorFiles.length)) + '</p>',
           '<ul>' + preparedFiles + '</ul>',
           unsupportedMarkup,
+          errorMarkup,
           '<h4>Extrahované záznamy</h4>',
           '<ul>' + extractedRecords + '</ul>'
         ].join('');

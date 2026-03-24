@@ -85,6 +85,20 @@ export class PayoutLineNormalizer implements Normalizer {
         reservationId: typeof data.reservationId === 'string' ? data.reservationId : undefined,
         bookingPayoutBatchKey: typeof data.bookingPayoutBatchKey === 'string' ? data.bookingPayoutBatchKey : undefined,
         payoutBatchIdentity: typeof data.payoutBatchIdentity === 'string' ? data.payoutBatchIdentity : undefined,
+        payoutSupplementPaymentId: typeof data.payoutSupplementPaymentId === 'string'
+          ? data.payoutSupplementPaymentId
+          : undefined,
+        payoutSupplementIbanSuffix: typeof data.payoutSupplementIbanSuffix === 'string'
+          ? data.payoutSupplementIbanSuffix
+          : undefined,
+        payoutSupplementSourceDocumentIds: Array.isArray(data.payoutSupplementSourceDocumentIds)
+          ? data.payoutSupplementSourceDocumentIds.filter(
+            (value): value is NormalizedTransaction['sourceDocumentIds'][number] => typeof value === 'string'
+          )
+          : undefined,
+        payoutSupplementReservationIds: Array.isArray(data.payoutSupplementReservationIds)
+          ? data.payoutSupplementReservationIds.filter((value): value is string => typeof value === 'string')
+          : undefined,
         extractedRecordIds: [record.id],
         sourceDocumentIds: [record.sourceDocumentId]
       }

@@ -69,7 +69,8 @@ describe('buildUploadWebFlow', () => {
     expect(result.routingSummary).toEqual({
       uploadedFileCount: 3,
       supportedFileCount: 3,
-      unsupportedFileCount: 0
+      unsupportedFileCount: 0,
+      errorFileCount: 0
     })
     expect(result.fileRoutes).toEqual([
       expect.objectContaining({
@@ -307,7 +308,8 @@ describe('buildUploadWebFlow', () => {
     expect(result.routingSummary).toEqual({
       uploadedFileCount: 4,
       supportedFileCount: 3,
-      unsupportedFileCount: 1
+      unsupportedFileCount: 1,
+      errorFileCount: 0
     })
     expect(result.preparedFiles.map((file) => file.fileName)).toEqual([
       'airbnb.csv',
@@ -1908,24 +1910,184 @@ describe('buildUploadWebFlow', () => {
     })
   })
 
-  it('surfaces raw and normalized Booking header diagnostics when browser upload fails on missing required columns', async () => {
-    await expect(
-      buildBrowserRuntimeStateFromSelectedFiles({
-        files: [
-          createRuntimeFile(
-            'AaOS6MOZUh8BFtEr.booking.csv',
-            [
-              'Datum vyplaty;Castka;Mena;Poznamka',
-              '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310'
-            ].join('\n')
-          )
-        ],
-        month: '2026-03',
-        generatedAt: '2026-03-20T16:25:00.000Z'
+  it('surfaces raw and normalized Booking header diagnostics as an explicit browser ingest error instead of dropping the file', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeFile(
+          'AaOS6MOZUh8BFtEr.booking.csv',
+          [
+            'Datum vyplaty;Castka;Mena;Poznamka',
+            '10.03.2026;1250,00;CZK;PAYOUT-BOOK-20260310'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-20T16:25:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 1,
+      supportedFileCount: 0,
+      unsupportedFileCount: 0,
+      errorFileCount: 1
+    })
+    expect(result.preparedFiles).toEqual([])
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+        status: 'error',
+        intakeStatus: 'error',
+        sourceSystem: 'booking',
+        documentType: 'ota_report',
+        classificationBasis: 'file-name',
+        parserId: 'booking',
+        errorMessage: 'Booking payout export is missing required columns: payoutReference, reservationId. Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka'
       })
-    ).rejects.toThrow(
-      'Booking payout export is missing required columns: payoutReference, reservationId. Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka'
-    )
+    ])
+  })
+
+  it('keeps a selected Booking payout PDF visible as a supplemental intake outcome and preserves Airbnb payout counts', async () => {
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFile(bookingPdf.sourceDocument.fileName, bookingPdf.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T11:30:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 3,
+      supportedFileCount: 3,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        sourceSystem: 'airbnb',
+        documentType: 'ota_report',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        sourceSystem: 'bank',
+        documentType: 'bank_statement',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-statement-2026-03.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        parserId: 'booking-payout-statement-pdf',
+        role: 'supplemental',
+        extractedCount: 1,
+        extractedRecordIds: ['booking-payout-statement-1']
+      })
+    ])
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        sourceSystem: 'airbnb',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        sourceSystem: 'bank',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-statement-2026-03.pdf',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(15)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+  })
+
+  it('keeps PDF ingest failures visible in browser routing instead of silently losing the selected file', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createBrokenRuntimePdfFile('booking-payout-broken.pdf')
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T11:40:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 2,
+      supportedFileCount: 1,
+      unsupportedFileCount: 0,
+      errorFileCount: 1
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-broken.pdf',
+        status: 'error',
+        intakeStatus: 'error',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental',
+        errorMessage: 'Nepodařilo se deterministicky extrahovat text z PDF souboru booking-payout-broken.pdf.'
+      })
+    ])
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv'
+      })
+    ])
+  })
+
+  it('uses Booking payout PDF metadata in the browser operator-facing unmatched payout item', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('AaOS6MOZUh8BFtEr.booking.csv', booking.rawInput.content),
+        createRuntimePdfFile(bookingPdf.sourceDocument.fileName, bookingPdf.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T11:50:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-statement-2026-03.pdf',
+        status: 'supported',
+        documentType: 'payout_statement',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([
+      expect.objectContaining({
+        title: 'Booking payout PAYOUT-BOOK-20260310 / 1 250,00 Kč',
+        detail: expect.stringContaining('Kontext payoutu: Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1.')
+      })
+    ])
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
   })
 
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
@@ -2261,6 +2423,38 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
       }
 
       return bytes.buffer
+    }
+  }
+}
+
+function createRuntimePdfFile(name: string, binaryContentBase64: string) {
+  return {
+    name,
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      const binary = atob(binaryContentBase64)
+      const bytes = new Uint8Array(binary.length)
+
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
+
+      return bytes.buffer
+    }
+  }
+}
+
+function createBrokenRuntimePdfFile(name: string) {
+  return {
+    name,
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      const bytes = new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF')
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
 }

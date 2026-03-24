@@ -1,12 +1,13 @@
 import { buildExportArtifactsFiles } from '../export/shared'
 import {
-  prepareUploadedMonthlyBatchFiles,
-  runMonthlyReconciliationBatch,
+  ingestUploadedMonthlyFiles,
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { buildReviewScreen } from '../review'
 import { formatAmountMinorCs } from '../shared/money'
 import type { BrowserRuntimeUploadState } from './index.js'
+
+type IngestionBatch = ReturnType<typeof ingestUploadedMonthlyFiles>['batch']
 
 export interface BuildBrowserRuntimeStateInput {
   files: UploadedMonthlyFile[]
@@ -17,16 +18,16 @@ export interface BuildBrowserRuntimeStateInput {
 export function buildBrowserRuntimeUploadStateFromFiles(
   input: BuildBrowserRuntimeStateInput
 ): BrowserRuntimeUploadState {
-  const prepared = prepareUploadedMonthlyBatchFiles(input.files)
-  const importedFiles = prepared.importedFiles
-  const batch = runMonthlyReconciliationBatch({
-    files: importedFiles,
+  const ingestion = ingestUploadedMonthlyFiles({
+    files: input.files,
     reconciliationContext: {
       runId: input.runId,
       requestedAt: input.generatedAt
     },
     reportGeneratedAt: input.generatedAt
   })
+  const importedFiles = ingestion.importedFiles
+  const batch = ingestion.batch
   const review = buildReviewScreen({
     batch,
     generatedAt: input.generatedAt
@@ -42,9 +43,10 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     runId: input.runId,
     monthLabel: deriveMonthLabel(input.runId),
     routingSummary: {
-      uploadedFileCount: prepared.fileRoutes.length,
-      supportedFileCount: prepared.fileRoutes.filter((file) => file.status === 'supported').length,
-      unsupportedFileCount: prepared.fileRoutes.filter((file) => file.status === 'unsupported').length
+      uploadedFileCount: ingestion.fileRoutes.length,
+      supportedFileCount: ingestion.fileRoutes.filter((file) => file.status === 'supported').length,
+      unsupportedFileCount: ingestion.fileRoutes.filter((file) => file.status === 'unsupported').length,
+      errorFileCount: ingestion.fileRoutes.filter((file) => file.status === 'error').length
     },
     runtimeAudit,
     preparedFiles: importedFiles.map((file) => ({
@@ -54,18 +56,24 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       documentType: file.sourceDocument.documentType,
       parserId: file.routing?.parserId,
       classificationBasis: file.routing?.classificationBasis ?? 'unknown',
+      role: file.routing?.role ?? 'primary',
       warnings: file.routing?.warnings ?? []
     })),
-    fileRoutes: prepared.fileRoutes.map((file) => ({
+    fileRoutes: ingestion.fileRoutes.map((file) => ({
       fileName: file.fileName,
       status: file.status,
+      intakeStatus: file.intakeStatus,
       sourceSystem: file.sourceSystem,
       documentType: file.documentType,
       sourceDocumentId: file.sourceDocumentId,
       parserId: file.parserId,
       classificationBasis: file.classificationBasis,
+      role: file.role,
+      extractedCount: file.extractedCount ?? 0,
+      extractedRecordIds: file.extractedRecordIds ?? [],
       warnings: file.warnings,
-      reason: file.reason
+      reason: file.reason,
+      errorMessage: file.errorMessage
     })),
     extractedRecords: importedFiles.map((file) => ({
       fileName: file.sourceDocument.fileName,
@@ -119,8 +127,8 @@ export function buildBrowserRuntimeUploadStateFromFiles(
 }
 
 function buildRuntimeAudit(
-  importedFiles: ReturnType<typeof prepareUploadedMonthlyBatchFiles>['importedFiles'],
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  importedFiles: ReturnType<typeof ingestUploadedMonthlyFiles>['importedFiles'],
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
   review: ReturnType<typeof buildReviewScreen>
 ): BrowserRuntimeUploadState['runtimeAudit'] {
   const airbnbSourceDocumentIds = importedFiles
@@ -170,28 +178,28 @@ function buildRuntimeAudit(
 }
 
 function findBatchFileExtractedCount(
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  batch: IngestionBatch,
   sourceDocumentId: string
 ): number {
   return batch.files.find((file) => file.sourceDocumentId === sourceDocumentId)?.extractedCount ?? 0
 }
 
 function findBatchFileExtractedIds(
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  batch: IngestionBatch,
   sourceDocumentId: string
 ): string[] {
   return batch.files.find((file) => file.sourceDocumentId === sourceDocumentId)?.extractedRecordIds ?? []
 }
 
 function findBatchFileExtractedAccountId(
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  batch: IngestionBatch,
   sourceDocumentId: string
 ): string | undefined {
   return batch.extractedRecords.find((record) => record.sourceDocumentId === sourceDocumentId)?.data.accountId as string | undefined
 }
 
 function findBatchFileParserVariant(
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  batch: IngestionBatch,
   sourceDocumentId: string
 ): string | undefined {
   return batch.extractedRecords.find((record) => record.sourceDocumentId === sourceDocumentId)?.data.bankParserVariant as string | undefined
@@ -233,6 +241,10 @@ function buildAccountLabel(
 }
 
 function buildNonBankSourceLabel(sourceSystem: string, documentType: string): string {
+  if (sourceSystem === 'booking' && documentType === 'payout_statement') {
+    return 'Booking payout statement PDF'
+  }
+
   if (sourceSystem === 'booking') {
     return 'Booking payout report'
   }
@@ -280,7 +292,7 @@ function deriveMonthLabel(runId: string): string {
 }
 
 function findVisibleTransactionSubtype(
-  batch: ReturnType<typeof runMonthlyReconciliationBatch>,
+  batch: IngestionBatch,
   transactionId: string,
   source: string
 ): string | undefined {

@@ -10,7 +10,7 @@ export type {
   Normalizer
 } from './contracts'
 
-export { BankTransactionNormalizer, PayoutLineNormalizer } from './normalizers'
+export { BankTransactionNormalizer, PayoutLineNormalizer, PayoutSupplementNormalizer } from './normalizers'
 export { NormalizerRegistry, createDefaultRegistry } from './registry'
 export type { NormalizeExtractedRecordsInput } from './service'
 export { normalizeExtractedRecords } from './service'

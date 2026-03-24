@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  ingestUploadedMonthlyFiles,
   prepareUploadedMonthlyBatchFiles,
   prepareUploadedMonthlyFiles,
   runMonthlyReconciliationBatch
@@ -1150,6 +1151,162 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.report.unmatchedPayoutBatches.map((item) => item.reason)).toEqual([
       'Žádná bankovní položka se stejnou částkou.',
       'Žádná bankovní položka se stejnou částkou.'
+    ])
+  })
+
+  it('keeps every uploaded file in an explicit intake outcome and does not disturb Airbnb payout counts when a Booking PDF supplement is added', () => {
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'airbnb.csv',
+          content: buildActualUploadedAirbnbContent(),
+          uploadedAt: '2026-03-24T11:00:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: buildActualUploadedRbCitiContent(),
+          uploadedAt: '2026-03-24T11:00:30.000Z'
+        },
+        {
+          name: bookingPdf.sourceDocument.fileName,
+          content: bookingPdf.rawInput.content,
+          binaryContentBase64: bookingPdf.rawInput.binaryContentBase64,
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-24T11:01:00.000Z'
+        },
+        {
+          name: 'booking-payout-broken.pdf',
+          content: '',
+          contentFormat: 'pdf-text',
+          ingestError: 'Nepodařilo se deterministicky extrahovat text z PDF souboru booking-payout-broken.pdf.',
+          uploadedAt: '2026-03-24T11:01:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-airbnb-plus-booking-pdf-intake',
+        requestedAt: '2026-03-24T11:02:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-24T11:03:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'airbnb',
+        documentType: 'ota_report',
+        role: 'primary',
+        extractedCount: 17
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'bank',
+        documentType: 'bank_statement',
+        role: 'primary',
+        extractedCount: 16
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-statement-2026-03.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental',
+        parserId: 'booking-payout-statement-pdf',
+        extractedCount: 1,
+        extractedRecordIds: ['booking-payout-statement-1']
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-broken.pdf',
+        status: 'error',
+        intakeStatus: 'error',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental',
+        errorMessage: 'Nepodařilo se deterministicky extrahovat text z PDF souboru booking-payout-broken.pdf.'
+      })
+    ])
+    expect(result.importedFiles.map((file) => file.sourceDocument.fileName)).toEqual([
+      'airbnb.csv',
+      'Pohyby_5599955956_202603191023.csv',
+      'booking-payout-statement-2026-03.pdf'
+    ])
+    expect(result.batch.report.summary.payoutBatchMatchCount).toBe(15)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(2)
+  })
+
+  it('merges Booking payout PDF supplement metadata into the Booking payout batch without changing its batch key', () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'AaOS6MOZUh8BFtEr.booking.csv',
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-24T11:15:00.000Z'
+        },
+        {
+          name: bookingPdf.sourceDocument.fileName,
+          content: bookingPdf.rawInput.content,
+          binaryContentBase64: bookingPdf.rawInput.binaryContentBase64,
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-24T11:15:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-pdf-supplement',
+        requestedAt: '2026-03-24T11:16:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-24T11:17:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'ota_report',
+        role: 'primary',
+        extractedCount: 1
+      }),
+      expect.objectContaining({
+        fileName: 'booking-payout-statement-2026-03.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental',
+        parserId: 'booking-payout-statement-pdf',
+        extractedCount: 1
+      })
+    ])
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        payoutReference: 'PAYOUT-BOOK-20260310',
+        payoutSupplementPaymentId: 'PAYOUT-BOOK-20260310',
+        payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReservationIds: ['RES-BOOK-8841'],
+        payoutSupplementSourceDocumentIds: ['uploaded:booking:2:booking-payout-statement-2026-03-pdf']
+      })
+    ])
+    expect(result.batch.report.summary.payoutBatchMatchCount).toBe(0)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.batch.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        display: {
+          title: 'Booking payout PAYOUT-BOOK-20260310 / 1 250,00 Kč',
+          context: 'Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1'
+        }
+      })
     ])
   })
 })

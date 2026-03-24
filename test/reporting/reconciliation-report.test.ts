@@ -437,4 +437,79 @@ describe('buildReconciliationReport', () => {
       })
     ])
   })
+
+  it('uses Booking payout supplement metadata for operator-facing unmatched payout display', () => {
+    const report = buildReconciliationReport({
+      reconciliation: reconciliationResult({
+        workflowPlan: {
+          reservationSources: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:payout:booking-1',
+              platform: 'booking',
+              sourceDocumentId: 'doc-booking-1' as never,
+              payoutReference: 'PAYOUT-BOOK-20260310',
+              payoutDate: '2026-03-12',
+              payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+              amountMinor: 125000,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow',
+              payoutSupplementPaymentId: 'PAYOUT-BOOK-20260310',
+              payoutSupplementIbanSuffix: '5956',
+              payoutSupplementSourceDocumentIds: ['doc-booking-pdf-1' as never],
+              payoutSupplementReservationIds: ['RES-BOOK-8841']
+            }
+          ],
+          payoutBatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+              platform: 'booking',
+              payoutReference: 'PAYOUT-BOOK-20260310',
+              payoutDate: '2026-03-12',
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: ['txn:payout:booking-1'],
+              expectedTotalMinor: 125000,
+              currency: 'CZK',
+              payoutSupplementPaymentId: 'PAYOUT-BOOK-20260310',
+              payoutSupplementIbanSuffix: '5956',
+              payoutSupplementSourceDocumentIds: ['doc-booking-pdf-1' as never],
+              payoutSupplementReservationIds: ['RES-BOOK-8841']
+            }
+          ],
+          directBankSettlements: [],
+          expenseDocuments: [],
+          bankFeeClassifications: []
+        },
+        payoutBatchNoMatchDiagnostics: [
+          {
+            payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+            payoutReference: 'PAYOUT-BOOK-20260310',
+            platform: 'booking',
+            expectedTotalMinor: 125000,
+            currency: 'CZK',
+            payoutDate: '2026-03-12',
+            bankRoutingTarget: 'rb_bank_inflow',
+            eligibleCandidates: [],
+            allInboundBankCandidates: [],
+            noMatchReason: 'noCandidateAtAll',
+            matched: false
+          }
+        ]
+      }),
+      generatedAt: '2026-03-24T12:10:00.000Z'
+    })
+
+    expect(report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        display: {
+          title: 'Booking payout PAYOUT-BOOK-20260310 / 1 250,00 Kč',
+          context: 'Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1'
+        }
+      })
+    ])
+  })
 })
