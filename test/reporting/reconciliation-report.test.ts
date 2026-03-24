@@ -244,8 +244,12 @@ describe('buildReconciliationReport', () => {
       expect.objectContaining({
         platform: 'Booking',
         payoutReference: 'PAYOUT-ABC-1',
+        payoutDate: '2026-03-10',
         bankAccountId: 'raiffeisen-main',
-        status: 'matched'
+        status: 'matched',
+        display: {
+          title: 'Booking payout dávka PAYOUT-ABC-1'
+        }
       })
     ])
     expect(report.summary.matchedGroupCount).toBe(1)
@@ -285,12 +289,152 @@ describe('buildReconciliationReport', () => {
         amountMinor: 125000,
         currency: 'CZK',
         status: 'unmatched',
-        reason: 'Žádná bankovní položka se stejnou částkou.'
+        reason: 'Žádná bankovní položka se stejnou částkou.',
+        display: {
+          title: 'Booking payout dávka PAYOUT-ABC-1'
+        }
       })
     ])
     expect(report.summary.matchedGroupCount).toBe(1)
     expect(report.summary.payoutBatchMatchCount).toBe(0)
     expect(report.summary.unmatchedPayoutBatchCount).toBe(1)
     expect(report.matches).toHaveLength(1)
+  })
+
+  it('keeps a real Airbnb provider reference as the primary operator-facing payout-batch title', () => {
+    const report = buildReconciliationReport({
+      reconciliation: reconciliationResult({
+        workflowPlan: {
+          reservationSources: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:payout:airbnb-1',
+              platform: 'airbnb',
+              sourceDocumentId: 'doc-airbnb-1' as never,
+              payoutReference: 'G-OC3WJE3SIXRO5',
+              payoutDate: '2026-03-15',
+              payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+              amountMinor: 396105,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+              platform: 'airbnb',
+              payoutReference: 'G-OC3WJE3SIXRO5',
+              payoutDate: '2026-03-15',
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: ['txn:payout:airbnb-1'],
+              expectedTotalMinor: 396105,
+              currency: 'CZK'
+            }
+          ],
+          directBankSettlements: [],
+          expenseDocuments: [],
+          bankFeeClassifications: []
+        },
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+            payoutBatchRowIds: ['txn:payout:airbnb-1'],
+            bankTransactionId: 'txn:bank:bank-1' as ReconciliationResult['normalizedTransactions'][number]['id'],
+            bankAccountId: 'raiffeisen-main',
+            amountMinor: 396105,
+            currency: 'CZK',
+            confidence: 0.99,
+            ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+            matched: true,
+            reasons: ['amountExact', 'currencyExact', 'payoutReferenceAligned'],
+            evidence: [{ key: 'payoutReference', value: 'G-OC3WJE3SIXRO5' }]
+          }
+        ]
+      }),
+      generatedAt: '2026-03-24T12:00:00.000Z'
+    })
+
+    expect(report.payoutBatchMatches).toEqual([
+      expect.objectContaining({
+        platform: 'Airbnb',
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        payoutDate: '2026-03-15',
+        display: {
+          title: 'Airbnb payout dávka G-OC3WJE3SIXRO5'
+        }
+      })
+    ])
+  })
+
+  it('builds structured Airbnb display metadata from typed batch fields when the payout reference is synthetic', () => {
+    const report = buildReconciliationReport({
+      reconciliation: reconciliationResult({
+        workflowPlan: {
+          reservationSources: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:payout:airbnb-1',
+              platform: 'airbnb',
+              sourceDocumentId: 'doc-airbnb-1' as never,
+              payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+              payoutDate: '2026-03-20',
+              payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+              amountMinor: 396105,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+              platform: 'airbnb',
+              payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+              payoutDate: '2026-03-20',
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: ['txn:payout:airbnb-1'],
+              expectedTotalMinor: 396105,
+              currency: 'CZK'
+            }
+          ],
+          directBankSettlements: [],
+          expenseDocuments: [],
+          bankFeeClassifications: []
+        },
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
+            payoutBatchRowIds: ['txn:payout:airbnb-1'],
+            bankTransactionId: 'txn:bank:bank-1' as ReconciliationResult['normalizedTransactions'][number]['id'],
+            bankAccountId: 'raiffeisen-main',
+            amountMinor: 396105,
+            currency: 'CZK',
+            confidence: 0.97,
+            ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+            matched: true,
+            reasons: ['amountExact', 'currencyExact'],
+            evidence: []
+          }
+        ]
+      }),
+      generatedAt: '2026-03-24T12:05:00.000Z'
+    })
+
+    expect(report.payoutBatchMatches).toEqual([
+      expect.objectContaining({
+        platform: 'Airbnb',
+        payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+        payoutDate: '2026-03-20',
+        display: {
+          title: 'Airbnb payout dávka 2026-03-20 / 3 961,05 Kč',
+          context: 'Reference payoutu: AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+        }
+      })
+    ])
   })
 })

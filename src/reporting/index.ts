@@ -1,4 +1,5 @@
 import type { ReconciliationResult } from '../reconciliation'
+import { formatAmountMinorCs } from '../shared/money'
 
 export interface ReconciliationReportEntry {
   transactionId: string
@@ -15,6 +16,7 @@ export interface ReconciliationPayoutBatchMatchEntry {
   payoutBatchKey: string
   platform: string
   payoutReference: string
+  payoutDate: string
   bankAccountId: string
   amountMinor: number
   currency: string
@@ -22,6 +24,7 @@ export interface ReconciliationPayoutBatchMatchEntry {
   confidence: number
   reason: string
   evidence: string[]
+  display: PayoutBatchDisplayMetadata
 }
 
 export interface ReconciliationUnmatchedPayoutBatchEntry {
@@ -34,6 +37,12 @@ export interface ReconciliationUnmatchedPayoutBatchEntry {
   currency: string
   status: 'unmatched'
   reason: string
+  display: PayoutBatchDisplayMetadata
+}
+
+export interface PayoutBatchDisplayMetadata {
+  title: string
+  context?: string
 }
 
 type UnmatchedPayoutBatchReason =
@@ -153,17 +162,29 @@ export function buildReconciliationReport(
 function buildUnmatchedPayoutBatchEntries(
   reconciliation: ReconciliationResult
 ): ReconciliationUnmatchedPayoutBatchEntry[] {
-  return (reconciliation.payoutBatchNoMatchDiagnostics ?? []).map((diagnostic) => ({
-    payoutBatchKey: diagnostic.payoutBatchKey,
-    platform: toPlatformLabel(diagnostic.platform),
-    payoutReference: diagnostic.payoutReference,
-    payoutDate: diagnostic.payoutDate,
-    bankRoutingLabel: toBankRoutingLabel(diagnostic.bankRoutingTarget),
-    amountMinor: diagnostic.expectedTotalMinor,
-    currency: diagnostic.currency,
-    status: 'unmatched',
-    reason: toNoMatchReasonCs(diagnostic.noMatchReason)
-  }))
+  return (reconciliation.payoutBatchNoMatchDiagnostics ?? []).map((diagnostic) => {
+    const platformLabel = toPlatformLabel(diagnostic.platform)
+
+    return {
+      payoutBatchKey: diagnostic.payoutBatchKey,
+      platform: platformLabel,
+      payoutReference: diagnostic.payoutReference,
+      payoutDate: diagnostic.payoutDate,
+      bankRoutingLabel: toBankRoutingLabel(diagnostic.bankRoutingTarget),
+      amountMinor: diagnostic.expectedTotalMinor,
+      currency: diagnostic.currency,
+      status: 'unmatched',
+      reason: toNoMatchReasonCs(diagnostic.noMatchReason),
+      display: buildPayoutBatchDisplayMetadata({
+        platform: diagnostic.platform,
+        platformLabel,
+        payoutReference: diagnostic.payoutReference,
+        payoutDate: diagnostic.payoutDate,
+        amountMinor: diagnostic.expectedTotalMinor,
+        currency: diagnostic.currency
+      })
+    }
+  })
 }
 
 function buildPayoutBatchMatchEntries(
@@ -178,19 +199,76 @@ function buildPayoutBatchMatchEntries(
       return []
     }
 
+    const platformLabel = toPlatformLabel(batch.platform)
+
     return [{
       payoutBatchKey: match.payoutBatchKey,
-      platform: toPlatformLabel(batch.platform),
+      platform: platformLabel,
       payoutReference: batch.payoutReference,
+      payoutDate: batch.payoutDate,
       bankAccountId: match.bankAccountId,
       amountMinor: match.amountMinor,
       currency: match.currency,
       status: 'matched',
       confidence: match.confidence,
       reason: buildConcisePayoutBatchReason(match.reasons),
-      evidence: match.evidence.map((item) => `${item.key}: ${String(item.value)}`)
+      evidence: match.evidence.map((item) => `${item.key}: ${String(item.value)}`),
+      display: buildPayoutBatchDisplayMetadata({
+        platform: batch.platform,
+        platformLabel,
+        payoutReference: batch.payoutReference,
+        payoutDate: batch.payoutDate,
+        amountMinor: match.amountMinor,
+        currency: match.currency
+      })
     }]
   })
+}
+
+function buildPayoutBatchDisplayMetadata(input: {
+  platform: string
+  platformLabel: string
+  payoutReference: string
+  payoutDate?: string
+  amountMinor: number
+  currency: string
+}): PayoutBatchDisplayMetadata {
+  const normalizedReference = input.payoutReference.trim()
+
+  if (hasNonSyntheticProviderReference(input.platform, normalizedReference)) {
+    return {
+      title: `${input.platformLabel} payout dávka ${normalizedReference}`
+    }
+  }
+
+  if (input.payoutDate) {
+    return {
+      title: `${input.platformLabel} payout dávka ${input.payoutDate} / ${formatAmountMinorCs(input.amountMinor, input.currency)}`,
+      ...(normalizedReference ? { context: `Reference payoutu: ${normalizedReference}` } : {})
+    }
+  }
+
+  if (normalizedReference) {
+    return {
+      title: `${input.platformLabel} payout dávka ${normalizedReference}`
+    }
+  }
+
+  return {
+    title: `${input.platformLabel} payout dávka`
+  }
+}
+
+function hasNonSyntheticProviderReference(platform: string, payoutReference: string): boolean {
+  if (!payoutReference) {
+    return false
+  }
+
+  if (platform.trim().toLowerCase() === 'airbnb') {
+    return !payoutReference.toUpperCase().startsWith('AIRBNB-TRANSFER:')
+  }
+
+  return true
 }
 
 function toPlatformLabel(platform: string): string {

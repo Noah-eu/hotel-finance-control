@@ -347,13 +347,17 @@ describe('buildReviewScreen', () => {
               payoutBatchKey: 'booking-batch:2026-03-10:PAYOUT-ABC-1',
               platform: 'Booking',
               payoutReference: 'PAYOUT-ABC-1',
+              payoutDate: '2026-03-10',
               bankAccountId: 'raiffeisen-main',
               amountMinor: 125000,
               currency: 'CZK',
               status: 'matched',
               confidence: 0.99,
               reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
-              evidence: ['payoutReference: PAYOUT-ABC-1']
+              evidence: ['payoutReference: PAYOUT-ABC-1'],
+              display: {
+                title: 'Booking payout dávka PAYOUT-ABC-1'
+              }
             }
           ],
           unmatchedPayoutBatches: [],
@@ -476,7 +480,10 @@ describe('buildReviewScreen', () => {
               amountMinor: 125000,
               currency: 'CZK',
               status: 'unmatched',
-              reason: 'Žádná bankovní položka se stejnou částkou.'
+              reason: 'Žádná bankovní položka se stejnou částkou.',
+              display: {
+                title: 'Booking payout dávka PAYOUT-ABC-1'
+              }
             }
           ],
           transactions: []
@@ -496,7 +503,7 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
-  it('uses payout date and amount as the visible Airbnb batch title when the payout reference is only a synthetic transfer descriptor', () => {
+  it('uses explicit payout-batch display metadata instead of re-deriving titles from synthetic payout references', () => {
     const review = buildReviewScreen({
       generatedAt: '2026-03-24T10:10:00.000Z',
       batch: {
@@ -607,13 +614,18 @@ describe('buildReviewScreen', () => {
               payoutBatchKey: 'airbnb-batch:2026-03-20:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK):SOURCE-2026-03-18:PAYOUT-2026-03-20:AMOUNT-396105',
               platform: 'Airbnb',
               payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+              payoutDate: '2026-03-20',
               bankAccountId: 'raiffeisen-main',
               amountMinor: 396105,
               currency: 'CZK',
               status: 'matched',
               confidence: 0.97,
               reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
-              evidence: []
+              evidence: [],
+              display: {
+                title: 'Airbnb payout dávka 2026-03-20 / 3 961,05 Kč',
+                context: 'Reference payoutu: AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+              }
             }
           ],
           unmatchedPayoutBatches: [
@@ -626,7 +638,11 @@ describe('buildReviewScreen', () => {
               amountMinor: 824196,
               currency: 'CZK',
               status: 'unmatched',
-              reason: 'Žádná bankovní položka se stejnou částkou.'
+              reason: 'Žádná bankovní položka se stejnou částkou.',
+              display: {
+                title: 'Airbnb payout dávka 2026-03-21 / 8 241,96 Kč',
+                context: 'Reference payoutu: AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)'
+              }
             }
           ],
           transactions: []
@@ -636,6 +652,8 @@ describe('buildReviewScreen', () => {
 
     expect(review.payoutBatchMatched[0]?.title).toBe('Airbnb payout dávka 2026-03-20 / 3 961,05 Kč')
     expect(review.payoutBatchUnmatched[0]?.title).toBe('Airbnb payout dávka 2026-03-21 / 8 241,96 Kč')
+    expect(review.payoutBatchMatched[0]?.title).not.toContain('AIRBNB-TRANSFER:')
+    expect(review.payoutBatchUnmatched[0]?.title).not.toContain('AIRBNB-TRANSFER:')
     expect(review.payoutBatchMatched[0]?.detail).toContain('Částka: 3 961,05 Kč.')
     expect(review.payoutBatchUnmatched[0]?.detail).toContain('Očekávaná částka: 8 241,96 Kč.')
   })
