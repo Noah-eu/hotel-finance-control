@@ -1111,6 +1111,12 @@ describe('buildWebDemo', () => {
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payout-total')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: booking / payout_statement / content')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Decision reason: confidence=strong · parser=ano · matched=pdf-like-upload, booking-payout-core-fields')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.paymentId: 010638445054')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutDate: 2026-03-12')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutTotal: 1456.42 EUR')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.paymentId: 010638445054')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.payoutDate: 2026-03-12')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.payoutTotal: 1456.42 EUR')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser paymentId: 010638445054')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutDate: 2026-03-12')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutTotal: 1456.42 EUR')
@@ -1140,6 +1146,33 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser paymentId: 010638445054')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutDate: 2026-03-12')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutTotal: 1456.42 EUR')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
+  })
+
+  it('renders the final built operator page without Booking PDF ingest failure when required fields are far from labels in the extracted PDF text', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T19:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-wide-gap-booking-pdf',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechWideGapBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>Bookinng35k.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.paymentId: 010638445054')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutDate: 2026-03-12')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutTotal: 1456.42 EUR')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.paymentId: 010638445054')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.payoutDate: 2026-03-12')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.payoutTotal: 1456.42 EUR')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
   })
@@ -1734,6 +1767,45 @@ function buildCzechSeparatedBlockBookingPayoutStatementPdfLines(): string[] {
     'Celková částka k vyplacení',
     'Celkem (CZK)',
     'IBAN',
+    '12. března 2026',
+    '010638445054',
+    '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ]
+}
+
+function buildCzechWideGapBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky',
+    'ID platby',
+    'Celková částka k vyplacení',
+    'Celkem (CZK)',
+    'IBAN',
+    'Reservation contact summary',
+    'House rules acknowledgement',
+    'Guest arrival instructions',
+    'Late check-in details',
+    'Reservation note A',
+    'Reservation note B',
+    'Reservation note C',
+    'Reservation note D',
+    'Reservation note E',
+    'Reservation note F',
+    'Reservation note G',
+    'Reservation note H',
+    'Reservation note I',
+    'Reservation note J',
+    'Reservation note K',
+    'Reservation note L',
     '12. března 2026',
     '010638445054',
     '€ 1,456.42',

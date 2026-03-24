@@ -145,6 +145,52 @@ describe('parseBookingPayoutStatementPdf', () => {
         localCurrency: 'CZK',
         ibanSuffix: '5956'
       }),
+      parserExtracted: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR',
+        localTotal: '35530.12 CZK',
+        ibanHint: '5956',
+        exchangeRate: undefined
+      },
+      validatorInput: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR'
+      },
+      missingFields: [],
+      requiredFieldsCheck: 'passed'
+    })
+  })
+
+  it('keeps parserExtracted and validatorInput aligned when Booking labels are far from values in the full browser text', () => {
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(buildCzechBookingPayoutStatementWideGapContent())
+
+    expect(fieldCheck).toEqual({
+      fields: expect.objectContaining({
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotalRaw: '1456.42 EUR',
+        payoutTotalAmountMinor: 145642,
+        payoutTotalCurrency: 'EUR',
+        localTotalRaw: '35530.12 CZK',
+        localAmountMinor: 3553012,
+        localCurrency: 'CZK',
+        ibanSuffix: '5956'
+      }),
+      parserExtracted: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR',
+        localTotal: '35530.12 CZK',
+        ibanHint: '5956',
+        exchangeRate: undefined
+      },
+      validatorInput: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR'
+      },
       missingFields: [],
       requiredFieldsCheck: 'passed'
     })
@@ -241,6 +287,45 @@ function buildCzechBookingPayoutStatementSeparatedBlockContent(): string {
     'Celková částka k vyplacení',
     'Celkem (CZK)',
     'IBAN',
+    '12. března 2026',
+    '010638445054',
+    '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ].join('\n')
+}
+
+function buildCzechBookingPayoutStatementWideGapContent(): string {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky',
+    'ID platby',
+    'Celková částka k vyplacení',
+    'Celkem (CZK)',
+    'IBAN',
+    'Reservation contact summary',
+    'House rules acknowledgement',
+    'Guest arrival instructions',
+    'Late check-in details',
+    'Reservation note A',
+    'Reservation note B',
+    'Reservation note C',
+    'Reservation note D',
+    'Reservation note E',
+    'Reservation note F',
+    'Reservation note G',
+    'Reservation note H',
+    'Reservation note I',
+    'Reservation note J',
+    'Reservation note K',
+    'Reservation note L',
     '12. března 2026',
     '010638445054',
     '€ 1,456.42',

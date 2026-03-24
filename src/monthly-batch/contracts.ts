@@ -81,6 +81,15 @@ export interface UploadedMonthlyFileRoute {
   reason?: string
   errorMessage?: string
   parseDiagnostics?: {
+    parserExtractedPaymentId?: string
+    parserExtractedPayoutDate?: string
+    parserExtractedPayoutTotal?: string
+    parserExtractedLocalTotal?: string
+    parserExtractedIbanHint?: string
+    parserExtractedExchangeRate?: string
+    validatorInputPaymentId?: string
+    validatorInputPayoutDate?: string
+    validatorInputPayoutTotal?: string
     parsedPaymentId?: string
     parsedPayoutDate?: string
     parsedPayoutTotal?: string

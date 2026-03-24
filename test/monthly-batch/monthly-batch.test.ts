@@ -1515,6 +1515,22 @@ describe('runMonthlyReconciliationBatch', () => {
         extractedCount: 1
       })
     ])
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        parseDiagnostics: expect.objectContaining({
+          parserExtractedPaymentId: '010638445054',
+          parserExtractedPayoutDate: '2026-03-12',
+          parserExtractedPayoutTotal: '1456.42 EUR',
+          parserExtractedLocalTotal: '35530.12 CZK',
+          validatorInputPaymentId: '010638445054',
+          validatorInputPayoutDate: '2026-03-12',
+          validatorInputPayoutTotal: '1456.42 EUR',
+          requiredFieldsCheck: 'passed',
+          missingFields: []
+        })
+      })
+    )
     expect(result.batch.extractedRecords).toContainEqual(
       expect.objectContaining({
         id: 'booking-payout-statement-1',

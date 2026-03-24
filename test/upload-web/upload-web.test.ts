@@ -2536,6 +2536,13 @@ describe('buildUploadWebFlow', () => {
     expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
       expect.objectContaining({
         fileName: 'Bookinng35k.pdf',
+        parserExtractedPaymentId: '010638445054',
+        parserExtractedPayoutDate: '2026-03-12',
+        parserExtractedPayoutTotal: '1456.42 EUR',
+        parserExtractedLocalTotal: '35530.12 CZK',
+        validatorInputPaymentId: '010638445054',
+        validatorInputPayoutDate: '2026-03-12',
+        validatorInputPayoutTotal: '1456.42 EUR',
         parsedPaymentId: '010638445054',
         parsedPayoutDate: '2026-03-12',
         parsedPayoutTotal: '1456.42 EUR',
@@ -2592,6 +2599,12 @@ describe('buildUploadWebFlow', () => {
     expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
       expect.objectContaining({
         fileName: 'Bookinng35k.pdf',
+        parserExtractedPaymentId: '010638445054',
+        parserExtractedPayoutDate: '2026-03-12',
+        parserExtractedPayoutTotal: '1456.42 EUR',
+        validatorInputPaymentId: '010638445054',
+        validatorInputPayoutDate: '2026-03-12',
+        validatorInputPayoutTotal: '1456.42 EUR',
         parsedPaymentId: '010638445054',
         parsedPayoutDate: '2026-03-12',
         parsedPayoutTotal: '1456.42 EUR',
@@ -2600,6 +2613,64 @@ describe('buildUploadWebFlow', () => {
         missingFields: []
       })
     )
+  })
+
+  it('keeps parserExtracted and validatorInput aligned in the final browser runtime when Booking labels and values are far apart in the PDF text', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechWideGapBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T19:35:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 2,
+      supportedFileCount: 2,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        parserExtractedPaymentId: '010638445054',
+        parserExtractedPayoutDate: '2026-03-12',
+        parserExtractedPayoutTotal: '1456.42 EUR',
+        parserExtractedLocalTotal: '35530.12 CZK',
+        validatorInputPaymentId: '010638445054',
+        validatorInputPayoutDate: '2026-03-12',
+        validatorInputPayoutTotal: '1456.42 EUR',
+        parsedPaymentId: '010638445054',
+        parsedPayoutDate: '2026-03-12',
+        parsedPayoutTotal: '1456.42 EUR',
+        parsedLocalTotal: '35530.12 CZK',
+        requiredFieldsCheck: 'passed',
+        missingFields: [],
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    )
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč'
+      })
+    ])
   })
 
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
@@ -3172,6 +3243,45 @@ function buildCzechSeparatedBlockBookingPayoutStatementPdfLines(): string[] {
     'Celková částka k vyplacení',
     'Celkem (CZK)',
     'IBAN',
+    '12. března 2026',
+    '010638445054',
+    '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ]
+}
+
+function buildCzechWideGapBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky',
+    'ID platby',
+    'Celková částka k vyplacení',
+    'Celkem (CZK)',
+    'IBAN',
+    'Reservation contact summary',
+    'House rules acknowledgement',
+    'Guest arrival instructions',
+    'Late check-in details',
+    'Reservation note A',
+    'Reservation note B',
+    'Reservation note C',
+    'Reservation note D',
+    'Reservation note E',
+    'Reservation note F',
+    'Reservation note G',
+    'Reservation note H',
+    'Reservation note I',
+    'Reservation note J',
+    'Reservation note K',
+    'Reservation note L',
     '12. března 2026',
     '010638445054',
     '€ 1,456.42',

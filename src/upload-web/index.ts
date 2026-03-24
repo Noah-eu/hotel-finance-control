@@ -92,6 +92,15 @@ export interface BrowserRuntimeUploadState {
       missingSignals: string[]
       parserSupported: boolean
       decisionConfidence: 'none' | 'hint' | 'strong'
+      parserExtractedPaymentId?: string
+      parserExtractedPayoutDate?: string
+      parserExtractedPayoutTotal?: string
+      parserExtractedLocalTotal?: string
+      parserExtractedIbanHint?: string
+      parserExtractedExchangeRate?: string
+      validatorInputPaymentId?: string
+      validatorInputPayoutDate?: string
+      validatorInputPayoutTotal?: string
       parsedPaymentId?: string
       parsedPayoutDate?: string
       parsedPayoutTotal?: string

@@ -181,6 +181,15 @@ function inspectUploadedFileParseDiagnostics(
   const fieldCheck = inspectBookingPayoutStatementFieldCheck(file.content)
 
   return {
+    parserExtractedPaymentId: fieldCheck.parserExtracted.paymentId,
+    parserExtractedPayoutDate: fieldCheck.parserExtracted.payoutDate,
+    parserExtractedPayoutTotal: fieldCheck.parserExtracted.payoutTotal,
+    parserExtractedLocalTotal: fieldCheck.parserExtracted.localTotal,
+    parserExtractedIbanHint: fieldCheck.parserExtracted.ibanHint,
+    parserExtractedExchangeRate: fieldCheck.parserExtracted.exchangeRate,
+    validatorInputPaymentId: fieldCheck.validatorInput.paymentId,
+    validatorInputPayoutDate: fieldCheck.validatorInput.payoutDate,
+    validatorInputPayoutTotal: fieldCheck.validatorInput.payoutTotal,
     parsedPaymentId: fieldCheck.fields.paymentId,
     parsedPayoutDate: fieldCheck.fields.payoutDate,
     parsedPayoutTotal: buildParseDiagnosticMoneyLabel(

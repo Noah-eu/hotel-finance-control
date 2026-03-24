@@ -203,6 +203,15 @@ function buildRuntimeAudit(
         missingSignals: route?.decision.missingSignals ?? [],
         parserSupported: route?.decision.parserSupported ?? false,
         decisionConfidence: route?.decision.confidence ?? 'none',
+        parserExtractedPaymentId: parseDiagnostics?.parserExtractedPaymentId,
+        parserExtractedPayoutDate: parseDiagnostics?.parserExtractedPayoutDate,
+        parserExtractedPayoutTotal: parseDiagnostics?.parserExtractedPayoutTotal,
+        parserExtractedLocalTotal: parseDiagnostics?.parserExtractedLocalTotal,
+        parserExtractedIbanHint: parseDiagnostics?.parserExtractedIbanHint,
+        parserExtractedExchangeRate: parseDiagnostics?.parserExtractedExchangeRate,
+        validatorInputPaymentId: parseDiagnostics?.validatorInputPaymentId,
+        validatorInputPayoutDate: parseDiagnostics?.validatorInputPayoutDate,
+        validatorInputPayoutTotal: parseDiagnostics?.validatorInputPayoutTotal,
         parsedPaymentId: parseDiagnostics?.parsedPaymentId
           ?? parseSupplementStringField(parsedSupplement?.data.paymentId),
         parsedPayoutDate: parseDiagnostics?.parsedPayoutDate

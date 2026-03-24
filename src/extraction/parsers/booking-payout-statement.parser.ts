@@ -43,6 +43,19 @@ export interface BookingPayoutStatementFields {
 
 export interface BookingPayoutStatementFieldCheck {
   fields: BookingPayoutStatementFields
+  parserExtracted: {
+    paymentId?: string
+    payoutDate?: string
+    payoutTotal?: string
+    localTotal?: string
+    ibanHint?: string
+    exchangeRate?: string
+  }
+  validatorInput: {
+    paymentId?: string
+    payoutDate?: string
+    payoutTotal?: string
+  }
   missingFields: Array<'paymentId' | 'payoutDate' | 'payoutTotal'>
   requiredFieldsCheck: 'passed' | 'failed'
 }
@@ -51,9 +64,9 @@ export class BookingPayoutStatementPdfParser {
   parse(input: ParseBookingPayoutStatementPdfInput): ExtractedRecord[] {
     const fieldCheck = inspectBookingPayoutStatementFieldCheck(input.content)
     const { fields } = fieldCheck
-    const paymentId = fields.paymentId
-    const payoutDateRaw = fields.payoutDate
-    const payoutTotalRaw = fields.payoutTotalRaw
+    const paymentId = fieldCheck.validatorInput.paymentId
+    const payoutDateRaw = fieldCheck.validatorInput.payoutDate
+    const payoutTotalRaw = fieldCheck.validatorInput.payoutTotal
 
     if (fieldCheck.requiredFieldsCheck === 'failed' || !paymentId || !payoutDateRaw || !payoutTotalRaw) {
       throw new Error(
@@ -173,22 +186,37 @@ export function extractBookingPayoutStatementFields(content: string): BookingPay
 
 export function inspectBookingPayoutStatementFieldCheck(content: string): BookingPayoutStatementFieldCheck {
   const fields = extractBookingPayoutStatementFields(content)
+  const parserExtracted = {
+    paymentId: fields.paymentId,
+    payoutDate: fields.payoutDate,
+    payoutTotal: fields.payoutTotalRaw,
+    localTotal: fields.localTotalRaw,
+    ibanHint: fields.ibanSuffix,
+    exchangeRate: fields.exchangeRate
+  }
+  const validatorInput = {
+    paymentId: fields.paymentId?.trim() || undefined,
+    payoutDate: fields.payoutDate,
+    payoutTotal: fields.payoutTotalRaw
+  }
   const missingFields: Array<'paymentId' | 'payoutDate' | 'payoutTotal'> = []
 
-  if (!fields.paymentId) {
+  if (!validatorInput.paymentId) {
     missingFields.push('paymentId')
   }
 
-  if (!fields.payoutDate) {
+  if (!validatorInput.payoutDate) {
     missingFields.push('payoutDate')
   }
 
-  if (!fields.payoutTotalRaw || fields.payoutTotalAmountMinor === undefined || !fields.payoutTotalCurrency) {
+  if (!validatorInput.payoutTotal || fields.payoutTotalAmountMinor === undefined || !fields.payoutTotalCurrency) {
     missingFields.push('payoutTotal')
   }
 
   return {
     fields,
+    parserExtracted,
+    validatorInput,
     missingFields,
     requiredFieldsCheck: missingFields.length === 0 ? 'passed' : 'failed'
   }
@@ -274,55 +302,95 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
 } {
   const fields = parseLabeledDocumentText(content)
   const scan = buildBookingPayoutStatementSignalScan(content)
-
-  return {
-    scan,
-    paymentId: normalizeBookingStatementReferenceValue(
-      pickRequiredField(fields, [
-        'payment id',
-        'paymentid',
-        'booking payment id',
-        'id platby',
-        'id vyplaty',
-        'id výplaty'
-      ]) ?? captureBookingReferenceAfterLabels(scan.asciiNormalized, [
-        /\b(?:payment|payout)\s*id\b/i,
-        /\bbooking\s+payment\s+id\b/i,
-        /\bid\s+platby\b/i,
-        /\bid\s+vyplaty\b/i
-      ]) ?? captureBookingStatementValue(scan.normalized, [
-        /\b(?:payment|payout)\s*id\b.{0,120}?([A-Z0-9-]{6,})/i,
-        /\bbooking\s+payment\s+id\b.{0,120}?([A-Z0-9-]{6,})/i
-      ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
-        /\bid\s+platby\b.{0,120}?([A-Z0-9-]{6,})/i,
-        /\bid\s+vyplaty\b.{0,120}?([A-Z0-9-]{6,})/i
-      ]) ?? captureStandaloneBookingPaymentId(scan.normalized, scan.compact)
-    ),
-    payoutDateRaw: normalizeBookingStatementDateValue(
-      pickRequiredField(fields, [
-        'payment date',
-        'payout date',
-        'transfer date',
-        'date',
-        'datum vyplacení částky',
-        'datum vyplaceni castky',
-        'datum platby',
-        'datum výplaty',
-        'datum vyplaty'
-      ]) ?? captureBookingDateAfterLabels(scan.asciiNormalized, [
-        /\b(?:payment|payout|transfer)\s*date\b/i,
-        /\bdate\b/i,
-        /\bdatum\s+vyplaceni\s+castky\b/i,
-        /\bdatum\s+platby\b/i
-      ]) ?? captureBookingStatementValue(scan.normalized, [
-        /\b(?:payment|payout|transfer)\s*date\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[A-Za-zÀ-ž]+\s+\d{4})/i,
-        /\bdate\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2})/i
-      ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
-        /\bdatum\s+vyplaceni\s+castky\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
-        /\bdatum\s+platby\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
-      ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized) ?? captureCompactBookingPayoutDate(scan.compact)
-    ),
-    payoutTotalRaw: normalizeBookingStatementMoneyValue(
+  const paymentId = normalizeBookingStatementReferenceValue(
+    pickRequiredField(fields, [
+      'payment id',
+      'paymentid',
+      'booking payment id',
+      'id platby',
+      'id vyplaty',
+      'id výplaty'
+    ]) ?? captureBookingReferenceAfterLabels(scan.structuredAsciiNormalized, [
+      /\b(?:payment|payout)\s*id\b/i,
+      /\bbooking\s+payment\s+id\b/i,
+      /\bid\s+platby\b/i,
+      /\bid\s+vyplaty\b/i
+    ]) ?? captureBookingReferenceAfterLabels(scan.asciiNormalized, [
+      /\b(?:payment|payout)\s*id\b/i,
+      /\bbooking\s+payment\s+id\b/i,
+      /\bid\s+platby\b/i,
+      /\bid\s+vyplaty\b/i
+    ]) ?? captureBookingStatementValue(scan.normalized, [
+      /\b(?:payment|payout)\s*id\b.{0,120}?([A-Z0-9-]{6,})/i,
+      /\bbooking\s+payment\s+id\b.{0,120}?([A-Z0-9-]{6,})/i
+    ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
+      /\bid\s+platby\b.{0,120}?([A-Z0-9-]{6,})/i,
+      /\bid\s+vyplaty\b.{0,120}?([A-Z0-9-]{6,})/i
+    ]) ?? captureStandaloneBookingPaymentId(scan.normalized, scan.compact)
+  )
+  const payoutDateRaw = normalizeBookingStatementDateValue(
+    pickRequiredField(fields, [
+      'payment date',
+      'payout date',
+      'transfer date',
+      'date',
+      'datum vyplacení částky',
+      'datum vyplaceni castky',
+      'datum platby',
+      'datum výplaty',
+      'datum vyplaty'
+    ]) ?? captureBookingDateAfterLabels(scan.structuredAsciiNormalized, [
+      /\b(?:payment|payout|transfer)\s*date\b/i,
+      /\bdate\b/i,
+      /\bdatum\s+vyplaceni\s+castky\b/i,
+      /\bdatum\s+platby\b/i
+    ]) ?? captureBookingDateAfterLabels(scan.asciiNormalized, [
+      /\b(?:payment|payout|transfer)\s*date\b/i,
+      /\bdate\b/i,
+      /\bdatum\s+vyplaceni\s+castky\b/i,
+      /\bdatum\s+platby\b/i
+    ]) ?? captureBookingStatementValue(scan.normalized, [
+      /\b(?:payment|payout|transfer)\s*date\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[A-Za-zÀ-ž]+\s+\d{4})/i,
+      /\bdate\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2})/i
+    ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
+      /\bdatum\s+vyplaceni\s+castky\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
+      /\bdatum\s+platby\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
+    ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized) ?? captureCompactBookingPayoutDate(scan.compact)
+  )
+  const localTotalRaw = normalizeBookingStatementMoneyValue(
+    pickRequiredField(fields, [
+      'celkem (czk)',
+      'celkem (eur)',
+      'celkem (usd)',
+      'celková částka k vyplacení (czk)',
+      'celková částka k vyplacení (eur)',
+      'celková částka k vyplacení (usd)',
+      'celkova castka k vyplaceni (czk)',
+      'celkova castka k vyplaceni (eur)',
+      'celkova castka k vyplaceni (usd)',
+      'total payout (czk)',
+      'total payout (eur)',
+      'total payout (usd)',
+      'payment total (czk)',
+      'payment total (eur)',
+      'payment total (usd)',
+      'transfer total (czk)',
+      'transfer total (eur)',
+      'transfer total (usd)'
+    ]) ?? captureBookingLocalPayoutTotalAfterLabels(scan.structuredNormalized, [
+      /\bcelkem\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+      /\bcelkov[áa]\s+částka\s+k\s+vyplacení\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+      /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+      /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(?:czk|eur|usd)\s*\)/i
+    ], 'CZK') ?? captureBookingLocalPayoutTotalAfterLabels(scan.normalized, [
+      /\bcelkem\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+      /\bcelkov[áa]\s+částka\s+k\s+vyplacení\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+      /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+      /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(?:czk|eur|usd)\s*\)/i
+    ], 'CZK') ?? captureBookingLocalCurrencyTotal(scan.normalized, scan.asciiNormalized)
+  )
+  const payoutTotalRaw = resolveBookingPrimaryPayoutTotalCandidate(
+    normalizeBookingStatementMoneyValue(
       pickRequiredField(fields, [
         'payout total',
         'payment total',
@@ -331,6 +399,11 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
         'total transfer',
         'celková částka k vyplacení',
         'celkova castka k vyplaceni'
+      ]) ?? captureBookingPrimaryPayoutTotalAfterLabels(scan.structuredNormalized, [
+        /\b(?:payout|payment|transfer)\s*total\b(?!\s*\()/i,
+        /\btotal\s+(?:payout|payment|transfer)\b(?!\s*\()/i,
+        /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b(?!\s*\()/i,
+        /\bcelkova\s+castka\s+k\s+vyplaceni\b(?!\s*\()/i
       ]) ?? captureBookingPrimaryPayoutTotalAfterLabels(scan.normalized, [
         /\b(?:payout|payment|transfer)\s*total\b(?!\s*\()/i,
         /\btotal\s+(?:payout|payment|transfer)\b(?!\s*\()/i,
@@ -339,62 +412,68 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
       ]) ?? captureStandaloneBookingPrimaryPayoutTotal(scan.normalized, scan.asciiNormalized)
       ?? captureCompactBookingPayoutTotal(scan.compact)
     ),
-    localTotalRaw: normalizeBookingStatementMoneyValue(
-      pickRequiredField(fields, [
-        'celkem (czk)',
-        'celkem (eur)',
-        'celkem (usd)',
-        'celková částka k vyplacení (czk)',
-        'celková částka k vyplacení (eur)',
-        'celková částka k vyplacení (usd)',
-        'celkova castka k vyplaceni (czk)',
-        'celkova castka k vyplaceni (eur)',
-        'celkova castka k vyplaceni (usd)',
-        'total payout (czk)',
-        'total payout (eur)',
-        'total payout (usd)',
-        'payment total (czk)',
-        'payment total (eur)',
-        'payment total (usd)',
-        'transfer total (czk)',
-        'transfer total (eur)',
-        'transfer total (usd)'
-      ]) ?? captureBookingLocalPayoutTotalAfterLabels(scan.normalized, [
-        /\bcelkem\s*\(\s*(?:czk|eur|usd)\s*\)/i,
-        /\bcelkov[áa]\s+částka\s+k\s+vyplacení\s*\(\s*(?:czk|eur|usd)\s*\)/i,
-        /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(?:czk|eur|usd)\s*\)/i,
-        /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(?:czk|eur|usd)\s*\)/i
-      ], 'CZK') ?? captureBookingLocalCurrencyTotal(scan.normalized, scan.asciiNormalized)
-    ),
-    ibanValue: pickRequiredField(fields, ['iban', 'bank account', 'bank account hint', 'account'])
-      ?? captureStandaloneIban(scan.normalized),
-    exchangeRate: normalizeBookingStatementExchangeRateValue(
-      pickRequiredField(fields, ['směnný kurz', 'smenny kurz', 'exchange rate'])
-      ?? captureBookingExchangeRate(scan.normalized, scan.asciiNormalized)
-    ),
-    reservationIds: extractReservationIds(scan.normalized)
+    localTotalRaw,
+    scan
+  )
+  const ibanValue = pickRequiredField(fields, ['iban', 'bank account', 'bank account hint', 'account'])
+    ?? captureStandaloneIban(scan.normalized)
+  const exchangeRate = normalizeBookingStatementExchangeRateValue(
+    pickRequiredField(fields, ['směnný kurz', 'smenny kurz', 'exchange rate'])
+    ?? captureBookingExchangeRate(scan.normalized, scan.asciiNormalized)
+  )
+  const reservationIds = extractReservationIds(scan.normalized)
+
+  return {
+    scan,
+    paymentId,
+    payoutDateRaw,
+    payoutTotalRaw,
+    localTotalRaw,
+    ibanValue,
+    exchangeRate,
+    reservationIds
   }
 }
 
 function buildBookingPayoutStatementSignalScan(content: string): {
   normalized: string
   asciiNormalized: string
+  structuredNormalized: string
+  structuredAsciiNormalized: string
   compact: string
 } {
-  const normalized = normalizeBookingPayoutStatementSignalContent(content)
+  const structuredNormalized = normalizeBookingPayoutStatementStructuredContent(content)
+  const normalized = structuredNormalized.replace(/\s+/g, ' ').trim()
+  const structuredAsciiNormalized = foldToAscii(structuredNormalized)
   const asciiNormalized = foldToAscii(normalized)
 
   return {
     normalized,
     asciiNormalized,
+    structuredNormalized,
+    structuredAsciiNormalized,
     compact: asciiNormalized.toUpperCase().replace(/[^A-Z0-9]/g, '')
   }
 }
 
 function normalizeBookingPayoutStatementSignalContent(content: string): string {
-  let normalized = content
+  return normalizeBookingPayoutStatementStructuredContent(content)
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeBookingPayoutStatementStructuredContent(content: string): string {
+  return content
     .replace(/^\uFEFF/, '')
     .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => normalizeBookingPayoutStatementSignalLine(line))
+    .filter((line) => line.length > 0)
+    .join('\n')
+}
+
+function normalizeBookingPayoutStatementSignalLine(line: string): string {
+  let normalized = line
     .replace(/[ \t]+/g, ' ')
     .trim()
 
@@ -598,7 +677,10 @@ function captureBookingReferenceAfterLabels(
   content: string,
   labelPatterns: RegExp[]
 ): string | undefined {
-  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
+    const match = section.match(/\b(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/i)
+    return match?.[0]?.trim()
+  }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     const match = section.match(/\b(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/i)
     return match?.[0]?.trim()
   })
@@ -608,7 +690,12 @@ function captureBookingDateAfterLabels(
   content: string,
   labelPatterns: RegExp[]
 ): string | undefined {
-  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
+    const match = section.match(
+      /\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})\b/i
+    )
+    return match?.[1]?.trim()
+  }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     const match = section.match(
       /\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})\b/i
     )
@@ -620,7 +707,19 @@ function captureBookingPrimaryPayoutTotalAfterLabels(
   content: string,
   labelPatterns: RegExp[]
 ): string | undefined {
-  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
+    const candidates = collectBookingMoneyCandidates(section)
+    const nonLocalCurrencyCandidate = candidates.find((value) => {
+      const currency = detectBookingStatementCurrency(value)
+      return currency === 'EUR' || currency === 'USD'
+    })
+
+    if (nonLocalCurrencyCandidate) {
+      return nonLocalCurrencyCandidate
+    }
+
+    return candidates[0]
+  }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     const candidates = collectBookingMoneyCandidates(section)
     const nonLocalCurrencyCandidate = candidates.find((value) => {
       const currency = detectBookingStatementCurrency(value)
@@ -640,7 +739,10 @@ function captureBookingLocalPayoutTotalAfterLabels(
   labelPatterns: RegExp[],
   preferredCurrency: 'CZK' | 'EUR' | 'USD'
 ): string | undefined {
-  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
+    const candidates = collectBookingMoneyCandidates(section)
+    return candidates.find((value) => detectBookingStatementCurrency(value) === preferredCurrency)
+  }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     const candidates = collectBookingMoneyCandidates(section)
     return candidates.find((value) => detectBookingStatementCurrency(value) === preferredCurrency)
   })
@@ -662,11 +764,39 @@ function collectBookingMoneyCandidates(section: string): string[] {
     .filter((value) => Boolean(detectBookingStatementCurrency(value)))
 }
 
+function resolveBookingPrimaryPayoutTotalCandidate(
+  payoutTotalRaw: string | undefined,
+  localTotalRaw: string | undefined,
+  scan: ReturnType<typeof buildBookingPayoutStatementSignalScan>
+): string | undefined {
+  const payoutCurrency = payoutTotalRaw ? detectBookingStatementCurrency(payoutTotalRaw) : undefined
+  const localCurrency = localTotalRaw ? detectBookingStatementCurrency(localTotalRaw) : undefined
+  const nonLocalDocumentCandidate = collectBookingMoneyCandidates(scan.structuredNormalized)
+    .find((value) => {
+      const currency = detectBookingStatementCurrency(value)
+      return Boolean(currency && currency !== 'CZK' && currency !== localCurrency)
+    })
+    ?? collectBookingMoneyCandidates(scan.normalized).find((value) => {
+      const currency = detectBookingStatementCurrency(value)
+      return Boolean(currency && currency !== 'CZK' && currency !== localCurrency)
+    })
+
+  if (!payoutTotalRaw) {
+    return nonLocalDocumentCandidate ?? payoutTotalRaw
+  }
+
+  if (nonLocalDocumentCandidate && (!payoutCurrency || payoutCurrency === localCurrency || payoutCurrency === 'CZK')) {
+    return nonLocalDocumentCandidate
+  }
+
+  return payoutTotalRaw
+}
+
 function captureBookingValueAfterLabels(
   content: string,
   labelPatterns: RegExp[],
   resolver: (section: string) => string | undefined,
-  windowLength = 240
+  windowLength = 1600
 ): string | undefined {
   for (const pattern of labelPatterns) {
     const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`
@@ -676,6 +806,48 @@ function captureBookingValueAfterLabels(
       const endIndex = (match.index ?? 0) + match[0].length
       const section = content.slice(endIndex, Math.min(content.length, endIndex + windowLength))
       const value = resolver(section)
+
+      if (value) {
+        return value
+      }
+    }
+  }
+
+  return undefined
+}
+
+function captureBookingValueAfterLabelLines(
+  content: string,
+  labelPatterns: RegExp[],
+  resolver: (section: string) => string | undefined,
+  lineWindow = 80
+): string | undefined {
+  const lines = content
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+
+  for (const pattern of labelPatterns) {
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index]
+
+      if (!line) {
+        continue
+      }
+
+      const match = line.match(pattern)
+
+      if (!match) {
+        continue
+      }
+
+      const matchIndex = match.index ?? 0
+      const sectionLines = [
+        line.slice(matchIndex + match[0].length).trim(),
+        ...lines.slice(index + 1, index + 1 + lineWindow)
+      ].filter(Boolean)
+
+      const value = resolver(sectionLines.join('\n'))
 
       if (value) {
         return value
