@@ -1374,12 +1374,20 @@ function buildActualUploadedAirbnbContent(): string {
 function buildBookingPayoutStatementVariantContent(): string {
   return [
     'Booking.com',
-    'Payment overview',
-    'Payment ID: PAYOUT-BOOK-20260310',
-    'Payment date: 2026-03-12',
-    'Transfer total: 1 250,00 CZK',
-    'IBAN: CZ65 5500 0000 0000 5599 555956',
-    'Included reservations:',
+    'Payout summary',
+    'Payment',
+    'ID',
+    'PAYOUT-BOOK-20260310',
+    'Payment',
+    'date',
+    '2026-03-12',
+    'Transfer',
+    'total',
+    '1 250,00 CZK',
+    'IBAN',
+    'CZ65 5500 0000 0000 5599 555956',
+    'Included',
+    'reservations',
     'RES-BOOK-8841 1 250,00 CZK'
   ].join('\n')
 }

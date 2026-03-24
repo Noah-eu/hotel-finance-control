@@ -1,5 +1,7 @@
 import type { BrowserRuntimeInputFile, BrowserRuntimeUploadState } from './index.js'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state.js'
+import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
+import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
 
 interface BufferLikeConstructor {
   alloc(size: number): Uint8Array
@@ -22,30 +24,7 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
   generatedAt: string
 }): Promise<BrowserRuntimeUploadState> {
   ensureBrowserCompatibleBuffer()
-
-  const uploadedFiles = await Promise.all(
-    input.files.map(async (file) => {
-      try {
-        const uploadedFileContent = await readUploadedFileContent(file)
-
-        return {
-          name: file.name,
-          content: uploadedFileContent.content,
-          uploadedAt: input.generatedAt,
-          binaryContentBase64: uploadedFileContent.binaryContentBase64,
-          contentFormat: uploadedFileContent.contentFormat
-        }
-      } catch (error) {
-        return {
-          name: file.name,
-          content: '',
-          uploadedAt: input.generatedAt,
-          contentFormat: inferContentFormatFromFileName(file.name),
-          ingestError: error instanceof Error ? error.message : String(error)
-        }
-      }
-    })
-  )
+  const uploadedFiles = await prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input)
 
   return buildBrowserRuntimeUploadStateFromFiles({
     files: uploadedFiles,
@@ -62,10 +41,59 @@ export function createBrowserRuntime(): BrowserRuntimeBridge {
   }
 }
 
+export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input: {
+  files: BrowserRuntimeInputFile[]
+  generatedAt: string
+}): Promise<UploadedMonthlyFile[]> {
+  ensureBrowserCompatibleBuffer()
+
+  return Promise.all(
+    input.files.map(async (file) => {
+      try {
+        const uploadedFileContent = await readUploadedFileContent(file)
+
+        return {
+          name: file.name,
+          content: uploadedFileContent.content,
+          uploadedAt: input.generatedAt,
+          binaryContentBase64: uploadedFileContent.binaryContentBase64,
+          contentFormat: uploadedFileContent.contentFormat,
+          sourceDescriptor: {
+            mimeType: normalizeMimeType(file.type),
+            browserTextExtraction: {
+              mode: uploadedFileContent.contentFormat,
+              status: 'extracted',
+              textPreview: uploadedFileContent.content.slice(0, 240),
+              detectedSignatures: uploadedFileContent.detectedSignatures
+            }
+          }
+        }
+      } catch (error) {
+        return {
+          name: file.name,
+          content: '',
+          uploadedAt: input.generatedAt,
+          contentFormat: inferContentFormatFromFileName(file.name),
+          sourceDescriptor: {
+            mimeType: normalizeMimeType(file.type),
+            browserTextExtraction: {
+              mode: inferContentFormatFromFileName(file.name),
+              status: 'failed',
+              detectedSignatures: []
+            }
+          },
+          ingestError: error instanceof Error ? error.message : String(error)
+        }
+      }
+    })
+  )
+}
+
 async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
   content: string
   binaryContentBase64?: string
   contentFormat: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
+  detectedSignatures: string[]
 }> {
   if (typeof file.arrayBuffer === 'function') {
     const buffer = await file.arrayBuffer()
@@ -78,27 +106,31 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
       return {
         content,
         binaryContentBase64,
-        contentFormat: 'pdf-text'
+        contentFormat: 'pdf-text',
+        detectedSignatures: detectPdfTextSignatures(content)
       }
     }
 
     return {
       content: decodeUploadedTextBytes(bytes),
       binaryContentBase64,
-      contentFormat: file.name.toLowerCase().endsWith('.xlsx') ? 'binary-workbook' : 'binary'
+      contentFormat: file.name.toLowerCase().endsWith('.xlsx') ? 'binary-workbook' : 'binary',
+      detectedSignatures: []
     }
   }
 
   if (typeof file.text === 'function') {
     return {
       content: await file.text(),
-      contentFormat: inferContentFormatFromFileName(file.name)
+      contentFormat: inferContentFormatFromFileName(file.name),
+      detectedSignatures: []
     }
   }
 
   return {
     content: '',
-    contentFormat: inferContentFormatFromFileName(file.name)
+    contentFormat: inferContentFormatFromFileName(file.name),
+    detectedSignatures: []
   }
 }
 
@@ -456,4 +488,49 @@ function base64ToUint8Array(value: string): Uint8Array {
   }
 
   return bytes
+}
+
+function normalizeMimeType(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase()
+  return normalized ? normalized : undefined
+}
+
+function detectPdfTextSignatures(content: string): string[] {
+  const signatures = new Set<string>()
+  const normalized = content
+    .replace(/^\uFEFF/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+  const bookingSignals = detectBookingPayoutStatementSignals(content)
+
+  if (bookingSignals.hasBookingBranding) {
+    signatures.add('booking-branding')
+  }
+
+  if (bookingSignals.hasStatementWording) {
+    signatures.add('booking-payout-statement-wording')
+  }
+
+  if (bookingSignals.paymentId) {
+    signatures.add('booking-payment-id')
+  }
+
+  if (bookingSignals.payoutDateRaw) {
+    signatures.add('booking-payout-date')
+  }
+
+  if (bookingSignals.payoutTotalRaw) {
+    signatures.add('booking-payout-total')
+  }
+
+  if (bookingSignals.ibanValue || /\biban\b/i.test(normalized) || /\bbank\s+account\b/i.test(normalized)) {
+    signatures.add('iban-hint')
+  }
+
+  if (bookingSignals.reservationIds.length > 0 || /\bres-[a-z0-9-]+\b/i.test(normalized) || /\bincluded reservations\b/i.test(normalized)) {
+    signatures.add('booking-reservation-reference')
+  }
+
+  return Array.from(signatures)
 }

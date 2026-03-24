@@ -8,12 +8,23 @@ export type UploadedMonthlyFileClassificationBasis =
   | 'binary-workbook'
   | 'unknown'
 
+export interface UploadedMonthlyFileSourceDescriptor {
+  mimeType?: string
+  browserTextExtraction?: {
+    mode: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
+    status: 'extracted' | 'failed' | 'not-attempted'
+    textPreview?: string
+    detectedSignatures: string[]
+  }
+}
+
 export interface UploadedMonthlyFile {
   name: string
   content: string
   uploadedAt: string
   binaryContentBase64?: string
   contentFormat?: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
+  sourceDescriptor?: UploadedMonthlyFileSourceDescriptor
   ingestError?: string
 }
 

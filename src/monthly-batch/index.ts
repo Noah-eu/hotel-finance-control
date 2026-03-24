@@ -14,6 +14,7 @@ export type {
   PreparedUploadedMonthlyFilesResult,
   UploadedMonthlyIngestionResult,
   UploadedMonthlyFileClassificationBasis,
+  UploadedMonthlyFileSourceDescriptor,
   UploadedMonthlyFileRoute,
   UploadedMonthlyFile
 } from './contracts'

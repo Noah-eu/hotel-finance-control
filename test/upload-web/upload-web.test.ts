@@ -7,6 +7,7 @@ import {
   buildBrowserRuntimeStateFromSelectedFiles,
   createBrowserRuntime,
   buildBrowserRuntimeUploadState,
+  prepareBrowserRuntimeUploadedFilesFromSelectedFiles,
   buildBrowserUploadedMonthlyRun,
   buildBrowserExportPackage,
   buildBrowserReviewScreen,
@@ -2092,6 +2093,82 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('passes extracted PDF text cues through the browser upload contract into monthly classification for the real 4-file flow', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const uploadedFiles = await prepareBrowserRuntimeUploadedFilesFromSelectedFiles({
+      files: [
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementFragmentedPdfLines())
+      ],
+      generatedAt: '2026-03-24T16:10:00.000Z'
+    })
+
+    expect(uploadedFiles).toHaveLength(4)
+    expect(uploadedFiles[3]).toEqual(
+      expect.objectContaining({
+        name: 'Bookinng35k.pdf',
+        contentFormat: 'pdf-text',
+        sourceDescriptor: expect.objectContaining({
+          browserTextExtraction: expect.objectContaining({
+            mode: 'pdf-text',
+            status: 'extracted',
+            detectedSignatures: expect.arrayContaining([
+              'booking-branding',
+              'booking-payment-id',
+              'booking-payout-date',
+              'booking-payout-total',
+              'iban-hint',
+              'booking-reservation-reference'
+            ])
+          })
+        })
+      })
+    )
+
+    const renderedRun = buildBrowserUploadedMonthlyRun({
+      files: uploadedFiles,
+      runId: 'browser-runtime-upload-2026-03',
+      generatedAt: '2026-03-24T16:10:00.000Z'
+    })
+
+    expect(renderedRun.run.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        role: 'supplemental'
+      })
+    ])
+    expect(renderedRun.html).toContain('<h3>Bookinng35k.pdf</h3>')
+    expect(renderedRun.html).toContain('<strong>Stav:</strong> Podporovaný doplňkový payout dokument')
+    expect(renderedRun.html).toContain('<strong>Zdroj:</strong> Booking payout statement PDF')
+    expect(renderedRun.html).toContain('<strong>4</strong><br />Rozpoznané soubory')
+    expect(renderedRun.html).toContain('<strong>0</strong><br />Nepodporované soubory')
+    expect(renderedRun.html).not.toContain('Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.')
+    expect(renderedRun.html).not.toContain('<strong>Unsupported:</strong>')
+  })
+
   it('keeps PDF ingest failures visible in browser routing instead of silently losing the selected file', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -2509,6 +2586,7 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {
   return {
     name,
+    type: 'application/pdf',
     async text() {
       return ''
     },
@@ -2532,6 +2610,7 @@ function createRuntimePdfFileFromTextLines(name: string, lines: string[]) {
 function createBrokenRuntimePdfFile(name: string) {
   return {
     name,
+    type: 'application/pdf',
     async text() {
       return ''
     },
@@ -2598,6 +2677,27 @@ function buildBookingPayoutStatementVariantPdfLines(): string[] {
     'IBAN: CZ65 5500 0000 0000 5599 555956',
     'Included reservations:',
     'RES-BOOK-8841 1 250,00 CZK'
+  ]
+}
+
+function buildBookingPayoutStatementFragmentedPdfLines(): string[] {
+  return [
+    'Booking.com',
+    'Payout summary',
+    'Payment',
+    'ID',
+    'PAYOUT-BOOK-20260310',
+    'Payment',
+    'date',
+    '2026-03-12',
+    'Transfer',
+    'total',
+    '1 250,00 CZK',
+    'IBAN',
+    'CZ65 5500 0000 0000 5599 555956',
+    'Included',
+    'reservations',
+    'RES-BOOK-8841'
   ]
 }
 

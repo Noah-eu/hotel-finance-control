@@ -1,5 +1,6 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
+  detectBookingPayoutStatementSignals,
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
@@ -34,6 +35,15 @@ type Parser = (input: {
 interface ParsedImportedMonthlySourceFile {
   importedFile: ImportedMonthlySourceFile
   extractedRecords: ExtractedRecord[]
+}
+
+interface UploadedMonthlyFileClassificationDescriptor {
+  fileName: string
+  content: string
+  binaryContentBase64?: string
+  contentFormat?: UploadedMonthlyFile['contentFormat']
+  sourceDescriptor?: UploadedMonthlyFile['sourceDescriptor']
+  ingestError?: string
 }
 
 export class DefaultMonthlyBatchService implements MonthlyBatchService {
@@ -328,6 +338,7 @@ function classifyUploadedMonthlyFile(
     content: file.content,
     binaryContentBase64: file.binaryContentBase64,
     contentFormat: file.contentFormat,
+    sourceDescriptor: file.sourceDescriptor,
     ingestError: file.ingestError
   })
 
@@ -415,13 +426,7 @@ function classifyUploadedMonthlyFile(
   }
 }
 
-function inferUploadedFileClassification(input: {
-  fileName: string
-  content: string
-  binaryContentBase64?: string
-  contentFormat?: UploadedMonthlyFile['contentFormat']
-  ingestError?: string
-}): {
+function inferUploadedFileClassification(input: UploadedMonthlyFileClassificationDescriptor): {
   sourceSystem: SourceDocument['sourceSystem']
   documentType: SourceDocument['documentType']
   classificationBasis: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['classificationBasis']
@@ -443,11 +448,7 @@ function inferUploadedFileClassification(input: {
     }
   }
 
-  const bookingPdfByContent = inferBookingSupplementDocumentTypeFromContent({
-    fileName: input.fileName,
-    content: input.content,
-    contentFormat: input.contentFormat
-  })
+  const bookingPdfByContent = inferBookingSupplementDocumentTypeFromDescriptor(input)
 
   if (bookingPdfByContent) {
     return {
@@ -637,81 +638,52 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   return 'unknown'
 }
 
-function inferBookingSupplementDocumentTypeFromContent(input: {
-  fileName: string
-  content: string
-  contentFormat?: UploadedMonthlyFile['contentFormat']
-}): 'payout_statement' | undefined {
+function inferBookingSupplementDocumentTypeFromDescriptor(
+  input: UploadedMonthlyFileClassificationDescriptor
+): 'payout_statement' | undefined {
   const isPdfLike = input.contentFormat === 'pdf-text'
+    || input.sourceDescriptor?.browserTextExtraction?.mode === 'pdf-text'
+    || input.sourceDescriptor?.mimeType === 'application/pdf'
     || (!input.contentFormat && input.fileName.toLowerCase().endsWith('.pdf'))
 
   if (!isPdfLike) {
     return undefined
   }
 
-  const normalized = input.content
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase()
+  const signals = detectBookingPayoutStatementSignals(input.content)
+  const detectedSignatures = new Set(input.sourceDescriptor?.browserTextExtraction?.detectedSignatures ?? [])
+  const signalCount = [
+    signals.hasBookingBranding || detectedSignatures.has('booking-branding'),
+    signals.hasStatementWording || detectedSignatures.has('booking-payout-statement-wording'),
+    Boolean(signals.paymentId) || detectedSignatures.has('booking-payment-id'),
+    Boolean(signals.payoutDateRaw) || detectedSignatures.has('booking-payout-date'),
+    Boolean(signals.payoutTotalRaw) || detectedSignatures.has('booking-payout-total'),
+    Boolean(signals.ibanValue) || detectedSignatures.has('iban-hint'),
+    signals.reservationIds.length > 0 || detectedSignatures.has('booking-reservation-reference')
+  ].filter(Boolean).length
 
-  if (!normalized) {
+  if (!input.content.trim() && signalCount === 0) {
     return undefined
   }
 
-  const bookingBranding = /\bbooking(?:\.com| com| bv)?\b/i.test(normalized)
-  const payoutStatementWording = [
-    'payout statement',
-    'payment statement',
-    'payment overview',
-    'payout overview',
-    'payment summary',
-    'payout summary'
-  ].some((value) => normalized.includes(value))
-  const hasPaymentId = hasAnyDocumentLabel(input.content, ['payment id', 'paymentid', 'booking payment id', 'payout id'])
-  const hasPayoutDate = hasAnyDocumentLabel(input.content, ['payment date', 'payout date', 'transfer date', 'date'])
-  const hasPayoutTotal = hasAnyDocumentLabel(input.content, ['payout total', 'payment total', 'total payout', 'transfer total', 'total transfer'])
-  const hasReservationHint =
-    /\bres-[a-z0-9-]+\b/i.test(input.content)
-    || normalized.includes('included reservations')
-    || normalized.includes('reservation reference')
-    || normalized.includes('reservation id')
-  const hasIbanHint = normalized.includes('iban') || normalized.includes('bank account')
-  const strongCueCount = [hasPaymentId, hasPayoutDate, hasPayoutTotal, hasReservationHint, hasIbanHint, payoutStatementWording]
-    .filter(Boolean)
-    .length
-
   if (
-    bookingBranding
-    && hasPaymentId
-    && hasPayoutDate
-    && hasPayoutTotal
+    (signals.hasBookingBranding || detectedSignatures.has('booking-branding'))
+    && (Boolean(signals.paymentId) || detectedSignatures.has('booking-payment-id'))
+    && (Boolean(signals.payoutDateRaw) || detectedSignatures.has('booking-payout-date'))
+    && (Boolean(signals.payoutTotalRaw) || detectedSignatures.has('booking-payout-total'))
   ) {
     return 'payout_statement'
   }
 
   if (
-    bookingBranding
-    && hasPayoutDate
-    && hasPayoutTotal
-    && (hasReservationHint || hasIbanHint)
-    && strongCueCount >= 4
+    (signals.hasBookingBranding || detectedSignatures.has('booking-branding'))
+    && (signals.hasStatementWording || detectedSignatures.has('booking-payout-statement-wording'))
+    && signalCount >= 4
   ) {
     return 'payout_statement'
   }
 
   return undefined
-}
-
-function hasAnyDocumentLabel(content: string, candidates: string[]): boolean {
-  const normalizedLines = content
-    .replace(/^\ufeff/, '')
-    .split(/\r?\n/)
-    .map((line) => line.trim().toLowerCase())
-    .filter(Boolean)
-
-  return candidates.some((candidate) =>
-    normalizedLines.some((line) => line.startsWith(`${candidate}:`) || line.startsWith(`${candidate} -`))
-  )
 }
 
 function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {

@@ -15,7 +15,8 @@ import { emitBrowserRuntimeBundle } from './browser-bundle'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state'
 export {
   buildBrowserRuntimeStateFromSelectedFiles,
-  createBrowserRuntime
+  createBrowserRuntime,
+  prepareBrowserRuntimeUploadedFilesFromSelectedFiles
 } from './browser-runtime'
 
 export interface BuildUploadWebFlowOptions {
@@ -190,6 +191,7 @@ export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewI
 
 export interface BrowserRuntimeInputFile {
   name: string
+  type?: string
   text?: () => Promise<string>
   arrayBuffer?: () => Promise<ArrayBuffer>
 }
