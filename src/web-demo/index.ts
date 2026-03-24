@@ -43,6 +43,7 @@ const WEB_DEMO_RENDERER_MARKER = 'web-demo-operator-v3'
 
 export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<WebDemoResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
+  const debugMode = options.debugMode ?? false
   const runtimeDemoFiles = [
     {
       name: 'airbnb.csv',
@@ -71,7 +72,8 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
       generatedAt,
       uploadFlowHtml: uploadFlow.html,
       browserRun,
-      runtimeAssetPath
+      runtimeAssetPath,
+      debugMode
     })
     writeFileSync(resolved, html, 'utf8')
 
@@ -88,7 +90,7 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
     uploadFlowHtml: uploadFlow.html,
     browserRun,
     runtimeAssetPath: './browser-runtime.js',
-    debugMode: options.debugMode ?? false
+    debugMode
   })
 
   return {
@@ -105,9 +107,17 @@ function renderOperatorWebDemoHtml(input: {
   debugMode?: boolean
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
+  const showRuntimePayoutDiagnostics = Boolean(input.debugMode)
   const buildExtractedRecordsMarkupFunction = input.debugMode
     ? buildDebugExtractedRecordsMarkupFunctionSource()
     : buildDefaultExtractedRecordsMarkupFunctionSource()
+  const runtimePayoutDiagnosticsBindings = showRuntimePayoutDiagnostics
+    ? `
+  const runtimePayoutDiagnosticsSection = document.getElementById('runtime-payout-diagnostics-section');
+  const runtimePayoutDiagnosticsContent = document.getElementById('runtime-payout-diagnostics-content');`
+    : `
+  const runtimePayoutDiagnosticsSection = null;
+  const runtimePayoutDiagnosticsContent = null;`
 
   const initialRuntimeState = {
     debugMode: Boolean(input.debugMode),
@@ -273,6 +283,7 @@ function renderOperatorWebDemoHtml(input: {
       .runtime-output {
         margin-top: 16px;
       }
+${showRuntimePayoutDiagnostics ? `
       .diagnostic-list {
         list-style: disc;
         margin: 8px 0 0;
@@ -281,6 +292,7 @@ function renderOperatorWebDemoHtml(input: {
       .diagnostic-list li {
         margin-bottom: 6px;
       }
+` : ''}
 ${input.debugMode ? `
       details.debug-details {
         margin-top: 8px;
@@ -426,7 +438,7 @@ ${input.debugMode ? `
         </div>
         <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
       </section>
-
+${showRuntimePayoutDiagnostics ? `
       <section id="runtime-payout-diagnostics-section" class="card" data-runtime-phase="placeholder">
         <h2>Diagnostika runtime payout dávek</h2>
         <div id="runtime-payout-diagnostics-content">
@@ -434,6 +446,7 @@ ${input.debugMode ? `
           <p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>
         </div>
       </section>
+` : ''}
     </main>
     <script>
       ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
@@ -464,9 +477,7 @@ ${input.debugMode ? `
   const unmatchedReservationsSection = document.getElementById('unmatched-reservations-section');
   const unmatchedReservationsContent = document.getElementById('unmatched-reservations-content');
   const exportHandoffSection = document.getElementById('export-handoff-section');
-  const exportHandoffContent = document.getElementById('export-handoff-content');
-  const runtimePayoutDiagnosticsSection = document.getElementById('runtime-payout-diagnostics-section');
-  const runtimePayoutDiagnosticsContent = document.getElementById('runtime-payout-diagnostics-content');
+  const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}
       const generatedAt = ${JSON.stringify(input.generatedAt)};
   const buildFingerprintVersion = ${JSON.stringify(buildFingerprintVersion)};
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
@@ -553,6 +564,7 @@ ${input.debugMode ? `
         ].join('');
       }
 
+${showRuntimePayoutDiagnostics ? `
       function collectRuntimePayoutDiagnosticData(state) {
         const runtimeAudit = (state && state.runtimeAudit && state.runtimeAudit.payoutDiagnostics) || {};
         const reviewSections = (state.reviewSections || {});
@@ -616,6 +628,38 @@ ${input.debugMode ? `
           '</ul>'
         ].join('');
       }
+
+      function syncRuntimePayoutDiagnosticsPhase(phase) {
+        runtimePayoutDiagnosticsSection.setAttribute('data-runtime-phase', phase);
+      }
+
+      function renderCompletedRuntimePayoutDiagnostics(state) {
+        runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);
+      }
+
+      function renderRunningRuntimePayoutDiagnostics() {
+        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Diagnostika payout dávek se právě načítá z aktuálního runtime běhu…</p>';
+      }
+
+      function renderFailedRuntimePayoutDiagnostics() {
+        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Diagnostika payout dávek není k dispozici, protože runtime běh selhal.</p>';
+      }
+
+      function renderInitialRuntimePayoutDiagnostics() {
+        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>';
+      }
+` : ''}
+${showRuntimePayoutDiagnostics ? '' : `
+      function syncRuntimePayoutDiagnosticsPhase() {}
+
+      function renderCompletedRuntimePayoutDiagnostics() {}
+
+      function renderRunningRuntimePayoutDiagnostics() {}
+
+      function renderFailedRuntimePayoutDiagnostics() {}
+
+      function renderInitialRuntimePayoutDiagnostics() {}
+`}
 
       function buildFingerprintMarkup(state) {
         const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
@@ -703,7 +747,7 @@ ${input.debugMode ? `
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', phase);
   unmatchedReservationsSection.setAttribute('data-runtime-phase', phase);
         exportHandoffSection.setAttribute('data-runtime-phase', phase);
-    runtimePayoutDiagnosticsSection.setAttribute('data-runtime-phase', phase);
+        syncRuntimePayoutDiagnosticsPhase(phase);
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String((state.preparedFiles || []).length);
@@ -730,7 +774,7 @@ ${input.debugMode ? `
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.ancillarySettlementOverview) || []);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(state);
         exportHandoffContent.innerHTML = buildExportMarkup(state);
-        runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);
+        renderCompletedRuntimePayoutDiagnostics(state);
       }
 
       function renderRunningState(files) {
@@ -747,7 +791,7 @@ ${input.debugMode ? `
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
   unmatchedReservationsSection.setAttribute('data-runtime-phase', 'running');
         exportHandoffSection.setAttribute('data-runtime-phase', 'running');
-    runtimePayoutDiagnosticsSection.setAttribute('data-runtime-phase', 'running');
+        syncRuntimePayoutDiagnosticsPhase('running');
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(files.length);
@@ -765,7 +809,7 @@ ${input.debugMode ? `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff se právě připravuje ze stejného runtime výsledku…</p>';
-        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Diagnostika payout dávek se právě načítá z aktuálního runtime běhu…</p>';
+        renderRunningRuntimePayoutDiagnostics();
       }
 
       function renderFailedState(error) {
@@ -780,7 +824,7 @@ ${input.debugMode ? `
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
   unmatchedReservationsSection.setAttribute('data-runtime-phase', 'failed');
         exportHandoffSection.setAttribute('data-runtime-phase', 'failed');
-    runtimePayoutDiagnosticsSection.setAttribute('data-runtime-phase', 'failed');
+        syncRuntimePayoutDiagnosticsPhase('failed');
 
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
@@ -791,7 +835,7 @@ ${input.debugMode ? `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací není k dispozici, protože runtime běh selhal.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
-        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Diagnostika payout dávek není k dispozici, protože runtime běh selhal.</p>';
+        renderFailedRuntimePayoutDiagnostics();
         if (buildFingerprint) {
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
         }
@@ -807,7 +851,7 @@ ${input.debugMode ? `
         ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'placeholder');
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'placeholder');
         exportHandoffSection.setAttribute('data-runtime-phase', 'placeholder');
-        runtimePayoutDiagnosticsSection.setAttribute('data-runtime-phase', 'placeholder');
+        syncRuntimePayoutDiagnosticsPhase('placeholder');
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
         if (runtimeSummaryUploadedFiles) runtimeSummaryUploadedFiles.textContent = '0';
@@ -827,7 +871,7 @@ ${input.debugMode ? `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro doplňkové položky.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované rezervace.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p><p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>';
-        runtimePayoutDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>';
+        renderInitialRuntimePayoutDiagnostics();
       }
 
       async function startMainWorkflow() {

@@ -672,6 +672,12 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Technický tvar exportu (debug):')
     expect(result.html).toContain('Technická ID extrahovaných záznamů (debug):')
     expect(result.html).toContain('<details class="debug-details">')
+    expect(result.html).toContain('id="runtime-payout-diagnostics-section"')
+    expect(result.html).toContain('id="runtime-payout-diagnostics-content"')
+    expect(result.html).toContain('function buildRuntimePayoutDiagnosticsMarkup(state)')
+    expect(result.html).toContain('runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);')
+    expect(result.html).toContain('Runtime matched refs count:')
+    expect(result.html).toContain('Extracted Airbnb payout row ids')
     expect(result.html).toContain('airbnb-payout-1')
   })
 
@@ -900,7 +906,9 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
     expect(result.html).toContain('Zatím není k dispozici žádný uploadovaný runtime výsledek.')
     expect(result.html).toContain('Zatím nebyl spuštěn žádný uploadovaný runtime běh.')
-    expect(result.html).toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
+    expect(result.html).not.toContain('id="runtime-payout-diagnostics-section"')
+    expect(result.html).not.toContain('Diagnostika runtime payout dávek')
+    expect(result.html).not.toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
     expect(result.html).not.toContain('Airbnb payout dávka G-OC3WJE3SIXRO5')
     expect(result.html).not.toContain('<strong>15</strong><br />Spárované Airbnb / OTA payout dávky')
     expect(result.html).not.toContain('<strong>2</strong><br />Nespárované payout dávky')
@@ -923,9 +931,36 @@ describe('buildWebDemo', () => {
     expect(readFileSync(outputPath, 'utf8')).toContain('Renderer: <strong>web-demo-operator-v3</strong>')
   })
 
-  it('renders a visible runtime payout diagnostics block wired to the live runtime source', async () => {
+  it('keeps the runtime payout diagnostics block out of the default operator-facing web demo', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:00.000Z'
+    })
+
+    expect(result.html).not.toContain('id="runtime-payout-diagnostics-section"')
+    expect(result.html).not.toContain('id="runtime-payout-diagnostics-content"')
+    expect(result.html).not.toContain('function buildRuntimePayoutDiagnosticsMarkup(state)')
+    expect(result.html).not.toContain('runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);')
+    expect(result.html).not.toContain('Runtime matched refs count:')
+    expect(result.html).not.toContain('Runtime unmatched refs count:')
+    expect(result.html).not.toContain('Extracted Airbnb payout row ids')
+    expect(result.html).not.toContain('Extracted Airbnb rawReference values')
+    expect(result.html).not.toContain('Extracted Airbnb data.reference values')
+    expect(result.html).not.toContain('Extracted Airbnb data.referenceCode values')
+    expect(result.html).not.toContain('Extracted Airbnb data.payoutReference values')
+    expect(result.html).not.toContain('Workflow payout batch keys')
+    expect(result.html).not.toContain('Workflow payout references')
+    expect(result.html).not.toContain('Report payoutBatchMatches payoutReference values')
+    expect(result.html).not.toContain('Report unmatchedPayoutBatches payoutReference values')
+    expect(result.html).not.toContain('Runtime matched panel title source values')
+    expect(result.html).not.toContain('Runtime unmatched panel title source values')
+    expect(result.html).not.toContain('Runtime matched titles')
+    expect(result.html).not.toContain('Runtime unmatched titles')
+  })
+
+  it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T12:13:15.000Z',
+      debugMode: true
     })
 
     expect(result.html).toContain('id="runtime-payout-diagnostics-section"')
@@ -947,11 +982,13 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Runtime unmatched panel title source values')
     expect(result.html).toContain('Runtime matched titles')
     expect(result.html).toContain('Runtime unmatched titles')
+    expect(result.html).toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
   })
 
-  it('keeps runtime payout diagnostics grounded in true payout references rather than extracted record ids', async () => {
+  it('keeps runtime payout diagnostics grounded in true payout references rather than extracted record ids when developer mode is enabled', async () => {
     const result = await buildWebDemo({
-      generatedAt: '2026-03-22T12:13:15.000Z'
+      generatedAt: '2026-03-22T12:13:30.000Z',
+      debugMode: true
     })
 
     expect(result.browserRun.run.batch.extractedRecords
