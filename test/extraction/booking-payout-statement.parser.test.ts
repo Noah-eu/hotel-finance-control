@@ -3,6 +3,7 @@ import {
   detectBookingPayoutStatementKeywordHits,
   detectBookingPayoutStatementSignals,
   extractBookingPayoutStatementFields,
+  inspectBookingPayoutStatementFieldCheck,
   parseBookingPayoutStatementPdf
 } from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
@@ -129,6 +130,26 @@ describe('parseBookingPayoutStatementPdf', () => {
     })
   })
 
+  it('keeps required field validation aligned with parser extraction when labels and values arrive in separate text blocks', () => {
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(buildCzechBookingPayoutStatementSeparatedBlockContent())
+
+    expect(fieldCheck).toEqual({
+      fields: expect.objectContaining({
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotalRaw: '1456.42 EUR',
+        payoutTotalAmountMinor: 145642,
+        payoutTotalCurrency: 'EUR',
+        localTotalRaw: '35530.12 CZK',
+        localAmountMinor: 3553012,
+        localCurrency: 'CZK',
+        ibanSuffix: '5956'
+      }),
+      missingFields: [],
+      requiredFieldsCheck: 'passed'
+    })
+  })
+
   it('parses Czech Booking payout statement text by using the full normalized document instead of only the header prefix', () => {
     const records = parseBookingPayoutStatementPdf({
       sourceDocument: getRealInputFixture('booking-payout-statement-pdf').sourceDocument,
@@ -207,6 +228,24 @@ function buildCzechBookingPayoutStatementLateCueContent(): string {
     'Celková částka k vyplacení € 1,456.42',
     'Celkem (CZK) 35,530.12 Kč',
     'IBAN CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ].join('\n')
+}
+
+function buildCzechBookingPayoutStatementSeparatedBlockContent(): string {
+  return [
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky',
+    'ID platby',
+    'Celková částka k vyplacení',
+    'Celkem (CZK)',
+    'IBAN',
+    '12. března 2026',
+    '010638445054',
+    '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
   ].join('\n')
 }

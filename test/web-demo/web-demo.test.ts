@@ -1058,6 +1058,8 @@ describe('buildWebDemo', () => {
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutDate: 2026-03-12')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutTotal: 1250.00 CZK')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser ibanHint: 5956')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: supplemental supported · Podporovaný doplňkový payout dokument')
     expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
   })
@@ -1114,8 +1116,32 @@ describe('buildWebDemo', () => {
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutTotal: 1456.42 EUR')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser localTotal: 35530.12 CZK')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser ibanHint: 5956')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: supplemental supported · Podporovaný doplňkový payout dokument')
     expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+  })
+
+  it('renders the final built operator page without Booking PDF ingest failure when payout labels and values are split into separate blocks', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T19:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-separated-booking-pdf',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSeparatedBlockBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 2 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>Bookinng35k.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser paymentId: 010638445054')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutDate: 2026-03-12')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parser payoutTotal: 1456.42 EUR')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
   })
 
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
@@ -1688,6 +1714,31 @@ function buildCzechLateCueBookingPayoutStatementPdfLines(): string[] {
     'Celková částka k vyplacení € 1,456.42',
     'Celkem (CZK) 35,530.12 Kč',
     'IBAN CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ]
+}
+
+function buildBooking35kBrowserUploadContent(): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;35530,12;12 Mar 2026;PAYOUT-BOOK-20260310'
+  ].join('\n')
+}
+
+function buildCzechSeparatedBlockBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky',
+    'ID platby',
+    'Celková částka k vyplacení',
+    'Celkem (CZK)',
+    'IBAN',
+    '12. března 2026',
+    '010638445054',
+    '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
   ]
 }

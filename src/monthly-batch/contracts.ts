@@ -80,6 +80,16 @@ export interface UploadedMonthlyFileRoute {
   warnings: string[]
   reason?: string
   errorMessage?: string
+  parseDiagnostics?: {
+    parsedPaymentId?: string
+    parsedPayoutDate?: string
+    parsedPayoutTotal?: string
+    parsedLocalTotal?: string
+    parsedIbanHint?: string
+    parsedExchangeRate?: string
+    requiredFieldsCheck?: 'passed' | 'failed'
+    missingFields?: string[]
+  }
   decision: UploadedMonthlyFileDecision
 }
 

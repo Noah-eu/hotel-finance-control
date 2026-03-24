@@ -2405,6 +2405,8 @@ describe('buildUploadWebFlow', () => {
         parsedPayoutTotal: '1456.42 EUR',
         parsedLocalTotal: '35530.12 CZK',
         parsedIbanHint: '5956',
+        requiredFieldsCheck: 'passed',
+        missingFields: [],
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'booking',
@@ -2539,6 +2541,8 @@ describe('buildUploadWebFlow', () => {
         parsedPayoutTotal: '1456.42 EUR',
         parsedLocalTotal: '35530.12 CZK',
         parsedIbanHint: '5956',
+        requiredFieldsCheck: 'passed',
+        missingFields: [],
         status: 'supported',
         intakeStatus: 'parsed'
       })
@@ -2552,6 +2556,50 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
     expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
+  })
+
+  it('keeps Booking PDF parsed in the final browser path when payout labels and values are split into separate text blocks', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSeparatedBlockBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T19:25:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 2,
+      supportedFileCount: 2,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        parsedPaymentId: '010638445054',
+        parsedPayoutDate: '2026-03-12',
+        parsedPayoutTotal: '1456.42 EUR',
+        parsedLocalTotal: '35530.12 CZK',
+        requiredFieldsCheck: 'passed',
+        missingFields: []
+      })
+    )
   })
 
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
@@ -3111,6 +3159,24 @@ function buildCzechLateCueBookingPayoutStatementPdfLines(): string[] {
     'Celková částka k vyplacení € 1,456.42',
     'Celkem (CZK) 35,530.12 Kč',
     'IBAN CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ]
+}
+
+function buildCzechSeparatedBlockBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky',
+    'ID platby',
+    'Celková částka k vyplacení',
+    'Celkem (CZK)',
+    'IBAN',
+    '12. března 2026',
+    '010638445054',
+    '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
   ]
 }

@@ -98,6 +98,8 @@ export interface BrowserRuntimeUploadState {
       parsedLocalTotal?: string
       parsedIbanHint?: string
       parsedExchangeRate?: string
+      requiredFieldsCheck?: 'passed' | 'failed'
+      missingFields?: string[]
       sourceSystem: string
       documentType: string
       classificationBasis: string

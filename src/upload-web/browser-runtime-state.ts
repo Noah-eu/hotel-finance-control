@@ -185,6 +185,7 @@ function buildRuntimeAudit(
         batch,
         route?.sourceDocumentId
       )
+      const parseDiagnostics = route?.parseDiagnostics
 
       return {
         fileName: file.name,
@@ -202,18 +203,26 @@ function buildRuntimeAudit(
         missingSignals: route?.decision.missingSignals ?? [],
         parserSupported: route?.decision.parserSupported ?? false,
         decisionConfidence: route?.decision.confidence ?? 'none',
-        parsedPaymentId: parseSupplementStringField(parsedSupplement?.data.paymentId),
-        parsedPayoutDate: parseSupplementStringField(parsedSupplement?.data.payoutDate),
-        parsedPayoutTotal: buildParsedMoneyDebugLabel(
-          parseSupplementNumberField(parsedSupplement?.data.payoutTotalAmountMinor),
-          parseSupplementStringField(parsedSupplement?.data.payoutTotalCurrency)
-        ),
-        parsedLocalTotal: buildParsedMoneyDebugLabel(
-          parseSupplementNumberField(parsedSupplement?.data.localAmountMinor),
-          parseSupplementStringField(parsedSupplement?.data.localCurrency)
-        ),
-        parsedIbanHint: parseSupplementStringField(parsedSupplement?.data.ibanSuffix),
-        parsedExchangeRate: parseSupplementStringField(parsedSupplement?.data.exchangeRate),
+        parsedPaymentId: parseDiagnostics?.parsedPaymentId
+          ?? parseSupplementStringField(parsedSupplement?.data.paymentId),
+        parsedPayoutDate: parseDiagnostics?.parsedPayoutDate
+          ?? parseSupplementStringField(parsedSupplement?.data.payoutDate),
+        parsedPayoutTotal: parseDiagnostics?.parsedPayoutTotal
+          ?? buildParsedMoneyDebugLabel(
+            parseSupplementNumberField(parsedSupplement?.data.payoutTotalAmountMinor),
+            parseSupplementStringField(parsedSupplement?.data.payoutTotalCurrency)
+          ),
+        parsedLocalTotal: parseDiagnostics?.parsedLocalTotal
+          ?? buildParsedMoneyDebugLabel(
+            parseSupplementNumberField(parsedSupplement?.data.localAmountMinor),
+            parseSupplementStringField(parsedSupplement?.data.localCurrency)
+          ),
+        parsedIbanHint: parseDiagnostics?.parsedIbanHint
+          ?? parseSupplementStringField(parsedSupplement?.data.ibanSuffix),
+        parsedExchangeRate: parseDiagnostics?.parsedExchangeRate
+          ?? parseSupplementStringField(parsedSupplement?.data.exchangeRate),
+        requiredFieldsCheck: parseDiagnostics?.requiredFieldsCheck,
+        missingFields: parseDiagnostics?.missingFields ?? [],
         sourceSystem: route?.sourceSystem ?? 'unknown',
         documentType: route?.documentType ?? 'other',
         classificationBasis: route?.classificationBasis ?? 'unknown',

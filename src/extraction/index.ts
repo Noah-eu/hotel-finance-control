@@ -18,6 +18,7 @@ export { FioParser, parseFioStatement } from './parsers/fio.parser'
 export type { ParseBookingPayoutExportInput } from './parsers/booking.parser'
 export { BookingPayoutParser, parseBookingPayoutExport } from './parsers/booking.parser'
 export type {
+  BookingPayoutStatementFieldCheck,
   BookingPayoutStatementFields,
   BookingPayoutStatementSignals,
   ParseBookingPayoutStatementPdfInput
@@ -27,6 +28,7 @@ export {
   detectBookingPayoutStatementKeywordHits,
   detectBookingPayoutStatementSignals,
   extractBookingPayoutStatementFields,
+  inspectBookingPayoutStatementFieldCheck,
   parseBookingPayoutStatementPdf
 } from './parsers/booking-payout-statement.parser'
 export type { ParseAirbnbPayoutExportInput } from './parsers/airbnb.parser'

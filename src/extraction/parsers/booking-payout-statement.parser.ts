@@ -41,14 +41,21 @@ export interface BookingPayoutStatementFields {
   reservationIds: string[]
 }
 
+export interface BookingPayoutStatementFieldCheck {
+  fields: BookingPayoutStatementFields
+  missingFields: Array<'paymentId' | 'payoutDate' | 'payoutTotal'>
+  requiredFieldsCheck: 'passed' | 'failed'
+}
+
 export class BookingPayoutStatementPdfParser {
   parse(input: ParseBookingPayoutStatementPdfInput): ExtractedRecord[] {
-    const fields = extractBookingPayoutStatementFields(input.content)
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(input.content)
+    const { fields } = fieldCheck
     const paymentId = fields.paymentId
     const payoutDateRaw = fields.payoutDate
     const payoutTotalRaw = fields.payoutTotalRaw
 
-    if (!paymentId || !payoutDateRaw || !payoutTotalRaw) {
+    if (fieldCheck.requiredFieldsCheck === 'failed' || !paymentId || !payoutDateRaw || !payoutTotalRaw) {
       throw new Error(
         'Booking payout statement PDF is missing required labeled fields: paymentId, payoutDate, payoutTotal.'
       )
@@ -143,12 +150,8 @@ export function detectBookingPayoutStatementSignals(content: string): BookingPay
 export function extractBookingPayoutStatementFields(content: string): BookingPayoutStatementFields {
   const candidates = collectBookingPayoutStatementFieldCandidates(content)
   const signals = detectBookingPayoutStatementSignals(content)
-  const payoutTotal = candidates.payoutTotalRaw
-    ? parseDocumentMoney(candidates.payoutTotalRaw, 'Booking payout statement payoutTotal')
-    : undefined
-  const localTotal = candidates.localTotalRaw
-    ? parseDocumentMoney(candidates.localTotalRaw, 'Booking payout statement localTotal')
-    : undefined
+  const payoutTotal = safeParseBookingStatementMoney(candidates.payoutTotalRaw, 'Booking payout statement payoutTotal')
+  const localTotal = safeParseBookingStatementMoney(candidates.localTotalRaw, 'Booking payout statement localTotal')
 
   return {
     hasBookingBranding: signals.hasBookingBranding,
@@ -165,6 +168,29 @@ export function extractBookingPayoutStatementFields(content: string): BookingPay
     ibanSuffix: extractIbanSuffix(candidates.ibanValue),
     exchangeRate: candidates.exchangeRate,
     reservationIds: candidates.reservationIds
+  }
+}
+
+export function inspectBookingPayoutStatementFieldCheck(content: string): BookingPayoutStatementFieldCheck {
+  const fields = extractBookingPayoutStatementFields(content)
+  const missingFields: Array<'paymentId' | 'payoutDate' | 'payoutTotal'> = []
+
+  if (!fields.paymentId) {
+    missingFields.push('paymentId')
+  }
+
+  if (!fields.payoutDate) {
+    missingFields.push('payoutDate')
+  }
+
+  if (!fields.payoutTotalRaw || fields.payoutTotalAmountMinor === undefined || !fields.payoutTotalCurrency) {
+    missingFields.push('payoutTotal')
+  }
+
+  return {
+    fields,
+    missingFields,
+    requiredFieldsCheck: missingFields.length === 0 ? 'passed' : 'failed'
   }
 }
 
@@ -259,12 +285,17 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
         'id platby',
         'id vyplaty',
         'id výplaty'
+      ]) ?? captureBookingReferenceAfterLabels(scan.asciiNormalized, [
+        /\b(?:payment|payout)\s*id\b/i,
+        /\bbooking\s+payment\s+id\b/i,
+        /\bid\s+platby\b/i,
+        /\bid\s+vyplaty\b/i
       ]) ?? captureBookingStatementValue(scan.normalized, [
-        /\b(?:payment|payout)\s*id\b[:\s-]*([A-Z0-9-]{6,})/i,
-        /\bbooking\s+payment\s+id\b[:\s-]*([A-Z0-9-]{6,})/i
+        /\b(?:payment|payout)\s*id\b.{0,120}?([A-Z0-9-]{6,})/i,
+        /\bbooking\s+payment\s+id\b.{0,120}?([A-Z0-9-]{6,})/i
       ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
-        /\bid\s+platby\b[:\s-]*([A-Z0-9-]{6,})/i,
-        /\bid\s+vyplaty\b[:\s-]*([A-Z0-9-]{6,})/i
+        /\bid\s+platby\b.{0,120}?([A-Z0-9-]{6,})/i,
+        /\bid\s+vyplaty\b.{0,120}?([A-Z0-9-]{6,})/i
       ]) ?? captureStandaloneBookingPaymentId(scan.normalized, scan.compact)
     ),
     payoutDateRaw: normalizeBookingStatementDateValue(
@@ -278,12 +309,17 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
         'datum platby',
         'datum výplaty',
         'datum vyplaty'
+      ]) ?? captureBookingDateAfterLabels(scan.asciiNormalized, [
+        /\b(?:payment|payout|transfer)\s*date\b/i,
+        /\bdate\b/i,
+        /\bdatum\s+vyplaceni\s+castky\b/i,
+        /\bdatum\s+platby\b/i
       ]) ?? captureBookingStatementValue(scan.normalized, [
-        /\b(?:payment|payout|transfer)\s*date\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[A-Za-zÀ-ž]+\s+\d{4})/i,
-        /\bdate\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2})/i
+        /\b(?:payment|payout|transfer)\s*date\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[A-Za-zÀ-ž]+\s+\d{4})/i,
+        /\bdate\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2})/i
       ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
-        /\bdatum\s+vyplaceni\s+castky\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
-        /\bdatum\s+platby\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
+        /\bdatum\s+vyplaceni\s+castky\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
+        /\bdatum\s+platby\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
       ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized) ?? captureCompactBookingPayoutDate(scan.compact)
     ),
     payoutTotalRaw: normalizeBookingStatementMoneyValue(
@@ -295,6 +331,11 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
         'total transfer',
         'celková částka k vyplacení',
         'celkova castka k vyplaceni'
+      ]) ?? captureBookingPrimaryPayoutTotalAfterLabels(scan.normalized, [
+        /\b(?:payout|payment|transfer)\s*total\b(?!\s*\()/i,
+        /\btotal\s+(?:payout|payment|transfer)\b(?!\s*\()/i,
+        /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b(?!\s*\()/i,
+        /\bcelkova\s+castka\s+k\s+vyplaceni\b(?!\s*\()/i
       ]) ?? captureStandaloneBookingPrimaryPayoutTotal(scan.normalized, scan.asciiNormalized)
       ?? captureCompactBookingPayoutTotal(scan.compact)
     ),
@@ -318,7 +359,12 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
         'transfer total (czk)',
         'transfer total (eur)',
         'transfer total (usd)'
-      ]) ?? captureBookingLocalCurrencyTotal(scan.normalized, scan.asciiNormalized)
+      ]) ?? captureBookingLocalPayoutTotalAfterLabels(scan.normalized, [
+        /\bcelkem\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+        /\bcelkov[áa]\s+částka\s+k\s+vyplacení\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+        /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(?:czk|eur|usd)\s*\)/i,
+        /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(?:czk|eur|usd)\s*\)/i
+      ], 'CZK') ?? captureBookingLocalCurrencyTotal(scan.normalized, scan.asciiNormalized)
     ),
     ibanValue: pickRequiredField(fields, ['iban', 'bank account', 'bank account hint', 'account'])
       ?? captureStandaloneIban(scan.normalized),
@@ -431,13 +477,13 @@ function captureCompactBookingPayoutDate(compact: string): string | undefined {
 function captureBookingLocalCurrencyTotal(normalized: string, asciiNormalized: string): string | undefined {
   const localCurrencyMatch = [
     asciiNormalized.match(
-      /\bcelkem\s*\(\s*(CZK|EUR|USD)\s*\)\s*[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:KC|CZK|EUR|USD))?)/i
+      /\bcelkem\s*\(\s*(CZK|EUR|USD)\s*\)\b.{0,120}?([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:KC|CZK|EUR|USD))?)/i
     ),
     asciiNormalized.match(
-      /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(CZK|EUR|USD)\s*\)\s*[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:KC|CZK|EUR|USD))?)/i
+      /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(CZK|EUR|USD)\s*\)\b.{0,120}?([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:KC|CZK|EUR|USD))?)/i
     ),
     normalized.match(
-      /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(CZK|EUR|USD)\s*\)\s*[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i
+      /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(CZK|EUR|USD)\s*\)\b.{0,120}?([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i
     )
   ].find((match) => Boolean(match?.[1] && match[2]))
 
@@ -450,11 +496,11 @@ function captureBookingLocalCurrencyTotal(normalized: string, asciiNormalized: s
 
 function captureStandaloneBookingPrimaryPayoutTotal(normalized: string, asciiNormalized: string): string | undefined {
   const keywordMoney = normalizeBookingStatementMoneyValue(captureBookingStatementValue(normalized, [
-    /\b(?:payout|payment|transfer)\s*total\b(?!\s*\()[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i,
-    /\btotal\s+(?:payout|payment|transfer)\b(?!\s*\()[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i,
-    /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b(?!\s*\()[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i
+    /\b(?:payout|payment|transfer)\s*total\b(?!\s*\().{0,120}?(([€$]\s*[0-9][0-9\s.,-]*)|([0-9][0-9\s.,-]*\s*(?:Kč|CZK|EUR|USD)))/i,
+    /\btotal\s+(?:payout|payment|transfer)\b(?!\s*\().{0,120}?(([€$]\s*[0-9][0-9\s.,-]*)|([0-9][0-9\s.,-]*\s*(?:Kč|CZK|EUR|USD)))/i,
+    /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b(?!\s*\().{0,120}?(([€$]\s*[0-9][0-9\s.,-]*)|([0-9][0-9\s.,-]*\s*(?:Kč|CZK|EUR|USD)))/i
   ]) ?? captureBookingStatementValue(asciiNormalized, [
-    /\bcelkova\s+castka\s+k\s+vyplaceni\b(?!\s*\()[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:kc|czk|eur|usd))?)/i
+    /\bcelkova\s+castka\s+k\s+vyplaceni\b(?!\s*\().{0,120}?(([€$]\s*[0-9][0-9\s.,-]*)|([0-9][0-9\s.,-]*\s*(?:kc|czk|eur|usd)))/i
   ]))
 
   if (keywordMoney) {
@@ -548,6 +594,98 @@ function captureStandaloneIban(normalized: string): string | undefined {
   return collected.join(' ')
 }
 
+function captureBookingReferenceAfterLabels(
+  content: string,
+  labelPatterns: RegExp[]
+): string | undefined {
+  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+    const match = section.match(/\b(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/i)
+    return match?.[0]?.trim()
+  })
+}
+
+function captureBookingDateAfterLabels(
+  content: string,
+  labelPatterns: RegExp[]
+): string | undefined {
+  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+    const match = section.match(
+      /\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})\b/i
+    )
+    return match?.[1]?.trim()
+  })
+}
+
+function captureBookingPrimaryPayoutTotalAfterLabels(
+  content: string,
+  labelPatterns: RegExp[]
+): string | undefined {
+  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+    const candidates = collectBookingMoneyCandidates(section)
+    const nonLocalCurrencyCandidate = candidates.find((value) => {
+      const currency = detectBookingStatementCurrency(value)
+      return currency === 'EUR' || currency === 'USD'
+    })
+
+    if (nonLocalCurrencyCandidate) {
+      return nonLocalCurrencyCandidate
+    }
+
+    return candidates[0]
+  })
+}
+
+function captureBookingLocalPayoutTotalAfterLabels(
+  content: string,
+  labelPatterns: RegExp[],
+  preferredCurrency: 'CZK' | 'EUR' | 'USD'
+): string | undefined {
+  return captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+    const candidates = collectBookingMoneyCandidates(section)
+    return candidates.find((value) => detectBookingStatementCurrency(value) === preferredCurrency)
+  })
+}
+
+function collectBookingMoneyCandidates(section: string): string[] {
+  const rawCandidates = Array.from(new Set([
+    ...Array.from(section.matchAll(/[€$]\s*\d{1,3}(?:,\d{3})+(?:\.\d{2})?/g)).map((match) => match[0]),
+    ...Array.from(section.matchAll(/[€$]\s*\d{1,3}(?:[ .\u00A0]\d{3})+(?:,\d{2})?/g)).map((match) => match[0]),
+    ...Array.from(section.matchAll(/[€$]\s*\d+(?:[.,]\d{2})?/g)).map((match) => match[0]),
+    ...Array.from(section.matchAll(/\d{1,3}(?:,\d{3})+(?:\.\d{2})?\s*(?:Kč|KC|CZK|EUR|USD)/gi)).map((match) => match[0]),
+    ...Array.from(section.matchAll(/\d{1,3}(?:[ .\u00A0]\d{3})+(?:,\d{2})?\s*(?:Kč|KC|CZK|EUR|USD)/gi)).map((match) => match[0]),
+    ...Array.from(section.matchAll(/\d+(?:[.,]\d{2})?\s*(?:Kč|KC|CZK|EUR|USD)/gi)).map((match) => match[0])
+  ]))
+
+  return rawCandidates
+    .map((value) => normalizeBookingStatementMoneyValue(value))
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => Boolean(detectBookingStatementCurrency(value)))
+}
+
+function captureBookingValueAfterLabels(
+  content: string,
+  labelPatterns: RegExp[],
+  resolver: (section: string) => string | undefined,
+  windowLength = 240
+): string | undefined {
+  for (const pattern of labelPatterns) {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`
+    const globalPattern = new RegExp(pattern.source, flags)
+
+    for (const match of content.matchAll(globalPattern)) {
+      const endIndex = (match.index ?? 0) + match[0].length
+      const section = content.slice(endIndex, Math.min(content.length, endIndex + windowLength))
+      const value = resolver(section)
+
+      if (value) {
+        return value
+      }
+    }
+  }
+
+  return undefined
+}
+
 function normalizeBookingStatementMoneyValue(value: string | undefined): string | undefined {
   if (!value) {
     return undefined
@@ -629,6 +767,21 @@ function normalizeBookingStatementExchangeRateValue(value: string | undefined): 
   return /^-?\d+(?:\.\d+)?$/.test(normalized) ? normalized : undefined
 }
 
+function safeParseBookingStatementMoney(
+  value: string | undefined,
+  fieldName: string
+): ReturnType<typeof parseDocumentMoney> | undefined {
+  if (!value) {
+    return undefined
+  }
+
+  try {
+    return parseDocumentMoney(value, fieldName)
+  } catch {
+    return undefined
+  }
+}
+
 function captureBookingStatementValue(
   content: string,
   patterns: RegExp[],
@@ -665,7 +818,9 @@ function detectBookingStatementCurrency(value: string): 'CZK' | 'EUR' | 'USD' | 
 }
 
 function normalizeBookingStatementAmountValue(value: string): string | undefined {
-  const amountMatch = value.match(/-?[0-9][0-9\s.,-]*/)
+  const amountMatch = value.match(
+    /-?(?:\d{1,3}(?:[ \u00A0.,]\d{3})+(?:[.,]\d{2})?|\d+(?:[.,]\d{2})?)/
+  )
 
   if (!amountMatch?.[0]) {
     return undefined

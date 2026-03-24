@@ -1,6 +1,7 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
   detectBookingPayoutStatementSignals,
+  inspectBookingPayoutStatementFieldCheck,
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
@@ -79,6 +80,7 @@ export function ingestUploadedMonthlyFiles(input: {
 
   for (const importedFile of prepared.importedFiles) {
     const routeIndex = fileRoutes.findIndex((file) => file.sourceDocumentId === importedFile.sourceDocument.id)
+    const parseDiagnostics = inspectUploadedFileParseDiagnostics(importedFile)
 
     try {
       const parsed = parseImportedMonthlySourceFile(importedFile, input.reconciliationContext.requestedAt)
@@ -91,6 +93,7 @@ export function ingestUploadedMonthlyFiles(input: {
           intakeStatus: 'parsed',
           extractedCount: parsed.extractedRecords.length,
           extractedRecordIds: parsed.extractedRecords.map((record) => record.id),
+          parseDiagnostics,
           reason: undefined,
           errorMessage: undefined
         }
@@ -104,6 +107,7 @@ export function ingestUploadedMonthlyFiles(input: {
           intakeStatus: 'error',
           extractedCount: 0,
           extractedRecordIds: [],
+          parseDiagnostics,
           reason: message,
           errorMessage: message
         }
@@ -164,6 +168,33 @@ export function prepareUploadedMonthlyBatchFiles(
   return {
     importedFiles,
     fileRoutes
+  }
+}
+
+function inspectUploadedFileParseDiagnostics(
+  file: ImportedMonthlySourceFile
+): PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['parseDiagnostics'] | undefined {
+  if (!(file.sourceDocument.sourceSystem === 'booking' && file.sourceDocument.documentType === 'payout_statement')) {
+    return undefined
+  }
+
+  const fieldCheck = inspectBookingPayoutStatementFieldCheck(file.content)
+
+  return {
+    parsedPaymentId: fieldCheck.fields.paymentId,
+    parsedPayoutDate: fieldCheck.fields.payoutDate,
+    parsedPayoutTotal: buildParseDiagnosticMoneyLabel(
+      fieldCheck.fields.payoutTotalAmountMinor,
+      fieldCheck.fields.payoutTotalCurrency
+    ),
+    parsedLocalTotal: buildParseDiagnosticMoneyLabel(
+      fieldCheck.fields.localAmountMinor,
+      fieldCheck.fields.localCurrency
+    ),
+    parsedIbanHint: fieldCheck.fields.ibanSuffix,
+    parsedExchangeRate: fieldCheck.fields.exchangeRate,
+    requiredFieldsCheck: fieldCheck.requiredFieldsCheck,
+    missingFields: fieldCheck.missingFields
   }
 }
 
@@ -1010,4 +1041,15 @@ function collectDuplicateWarnings(
 
 function slugify(fileName: string): string {
   return fileName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'file'
+}
+
+function buildParseDiagnosticMoneyLabel(
+  amountMinor: number | undefined,
+  currency: string | undefined
+): string | undefined {
+  if (amountMinor === undefined || !currency) {
+    return undefined
+  }
+
+  return `${(amountMinor / 100).toFixed(2)} ${currency}`
 }
