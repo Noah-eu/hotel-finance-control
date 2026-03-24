@@ -186,6 +186,7 @@ function buildRuntimeAudit(
         textExtractionMode: browserTextExtraction?.mode,
         textExtractionStatus: browserTextExtraction?.status,
         extractedTextPresent: file.content.trim().length > 0,
+        textPreview: buildFileIntakeTextPreview(browserTextExtraction?.textPreview, file.content),
         detectedSignatures: browserTextExtraction?.detectedSignatures ?? [],
         sourceSystem: route?.sourceSystem ?? 'unknown',
         documentType: route?.documentType ?? 'other',
@@ -196,6 +197,18 @@ function buildRuntimeAudit(
       }
     })
   }
+}
+
+function buildFileIntakeTextPreview(textPreview: string | undefined, fallbackContent: string): string | undefined {
+  const normalized = String(textPreview ?? fallbackContent ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (normalized.length === 0) {
+    return undefined
+  }
+
+  return normalized.slice(0, 160)
 }
 
 function findBatchFileExtractedCount(

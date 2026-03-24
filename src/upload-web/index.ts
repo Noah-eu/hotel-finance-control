@@ -82,6 +82,7 @@ export interface BrowserRuntimeUploadState {
       textExtractionMode?: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
       textExtractionStatus?: 'extracted' | 'failed' | 'not-attempted'
       extractedTextPresent: boolean
+      textPreview?: string
       detectedSignatures: string[]
       sourceSystem: string
       documentType: string

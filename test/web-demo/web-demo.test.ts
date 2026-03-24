@@ -1015,13 +1015,12 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
   })
 
-  it('shows debug-only file intake trace from the same final rendered browser state without affecting the default operator page', async () => {
+  it('shows the file intake trace on the actual final page only when debug mode is enabled through the live URL', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
-    const rendered = await executeWebDemoMainWorkflow({
+    const defaultRendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-24T18:05:00.000Z',
       month: '2026-03',
-      debugMode: true,
-      outputDirName: 'test-web-demo-final-debug-trace',
+      outputDirName: 'test-web-demo-final-default-trace',
       files: [
         createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
         createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
@@ -1030,16 +1029,33 @@ describe('buildWebDemo', () => {
       ]
     })
 
-    expect(rendered.html).toContain('id="runtime-file-intake-diagnostics-section"')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bookinng35k.pdf')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('MIME: application/pdf')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Extrahovaný text: ano')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text extraction: extracted / pdf-text')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-branding')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payment-id')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Booking payout statement PDF · podle obsahu')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bucket: recognized · Podporovaný doplňkový payout dokument')
-    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    const debugRendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T18:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-final-debug-trace',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildGlyphSeparatedBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(defaultRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(true)
+    expect(debugRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(debugRendered.html).toContain('id="runtime-file-intake-diagnostics-section"')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bookinng35k.pdf')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('MIME: application/pdf')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Browser extraction: extracted / pdf-text')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Extrahovaný text: ano')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text preview: Booking.com Payment overview')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-branding')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payment-id')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: booking / payout_statement / content')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Routování: Booking payout statement PDF · supplemental')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: supplemental supported · Podporovaný doplňkový payout dokument')
+    expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
   })
 
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
@@ -1200,8 +1216,10 @@ interface StubDomElement {
 async function executeWebDemoMainWorkflow(input: {
   generatedAt: string
   month: string
-  debugMode?: boolean
+  buildDebugMode?: boolean
   outputDirName?: string
+  locationSearch?: string
+  locationHash?: string
   files: Array<{
     name: string
     type?: string
@@ -1212,6 +1230,7 @@ async function executeWebDemoMainWorkflow(input: {
   html: string
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
+  runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
 }> {
   const outputDirName = input.outputDirName ?? 'test-web-demo-main-workflow'
@@ -1223,17 +1242,20 @@ async function executeWebDemoMainWorkflow(input: {
 
   const result = await buildWebDemo({
     generatedAt: input.generatedAt,
-    debugMode: Boolean(input.debugMode),
+    debugMode: Boolean(input.buildDebugMode),
     outputPath
   })
   const html = readFileSync(outputPath, 'utf8')
   const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
   const windowObject: {
-    location: { search: string }
+    location: { search: string; hash: string }
     __hotelFinanceCreateBrowserRuntime?: unknown
   } = {
-    location: { search: input.debugMode ? '?debug=1' : '' }
+    location: {
+      search: input.locationSearch ?? '',
+      hash: input.locationHash ?? ''
+    }
   }
 
   await loadBuiltWebDemoRuntimeModule(outputPath, result.runtimeAssetPath!, windowObject)
@@ -1262,6 +1284,7 @@ async function executeWebDemoMainWorkflow(input: {
     html,
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
+    runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content']
   }
 }
@@ -1291,7 +1314,7 @@ async function loadBuiltWebDemoRuntimeModule(
   outputPath: string,
   runtimeAssetPath: string,
   windowObject: {
-    location: { search: string }
+    location: { search: string; hash: string }
     __hotelFinanceCreateBrowserRuntime?: unknown
   }
 ) {

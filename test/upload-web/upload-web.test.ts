@@ -2273,6 +2273,7 @@ describe('buildUploadWebFlow', () => {
         textExtractionMode: 'pdf-text',
         textExtractionStatus: 'extracted',
         extractedTextPresent: true,
+        textPreview: expect.stringContaining('Booking.com'),
         detectedSignatures: expect.arrayContaining([
           'booking-branding',
           'booking-payment-id',

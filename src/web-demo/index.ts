@@ -108,7 +108,6 @@ function renderOperatorWebDemoHtml(input: {
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
   const showRuntimePayoutDiagnostics = Boolean(input.debugMode)
-  const showRuntimeFileIntakeDiagnostics = Boolean(input.debugMode)
   const buildExtractedRecordsMarkupFunction = input.debugMode
     ? buildDebugExtractedRecordsMarkupFunctionSource()
     : buildDefaultExtractedRecordsMarkupFunctionSource()
@@ -119,13 +118,9 @@ function renderOperatorWebDemoHtml(input: {
     : `
   const runtimePayoutDiagnosticsSection = null;
   const runtimePayoutDiagnosticsContent = null;`
-  const runtimeFileIntakeDiagnosticsBindings = showRuntimeFileIntakeDiagnostics
-    ? `
+  const runtimeFileIntakeDiagnosticsBindings = `
   const runtimeFileIntakeDiagnosticsSection = document.getElementById('runtime-file-intake-diagnostics-section');
   const runtimeFileIntakeDiagnosticsContent = document.getElementById('runtime-file-intake-diagnostics-content');`
-    : `
-  const runtimeFileIntakeDiagnosticsSection = null;
-  const runtimeFileIntakeDiagnosticsContent = null;`
 
   const initialRuntimeState = {
     debugMode: Boolean(input.debugMode),
@@ -308,7 +303,16 @@ ${showRuntimePayoutDiagnostics ? `
       .diagnostic-list li {
         margin-bottom: 6px;
       }
-` : ''}
+` : `
+      .diagnostic-list {
+        list-style: disc;
+        margin: 8px 0 0;
+        padding-left: 20px;
+      }
+      .diagnostic-list li {
+        margin-bottom: 6px;
+      }
+`}
 ${input.debugMode ? `
       details.debug-details {
         margin-top: 8px;
@@ -463,15 +467,13 @@ ${showRuntimePayoutDiagnostics ? `
         </div>
       </section>
 ` : ''}
-${showRuntimeFileIntakeDiagnostics ? `
-      <section id="runtime-file-intake-diagnostics-section" class="card" data-runtime-phase="placeholder">
+      <section id="runtime-file-intake-diagnostics-section" class="card" data-runtime-phase="placeholder" hidden>
         <h2>Diagnostika intake souborů</h2>
         <div id="runtime-file-intake-diagnostics-content">
           <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
           <p class="hint">Po spuštění zde uvidíte skutečný browser intake handoff pro každý vybraný soubor.</p>
         </div>
       </section>
-` : ''}
     </main>
     <script>
       ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
@@ -508,7 +510,8 @@ ${showRuntimeFileIntakeDiagnostics ? `
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
       let browserRuntime;
       const debugModeFromQuery = new URLSearchParams(window.location.search).get('debug') === '1';
-      const debugMode = Boolean(initialRuntimeState.debugMode || debugModeFromQuery);
+      const debugModeFromHash = /(^#debug(?:=1)?$|[?&#]debug(?:=1)?(?:$|[&#]))/i.test(String(window.location.hash || ''));
+      const runtimeFileIntakeDebugMode = Boolean(initialRuntimeState.debugMode || debugModeFromQuery || debugModeFromHash);
 
       function escapeHtml(value) {
         return String(value)
@@ -636,14 +639,44 @@ ${showRuntimeFileIntakeDiagnostics ? `
 
       function buildDebugOutcomeBucketLabel(file) {
         if (file.status === 'supported') {
-          return 'recognized';
+          return file.role === 'supplemental'
+            ? 'supplemental supported'
+            : 'recognized supported';
         }
 
         if (file.status === 'error') {
-          return 'error';
+          return 'ingest failure';
         }
 
-        return 'unsupported';
+        if (file.intakeStatus === 'unsupported') {
+          return 'unsupported';
+        }
+
+        return 'unclassified';
+      }
+
+      function buildDebugTextPreviewLabel(value) {
+        const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+
+        if (!normalized) {
+          return 'žádný čitelný text';
+        }
+
+        return normalized.length > 120
+          ? normalized.slice(0, 117) + '...'
+          : normalized;
+      }
+
+      function buildDebugClassifierDecisionLabel(file) {
+        return String(file.sourceSystem || 'unknown')
+          + ' / '
+          + String(file.documentType || 'other')
+          + ' / '
+          + String(file.classificationBasis || 'unknown');
+      }
+
+      function syncRuntimeFileIntakeDiagnosticsVisibility() {
+        runtimeFileIntakeDiagnosticsSection.hidden = !runtimeFileIntakeDebugMode;
       }
 
       function buildPreparedFilesMarkup(state) {
@@ -830,7 +863,6 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function renderInitialRuntimePayoutDiagnostics() {}
 `}
-${showRuntimeFileIntakeDiagnostics ? `
       function buildRuntimeFileIntakeDiagnosticsMarkup(state) {
         const diagnostics = (state && state.runtimeAudit && state.runtimeAudit.fileIntakeDiagnostics) || [];
 
@@ -842,17 +874,20 @@ ${showRuntimeFileIntakeDiagnostics ? `
           '<li>',
           '<strong>' + escapeHtml(file.fileName || '') + '</strong>',
           '<br /><span class="hint">MIME: ' + escapeHtml(file.mimeType || 'neuvedeno') + '</span>',
+          '<br /><span class="hint">Browser extraction: ' + escapeHtml(String(file.textExtractionStatus || 'not-attempted')) + ' / ' + escapeHtml(String(file.textExtractionMode || 'unknown')) + '</span>',
           '<br /><span class="hint">Extrahovaný text: ' + escapeHtml(buildDebugBooleanLabel(Boolean(file.extractedTextPresent))) + '</span>',
-          '<br /><span class="hint">Text extraction: ' + escapeHtml(String(file.textExtractionStatus || 'not-attempted')) + ' / ' + escapeHtml(String(file.textExtractionMode || 'unknown')) + '</span>',
+          '<br /><span class="hint">Text preview: ' + escapeHtml(buildDebugTextPreviewLabel(file.textPreview)) + '</span>',
           '<br /><span class="hint">Signály: ' + escapeHtml((file.detectedSignatures && file.detectedSignatures.length > 0 ? file.detectedSignatures.join(', ') : 'žádné')) + '</span>',
-          '<br /><span class="hint">Klasifikovaný zdroj: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis)) + '</span>',
-          '<br /><span class="hint">Bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
+          '<br /><span class="hint">Rozhodnutí klasifikátoru: ' + escapeHtml(buildDebugClassifierDecisionLabel(file)) + '</span>',
+          '<br /><span class="hint">Routování: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(String(file.role || 'primary')) + '</span>',
+          '<br /><span class="hint">Finální bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
           '</li>'
         ].join('')).join('') + '</ul>';
       }
 
       function syncRuntimeFileIntakeDiagnosticsPhase(phase) {
         runtimeFileIntakeDiagnosticsSection.setAttribute('data-runtime-phase', phase);
+        syncRuntimeFileIntakeDiagnosticsVisibility();
       }
 
       function renderCompletedRuntimeFileIntakeDiagnostics(state) {
@@ -870,18 +905,6 @@ ${showRuntimeFileIntakeDiagnostics ? `
       function renderInitialRuntimeFileIntakeDiagnostics() {
         runtimeFileIntakeDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte browser intake handoff pro každý soubor a jeho finální render bucket.</p>';
       }
-` : ''}
-${showRuntimeFileIntakeDiagnostics ? '' : `
-      function syncRuntimeFileIntakeDiagnosticsPhase() {}
-
-      function renderCompletedRuntimeFileIntakeDiagnostics() {}
-
-      function renderRunningRuntimeFileIntakeDiagnostics() {}
-
-      function renderFailedRuntimeFileIntakeDiagnostics() {}
-
-      function renderInitialRuntimeFileIntakeDiagnostics() {}
-`}
 
       function buildFingerprintMarkup(state) {
         const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
