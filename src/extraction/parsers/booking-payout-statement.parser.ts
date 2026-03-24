@@ -677,12 +677,16 @@ function captureBookingReferenceAfterLabels(
   content: string,
   labelPatterns: RegExp[]
 ): string | undefined {
-  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
-    const match = section.match(/\b(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/i)
-    return match?.[0]?.trim()
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section, sectionLines) => {
+    const multilineCandidate = captureBookingReferenceFromFragmentedLines(sectionLines)
+
+    if (multilineCandidate) {
+      return multilineCandidate
+    }
+
+    return captureBookingReferenceToken(section)
   }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
-    const match = section.match(/\b(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/i)
-    return match?.[0]?.trim()
+    return captureBookingReferenceToken(section)
   })
 }
 
@@ -690,7 +694,13 @@ function captureBookingDateAfterLabels(
   content: string,
   labelPatterns: RegExp[]
 ): string | undefined {
-  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section, sectionLines) => {
+    const multilineCandidate = captureBookingDateFromFragmentedLines(sectionLines)
+
+    if (multilineCandidate) {
+      return multilineCandidate
+    }
+
     const match = section.match(
       /\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})\b/i
     )
@@ -707,30 +717,33 @@ function captureBookingPrimaryPayoutTotalAfterLabels(
   content: string,
   labelPatterns: RegExp[]
 ): string | undefined {
-  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
-    const candidates = collectBookingMoneyCandidates(section)
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section, sectionLines) => {
+    const candidates = [
+      ...collectBookingMoneyCandidatesFromFragmentedLines(sectionLines),
+      ...collectBookingMoneyCandidates(section)
+    ]
     const nonLocalCurrencyCandidate = candidates.find((value) => {
       const currency = detectBookingStatementCurrency(value)
-      return currency === 'EUR' || currency === 'USD'
+      return (currency === 'EUR' || currency === 'USD') && isPlausibleBookingPayoutTotalCandidate(value)
     })
 
     if (nonLocalCurrencyCandidate) {
       return nonLocalCurrencyCandidate
     }
 
-    return candidates[0]
+    return candidates.find((value) => isPlausibleBookingPayoutTotalCandidate(value))
   }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     const candidates = collectBookingMoneyCandidates(section)
     const nonLocalCurrencyCandidate = candidates.find((value) => {
       const currency = detectBookingStatementCurrency(value)
-      return currency === 'EUR' || currency === 'USD'
+      return (currency === 'EUR' || currency === 'USD') && isPlausibleBookingPayoutTotalCandidate(value)
     })
 
     if (nonLocalCurrencyCandidate) {
       return nonLocalCurrencyCandidate
     }
 
-    return candidates[0]
+    return candidates.find((value) => isPlausibleBookingPayoutTotalCandidate(value))
   })
 }
 
@@ -739,8 +752,11 @@ function captureBookingLocalPayoutTotalAfterLabels(
   labelPatterns: RegExp[],
   preferredCurrency: 'CZK' | 'EUR' | 'USD'
 ): string | undefined {
-  return captureBookingValueAfterLabelLines(content, labelPatterns, (section) => {
-    const candidates = collectBookingMoneyCandidates(section)
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section, sectionLines) => {
+    const candidates = [
+      ...collectBookingMoneyCandidatesFromFragmentedLines(sectionLines),
+      ...collectBookingMoneyCandidates(section)
+    ]
     return candidates.find((value) => detectBookingStatementCurrency(value) === preferredCurrency)
   }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     const candidates = collectBookingMoneyCandidates(section)
@@ -764,6 +780,18 @@ function collectBookingMoneyCandidates(section: string): string[] {
     .filter((value) => Boolean(detectBookingStatementCurrency(value)))
 }
 
+function collectBookingMoneyCandidatesFromFragmentedLines(sectionLines: string[]): string[] {
+  const candidates = new Set<string>()
+
+  for (const variant of buildBookingFragmentVariants(sectionLines, 4)) {
+    for (const candidate of collectBookingMoneyCandidates(variant)) {
+      candidates.add(candidate)
+    }
+  }
+
+  return Array.from(candidates)
+}
+
 function resolveBookingPrimaryPayoutTotalCandidate(
   payoutTotalRaw: string | undefined,
   localTotalRaw: string | undefined,
@@ -774,18 +802,31 @@ function resolveBookingPrimaryPayoutTotalCandidate(
   const nonLocalDocumentCandidate = collectBookingMoneyCandidates(scan.structuredNormalized)
     .find((value) => {
       const currency = detectBookingStatementCurrency(value)
-      return Boolean(currency && currency !== 'CZK' && currency !== localCurrency)
+      return Boolean(
+        currency
+        && currency !== 'CZK'
+        && currency !== localCurrency
+        && isPlausibleBookingPayoutTotalCandidate(value)
+      )
     })
     ?? collectBookingMoneyCandidates(scan.normalized).find((value) => {
       const currency = detectBookingStatementCurrency(value)
-      return Boolean(currency && currency !== 'CZK' && currency !== localCurrency)
+      return Boolean(
+        currency
+        && currency !== 'CZK'
+        && currency !== localCurrency
+        && isPlausibleBookingPayoutTotalCandidate(value)
+      )
     })
 
   if (!payoutTotalRaw) {
     return nonLocalDocumentCandidate ?? payoutTotalRaw
   }
 
-  if (nonLocalDocumentCandidate && (!payoutCurrency || payoutCurrency === localCurrency || payoutCurrency === 'CZK')) {
+  if (
+    nonLocalDocumentCandidate
+    && (!payoutCurrency || payoutCurrency === localCurrency || payoutCurrency === 'CZK' || !isPlausibleBookingPayoutTotalCandidate(payoutTotalRaw))
+  ) {
     return nonLocalDocumentCandidate
   }
 
@@ -819,7 +860,7 @@ function captureBookingValueAfterLabels(
 function captureBookingValueAfterLabelLines(
   content: string,
   labelPatterns: RegExp[],
-  resolver: (section: string) => string | undefined,
+  resolver: (section: string, sectionLines: string[]) => string | undefined,
   lineWindow = 80
 ): string | undefined {
   const lines = content
@@ -847,7 +888,7 @@ function captureBookingValueAfterLabelLines(
         ...lines.slice(index + 1, index + 1 + lineWindow)
       ].filter(Boolean)
 
-      const value = resolver(sectionLines.join('\n'))
+      const value = resolver(sectionLines.join('\n'), sectionLines)
 
       if (value) {
         return value
@@ -856,6 +897,172 @@ function captureBookingValueAfterLabelLines(
   }
 
   return undefined
+}
+
+function captureBookingReferenceFromFragmentedLines(sectionLines: string[]): string | undefined {
+  const candidateLines = sectionLines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 24)
+
+  for (const line of candidateLines) {
+    const direct = captureBookingReferenceFromStandaloneLine(line)
+
+    if (direct) {
+      return direct
+    }
+  }
+
+  for (let index = 0; index < candidateLines.length; index += 1) {
+    if (!looksLikeReferenceFragment(candidateLines[index] ?? '')) {
+      continue
+    }
+
+    let combined = sanitizeReferenceFragment(candidateLines[index] ?? '')
+
+    if (!combined) {
+      continue
+    }
+
+    const direct = captureBookingReferenceToken(combined)
+
+    if (direct) {
+      return direct
+    }
+
+    for (let nextIndex = index + 1; nextIndex < Math.min(candidateLines.length, index + 4); nextIndex += 1) {
+      const nextLine = candidateLines[nextIndex] ?? ''
+
+      if (!looksLikeReferenceFragment(nextLine)) {
+        break
+      }
+
+      combined += sanitizeReferenceFragment(nextLine)
+      const combinedCandidate = captureBookingReferenceToken(combined)
+
+      if (combinedCandidate) {
+        return combinedCandidate
+      }
+    }
+  }
+
+  return undefined
+}
+
+function captureBookingReferenceToken(section: string): string | undefined {
+  const payoutIdMatch = section.match(/\bPAYOUT-BOOK-\d{6,}(?:-[A-Z0-9]+)?(?![A-Z0-9-])/i)
+
+  if (payoutIdMatch?.[0]) {
+    return payoutIdMatch[0].trim().replace(/\s+/g, '')
+  }
+
+  if (/\bIBAN\b/i.test(section)) {
+    return undefined
+  }
+
+  const digitMatches = Array.from(section.matchAll(/(?:^|[^0-9])((?:\d[\s]*){10,16})(?!\d)/g))
+    .map((match) => match[1]?.replace(/\s+/g, ''))
+    .filter((value): value is string => Boolean(value && /^\d{10,16}$/.test(value)))
+
+  return digitMatches[0]
+}
+
+function captureBookingReferenceFromStandaloneLine(line: string): string | undefined {
+  const payoutIdMatch = line.match(/\bPAYOUT-BOOK-\d{6,}(?:-[A-Z0-9]+)?(?![A-Z0-9-])/i)
+
+  if (payoutIdMatch?.[0]) {
+    return payoutIdMatch[0].trim().replace(/\s+/g, '')
+  }
+
+  if (isLikelyIbanFragment(line)) {
+    return undefined
+  }
+
+  const digits = line.replace(/\s+/g, '')
+  return /^\d{10,16}$/.test(digits) ? digits : undefined
+}
+
+function looksLikeReferenceFragment(value: string): boolean {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return false
+  }
+
+  if (!/^[A-Z0-9 -]+$/i.test(trimmed)) {
+    return false
+  }
+
+  if (isLikelyIbanFragment(trimmed)) {
+    return false
+  }
+
+  return /\d/.test(trimmed)
+}
+
+function sanitizeReferenceFragment(value: string): string {
+  return value.trim().replace(/\s+/g, '').replace(/[^A-Z0-9-]/gi, '')
+}
+
+function isLikelyIbanFragment(value: string): boolean {
+  const compact = value.replace(/\s+/g, '').toUpperCase()
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{10,}$/.test(compact)
+}
+
+function captureBookingDateFromFragmentedLines(sectionLines: string[]): string | undefined {
+  for (const variant of buildBookingFragmentVariants(sectionLines, 4)) {
+    const match = variant.match(
+      /\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.?\s*[a-z]+\s+\d{4})\b/i
+    )
+
+    if (match?.[1]) {
+      return match[1].trim()
+    }
+  }
+
+  return undefined
+}
+
+function buildBookingFragmentVariants(sectionLines: string[], maxLineSpan: number): string[] {
+  const variants = new Set<string>()
+  const limitedLines = sectionLines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 24)
+
+  for (let start = 0; start < limitedLines.length; start += 1) {
+    for (let span = 1; span <= maxLineSpan && start + span <= limitedLines.length; span += 1) {
+      const slice = limitedLines.slice(start, start + span)
+      const spaced = slice.join(' ').replace(/\s+/g, ' ').trim()
+      const compact = slice.join('').replace(/\s+/g, '')
+
+      if (spaced) {
+        variants.add(spaced)
+      }
+
+      if (compact) {
+        variants.add(compact)
+      }
+    }
+  }
+
+  return Array.from(variants)
+}
+
+function isPlausibleBookingPayoutTotalCandidate(value: string): boolean {
+  const parsed = safeParseBookingStatementMoney(value, 'Booking payout statement payoutTotal candidate')
+
+  if (!parsed) {
+    return false
+  }
+
+  const majorUnits = Math.abs(parsed.amountMinor) / 100
+
+  if (/[.,]\d{2}\b/.test(value)) {
+    return true
+  }
+
+  return majorUnits >= 10
 }
 
 function normalizeBookingStatementMoneyValue(value: string | undefined): string | undefined {

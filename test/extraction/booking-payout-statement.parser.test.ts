@@ -196,6 +196,39 @@ describe('parseBookingPayoutStatementPdf', () => {
     })
   })
 
+  it('extracts paymentId, payoutDate, and payoutTotal from fragmented browser text blocks instead of collapsing to 1 EUR', () => {
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(buildCzechBookingPayoutStatementFragmentedBrowserContent())
+
+    expect(fieldCheck).toEqual({
+      fields: expect.objectContaining({
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotalRaw: '1456.42 EUR',
+        payoutTotalAmountMinor: 145642,
+        payoutTotalCurrency: 'EUR',
+        localTotalRaw: '35530.12 CZK',
+        localAmountMinor: 3553012,
+        localCurrency: 'CZK',
+        ibanSuffix: '5956'
+      }),
+      parserExtracted: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR',
+        localTotal: '35530.12 CZK',
+        ibanHint: '5956',
+        exchangeRate: undefined
+      },
+      validatorInput: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR'
+      },
+      missingFields: [],
+      requiredFieldsCheck: 'passed'
+    })
+  })
+
   it('parses Czech Booking payout statement text by using the full normalized document instead of only the header prefix', () => {
     const records = parseBookingPayoutStatementPdf({
       sourceDocument: getRealInputFixture('booking-payout-statement-pdf').sourceDocument,
@@ -329,6 +362,36 @@ function buildCzechBookingPayoutStatementWideGapContent(): string {
     '12. března 2026',
     '010638445054',
     '€ 1,456.42',
+    '35,530.12 Kč',
+    'CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
+  ].join('\n')
+}
+
+function buildCzechBookingPayoutStatementFragmentedBrowserContent(): string {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Reservation contact summary',
+    'Building access instructions',
+    'Datum vyplacení částky',
+    'Celková částka k vyplacení',
+    'ID platby',
+    'Celkem (CZK)',
+    'IBAN',
+    '12.',
+    'března',
+    '2026',
+    '€ 1',
+    ',456.42',
+    '0106',
+    '3844',
+    '5054',
     '35,530.12 Kč',
     'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
