@@ -1222,7 +1222,10 @@ describe('buildWebDemo', () => {
 
     expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
     expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Textové PDF')
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>Bookinng35k.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Capability: Textové PDF / pdf_text_layer / confidence=strong')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Ingestion branch: textové PDF / text-pdf-parser')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.paymentId: 010638445054')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutDate: 2026-03-12')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutTotal: 1456.42 EUR')
@@ -1233,6 +1236,46 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
+  })
+
+  it('renders browser arrayBuffer CSV uploads through capability-aware structured routing on the built page', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T20:45:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-arraybuffer-structured-routing',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content, 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content, 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Strukturovaný export')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Capability: Strukturovaný export / structured_tabular / confidence=strong')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Ingestion branch: strukturovaný parser / structured-parser')
+    expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
+  })
+
+  it('renders scan-like PDFs on the OCR branch instead of treating them as ingest failures in the built page', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T21:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-ocr-branch',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimePdfFile('booking-payout-broken.pdf', buildBrokenRuntimePdfBase64())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 1 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Scan / OCR potřeba')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>booking-payout-broken.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Capability: Scan / OCR potřeba / pdf_image_only / confidence=strong')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Ingestion branch: OCR potřeba / ocr-required')
   })
 
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
@@ -1593,8 +1636,30 @@ function createWebDemoRuntimeFile(name: string, content: string) {
   }
 }
 
+function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, type = 'text/plain') {
+  return {
+    name,
+    type,
+    async text() {
+      return content
+    },
+    async arrayBuffer() {
+      const bytes = new TextEncoder().encode(content)
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    }
+  }
+}
+
 function createWebDemoRuntimePdfFileFromTextLines(name: string, lines: string[]) {
-  const binary = Buffer.from(buildWebDemoRuntimePdfFromTextLines(lines), 'base64')
+  return createWebDemoRuntimePdfFile(name, buildWebDemoRuntimePdfFromTextLines(lines))
+}
+
+function createWebDemoRuntimePdfFileFromToUnicodeTextLines(name: string, lines: string[]) {
+  return createWebDemoRuntimePdfFile(name, buildWebDemoRuntimePdfFromToUnicodeTextLines(lines))
+}
+
+function createWebDemoRuntimePdfFile(name: string, base64: string) {
+  const binary = Buffer.from(base64, 'base64')
 
   return {
     name,
@@ -1608,19 +1673,8 @@ function createWebDemoRuntimePdfFileFromTextLines(name: string, lines: string[])
   }
 }
 
-function createWebDemoRuntimePdfFileFromToUnicodeTextLines(name: string, lines: string[]) {
-  const binary = Buffer.from(buildWebDemoRuntimePdfFromToUnicodeTextLines(lines), 'base64')
-
-  return {
-    name,
-    type: 'application/pdf',
-    async text() {
-      return ''
-    },
-    async arrayBuffer() {
-      return binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength)
-    }
-  }
+function buildBrokenRuntimePdfBase64(): string {
+  return Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF', 'latin1').toString('base64')
 }
 
 function buildWebDemoRuntimePdfFromTextLines(lines: string[]): string {

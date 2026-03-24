@@ -2436,8 +2436,8 @@ describe('buildUploadWebFlow', () => {
     expect(result.routingSummary).toEqual({
       uploadedFileCount: 2,
       supportedFileCount: 1,
-      unsupportedFileCount: 0,
-      errorFileCount: 1
+      unsupportedFileCount: 1,
+      errorFileCount: 0
     })
     expect(result.fileRoutes).toEqual([
       expect.objectContaining({
@@ -2447,14 +2447,29 @@ describe('buildUploadWebFlow', () => {
       }),
       expect.objectContaining({
         fileName: 'booking-payout-broken.pdf',
-        status: 'error',
-        intakeStatus: 'error',
+        status: 'unsupported',
+        intakeStatus: 'unsupported',
         sourceSystem: 'booking',
         documentType: 'payout_statement',
         role: 'supplemental',
-        errorMessage: 'PDF soubor booking-payout-broken.pdf neobsahuje deterministicky čitelnou textovou vrstvu.'
+        reason: 'Booking payout statement vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_image_only'
+          }),
+          ingestionBranch: 'ocr-required'
+        })
       })
     ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'booking-payout-broken.pdf',
+        capabilityProfile: 'pdf_image_only',
+        ingestionBranch: 'ocr-required',
+        status: 'unsupported',
+        intakeStatus: 'unsupported'
+      })
+    )
     expect(result.preparedFiles).toEqual([
       expect.objectContaining({
         fileName: 'airbnb.csv'
@@ -2753,6 +2768,50 @@ describe('buildUploadWebFlow', () => {
         parsedLocalTotal: '35530.12 CZK',
         requiredFieldsCheck: 'passed',
         missingFields: [],
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    )
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+  })
+
+  it('keeps browser arrayBuffer CSV uploads on the structured path instead of downgrading them to unsupported binary capability', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent(), 'text/csv'),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T20:25:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        capabilityProfile: 'structured_tabular',
+        ingestionBranch: 'structured-parser',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        capabilityProfile: 'structured_tabular',
+        ingestionBranch: 'structured-parser',
         status: 'supported',
         intakeStatus: 'parsed'
       })
@@ -3079,6 +3138,20 @@ function createRuntimeFile(name: string, content: string) {
     name,
     async text() {
       return content
+    }
+  }
+}
+
+function createRuntimeArrayBufferTextFile(name: string, content: string, type = 'text/plain') {
+  return {
+    name,
+    type,
+    async text() {
+      return content
+    },
+    async arrayBuffer() {
+      const bytes = new TextEncoder().encode(content)
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
 }

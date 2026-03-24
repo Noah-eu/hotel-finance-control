@@ -21,10 +21,15 @@ import type {
   MonthlyBatchResult,
   MonthlyBatchService,
   PreparedUploadedMonthlyFilesResult,
+  UploadedMonthlyFileCapabilityAssessment,
   UploadedMonthlyFileDecision,
   UploadedMonthlyIngestionResult,
   UploadedMonthlyFile
 } from './contracts'
+import {
+  detectUploadedMonthlyFileCapability,
+  resolveUploadedMonthlyFileIngestionBranch
+} from './capabilities'
 import { applyPayoutSupplements } from './payout-supplements'
 
 type Parser = (input: {
@@ -404,6 +409,26 @@ function classifyUploadedMonthlyFile(
     }
   }
 
+  if (classification.decision.resolvedBucket === 'unsupported' && classification.decision.ingestionBranch === 'ocr-required') {
+    return {
+      fileRoute: {
+        fileName: file.name.trim(),
+        uploadedAt: file.uploadedAt,
+        status: 'unsupported',
+        intakeStatus: 'unsupported',
+        sourceSystem: classification.sourceSystem,
+        documentType: classification.documentType,
+        classificationBasis: classification.classificationBasis,
+        role: classification.role,
+        extractedCount: 0,
+        extractedRecordIds: [],
+        warnings: [],
+        reason: classification.decision.ingestionReason,
+        decision: classification.decision
+      }
+    }
+  }
+
   if (classification.sourceSystem === 'unknown') {
     return {
       fileRoute: {
@@ -418,7 +443,7 @@ function classifyUploadedMonthlyFile(
         extractedCount: 0,
         extractedRecordIds: [],
         warnings: [],
-        reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.',
+        reason: classification.decision.ingestionReason || 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.',
         decision: classification.decision
       }
     }
@@ -479,30 +504,65 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
   decision: UploadedMonthlyFileDecision
   ingestError?: string
 } {
+  const capability = detectUploadedMonthlyFileCapability(input)
+  const ingestionBranch = resolveUploadedMonthlyFileIngestionBranch(capability)
   const bookingPdfDecision = buildBookingPayoutSupplementDecision(input)
+  const fileNameSourceSystem = inferSourceSystemFromFileName(input.fileName)
+  const fileNameRole = inferSupplementRole(input.fileName, input.contentFormat)
+  const fileNameDocumentType = fileNameRole === 'supplemental' && fileNameSourceSystem === 'booking'
+    ? 'payout_statement'
+    : inferDocumentType(fileNameSourceSystem)
 
-  if (input.ingestError) {
-    const sourceSystem = inferSourceSystemFromFileName(input.fileName)
-    const role = inferSupplementRole(input.fileName, input.contentFormat)
+  if (ingestionBranch === 'ocr-required') {
+    const sourceSystem = fileNameSourceSystem
+    const role = fileNameRole
+    const documentType = role === 'supplemental' && sourceSystem === 'booking'
+      ? 'payout_statement'
+      : inferDocumentType(sourceSystem)
 
     return {
       sourceSystem,
-      documentType: role === 'supplemental' && sourceSystem === 'booking'
-        ? 'payout_statement'
-        : inferDocumentType(sourceSystem),
-      classificationBasis: 'file-name',
+      documentType,
+      classificationBasis: sourceSystem === 'unknown' ? 'unknown' : 'file-name',
       role,
+      decision: buildUnsupportedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem,
+        documentType,
+        role,
+        matchedRules: [
+          ...new Set([
+            ...(bookingPdfDecision?.matchedRules ?? []),
+            'capability-ocr-required'
+          ])
+        ],
+        missingSignals: bookingPdfDecision?.missingSignals ?? [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? [],
+        parserSupported: false,
+        reason: buildOcrRequiredReason(capability, sourceSystem, documentType)
+      })
+    }
+  }
+
+  if (input.ingestError) {
+    return {
+      sourceSystem: fileNameSourceSystem,
+      documentType: fileNameDocumentType,
+      classificationBasis: fileNameSourceSystem === 'unknown' ? 'unknown' : 'file-name',
+      role: fileNameRole,
       decision: {
+        capability,
+        ingestionBranch,
+        ingestionReason: input.ingestError,
         detectedSignals: bookingPdfDecision?.detectedSignals ?? [],
         matchedRules: ['ingest-error'],
         missingSignals: bookingPdfDecision?.missingSignals ?? [],
         parserSupported: false,
         confidence: 'none',
-        resolvedSourceSystem: sourceSystem,
-        resolvedDocumentType: role === 'supplemental' && sourceSystem === 'booking'
-          ? 'payout_statement'
-          : inferDocumentType(sourceSystem),
-        resolvedRole: role,
+        resolvedSourceSystem: fileNameSourceSystem,
+        resolvedDocumentType: fileNameDocumentType,
+        resolvedRole: fileNameRole,
         resolvedBucket: 'ingest-error'
       },
       ingestError: input.ingestError
@@ -519,24 +579,28 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
-  const byContent = inferSourceSystemFromContent(input.content)
+  if (ingestionBranch === 'structured-parser' || ingestionBranch === 'text-document-parser') {
+    const byContent = inferSourceSystemFromContent(input.content)
 
-  if (byContent !== 'unknown') {
-    return {
-      sourceSystem: byContent,
-      documentType: inferDocumentType(byContent),
-      classificationBasis: 'content',
-      role: 'primary',
-      decision: buildResolvedDecision({
+    if (byContent !== 'unknown') {
+      return {
         sourceSystem: byContent,
         documentType: inferDocumentType(byContent),
         classificationBasis: 'content',
         role: 'primary',
-        parserSupported: true,
-        matchedRules: ['content-signature'],
-        missingSignals: [],
-        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-      })
+        decision: buildResolvedDecision({
+          capability,
+          ingestionBranch,
+          sourceSystem: byContent,
+          documentType: inferDocumentType(byContent),
+          classificationBasis: 'content',
+          role: 'primary',
+          parserSupported: true,
+          matchedRules: ['content-signature'],
+          missingSignals: [],
+          detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+        })
+      }
     }
   }
 
@@ -547,6 +611,8 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       classificationBasis: 'binary-workbook',
       role: 'primary',
       decision: buildResolvedDecision({
+        capability,
+        ingestionBranch,
         sourceSystem: 'previo',
         documentType: 'reservation_export',
         classificationBasis: 'binary-workbook',
@@ -566,6 +632,8 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       classificationBasis: 'file-name',
       role: 'supplemental',
       decision: buildResolvedDecision({
+        capability,
+        ingestionBranch,
         sourceSystem: 'booking',
         documentType: 'payout_statement',
         classificationBasis: 'file-name',
@@ -587,6 +655,8 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       classificationBasis: 'file-name',
       role: 'primary',
       decision: buildResolvedDecision({
+        capability,
+        ingestionBranch,
         sourceSystem: byFileName,
         documentType: inferDocumentType(byFileName),
         classificationBasis: 'file-name',
@@ -605,6 +675,8 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     classificationBasis: 'unknown',
     role: 'primary',
     decision: bookingPdfDecision ?? buildUnknownDecision({
+      capability,
+      ingestionBranch,
       detectedSignals: [],
       matchedRules: [],
       missingSignals: [],
@@ -747,6 +819,8 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
 function buildBookingPayoutSupplementDecision(
   input: UploadedMonthlyFileClassificationDescriptor
 ): UploadedMonthlyFileDecision | undefined {
+  const capability = detectUploadedMonthlyFileCapability(input)
+  const ingestionBranch = resolveUploadedMonthlyFileIngestionBranch(capability)
   const isPdfLike = input.contentFormat === 'pdf-text'
     || input.sourceDescriptor?.browserTextExtraction?.mode === 'pdf-text'
     || input.sourceDescriptor?.mimeType === 'application/pdf'
@@ -779,6 +853,8 @@ function buildBookingPayoutSupplementDecision(
 
   if (!input.content.trim() && signalCount === 0) {
     return buildUnknownDecision({
+      capability,
+      ingestionBranch,
       detectedSignals,
       matchedRules,
       missingSignals,
@@ -788,6 +864,8 @@ function buildBookingPayoutSupplementDecision(
 
   if (hasBookingBranding && hasPaymentId && hasPayoutDate && hasPayoutTotal) {
     return buildResolvedDecision({
+      capability,
+      ingestionBranch,
       sourceSystem: 'booking',
       documentType: 'payout_statement',
       classificationBasis: 'content',
@@ -801,6 +879,8 @@ function buildBookingPayoutSupplementDecision(
 
   if (hasBookingBranding && hasStatementWording && signalCount >= 4) {
     return buildResolvedDecision({
+      capability,
+      ingestionBranch,
       sourceSystem: 'booking',
       documentType: 'payout_statement',
       classificationBasis: 'content',
@@ -814,6 +894,9 @@ function buildBookingPayoutSupplementDecision(
 
   if (hasBookingBranding && hasStatementWording && parserSupported) {
     return {
+      capability,
+      ingestionBranch,
+      ingestionReason: buildIngestionReason(ingestionBranch, capability, 'Booking payout PDF má branding a wording, ale čeká na plné parser pole.'),
       detectedSignals,
       matchedRules: [...matchedRules, 'booking-payout-branding-and-wording', 'booking-payout-parser-supported'],
       missingSignals,
@@ -827,6 +910,8 @@ function buildBookingPayoutSupplementDecision(
   }
 
   return buildUnknownDecision({
+    capability,
+    ingestionBranch,
     detectedSignals,
     matchedRules: [
       ...matchedRules,
@@ -876,6 +961,8 @@ function collectBookingPayoutDecisionSignals(
 }
 
 function buildResolvedDecision(input: {
+  capability: UploadedMonthlyFileCapabilityAssessment
+  ingestionBranch: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['decision']['ingestionBranch']
   sourceSystem: SourceDocument['sourceSystem']
   documentType: SourceDocument['documentType']
   classificationBasis: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['classificationBasis']
@@ -886,6 +973,9 @@ function buildResolvedDecision(input: {
   detectedSignals: string[]
 }): UploadedMonthlyFileDecision {
   return {
+    capability: input.capability,
+    ingestionBranch: input.ingestionBranch,
+    ingestionReason: buildIngestionReason(input.ingestionBranch, input.capability),
     detectedSignals: input.detectedSignals,
     matchedRules: input.matchedRules,
     missingSignals: input.missingSignals,
@@ -901,12 +991,21 @@ function buildResolvedDecision(input: {
 }
 
 function buildUnknownDecision(input: {
+  capability: UploadedMonthlyFileCapabilityAssessment
+  ingestionBranch: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['decision']['ingestionBranch']
   detectedSignals: string[]
   matchedRules: string[]
   missingSignals: string[]
   parserSupported: boolean
 }): UploadedMonthlyFileDecision {
   return {
+    capability: input.capability,
+    ingestionBranch: input.ingestionBranch,
+    ingestionReason: buildIngestionReason(
+      input.ingestionBranch,
+      input.capability,
+      'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.'
+    ),
     detectedSignals: input.detectedSignals,
     matchedRules: input.matchedRules,
     missingSignals: input.missingSignals,
@@ -917,6 +1016,76 @@ function buildUnknownDecision(input: {
     resolvedRole: 'primary',
     resolvedBucket: 'unclassified'
   }
+}
+
+function buildUnsupportedDecision(input: {
+  capability: UploadedMonthlyFileCapabilityAssessment
+  ingestionBranch: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['decision']['ingestionBranch']
+  sourceSystem: SourceDocument['sourceSystem']
+  documentType: SourceDocument['documentType']
+  role: 'primary' | 'supplemental'
+  matchedRules: string[]
+  missingSignals: string[]
+  detectedSignals: string[]
+  parserSupported: boolean
+  reason: string
+}): UploadedMonthlyFileDecision {
+  return {
+    capability: input.capability,
+    ingestionBranch: input.ingestionBranch,
+    ingestionReason: input.reason,
+    detectedSignals: input.detectedSignals,
+    matchedRules: input.matchedRules,
+    missingSignals: input.missingSignals,
+    parserSupported: input.parserSupported,
+    confidence: input.capability.confidence,
+    resolvedSourceSystem: input.sourceSystem,
+    resolvedDocumentType: input.documentType,
+    resolvedRole: input.role,
+    resolvedBucket: 'unsupported'
+  }
+}
+
+function buildIngestionReason(
+  branch: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['decision']['ingestionBranch'],
+  capability: UploadedMonthlyFileCapabilityAssessment,
+  fallbackReason?: string
+): string {
+  if (fallbackReason) {
+    return fallbackReason
+  }
+
+  switch (branch) {
+    case 'structured-parser':
+      return 'Soubor má strukturovaný export vhodný pro deterministický parser.'
+    case 'text-document-parser':
+      return 'Soubor má čitelný textový obsah vhodný pro dokumentový parser.'
+    case 'text-pdf-parser':
+      return 'Soubor obsahuje textovou PDF vrstvu a pokračuje textovým PDF ingestem.'
+    case 'ocr-required':
+      return buildOcrRequiredReason(capability, 'unknown', 'other')
+    case 'unsupported':
+    default:
+      return 'Soubor nemá dostatečnou ingest capability pro podporovaný deterministický tok.'
+  }
+}
+
+function buildOcrRequiredReason(
+  capability: UploadedMonthlyFileCapabilityAssessment,
+  sourceSystem: SourceDocument['sourceSystem'],
+  documentType: SourceDocument['documentType']
+): string {
+  if (capability.profile === 'pdf_image_only') {
+    return sourceSystem === 'booking' && documentType === 'payout_statement'
+      ? 'Booking payout statement vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.'
+      : 'PDF vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.'
+  }
+
+  if (capability.profile === 'image_receipt_like') {
+    return 'Soubor vypadá jako obrázkový doklad nebo scan. Pro ingest je potřeba OCR.'
+  }
+
+  return 'Soubor vyžaduje OCR větev, která zatím není zapojená do deterministického ingestu.'
 }
 
 function matchesAnyHeaderSignature(headerSample: string, candidates: string[]): boolean {

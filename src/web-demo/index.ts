@@ -575,6 +575,54 @@ ${showRuntimePayoutDiagnostics ? `
         return 'bez rozpoznání';
       }
 
+      function buildCapabilityProfileLabel(value) {
+        if (value === 'structured_tabular') {
+          return 'Strukturovaný export';
+        }
+
+        if (value === 'text_document') {
+          return 'Textový doklad';
+        }
+
+        if (value === 'pdf_text_layer') {
+          return 'Textové PDF';
+        }
+
+        if (value === 'pdf_image_only') {
+          return 'Scan / OCR potřeba';
+        }
+
+        if (value === 'image_receipt_like') {
+          return 'Obrázek / OCR potřeba';
+        }
+
+        if (value === 'unsupported_binary') {
+          return 'Nepodporovaný vstup';
+        }
+
+        return 'Nepodporovaný vstup';
+      }
+
+      function buildIngestionBranchLabel(value) {
+        if (value === 'structured-parser') {
+          return 'strukturovaný parser';
+        }
+
+        if (value === 'text-document-parser') {
+          return 'textový dokument';
+        }
+
+        if (value === 'text-pdf-parser') {
+          return 'textové PDF';
+        }
+
+        if (value === 'ocr-required') {
+          return 'OCR potřeba';
+        }
+
+        return 'nepodporovaná větev';
+      }
+
       function buildFileRouteSourceLabel(sourceSystem, documentType) {
         if (sourceSystem === 'bank') {
           return 'Bankovní výpis';
@@ -708,7 +756,7 @@ ${showRuntimePayoutDiagnostics ? `
             return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
               + escapeHtml(buildFileRouteOutcomeLabel(file))
               + ' · ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
-              + ' · ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
+              + ' · ' + escapeHtml(buildCapabilityProfileLabel(file.decision && file.decision.capability ? file.decision.capability.profile : 'unknown'))
               + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount || 0)) + '</span>'
               + warningLine
               + '</li>';
@@ -724,8 +772,10 @@ ${showRuntimePayoutDiagnostics ? `
 
               return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
                 + escapeHtml(file.reason || 'Soubor nebylo možné bezpečně přiřadit k podporovanému zdroji.')
-                + '</span><br /><span class="hint">Klasifikace: '
-                + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
+                + '</span><br /><span class="hint">Typ vstupu: '
+                + escapeHtml(buildCapabilityProfileLabel(file.decision && file.decision.capability ? file.decision.capability.profile : 'unknown'))
+                + ' · Větev: '
+                + escapeHtml(buildIngestionBranchLabel(file.decision ? file.decision.ingestionBranch : 'unsupported'))
                 + '</span>'
                 + warningLine
                 + '</li>';
@@ -742,8 +792,10 @@ ${showRuntimePayoutDiagnostics ? `
 
               return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
                 + escapeHtml(file.errorMessage || file.reason || 'Ingest souboru selhal.')
-                + '</span><br /><span class="hint">Klasifikace: '
-                + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
+                + '</span><br /><span class="hint">Typ vstupu: '
+                + escapeHtml(buildCapabilityProfileLabel(file.decision && file.decision.capability ? file.decision.capability.profile : 'unknown'))
+                + ' · Větev: '
+                + escapeHtml(buildIngestionBranchLabel(file.decision ? file.decision.ingestionBranch : 'unsupported'))
                 + '</span>'
                 + warningLine
                 + '</li>';
@@ -893,10 +945,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Délka textu: ' + escapeHtml(String(file.textLength || 0)) + '</span>',
           '<br /><span class="hint">Text preview: ' + escapeHtml(buildDebugTextPreviewLabel(file.textPreview)) + '</span>',
           '<br /><span class="hint">Text tail: ' + escapeHtml(buildDebugTextPreviewLabel(file.textTailPreview)) + '</span>',
+          '<br /><span class="hint">Capability: ' + escapeHtml(buildCapabilityProfileLabel(file.capabilityProfile)) + ' / ' + escapeHtml(String(file.capabilityProfile || 'unknown')) + ' / confidence=' + escapeHtml(String(file.capabilityConfidence || 'none')) + '</span>',
+          '<br /><span class="hint">Capability evidence: ' + escapeHtml((file.capabilityEvidence && file.capabilityEvidence.length > 0 ? file.capabilityEvidence.join(', ') : 'žádné')) + '</span>',
+          '<br /><span class="hint">Ingestion branch: ' + escapeHtml(buildIngestionBranchLabel(file.ingestionBranch)) + ' / ' + escapeHtml(String(file.ingestionBranch || 'unsupported')) + '</span>',
           '<br /><span class="hint">Keyword hits: ' + escapeHtml((file.keywordHits && file.keywordHits.length > 0 ? file.keywordHits.join(', ') : 'žádné')) + '</span>',
           '<br /><span class="hint">Signály: ' + escapeHtml((file.detectedSignals && file.detectedSignals.length > 0 ? file.detectedSignals.join(', ') : 'žádné')) + '</span>',
           '<br /><span class="hint">Rozhodnutí klasifikátoru: ' + escapeHtml(buildDebugClassifierDecisionLabel(file)) + '</span>',
           '<br /><span class="hint">Decision reason: ' + escapeHtml(buildDebugDecisionReasonLabel(file)) + '</span>',
+          file.ingestionReason ? '<br /><span class="hint">Branch reason: ' + escapeHtml(file.ingestionReason) + '</span>' : '',
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',
           file.parserExtractedPayoutDate ? '<br /><span class="hint">parserExtracted.payoutDate: ' + escapeHtml(file.parserExtractedPayoutDate) + '</span>' : '',
           file.parserExtractedPayoutTotal ? '<br /><span class="hint">parserExtracted.payoutTotal: ' + escapeHtml(file.parserExtractedPayoutTotal) + '</span>' : '',

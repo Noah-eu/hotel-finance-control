@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  detectUploadedMonthlyFileCapability,
   ingestUploadedMonthlyFiles,
   prepareUploadedMonthlyBatchFiles,
   prepareUploadedMonthlyFiles,
+  resolveUploadedMonthlyFileIngestionBranch,
   runMonthlyReconciliationBatch
 } from '../../src/monthly-batch'
 
@@ -1080,9 +1082,78 @@ describe('runMonthlyReconciliationBatch', () => {
         documentType: 'payout_statement',
         classificationBasis: 'content',
         parserId: 'booking-payout-statement-pdf',
-        role: 'supplemental'
+        role: 'supplemental',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_text_layer'
+          }),
+          ingestionBranch: 'text-pdf-parser'
+        })
       })
     ])
+  })
+
+  it('detects structured exports, text PDFs, scans, and unsupported binaries through one shared capability layer', () => {
+    expect(detectUploadedMonthlyFileCapability({
+      fileName: 'booking35k.csv',
+      content: buildBooking35kBrowserUploadContent(),
+      contentFormat: 'text'
+    })).toEqual({
+      profile: 'structured_tabular',
+      confidence: 'strong',
+      evidence: expect.arrayContaining(['delimited-header', 'header-fields-present'])
+    })
+
+    expect(resolveUploadedMonthlyFileIngestionBranch(detectUploadedMonthlyFileCapability({
+      fileName: 'Bookinng35k.pdf',
+      content: buildBookingPayoutStatementVariantContent(),
+      contentFormat: 'pdf-text',
+      sourceDescriptor: {
+        mimeType: 'application/pdf',
+        browserTextExtraction: {
+          mode: 'pdf-text',
+          status: 'extracted',
+          textPreview: 'Booking.com B.V. Výkaz plateb',
+          detectedSignatures: ['booking-branding', 'booking-payout-statement-wording']
+        }
+      }
+    }))).toBe('text-pdf-parser')
+
+    expect(detectUploadedMonthlyFileCapability({
+      fileName: 'receipt-scan.png',
+      content: '',
+      contentFormat: 'binary',
+      sourceDescriptor: {
+        mimeType: 'image/png',
+        browserTextExtraction: {
+          mode: 'binary',
+          status: 'not-attempted',
+          detectedSignatures: []
+        }
+      }
+    })).toEqual({
+      profile: 'image_receipt_like',
+      confidence: 'hint',
+      evidence: ['image-upload', 'expense-document-name']
+    })
+
+    expect(detectUploadedMonthlyFileCapability({
+      fileName: 'archive.bin',
+      content: '',
+      contentFormat: 'binary',
+      sourceDescriptor: {
+        mimeType: 'application/octet-stream',
+        browserTextExtraction: {
+          mode: 'binary',
+          status: 'not-attempted',
+          detectedSignatures: []
+        }
+      }
+    })).toEqual({
+      profile: 'unsupported_binary',
+      confidence: 'strong',
+      evidence: ['binary-upload']
+    })
   })
 
   it('recognizes Booking payout statement PDFs from glyph-separated browser text content', () => {
@@ -1388,12 +1459,19 @@ describe('runMonthlyReconciliationBatch', () => {
       }),
       expect.objectContaining({
         fileName: 'booking-payout-broken.pdf',
-        status: 'error',
-        intakeStatus: 'error',
+        status: 'unsupported',
+        intakeStatus: 'unsupported',
         sourceSystem: 'booking',
         documentType: 'payout_statement',
         role: 'supplemental',
-        errorMessage: 'PDF soubor booking-payout-broken.pdf neobsahuje deterministicky čitelnou textovou vrstvu.'
+        reason: 'Booking payout statement vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_image_only'
+          }),
+          ingestionBranch: 'ocr-required',
+          resolvedBucket: 'unsupported'
+        })
       })
     ])
     expect(result.importedFiles.map((file) => file.sourceDocument.fileName)).toEqual([

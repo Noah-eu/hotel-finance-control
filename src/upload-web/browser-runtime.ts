@@ -1,6 +1,7 @@
 import type { BrowserRuntimeInputFile, BrowserRuntimeUploadState } from './index.js'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state.js'
 import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
+import { detectUploadedMonthlyFileCapability } from '../monthly-batch/capabilities.js'
 import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
 
 interface BufferLikeConstructor {
@@ -72,6 +73,22 @@ export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input:
     input.files.map(async (file) => {
       try {
         const uploadedFileContent = await readUploadedFileContent(file)
+        const sourceDescriptor = {
+          mimeType: normalizeMimeType(file.type),
+          browserTextExtraction: {
+            mode: uploadedFileContent.contentFormat,
+            status: 'extracted' as const,
+            textPreview: uploadedFileContent.content.slice(0, 240),
+            detectedSignatures: uploadedFileContent.detectedSignatures
+          }
+        }
+        const capability = detectUploadedMonthlyFileCapability({
+          fileName: file.name,
+          content: uploadedFileContent.content,
+          binaryContentBase64: uploadedFileContent.binaryContentBase64,
+          contentFormat: uploadedFileContent.contentFormat,
+          sourceDescriptor
+        })
 
         return {
           name: file.name,
@@ -80,30 +97,39 @@ export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input:
           binaryContentBase64: uploadedFileContent.binaryContentBase64,
           contentFormat: uploadedFileContent.contentFormat,
           sourceDescriptor: {
-            mimeType: normalizeMimeType(file.type),
-            browserTextExtraction: {
-              mode: uploadedFileContent.contentFormat,
-              status: 'extracted',
-              textPreview: uploadedFileContent.content.slice(0, 240),
-              detectedSignatures: uploadedFileContent.detectedSignatures
-            }
+            ...sourceDescriptor,
+            capability
           }
         }
       } catch (error) {
+        const contentFormat = inferContentFormatFromFileName(file.name)
+        const ingestError = error instanceof Error ? error.message : String(error)
+        const sourceDescriptor = {
+          mimeType: normalizeMimeType(file.type),
+          browserTextExtraction: {
+            mode: contentFormat,
+            status: 'failed' as const,
+            detectedSignatures: []
+          }
+        }
+        const capability = detectUploadedMonthlyFileCapability({
+          fileName: file.name,
+          content: '',
+          contentFormat,
+          sourceDescriptor,
+          ingestError
+        })
+
         return {
           name: file.name,
           content: '',
           uploadedAt: input.generatedAt,
-          contentFormat: inferContentFormatFromFileName(file.name),
+          contentFormat,
           sourceDescriptor: {
-            mimeType: normalizeMimeType(file.type),
-            browserTextExtraction: {
-              mode: inferContentFormatFromFileName(file.name),
-              status: 'failed',
-              detectedSignatures: []
-            }
+            ...sourceDescriptor,
+            capability
           },
-          ingestError: error instanceof Error ? error.message : String(error)
+          ingestError
         }
       }
     })
@@ -135,7 +161,7 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
     return {
       content: decodeUploadedTextBytes(bytes),
       binaryContentBase64,
-      contentFormat: file.name.toLowerCase().endsWith('.xlsx') ? 'binary-workbook' : 'binary',
+      contentFormat: inferUploadedBytesContentFormat(file.name, normalizeMimeType(file.type)),
       detectedSignatures: []
     }
   }
@@ -219,6 +245,36 @@ function inferContentFormatFromFileName(fileName: string): 'text' | 'pdf-text' |
   }
 
   return 'text'
+}
+
+function inferUploadedBytesContentFormat(
+  fileName: string,
+  mimeType: string | undefined
+): 'text' | 'pdf-text' | 'binary-workbook' | 'binary' {
+  const normalizedFileName = fileName.toLowerCase()
+  const normalizedMime = mimeType?.toLowerCase()
+
+  if (normalizedFileName.endsWith('.pdf') || normalizedMime === 'application/pdf') {
+    return 'pdf-text'
+  }
+
+  if (normalizedFileName.endsWith('.xlsx')) {
+    return 'binary-workbook'
+  }
+
+  if (
+    normalizedMime?.startsWith('text/')
+    || normalizedMime === 'application/csv'
+    || normalizedMime === 'text/csv'
+    || normalizedMime === 'application/vnd.ms-excel'
+    || normalizedFileName.endsWith('.csv')
+    || normalizedFileName.endsWith('.txt')
+    || normalizedFileName.endsWith('.tsv')
+  ) {
+    return 'text'
+  }
+
+  return 'binary'
 }
 
 function buildBrowserRuntimeRunId(month?: string): string {

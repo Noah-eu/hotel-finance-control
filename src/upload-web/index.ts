@@ -86,6 +86,11 @@ export interface BrowserRuntimeUploadState {
       textPreview?: string
       textTailPreview?: string
       keywordHits: string[]
+      capabilityProfile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
+      capabilityConfidence: 'none' | 'hint' | 'strong'
+      capabilityEvidence: string[]
+      ingestionBranch: 'structured-parser' | 'text-document-parser' | 'text-pdf-parser' | 'ocr-required' | 'unsupported'
+      ingestionReason?: string
       detectedSignals: string[]
       detectedSignatures: string[]
       matchedRules: string[]
@@ -143,6 +148,13 @@ export interface BrowserRuntimeUploadState {
     reason?: string
     errorMessage?: string
     decision: {
+      capability: {
+        profile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
+        confidence: 'none' | 'hint' | 'strong'
+        evidence: string[]
+      }
+      ingestionBranch: 'structured-parser' | 'text-document-parser' | 'text-pdf-parser' | 'ocr-required' | 'unsupported'
+      ingestionReason: string
       detectedSignals: string[]
       matchedRules: string[]
       missingSignals: string[]

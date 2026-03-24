@@ -13,6 +13,28 @@ export type UploadedMonthlyFileDecisionConfidence =
   | 'hint'
   | 'strong'
 
+export type UploadedMonthlyFileCapabilityProfile =
+  | 'structured_tabular'
+  | 'text_document'
+  | 'pdf_text_layer'
+  | 'pdf_image_only'
+  | 'image_receipt_like'
+  | 'unsupported_binary'
+  | 'unknown'
+
+export type UploadedMonthlyFileIngestionBranch =
+  | 'structured-parser'
+  | 'text-document-parser'
+  | 'text-pdf-parser'
+  | 'ocr-required'
+  | 'unsupported'
+
+export interface UploadedMonthlyFileCapabilityAssessment {
+  profile: UploadedMonthlyFileCapabilityProfile
+  confidence: UploadedMonthlyFileDecisionConfidence
+  evidence: string[]
+}
+
 export type UploadedMonthlyFileDecisionBucket =
   | 'recognized-supported'
   | 'supplemental-supported'
@@ -21,6 +43,9 @@ export type UploadedMonthlyFileDecisionBucket =
   | 'ingest-error'
 
 export interface UploadedMonthlyFileDecision {
+  capability: UploadedMonthlyFileCapabilityAssessment
+  ingestionBranch: UploadedMonthlyFileIngestionBranch
+  ingestionReason: string
   detectedSignals: string[]
   matchedRules: string[]
   missingSignals: string[]
@@ -34,6 +59,7 @@ export interface UploadedMonthlyFileDecision {
 
 export interface UploadedMonthlyFileSourceDescriptor {
   mimeType?: string
+  capability?: UploadedMonthlyFileCapabilityAssessment
   browserTextExtraction?: {
     mode: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
     status: 'extracted' | 'failed' | 'not-attempted'

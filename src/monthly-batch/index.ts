@@ -12,11 +12,14 @@ export type {
   MonthlyBatchResult,
   MonthlyBatchService,
   PreparedUploadedMonthlyFilesResult,
+  UploadedMonthlyFileCapabilityAssessment,
+  UploadedMonthlyFileCapabilityProfile,
   UploadedMonthlyIngestionResult,
   UploadedMonthlyFileClassificationBasis,
   UploadedMonthlyFileDecision,
   UploadedMonthlyFileDecisionBucket,
   UploadedMonthlyFileDecisionConfidence,
+  UploadedMonthlyFileIngestionBranch,
   UploadedMonthlyFileSourceDescriptor,
   UploadedMonthlyFileRoute,
   UploadedMonthlyFile
@@ -29,3 +32,8 @@ export {
   prepareUploadedMonthlyFiles,
   runMonthlyReconciliationBatch
 } from './service'
+
+export {
+  detectUploadedMonthlyFileCapability,
+  resolveUploadedMonthlyFileIngestionBranch
+} from './capabilities'
