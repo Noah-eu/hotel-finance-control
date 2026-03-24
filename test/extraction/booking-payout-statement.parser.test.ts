@@ -229,6 +229,39 @@ describe('parseBookingPayoutStatementPdf', () => {
     })
   })
 
+  it('extracts required Booking payout fields from the real browser shape where the PDF text arrives as one glyph per line', () => {
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(buildCzechBookingPayoutStatementSingleGlyphBrowserContent())
+
+    expect(fieldCheck).toEqual({
+      fields: expect.objectContaining({
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotalRaw: '1456.42 EUR',
+        payoutTotalAmountMinor: 145642,
+        payoutTotalCurrency: 'EUR',
+        localTotalRaw: '35530.12 CZK',
+        localAmountMinor: 3553012,
+        localCurrency: 'CZK',
+        exchangeRate: '24.3955'
+      }),
+      parserExtracted: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR',
+        localTotal: '35530.12 CZK',
+        ibanHint: undefined,
+        exchangeRate: '24.3955'
+      },
+      validatorInput: {
+        paymentId: '010638445054',
+        payoutDate: '2026-03-12',
+        payoutTotal: '1456.42 EUR'
+      },
+      missingFields: [],
+      requiredFieldsCheck: 'passed'
+    })
+  })
+
   it('parses Czech Booking payout statement text by using the full normalized document instead of only the header prefix', () => {
     const records = parseBookingPayoutStatementPdf({
       sourceDocument: getRealInputFixture('booking-payout-statement-pdf').sourceDocument,
@@ -396,4 +429,33 @@ function buildCzechBookingPayoutStatementFragmentedBrowserContent(): string {
     'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
   ].join('\n')
+}
+
+function buildCzechBookingPayoutStatementSingleGlyphBrowserContent(): string {
+  const denseDocument = [
+    'Chill apartments',
+    'Sokolská 64',
+    '120 00 Prague',
+    'ID ubytování 2206371',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Typ faktury',
+    'Referenční číslo',
+    'Typ platby',
+    'Příjezd',
+    'Odjezd',
+    'Jméno hosta',
+    'Měna',
+    'Částka',
+    'Celkem (CZK) 35,530.12 Kč',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celková částka k vyplacení (CZK)',
+    'Směnný kurz 24.3955',
+    'Bankovní údaje',
+    'IBAN CZ65 5500 0000 0000 5599 555956'
+  ].join('')
+
+  return Array.from(denseDocument).join('\n')
 }

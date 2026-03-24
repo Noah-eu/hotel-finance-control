@@ -2719,6 +2719,52 @@ describe('buildUploadWebFlow', () => {
     ).toBe(2)
   })
 
+  it('extracts Booking PDF fields from the real browser text shape where the PDF text arrives one glyph per line', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T20:05:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        parserExtractedPaymentId: '010638445054',
+        parserExtractedPayoutDate: '2026-03-12',
+        parserExtractedPayoutTotal: '1456.42 EUR',
+        parserExtractedLocalTotal: '35530.12 CZK',
+        validatorInputPaymentId: '010638445054',
+        validatorInputPayoutDate: '2026-03-12',
+        validatorInputPayoutTotal: '1456.42 EUR',
+        parsedPaymentId: '010638445054',
+        parsedPayoutDate: '2026-03-12',
+        parsedPayoutTotal: '1456.42 EUR',
+        parsedLocalTotal: '35530.12 CZK',
+        requiredFieldsCheck: 'passed',
+        missingFields: [],
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    )
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+  })
+
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
 
@@ -3365,6 +3411,35 @@ function buildCzechFragmentedBookingPayoutStatementPdfLines(): string[] {
     'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
   ]
+}
+
+function buildCzechSingleGlyphBookingPayoutStatementPdfLines(): string[] {
+  return Array.from([
+    'Chill apartments',
+    'Sokolská 64',
+    '120 00 Prague',
+    'ID ubytování 2206371',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Typ faktury',
+    'Referenční číslo',
+    'Typ platby',
+    'Příjezd',
+    'Odjezd',
+    'Jméno hosta',
+    'Měna',
+    'Částka',
+    'Rezervace 5029129741',
+    'Reservation 6. března 2026 8. března 2026',
+    'Celkem (CZK) 35,530.12 Kč',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celková částka k vyplacení (CZK)',
+    'Směnný kurz 24.3955',
+    'Bankovní údaje',
+    'IBAN CZ65 5500 0000 0000 5599 555956'
+  ].join(''))
 }
 
 function buildBookingPayoutStatementFragmentedPdfLines(): string[] {

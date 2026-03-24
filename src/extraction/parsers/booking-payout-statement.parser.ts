@@ -238,29 +238,38 @@ export function detectBookingPayoutStatementKeywordHits(content: string): string
     hits.push('Payment overview')
   }
 
-  if (/\bid\s+platby\b/i.test(scan.asciiNormalized)) {
+  if (/\bid\s+platby\b/i.test(scan.asciiNormalized) || scan.denseAsciiNormalized.toUpperCase().includes('IDPLATBY')) {
     hits.push('ID platby')
   } else if (/\b(?:payment|payout)\s*id\b/i.test(scan.asciiNormalized)) {
     hits.push('Payment ID')
   }
 
-  if (/\bdatum\s+vyplaceni\s+castky\b/i.test(scan.asciiNormalized)) {
+  if (
+    /\bdatum\s+vyplaceni\s+castky\b/i.test(scan.asciiNormalized)
+    || scan.denseAsciiNormalized.toUpperCase().includes('DATUMVYPLACENICASTKY')
+  ) {
     hits.push('Datum vyplacení částky')
   } else if (/\b(?:payment|payout|transfer)\s*date\b/i.test(scan.asciiNormalized)) {
     hits.push('Payment date')
   }
 
-  if (/\bcelkem\s*\(\s*czk\s*\)/i.test(scan.asciiNormalized)) {
+  if (
+    /\bcelkem\s*\(\s*czk\s*\)/i.test(scan.asciiNormalized)
+    || scan.denseAsciiNormalized.toUpperCase().includes('CELKEM(CZK)')
+  ) {
     hits.push('Celkem (CZK)')
   }
 
-  if (/\bcelkova\s+castka\s+k\s+vyplaceni\b/i.test(scan.asciiNormalized)) {
+  if (
+    /\bcelkova\s+castka\s+k\s+vyplaceni\b/i.test(scan.asciiNormalized)
+    || scan.denseAsciiNormalized.toUpperCase().includes('CELKOVACASTKAKVYPLACENI')
+  ) {
     hits.push('Celková částka k vyplacení')
   } else if (/\b(?:payout|payment|transfer)\s*total\b|\btotal\s+(?:payout|payment|transfer)\b/i.test(scan.asciiNormalized)) {
     hits.push('Payout total')
   }
 
-  if (/\biban\b/i.test(scan.asciiNormalized)) {
+  if (/\biban\b/i.test(scan.asciiNormalized) || scan.denseAsciiNormalized.toUpperCase().includes('IBAN')) {
     hits.push('IBAN')
   }
 
@@ -327,6 +336,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
       /\bid\s+platby\b.{0,120}?([A-Z0-9-]{6,})/i,
       /\bid\s+vyplaty\b.{0,120}?([A-Z0-9-]{6,})/i
     ]) ?? captureStandaloneBookingPaymentId(scan.normalized, scan.compact)
+      ?? captureDenseBookingPaymentId(scan.denseAsciiNormalized)
   )
   const payoutDateRaw = normalizeBookingStatementDateValue(
     pickRequiredField(fields, [
@@ -355,7 +365,9 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
     ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
       /\bdatum\s+vyplaceni\s+castky\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
       /\bdatum\s+platby\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
-    ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized) ?? captureCompactBookingPayoutDate(scan.compact)
+    ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized)
+      ?? captureDenseBookingPayoutDate(scan.denseAsciiNormalized)
+      ?? captureCompactBookingPayoutDate(scan.compact)
   )
   const localTotalRaw = normalizeBookingStatementMoneyValue(
     pickRequiredField(fields, [
@@ -388,6 +400,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
       /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(?:czk|eur|usd)\s*\)/i,
       /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(?:czk|eur|usd)\s*\)/i
     ], 'CZK') ?? captureBookingLocalCurrencyTotal(scan.normalized, scan.asciiNormalized)
+      ?? captureDenseBookingLocalCurrencyTotal(scan.denseNormalized, scan.denseAsciiNormalized)
   )
   const payoutTotalRaw = resolveBookingPrimaryPayoutTotalCandidate(
     normalizeBookingStatementMoneyValue(
@@ -410,6 +423,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
         /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b(?!\s*\()/i,
         /\bcelkova\s+castka\s+k\s+vyplaceni\b(?!\s*\()/i
       ]) ?? captureStandaloneBookingPrimaryPayoutTotal(scan.normalized, scan.asciiNormalized)
+      ?? captureDenseBookingPrimaryPayoutTotal(scan.denseNormalized, scan.denseAsciiNormalized)
       ?? captureCompactBookingPayoutTotal(scan.compact)
     ),
     localTotalRaw,
@@ -420,6 +434,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
   const exchangeRate = normalizeBookingStatementExchangeRateValue(
     pickRequiredField(fields, ['směnný kurz', 'smenny kurz', 'exchange rate'])
     ?? captureBookingExchangeRate(scan.normalized, scan.asciiNormalized)
+    ?? captureDenseBookingExchangeRate(scan.denseAsciiNormalized)
   )
   const reservationIds = extractReservationIds(scan.normalized)
 
@@ -440,19 +455,25 @@ function buildBookingPayoutStatementSignalScan(content: string): {
   asciiNormalized: string
   structuredNormalized: string
   structuredAsciiNormalized: string
+  denseNormalized: string
+  denseAsciiNormalized: string
   compact: string
 } {
   const structuredNormalized = normalizeBookingPayoutStatementStructuredContent(content)
   const normalized = structuredNormalized.replace(/\s+/g, ' ').trim()
+  const denseNormalized = structuredNormalized.replace(/\s+/g, '').trim()
   const structuredAsciiNormalized = foldToAscii(structuredNormalized)
   const asciiNormalized = foldToAscii(normalized)
+  const denseAsciiNormalized = foldToAscii(denseNormalized)
 
   return {
     normalized,
     asciiNormalized,
     structuredNormalized,
     structuredAsciiNormalized,
-    compact: asciiNormalized.toUpperCase().replace(/[^A-Z0-9]/g, '')
+    denseNormalized,
+    denseAsciiNormalized,
+    compact: denseAsciiNormalized.toUpperCase().replace(/[^A-Z0-9]/g, '')
   }
 }
 
@@ -551,6 +572,156 @@ function captureCompactBookingPayoutDate(compact: string): string | undefined {
   }
 
   return `${match[1]}-${match[2]}-${match[3]}`
+}
+
+function captureDenseBookingPaymentId(denseAsciiNormalized: string): string | undefined {
+  const normalized = denseAsciiNormalized.toUpperCase()
+  const payoutIdMatch = normalized.match(
+    /(?:BOOKINGPAYMENTID|PAYMENTID|PAYOUTID|IDPLATBY|IDVYPLATY)(PAYOUT-BOOK-\d{6,}(?:-[A-Z0-9]+)?)(?=TYPFAKTURY|REFERENCNICISLO|TYPPLATBY|PRIJEZD|ODJEZD|JMENOHOSTA|MENA|CASTKA|REZERVACE|CELKEM|CELKOVA|IBAN|$)/
+  )
+
+  if (payoutIdMatch?.[1]) {
+    return payoutIdMatch[1]
+  }
+
+  const numericMatch = normalized.match(
+    /(?:BOOKINGPAYMENTID|PAYMENTID|PAYOUTID|IDPLATBY|IDVYPLATY)(\d{10,16})(?=TYPFAKTURY|REFERENCNICISLO|TYPPLATBY|PRIJEZD|ODJEZD|JMENOHOSTA|MENA|CASTKA|REZERVACE|CELKEM|CELKOVA|IBAN|$)/
+  )
+
+  return numericMatch?.[1]
+}
+
+function captureDenseBookingPayoutDate(denseAsciiNormalized: string): string | undefined {
+  const normalized = denseAsciiNormalized.toUpperCase()
+  const stopPattern = '(?:IDPLATBY|IDVYPLATY|PAYMENTID|PAYOUTID|TYPFAKTURY|REFERENCNICISLO|TYPPLATBY|PRIJEZD|ODJEZD|JMENOHOSTA|MENA|CASTKA|REZERVACE|CELKEM|CELKOVA|IBAN|SMENNYKURZ|$)'
+  const numericMatch = normalized.match(
+    new RegExp(
+      `(?:DATUMVYPLACENICASTKY|DATUMPLATBY|PAYMENTDATE|PAYOUTDATE|TRANSFERDATE)(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}\\.\\d{1,2}\\.\\d{4}|\\d{1,2}\\/\\d{1,2}\\/\\d{4})(?=${stopPattern})`
+    )
+  )
+
+  if (numericMatch?.[1]) {
+    return numericMatch[1]
+  }
+
+  const monthMatch = normalized.match(
+    new RegExp(
+      `(?:DATUMVYPLACENICASTKY|DATUMPLATBY|PAYMENTDATE|PAYOUTDATE|TRANSFERDATE)(\\d{1,2})\\.?(${buildDenseBookingMonthPattern()})(\\d{4})(?=${stopPattern})`
+    )
+  )
+
+  if (!monthMatch?.[1] || !monthMatch[2] || !monthMatch[3]) {
+    return undefined
+  }
+
+  return `${monthMatch[1]}. ${monthMatch[2].toLowerCase()} ${monthMatch[3]}`
+}
+
+function buildDenseBookingMonthPattern(): string {
+  return [
+    'JANUARY',
+    'JAN',
+    'LEDEN',
+    'LEDNA',
+    'FEBRUARY',
+    'FEB',
+    'UNOR',
+    'UNORA',
+    'MARCH',
+    'MAR',
+    'BREZEN',
+    'BREZNA',
+    'APRIL',
+    'APR',
+    'DUBEN',
+    'DUBNA',
+    'MAY',
+    'KVETEN',
+    'KVETNA',
+    'JUNE',
+    'JUN',
+    'CERVEN',
+    'CERVNA',
+    'JULY',
+    'JUL',
+    'CERVENEC',
+    'CERVENCE',
+    'AUGUST',
+    'AUG',
+    'SRPEN',
+    'SRPNA',
+    'SEPTEMBER',
+    'SEP',
+    'SEPT',
+    'ZARI',
+    'RIJEN',
+    'RIJNA',
+    'OCTOBER',
+    'OCT',
+    'NOVEMBER',
+    'NOV',
+    'LISTOPAD',
+    'LISTOPADU',
+    'DECEMBER',
+    'DEC',
+    'PROSINEC',
+    'PROSINCE'
+  ].join('|')
+}
+
+function captureDenseBookingLocalCurrencyTotal(
+  denseNormalized: string,
+  denseAsciiNormalized: string
+): string | undefined {
+  const upperAscii = denseAsciiNormalized.toUpperCase()
+  const localMatch = upperAscii.match(
+    /(?:CELKEM\(CZK\)|CELKOVACASTKAKVYPLACENI\(CZK\))(\d{1,3}(?:,\d{3})+(?:\.\d{2})?(?:KC|CZK)?|\d+\.\d{2}(?:KC|CZK)?)(?=CELKOVACASTKAKVYPLACENI|SMENNYKURZ|BANKOVNIUDAJE|IBAN|$)/
+  )
+
+  if (!localMatch?.[1]) {
+    return undefined
+  }
+
+  const candidate = normalizeBookingStatementMoneyValue(localMatch[1])
+  const currency = candidate ? detectBookingStatementCurrency(candidate) : undefined
+
+  if (!candidate || currency !== 'CZK') {
+    return undefined
+  }
+
+  return candidate
+}
+
+function captureDenseBookingExchangeRate(denseAsciiNormalized: string): string | undefined {
+  const upperAscii = denseAsciiNormalized.toUpperCase()
+  const match = upperAscii.match(
+    /(?:SMENNYKURZ|EXCHANGERATE)(\d{1,3}(?:[.,]\d{4})?)(?=\d{1,3}(?:,\d{3})+\.\d{2}(?:KC|CZK)|BANKOVNIUDAJE|IBAN|$)/
+  )
+
+  return match?.[1]
+}
+
+function captureDenseBookingPrimaryPayoutTotal(
+  denseNormalized: string,
+  denseAsciiNormalized: string
+): string | undefined {
+  const upperAscii = denseAsciiNormalized.toUpperCase()
+  const directMatch = upperAscii.match(
+    /CELKOVACASTKAKVYPLACENI(?!\((?:CZK|EUR|USD)\))([€$]\d{1,3}(?:,\d{3})+(?:\.\d{2})|[€$]\d+\.\d{2}|\d{1,3}(?:,\d{3})+(?:\.\d{2})?(?:EUR|USD)|\d+\.\d{2}(?:EUR|USD))(?=CELKOVACASTKAKVYPLACENI(?:\(|$)|SMENNYKURZ|BANKOVNIUDAJE|IBAN|$)/
+  )
+
+  if (!directMatch?.[1]) {
+    return undefined
+  }
+
+  const candidate = normalizeBookingStatementMoneyValue(directMatch[1])
+
+  if (!candidate || !isPlausibleBookingPayoutTotalCandidate(candidate)) {
+    return undefined
+  }
+
+  const currency = detectBookingStatementCurrency(candidate)
+  return currency === 'EUR' || currency === 'USD' ? candidate : undefined
 }
 
 function captureBookingLocalCurrencyTotal(normalized: string, asciiNormalized: string): string | undefined {
@@ -810,6 +981,15 @@ function resolveBookingPrimaryPayoutTotalCandidate(
       )
     })
     ?? collectBookingMoneyCandidates(scan.normalized).find((value) => {
+      const currency = detectBookingStatementCurrency(value)
+      return Boolean(
+        currency
+        && currency !== 'CZK'
+        && currency !== localCurrency
+        && isPlausibleBookingPayoutTotalCandidate(value)
+      )
+    })
+    ?? collectBookingMoneyCandidates(scan.denseNormalized).find((value) => {
       const currency = detectBookingStatementCurrency(value)
       return Boolean(
         currency

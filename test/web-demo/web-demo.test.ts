@@ -1206,6 +1206,35 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
   })
 
+  it('renders the final built operator page with the real one-glyph-per-line Booking PDF shape parsed into full validator fields', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T20:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-single-glyph-booking-pdf',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>Bookinng35k.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.paymentId: 010638445054')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutDate: 2026-03-12')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.payoutTotal: 1456.42 EUR')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('parserExtracted.localTotal: 35530.12 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.paymentId: 010638445054')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.payoutDate: 2026-03-12')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('validatorInput.payoutTotal: 1456.42 EUR')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
+    expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
+  })
+
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:15.000Z',
@@ -1872,6 +1901,35 @@ function buildCzechFragmentedBookingPayoutStatementPdfLines(): string[] {
     'CZ65 5500 0000 0000 5599 555956',
     'Rezervace RES-BOOK-8841'
   ]
+}
+
+function buildCzechSingleGlyphBookingPayoutStatementPdfLines(): string[] {
+  return Array.from([
+    'Chill apartments',
+    'Sokolská 64',
+    '120 00 Prague',
+    'ID ubytování 2206371',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Typ faktury',
+    'Referenční číslo',
+    'Typ platby',
+    'Příjezd',
+    'Odjezd',
+    'Jméno hosta',
+    'Měna',
+    'Částka',
+    'Rezervace 5029129741',
+    'Reservation 6. března 2026 8. března 2026',
+    'Celkem (CZK) 35,530.12 Kč',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celková částka k vyplacení (CZK)',
+    'Směnný kurz 24.3955',
+    'Bankovní údaje',
+    'IBAN CZ65 5500 0000 0000 5599 555956'
+  ].join(''))
 }
 
 describe('buildFixtureWebDemo', () => {
