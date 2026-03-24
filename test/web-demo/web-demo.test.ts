@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
-import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
+import { buildBrowserRuntimeStateFromSelectedFiles, createBrowserRuntime } from '../../src/upload-web/browser-runtime'
 
 function collectRuntimePayoutDiagnosticDataFromState(state: Awaited<ReturnType<typeof buildBrowserRuntimeStateFromSelectedFiles>>) {
   const runtimeAudit = state.runtimeAudit.payoutDiagnostics
@@ -991,6 +992,28 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('Runtime matched refs count:')
   })
 
+  it('renders the final operator-facing web page with Booking payout PDF under recognized supported supplements instead of unsupported files', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T17:45:00.000Z',
+      month: '2026-03',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildGlyphSeparatedBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Podporovaný doplňkový payout dokument')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Booking payout statement PDF')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Nepodporované nebo nerozpoznané soubory</h4><ul><li><strong>Bookinng35k.pdf</strong>')
+    expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
+  })
+
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:15.000Z',
@@ -1132,6 +1155,232 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…')
   })
 })
+
+interface StubDomElement {
+  id: string
+  innerHTML: string
+  textContent: string
+  hidden: boolean
+  className: string
+  value: string
+  files: unknown[]
+  listeners: Record<string, () => void>
+  setAttribute(name: string, value: string): void
+  addEventListener(name: string, listener: () => void): void
+}
+
+async function executeWebDemoMainWorkflow(input: {
+  generatedAt: string
+  month: string
+  files: Array<{
+    name: string
+    type?: string
+    text?: () => Promise<string>
+    arrayBuffer?: () => Promise<ArrayBuffer>
+  }>
+}): Promise<{
+  preparedFilesContent: StubDomElement
+  runtimeSummaryUploadedFiles: StubDomElement
+}> {
+  const result = await buildWebDemo({
+    generatedAt: input.generatedAt
+  })
+  const script = extractMainInlineWebDemoScript(result.html)
+  const elements = createWebDemoDomStub()
+  const windowObject = {
+    location: { search: '' },
+    __hotelFinanceCreateBrowserRuntime: () => createBrowserRuntime()
+  }
+
+  runInNewContext(stripRuntimeBootstrap(script), {
+    window: windowObject,
+    document: {
+      getElementById(id: string) {
+        return elements[id] ?? createStubDomElement(id, elements)
+      }
+    },
+    URLSearchParams,
+    console
+  })
+
+  elements['monthly-files'].files = input.files
+  elements['month-label'].value = input.month
+  elements['prepare-upload'].listeners.click()
+
+  for (let index = 0; index < 8; index += 1) {
+    await Promise.resolve()
+  }
+
+  return {
+    preparedFilesContent: elements['prepared-files-content'],
+    runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files']
+  }
+}
+
+function extractMainInlineWebDemoScript(html: string): string {
+  const match = html.match(/<script>\s*([\s\S]*?)\s*<\/script>\s*<\/body>/)
+
+  if (!match?.[1]) {
+    throw new Error('Main web-demo inline script not found.')
+  }
+
+  const script = match[1]
+  const runtimeStart = script.indexOf("const fileInput = document.getElementById('monthly-files');")
+
+  if (runtimeStart === -1) {
+    throw new Error('Main web-demo runtime body not found.')
+  }
+
+  return script.slice(runtimeStart)
+}
+
+function stripRuntimeBootstrap(script: string): string {
+  return script
+}
+
+function createWebDemoDomStub(): Record<string, StubDomElement> {
+  const elements: Record<string, StubDomElement> = {}
+  const ids = [
+    'monthly-files',
+    'month-label',
+    'prepare-upload',
+    'runtime-output',
+    'runtime-stage-copy',
+    'build-fingerprint',
+    'runtime-summary-uploaded-files',
+    'runtime-summary-normalized-transactions',
+    'runtime-summary-review-items',
+    'runtime-summary-export-files',
+    'prepared-files-section',
+    'prepared-files-content',
+    'review-summary-section',
+    'review-summary-content',
+    'report-preview-body',
+    'reservation-settlement-overview-section',
+    'reservation-settlement-overview-content',
+    'ancillary-settlement-overview-section',
+    'ancillary-settlement-overview-content',
+    'matched-payout-batches-section',
+    'matched-payout-batches-content',
+    'unmatched-payout-batches-section',
+    'unmatched-payout-batches-content',
+    'unmatched-reservations-section',
+    'unmatched-reservations-content',
+    'export-handoff-section',
+    'export-handoff-content'
+  ]
+
+  for (const id of ids) {
+    createStubDomElement(id, elements)
+  }
+
+  return elements
+}
+
+function createStubDomElement(
+  id: string,
+  elements: Record<string, StubDomElement>
+): StubDomElement {
+  const element: StubDomElement = {
+    id,
+    innerHTML: '',
+    textContent: '',
+    hidden: false,
+    className: '',
+    value: '',
+    files: [],
+    listeners: {},
+    setAttribute() {},
+    addEventListener(name: string, listener: () => void) {
+      element.listeners[name] = listener
+    }
+  }
+
+  elements[id] = element
+  return element
+}
+
+function createWebDemoRuntimeFile(name: string, content: string) {
+  return {
+    name,
+    async text() {
+      return content
+    }
+  }
+}
+
+function createWebDemoRuntimePdfFileFromTextLines(name: string, lines: string[]) {
+  const binary = Buffer.from(buildWebDemoRuntimePdfFromTextLines(lines), 'base64')
+
+  return {
+    name,
+    type: 'application/pdf',
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      return binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength)
+    }
+  }
+}
+
+function buildWebDemoRuntimePdfFromTextLines(lines: string[]): string {
+  const stream = [
+    'BT',
+    '/F1 12 Tf',
+    '50 780 Td',
+    ...lines.flatMap((line, index) => index === 0
+      ? [`<${encodeWebDemoPdfHexString(line)}> Tj`]
+      : ['0 -18 Td', `<${encodeWebDemoPdfHexString(line)}> Tj`]),
+    'ET'
+  ].join('\n')
+
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${stream.length} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function encodeWebDemoPdfHexString(value: string): string {
+  return Array.from(value)
+    .map((char) => char.charCodeAt(0).toString(16).padStart(4, '0'))
+    .join('')
+}
+
+function buildGlyphSeparatedBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: P A Y O U T - B O O K - 2 0 2 6 0 3 1 0',
+    'Payment date: 2 0 2 6 - 0 3 - 1 2',
+    'Transfer total: 1 2 5 0 , 0 0 C Z K',
+    'IBAN: C Z 6 5 5 5 0 0 0 0 0 0 0 0 0 0 5 5 9 9 5 5 5 9 5 6',
+    'Included reservations: RES-BOOK-8841 1 250,00 CZK'
+  ]
+}
 
 describe('buildFixtureWebDemo', () => {
   it('keeps the old fixture demo available as an explicit auxiliary path', () => {

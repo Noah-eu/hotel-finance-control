@@ -1085,6 +1085,44 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('recognizes Booking payout statement PDFs from glyph-separated browser text content', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Bookinng35k.pdf',
+        content: buildGlyphSeparatedBookingPayoutStatementContent(),
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-24T08:06:00.000Z'
+      }
+    ])
+
+    expect(prepared.importedFiles).toEqual([
+      expect.objectContaining({
+        sourceDocument: expect.objectContaining({
+          fileName: 'Bookinng35k.pdf',
+          sourceSystem: 'booking',
+          documentType: 'payout_statement'
+        }),
+        routing: expect.objectContaining({
+          classificationBasis: 'content',
+          parserId: 'booking-payout-statement-pdf',
+          role: 'supplemental'
+        })
+      })
+    ])
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        parserId: 'booking-payout-statement-pdf',
+        role: 'supplemental'
+      })
+    ])
+  })
+
   it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {
     const booking = getRealInputFixture('booking-payout-export')
 
@@ -1389,6 +1427,18 @@ function buildBookingPayoutStatementVariantContent(): string {
     'Included',
     'reservations',
     'RES-BOOK-8841 1 250,00 CZK'
+  ].join('\n')
+}
+
+function buildGlyphSeparatedBookingPayoutStatementContent(): string {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: P A Y O U T - B O O K - 2 0 2 6 0 3 1 0',
+    'Payment date: 2 0 2 6 - 0 3 - 1 2',
+    'Transfer total: 1 2 5 0 , 0 0 C Z K',
+    'IBAN: C Z 6 5 5 5 0 0 0 0 0 0 0 0 0 0 5 5 9 9 5 5 5 9 5 6',
+    'Included reservations: RES-BOOK-8841 1 250,00 CZK'
   ].join('\n')
 }
 

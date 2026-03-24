@@ -54,6 +54,23 @@ describe('parseBookingPayoutStatementPdf', () => {
     ])
   })
 
+  it('parses glyph-separated Booking payout statement text from browser PDF extraction', () => {
+    const fixture = getRealInputFixture('booking-payout-statement-pdf')
+
+    const records = parseBookingPayoutStatementPdf({
+      sourceDocument: fixture.sourceDocument,
+      content: buildGlyphSeparatedBookingPayoutStatementContent(),
+      extractedAt: '2026-03-24T11:20:45.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        ...fixture.expectedExtractedRecords[0],
+        extractedAt: '2026-03-24T11:20:45.000Z'
+      })
+    ])
+  })
+
   it('fails clearly when required labeled payout fields are missing', () => {
     expect(() =>
       parseBookingPayoutStatementPdf({
@@ -67,3 +84,15 @@ describe('parseBookingPayoutStatementPdf', () => {
     ).toThrow('Booking payout statement PDF is missing required labeled fields: paymentId, payoutDate, payoutTotal.')
   })
 })
+
+function buildGlyphSeparatedBookingPayoutStatementContent(): string {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: P A Y O U T - B O O K - 2 0 2 6 0 3 1 0',
+    'Payment date: 2 0 2 6 - 0 3 - 1 2',
+    'Transfer total: 1 2 5 0 , 0 0 C Z K',
+    'IBAN: C Z 6 5 5 5 0 0 0 0 0 0 0 0 0 0 5 5 9 9 5 5 5 9 5 6',
+    'Included reservations: RES-BOOK-8841 1 250,00 CZK'
+  ].join('\n')
+}

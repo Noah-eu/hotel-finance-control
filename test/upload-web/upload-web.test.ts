@@ -2093,6 +2093,65 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('keeps the real mixed 4-file browser outcome stable when the Booking payout PDF text is extracted as glyph-separated browser tokens', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementGlyphSeparatedPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T17:25:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        parserId: 'booking-payout-statement-pdf',
+        role: 'supplemental',
+        extractedCount: 1
+      })
+    ])
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.some((item) => item.title.startsWith('Booking payout '))
+    ).toBe(true)
+  })
+
   it('passes extracted PDF text cues through the browser upload contract into monthly classification for the real 4-file flow', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
@@ -2698,6 +2757,18 @@ function buildBookingPayoutStatementFragmentedPdfLines(): string[] {
     'Included',
     'reservations',
     'RES-BOOK-8841'
+  ]
+}
+
+function buildBookingPayoutStatementGlyphSeparatedPdfLines(): string[] {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: P A Y O U T - B O O K - 2 0 2 6 0 3 1 0',
+    'Payment date: 2 0 2 6 - 0 3 - 1 2',
+    'Transfer total: 1 2 5 0 , 0 0 C Z K',
+    'IBAN: C Z 6 5 5 5 0 0 0 0 0 0 0 0 0 0 5 5 9 9 5 5 5 9 5 6',
+    'Included reservations: RES-BOOK-8841 1 250,00 CZK'
   ]
 }
 
