@@ -62,8 +62,37 @@ describe('buildUploadWebFlow', () => {
     expect(result.preparedFiles[0]).toMatchObject({
       fileName: 'booking-payout-2026-03.csv',
       sourceSystem: 'booking',
-      documentType: 'ota_report'
+      documentType: 'ota_report',
+      classificationBasis: 'content',
+      warnings: []
     })
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 3,
+      supportedFileCount: 3,
+      unsupportedFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking-payout-2026-03.csv',
+        status: 'supported',
+        sourceSystem: 'booking',
+        classificationBasis: 'content',
+        parserId: 'booking'
+      }),
+      expect.objectContaining({
+        fileName: 'raiffeisen-2026-03.csv',
+        status: 'supported',
+        sourceSystem: 'bank',
+        classificationBasis: 'content'
+      }),
+      expect.objectContaining({
+        fileName: 'invoice-2026-332.txt',
+        status: 'supported',
+        sourceSystem: 'invoice',
+        classificationBasis: 'file-name',
+        parserId: 'invoice'
+      })
+    ])
     expect(result.monthLabel).toBe('neuvedeno')
     expect(result.extractedRecords.some((file) => file.extractedCount > 0)).toBe(true)
     expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
@@ -259,6 +288,68 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(result.reportSummary.normalizedTransactionCount).toBe(2)
     expect(result.reportTransactions).toHaveLength(2)
+  })
+
+  it('keeps the real Airbnb plus bank payout outcome stable when extra monthly files are added and surfaces unsupported files safely', async () => {
+    const invoice = getRealInputFixture('invoice-document')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimeFile(invoice.sourceDocument.fileName, invoice.rawInput.content),
+        createRuntimeFile('notes.csv', 'foo,bar\n1,2')
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T10:00:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 3,
+      unsupportedFileCount: 1
+    })
+    expect(result.preparedFiles.map((file) => file.fileName)).toEqual([
+      'airbnb.csv',
+      'Pohyby_5599955956_202603191023.csv',
+      'invoice-2026-332.txt'
+    ])
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        sourceSystem: 'airbnb',
+        classificationBasis: 'content',
+        parserId: 'airbnb'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        sourceSystem: 'bank',
+        classificationBasis: 'content'
+      }),
+      expect.objectContaining({
+        fileName: 'invoice-2026-332.txt',
+        status: 'supported',
+        sourceSystem: 'invoice',
+        classificationBasis: 'file-name',
+        parserId: 'invoice'
+      }),
+      expect.objectContaining({
+        fileName: 'notes.csv',
+        status: 'unsupported',
+        sourceSystem: 'unknown',
+        classificationBasis: 'unknown',
+        reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.'
+      })
+    ])
+    expect(result.extractedRecords.map((file) => ({ fileName: file.fileName, extractedCount: file.extractedCount }))).toEqual([
+      { fileName: 'airbnb.csv', extractedCount: 17 },
+      { fileName: 'Pohyby_5599955956_202603191023.csv', extractedCount: 16 },
+      { fileName: 'invoice-2026-332.txt', extractedCount: 1 }
+    ])
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(15)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
   })
 
   it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {

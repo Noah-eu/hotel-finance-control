@@ -1,6 +1,6 @@
 import { buildExportArtifactsFiles } from '../export/shared'
 import {
-  prepareUploadedMonthlyFiles,
+  prepareUploadedMonthlyBatchFiles,
   runMonthlyReconciliationBatch,
   type UploadedMonthlyFile
 } from '../monthly-batch'
@@ -17,7 +17,8 @@ export interface BuildBrowserRuntimeStateInput {
 export function buildBrowserRuntimeUploadStateFromFiles(
   input: BuildBrowserRuntimeStateInput
 ): BrowserRuntimeUploadState {
-  const importedFiles = prepareUploadedMonthlyFiles(input.files)
+  const prepared = prepareUploadedMonthlyBatchFiles(input.files)
+  const importedFiles = prepared.importedFiles
   const batch = runMonthlyReconciliationBatch({
     files: importedFiles,
     reconciliationContext: {
@@ -40,12 +41,31 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     generatedAt: input.generatedAt,
     runId: input.runId,
     monthLabel: deriveMonthLabel(input.runId),
+    routingSummary: {
+      uploadedFileCount: prepared.fileRoutes.length,
+      supportedFileCount: prepared.fileRoutes.filter((file) => file.status === 'supported').length,
+      unsupportedFileCount: prepared.fileRoutes.filter((file) => file.status === 'unsupported').length
+    },
     runtimeAudit,
     preparedFiles: importedFiles.map((file) => ({
       fileName: file.sourceDocument.fileName,
       sourceDocumentId: file.sourceDocument.id,
       sourceSystem: file.sourceDocument.sourceSystem,
-      documentType: file.sourceDocument.documentType
+      documentType: file.sourceDocument.documentType,
+      parserId: file.routing?.parserId,
+      classificationBasis: file.routing?.classificationBasis ?? 'unknown',
+      warnings: file.routing?.warnings ?? []
+    })),
+    fileRoutes: prepared.fileRoutes.map((file) => ({
+      fileName: file.fileName,
+      status: file.status,
+      sourceSystem: file.sourceSystem,
+      documentType: file.documentType,
+      sourceDocumentId: file.sourceDocumentId,
+      parserId: file.parserId,
+      classificationBasis: file.classificationBasis,
+      warnings: file.warnings,
+      reason: file.reason
     })),
     extractedRecords: importedFiles.map((file) => ({
       fileName: file.sourceDocument.fileName,
@@ -99,7 +119,7 @@ export function buildBrowserRuntimeUploadStateFromFiles(
 }
 
 function buildRuntimeAudit(
-  importedFiles: ReturnType<typeof prepareUploadedMonthlyFiles>,
+  importedFiles: ReturnType<typeof prepareUploadedMonthlyBatchFiles>['importedFiles'],
   batch: ReturnType<typeof runMonthlyReconciliationBatch>,
   review: ReturnType<typeof buildReviewScreen>
 ): BrowserRuntimeUploadState['runtimeAudit'] {

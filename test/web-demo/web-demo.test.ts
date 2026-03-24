@@ -304,7 +304,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="runtime-summary-normalized-transactions"')
     expect(result.html).toContain('id="runtime-summary-review-items"')
     expect(result.html).toContain('id="runtime-summary-export-files"')
-    expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String((state.preparedFiles || []).length);")
+    expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String(state.routingSummary?.uploadedFileCount ?? (state.fileRoutes || []).length ?? (state.preparedFiles || []).length);")
     expect(result.html).toContain("runtimeSummaryNormalizedTransactions.textContent = String(state.reviewSummary?.normalizedTransactionCount ?? state.reportSummary?.normalizedTransactionCount ?? 0);")
     expect(result.html).toContain("runtimeSummaryReviewItems.textContent = String(state.reviewSummary?.exceptionCount ?? 0);")
     expect(result.html).toContain("runtimeSummaryExportFiles.textContent = String((state.exportFiles || []).length);")
@@ -955,6 +955,19 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('Runtime unmatched panel title source values')
     expect(result.html).not.toContain('Runtime matched titles')
     expect(result.html).not.toContain('Runtime unmatched titles')
+  })
+
+  it('renders the operator-facing monthly ingestion trace from explicit file routing metadata', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-24T10:15:00.000Z'
+    })
+
+    expect(result.html).toContain('const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];')
+    expect(result.html).toContain('Rozpoznáno souborů:')
+    expect(result.html).toContain('Nepodporované nebo nerozpoznané soubory')
+    expect(result.html).toContain('buildClassificationBasisLabel')
+    expect(result.html).toContain('state.routingSummary?.uploadedFileCount')
+    expect(result.html).not.toContain('Runtime matched refs count:')
   })
 
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {

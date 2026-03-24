@@ -17,6 +17,7 @@ import type {
   MonthlyBatchInput,
   MonthlyBatchResult,
   MonthlyBatchService,
+  PreparedUploadedMonthlyFilesResult,
   UploadedMonthlyFile
 } from './contracts'
 
@@ -74,11 +75,45 @@ export function runMonthlyReconciliationBatch(input: MonthlyBatchInput): Monthly
 }
 
 export function prepareUploadedMonthlyFiles(files: UploadedMonthlyFile[]): ImportedMonthlySourceFile[] {
-  return files.map((file, index) => ({
-    sourceDocument: buildSourceDocument(file, index),
+  return prepareUploadedMonthlyBatchFiles(files).importedFiles.map((file) => ({
+    sourceDocument: file.sourceDocument,
     content: file.content,
     binaryContentBase64: file.binaryContentBase64
   }))
+}
+
+export function prepareUploadedMonthlyBatchFiles(
+  files: UploadedMonthlyFile[]
+): PreparedUploadedMonthlyFilesResult {
+  const classifiedFiles = files.map((file, index) => classifyUploadedMonthlyFile(file, index))
+  const duplicateWarningsByIndex = collectDuplicateWarnings(classifiedFiles, files)
+
+  const fileRoutes = classifiedFiles.map((classifiedFile, index) => ({
+    ...classifiedFile.fileRoute,
+    warnings: [...classifiedFile.fileRoute.warnings, ...duplicateWarningsByIndex[index]]
+  }))
+
+  const importedFiles = classifiedFiles.flatMap((classifiedFile, index) => {
+    if (!classifiedFile.sourceDocument || !classifiedFile.parserId) {
+      return []
+    }
+
+    return [{
+      sourceDocument: classifiedFile.sourceDocument,
+      content: files[index].content,
+      binaryContentBase64: files[index].binaryContentBase64,
+      routing: {
+        classificationBasis: classifiedFile.fileRoute.classificationBasis,
+        parserId: classifiedFile.parserId,
+        warnings: [...classifiedFile.fileRoute.warnings, ...duplicateWarningsByIndex[index]]
+      }
+    }]
+  })
+
+  return {
+    importedFiles,
+    fileRoutes
+  }
 }
 
 function selectParser(sourceDocument: SourceDocument, content: string): Parser {
@@ -164,14 +199,12 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
   return 'unknown'
 }
 
-function buildSourceDocument(file: UploadedMonthlyFile, index: number): SourceDocument {
+function buildSourceDocument(
+  file: UploadedMonthlyFile,
+  index: number,
+  sourceSystem: SourceDocument['sourceSystem']
+): SourceDocument {
   const fileName = file.name.trim()
-  const normalized = fileName.toLowerCase()
-  const sourceSystem = inferUploadedSourceSystem({
-    fileName: normalized,
-    content: file.content,
-    binaryContentBase64: file.binaryContentBase64
-  })
   const documentType = inferDocumentType(sourceSystem)
 
   return {
@@ -183,52 +216,122 @@ function buildSourceDocument(file: UploadedMonthlyFile, index: number): SourceDo
   }
 }
 
-function inferUploadedSourceSystem(input: {
+function classifyUploadedMonthlyFile(
+  file: UploadedMonthlyFile,
+  index: number
+): {
+  fileRoute: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]
+  sourceDocument?: SourceDocument
+  parserId?: string
+} {
+  const classification = inferUploadedFileClassification({
+    fileName: file.name,
+    content: file.content,
+    binaryContentBase64: file.binaryContentBase64
+  })
+
+  if (classification.sourceSystem === 'unknown') {
+    return {
+      fileRoute: {
+        fileName: file.name.trim(),
+        uploadedAt: file.uploadedAt,
+        status: 'unsupported',
+        sourceSystem: 'unknown',
+        documentType: 'other',
+        classificationBasis: classification.classificationBasis,
+        warnings: [],
+        reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.'
+      }
+    }
+  }
+
+  const sourceDocument = buildSourceDocument(file, index, classification.sourceSystem)
+  const parserId = resolveParserId(sourceDocument, file.content)
+
+  return {
+    sourceDocument,
+    parserId,
+    fileRoute: {
+      fileName: sourceDocument.fileName,
+      uploadedAt: sourceDocument.uploadedAt,
+      status: 'supported',
+      sourceSystem: sourceDocument.sourceSystem,
+      documentType: sourceDocument.documentType,
+      classificationBasis: classification.classificationBasis,
+      parserId,
+      sourceDocumentId: sourceDocument.id,
+      warnings: []
+    }
+  }
+}
+
+function inferUploadedFileClassification(input: {
   fileName: string
   content: string
   binaryContentBase64?: string
-}): SourceDocument['sourceSystem'] {
+}): {
+  sourceSystem: SourceDocument['sourceSystem']
+  classificationBasis: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['classificationBasis']
+} {
+  const byContent = inferSourceSystemFromContent(input.content)
+
+  if (byContent !== 'unknown') {
+    return {
+      sourceSystem: byContent,
+      classificationBasis: 'content'
+    }
+  }
+
+  if (input.binaryContentBase64 && input.fileName.toLowerCase().includes('prehled_rezervaci')) {
+    return {
+      sourceSystem: 'previo',
+      classificationBasis: 'binary-workbook'
+    }
+  }
+
   const byFileName = inferSourceSystemFromFileName(input.fileName)
 
   if (byFileName !== 'unknown') {
-    return byFileName
+    return {
+      sourceSystem: byFileName,
+      classificationBasis: 'file-name'
+    }
   }
 
-  if (input.binaryContentBase64 && input.fileName.includes('prehled_rezervaci')) {
-    return 'previo'
+  return {
+    sourceSystem: 'unknown',
+    classificationBasis: 'unknown'
   }
-
-  return inferSourceSystemFromContent(input.content)
 }
 
 function inferSourceSystemFromFileName(fileName: string): SourceDocument['sourceSystem'] {
   const normalizedFileName = fileName.toLowerCase()
 
-  if (fileName.includes('raiff') || fileName.includes('raiffeisen')) {
+  if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
     return 'bank'
   }
 
-  if (fileName.includes('fio')) {
+  if (normalizedFileName.includes('fio')) {
     return 'bank'
   }
 
-  if (fileName.includes('booking')) {
+  if (normalizedFileName.includes('booking')) {
     return 'booking'
   }
 
-  if (fileName.includes('airbnb')) {
+  if (normalizedFileName.includes('airbnb')) {
     return 'airbnb'
   }
 
-  if (fileName.includes('expedia')) {
+  if (normalizedFileName.includes('expedia')) {
     return 'expedia'
   }
 
-  if (fileName.includes('previo')) {
+  if (normalizedFileName.includes('previo')) {
     return 'previo'
   }
 
-  if (fileName.includes('prehled_rezervaci')) {
+  if (normalizedFileName.includes('prehled_rezervaci')) {
     return 'previo'
   }
 
@@ -240,11 +343,15 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
     return 'comgate'
   }
 
-  if (fileName.includes('invoice') || fileName.includes('faktura')) {
+  if (normalizedFileName.includes('invoice') || normalizedFileName.includes('faktura')) {
     return 'invoice'
   }
 
-  if (fileName.includes('receipt') || fileName.includes('uctenka') || fileName.includes('účtenka')) {
+  if (
+    normalizedFileName.includes('receipt')
+    || normalizedFileName.includes('uctenka')
+    || normalizedFileName.includes('účtenka')
+  ) {
     return 'receipt'
   }
 
@@ -286,7 +393,9 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
 
   if (hasAllHeaderFields(headerFields, ['datum převodu', 'částka převodu', 'měna', 'transfer id', 'confirmation code', 'listing name'])
     || hasAllHeaderFields(headerFields, ['datum prevodu', 'castka prevodu', 'mena', 'transfer id', 'confirmation code', 'listing name'])
-    || hasAllHeaderFields(headerFields, ['payout amount', 'currency', 'payout id', 'confirmation code', 'listing name'])) {
+    || hasAllHeaderFields(headerFields, ['payout amount', 'currency', 'payout id', 'confirmation code', 'listing name'])
+    || hasAllHeaderFields(headerFields, ['datum', 'bude připsán do dne', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
+    || hasAllHeaderFields(headerFields, ['datum', 'bude pripsan do dne', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])) {
     return 'airbnb'
   }
 
@@ -399,6 +508,36 @@ function inferDocumentType(sourceSystem: SourceDocument['sourceSystem']): Source
     default:
       return 'other'
   }
+}
+
+function resolveParserId(sourceDocument: SourceDocument, content: string): string {
+  if (sourceDocument.sourceSystem === 'bank') {
+    return inferBankParserVariant(sourceDocument.fileName, content)
+  }
+
+  return sourceDocument.sourceSystem
+}
+
+function collectDuplicateWarnings(
+  classifiedFiles: Array<ReturnType<typeof classifyUploadedMonthlyFile>>,
+  files: UploadedMonthlyFile[]
+): string[][] {
+  return files.map((file, index) => {
+    const duplicateIndex = files.findIndex((candidate, candidateIndex) =>
+      candidateIndex < index
+      && candidate.content === file.content
+      && candidate.binaryContentBase64 === file.binaryContentBase64
+      && classifiedFiles[candidateIndex]?.fileRoute.status === classifiedFiles[index]?.fileRoute.status
+      && classifiedFiles[candidateIndex]?.fileRoute.sourceSystem === classifiedFiles[index]?.fileRoute.sourceSystem
+      && classifiedFiles[candidateIndex]?.fileRoute.documentType === classifiedFiles[index]?.fileRoute.documentType
+    )
+
+    if (duplicateIndex === -1) {
+      return []
+    }
+
+    return [`Možný duplicitní upload stejného obsahu jako ${files[duplicateIndex]!.name.trim()}.`]
+  })
 }
 
 function slugify(fileName: string): string {

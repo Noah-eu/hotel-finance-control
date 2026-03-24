@@ -124,7 +124,13 @@ function renderOperatorWebDemoHtml(input: {
     generatedAt: input.generatedAt,
     runId: 'web-demo-empty-initial-state',
     monthLabel: '',
+    routingSummary: {
+      uploadedFileCount: 0,
+      supportedFileCount: 0,
+      unsupportedFileCount: 0
+    },
     preparedFiles: [],
+    fileRoutes: [],
     extractedRecords: [],
     reviewSummary: {
       matchedGroupCount: 0,
@@ -531,16 +537,104 @@ ${showRuntimePayoutDiagnostics ? `
 
       ${buildExtractedRecordsMarkupFunction}
 
+      function buildClassificationBasisLabel(value) {
+        if (value === 'content') {
+          return 'podle obsahu';
+        }
+
+        if (value === 'binary-workbook') {
+          return 'podle workbook exportu';
+        }
+
+        if (value === 'file-name') {
+          return 'podle názvu souboru';
+        }
+
+        return 'bez rozpoznání';
+      }
+
+      function buildFileRouteSourceLabel(sourceSystem, documentType) {
+        if (sourceSystem === 'bank') {
+          return 'Bankovní výpis';
+        }
+
+        if (sourceSystem === 'booking') {
+          return 'Booking payout report';
+        }
+
+        if (sourceSystem === 'airbnb') {
+          return 'Airbnb payout report';
+        }
+
+        if (sourceSystem === 'comgate') {
+          return 'Comgate platební report';
+        }
+
+        if (sourceSystem === 'expedia') {
+          return 'Expedia payout report';
+        }
+
+        if (sourceSystem === 'previo') {
+          return 'Previo rezervační export';
+        }
+
+        if (documentType === 'invoice' || sourceSystem === 'invoice') {
+          return 'Dodavatelská faktura';
+        }
+
+        if (documentType === 'receipt' || sourceSystem === 'receipt') {
+          return 'Výdajový doklad';
+        }
+
+        return 'Nepřiřazený vstup';
+      }
+
       function buildPreparedFilesMarkup(state) {
-        const preparedFiles = state.preparedFiles.length === 0
-          ? '<li>Žádné připravené soubory.</li>'
-          : state.preparedFiles.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType) + '</span><br /><code>' + escapeHtml(file.sourceDocumentId) + '</code></li>').join('');
+        const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
+        const recognizedFiles = fileRoutes.filter((file) => file.status === 'supported');
+        const unsupportedFiles = fileRoutes.filter((file) => file.status === 'unsupported');
+        const preparedFiles = recognizedFiles.length === 0
+          ? '<li>Žádné rozpoznané soubory.</li>'
+          : recognizedFiles.map((file) => {
+            const parserLine = file.parserId ? ' · parser ' + escapeHtml(file.parserId) : '';
+            const warningLine = file.warnings && file.warnings.length > 0
+              ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
+              : '';
+
+            return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
+              + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
+              + parserLine
+              + ' · ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
+              + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code>'
+              + warningLine
+              + '</li>';
+          }).join('');
+        const unsupportedMarkup = unsupportedFiles.length === 0
+          ? '<p class="hint">V tomto běhu se neobjevily žádné nepodporované nebo nerozpoznané soubory.</p>'
+          : [
+            '<h4>Nepodporované nebo nerozpoznané soubory</h4>',
+            '<ul>' + unsupportedFiles.map((file) => {
+              const warningLine = file.warnings && file.warnings.length > 0
+                ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
+                : '';
+
+              return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
+                + escapeHtml(file.reason || 'Soubor nebylo možné bezpečně přiřadit k podporovanému zdroji.')
+                + '</span><br /><span class="hint">Klasifikace: '
+                + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
+                + '</span>'
+                + warningLine
+                + '</li>';
+            }).join('') + '</ul>'
+          ].join('');
 
         const extractedRecords = buildExtractedRecordsMarkup(state.extractedRecords, escapeHtml);
 
         return [
           '<p class="hint">Tato část po spuštění zobrazuje skutečný runtime výsledek místo původního snapshotu.</p>',
+          '<p class="hint">Rozpoznáno souborů: ' + escapeHtml(String((state.routingSummary && state.routingSummary.supportedFileCount) || recognizedFiles.length)) + ' · Nepodporováno: ' + escapeHtml(String((state.routingSummary && state.routingSummary.unsupportedFileCount) || unsupportedFiles.length)) + '</p>',
           '<ul>' + preparedFiles + '</ul>',
+          unsupportedMarkup,
           '<h4>Extrahované záznamy</h4>',
           '<ul>' + extractedRecords + '</ul>'
         ].join('');
@@ -750,7 +844,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimePayoutDiagnosticsPhase(phase);
 
         if (runtimeSummaryUploadedFiles) {
-          runtimeSummaryUploadedFiles.textContent = String((state.preparedFiles || []).length);
+          runtimeSummaryUploadedFiles.textContent = String(state.routingSummary?.uploadedFileCount ?? (state.fileRoutes || []).length ?? (state.preparedFiles || []).length);
         }
         if (runtimeSummaryNormalizedTransactions) {
           runtimeSummaryNormalizedTransactions.textContent = String(state.reviewSummary?.normalizedTransactionCount ?? state.reportSummary?.normalizedTransactionCount ?? 0);

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
-import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
+import {
+  prepareUploadedMonthlyBatchFiles,
+  prepareUploadedMonthlyFiles,
+  runMonthlyReconciliationBatch
+} from '../../src/monthly-batch'
 
 describe('runMonthlyReconciliationBatch', () => {
   it('runs deterministic extraction, reconciliation, and reporting over representative monthly files', () => {
@@ -987,6 +991,82 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(prepared.map((file) => file.sourceDocument.sourceSystem)).toEqual(['booking', 'airbnb', 'comgate'])
     expect(prepared.map((file) => file.sourceDocument.documentType)).toEqual(['ota_report', 'ota_report', 'payment_gateway_report'])
+  })
+
+  it('separates supported and unsupported uploaded files with deterministic routing metadata', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+    const invoice = getRealInputFixture('invoice-document')
+
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'opaque.csv',
+        content: booking.rawInput.content,
+        uploadedAt: '2026-03-24T08:00:00.000Z'
+      },
+      {
+        name: invoice.sourceDocument.fileName,
+        content: invoice.rawInput.content,
+        uploadedAt: '2026-03-24T08:01:00.000Z'
+      },
+      {
+        name: 'notes.csv',
+        content: 'foo,bar\n1,2',
+        uploadedAt: '2026-03-24T08:02:00.000Z'
+      }
+    ])
+
+    expect(prepared.importedFiles.map((file) => file.sourceDocument.sourceSystem)).toEqual(['booking', 'invoice'])
+    expect(prepared.importedFiles.map((file) => file.routing?.classificationBasis)).toEqual(['content', 'file-name'])
+    expect(prepared.importedFiles.map((file) => file.routing?.parserId)).toEqual(['booking', 'invoice'])
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'opaque.csv',
+        status: 'supported',
+        sourceSystem: 'booking',
+        documentType: 'ota_report',
+        classificationBasis: 'content',
+        parserId: 'booking'
+      }),
+      expect.objectContaining({
+        fileName: invoice.sourceDocument.fileName,
+        status: 'supported',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'file-name',
+        parserId: 'invoice'
+      }),
+      expect.objectContaining({
+        fileName: 'notes.csv',
+        status: 'unsupported',
+        sourceSystem: 'unknown',
+        documentType: 'other',
+        classificationBasis: 'unknown',
+        reason: 'Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.'
+      })
+    ])
+  })
+
+  it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {
+    const booking = getRealInputFixture('booking-payout-export')
+
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'booking-one.csv',
+        content: booking.rawInput.content,
+        uploadedAt: '2026-03-24T08:10:00.000Z'
+      },
+      {
+        name: 'booking-two.csv',
+        content: booking.rawInput.content,
+        uploadedAt: '2026-03-24T08:10:30.000Z'
+      }
+    ])
+
+    expect(prepared.importedFiles).toHaveLength(2)
+    expect(prepared.fileRoutes[0]?.warnings).toEqual([])
+    expect(prepared.fileRoutes[1]?.warnings).toEqual([
+      'Možný duplicitní upload stejného obsahu jako booking-one.csv.'
+    ])
   })
 
   it('surfaces the real uploaded Airbnb to RB matching outcome in the shared monthly-batch path', () => {

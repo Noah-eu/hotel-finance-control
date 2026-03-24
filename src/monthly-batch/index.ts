@@ -11,11 +11,15 @@ export type {
   MonthlyBatchInput,
   MonthlyBatchResult,
   MonthlyBatchService,
+  PreparedUploadedMonthlyFilesResult,
+  UploadedMonthlyFileClassificationBasis,
+  UploadedMonthlyFileRoute,
   UploadedMonthlyFile
 } from './contracts'
 
 export {
   DefaultMonthlyBatchService,
+  prepareUploadedMonthlyBatchFiles,
   prepareUploadedMonthlyFiles,
   runMonthlyReconciliationBatch
 } from './service'
