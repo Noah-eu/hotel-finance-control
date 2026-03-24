@@ -2015,7 +2015,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
   })
 
-  it('accounts for all four selected files in the real mixed browser monthly flow and keeps the Booking PDF visible as a supplemental outcome', async () => {
+  it('accounts for all four selected files in the real mixed browser monthly flow when the Booking PDF requires ToUnicode decoding', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     const result = await createBrowserRuntime().buildRuntimeState({
@@ -2023,7 +2023,7 @@ describe('buildUploadWebFlow', () => {
         createRuntimeFile('booking35k.csv', booking.rawInput.content),
         createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
         createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
-        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ],
       month: '2026-03',
       generatedAt: '2026-03-24T16:10:00.000Z'
@@ -2152,7 +2152,7 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
-  it('passes extracted PDF text cues through the browser upload contract into monthly classification for the real 4-file flow', async () => {
+  it('passes readable ToUnicode-mapped Booking PDF text cues through the browser upload contract into monthly classification', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     const uploadedFiles = await prepareBrowserRuntimeUploadedFilesFromSelectedFiles({
@@ -2160,12 +2160,14 @@ describe('buildUploadWebFlow', () => {
         createRuntimeFile('booking35k.csv', booking.rawInput.content),
         createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
         createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
-        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementFragmentedPdfLines())
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ],
       generatedAt: '2026-03-24T16:10:00.000Z'
     })
 
     expect(uploadedFiles).toHaveLength(4)
+    expect(uploadedFiles[3]?.content).toContain('Booking.com')
+    expect(uploadedFiles[3]?.content).toContain('Payment overview')
     expect(uploadedFiles[3]).toEqual(
       expect.objectContaining({
         name: 'Bookinng35k.pdf',
@@ -2228,7 +2230,7 @@ describe('buildUploadWebFlow', () => {
     expect(renderedRun.html).not.toContain('<strong>Unsupported:</strong>')
   })
 
-  it('keeps per-file intake diagnostics aligned with the final browser routing outcome', async () => {
+  it('keeps per-file intake diagnostics aligned with the final browser routing outcome for ToUnicode-mapped Booking PDFs', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
 
     const result = await createBrowserRuntime().buildRuntimeState({
@@ -2236,7 +2238,7 @@ describe('buildUploadWebFlow', () => {
         createRuntimeFile('booking35k.csv', booking.rawInput.content),
         createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
         createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
-        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ],
       month: '2026-03',
       generatedAt: '2026-03-24T18:10:00.000Z'
@@ -2728,6 +2730,10 @@ function createRuntimePdfFileFromTextLines(name: string, lines: string[]) {
   return createRuntimePdfFile(name, buildRuntimePdfBase64FromTextLines(lines))
 }
 
+function createRuntimePdfFileFromToUnicodeTextLines(name: string, lines: string[]) {
+  return createRuntimePdfFile(name, buildRuntimePdfBase64FromToUnicodeTextLines(lines))
+}
+
 function createBrokenRuntimePdfFile(name: string) {
   return {
     name,
@@ -2780,6 +2786,101 @@ function buildRuntimePdfBase64FromTextLines(lines: string[]): string {
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
 
   return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function buildRuntimePdfBase64FromToUnicodeTextLines(lines: string[]): string {
+  const definition = buildToUnicodePdfDefinition(lines)
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${definition.contentStream.length} >>\nstream\n${definition.contentStream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /MockBookingFont /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 6 0 R >>\nendobj\n',
+    `6 0 obj\n<< /Length ${definition.toUnicodeStream.length} >>\nstream\n${definition.toUnicodeStream}\nendstream\nendobj\n`,
+    '7 0 obj\n<< /Type /Font /Subtype /CIDFontType2 /BaseFont /MockBookingFont /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>\nendobj\n'
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function buildToUnicodePdfDefinition(lines: string[]): {
+  contentStream: string
+  toUnicodeStream: string
+} {
+  const codeByCharacter = new Map<string, string>()
+  const mappingEntries: Array<{ code: string; unicodeHex: string }> = []
+  let nextCodePoint = 1
+
+  const encodedLines = lines.map((line) =>
+    Array.from(line).map((character) => {
+      const existingCode = codeByCharacter.get(character)
+
+      if (existingCode) {
+        return existingCode
+      }
+
+      const code = nextCodePoint.toString(16).toUpperCase().padStart(4, '0')
+      nextCodePoint += 1
+      codeByCharacter.set(character, code)
+      mappingEntries.push({
+        code,
+        unicodeHex: character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')
+      })
+      return code
+    }).join('')
+  )
+
+  const contentStream = [
+    'BT',
+    '/F1 12 Tf',
+    '50 780 Td',
+    ...encodedLines.flatMap((line, index) => index === 0
+      ? [`<${line}> Tj`]
+      : ['0 -18 Td', `<${line}> Tj`]),
+    'ET'
+  ].join('\n')
+
+  const toUnicodeStream = [
+    '/CIDInit /ProcSet findresource begin',
+    '12 dict begin',
+    'begincmap',
+    '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def',
+    '/CMapName /Adobe-Identity-UCS def',
+    '/CMapType 2 def',
+    '1 begincodespacerange',
+    '<0000> <FFFF>',
+    'endcodespacerange',
+    `${mappingEntries.length} beginbfchar`,
+    ...mappingEntries.map((entry) => `<${entry.code}> <${entry.unicodeHex}>`),
+    'endbfchar',
+    'endcmap',
+    'CMapName currentdict /CMap defineresource pop',
+    'end',
+    'end'
+  ].join('\n')
+
+  return {
+    contentStream,
+    toUnicodeStream
+  }
 }
 
 function encodeRuntimePdfHexString(value: string): string {

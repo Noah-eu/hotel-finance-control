@@ -993,7 +993,7 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('Runtime matched refs count:')
   })
 
-  it('renders the final operator-facing web page with Booking payout PDF under recognized supported supplements instead of unsupported files', async () => {
+  it('renders the final operator-facing web page with a ToUnicode-mapped Booking payout PDF under recognized supported supplements instead of unsupported files', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-24T17:45:00.000Z',
@@ -1002,7 +1002,7 @@ describe('buildWebDemo', () => {
         createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
         createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
         createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
-        createWebDemoRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildGlyphSeparatedBookingPayoutStatementPdfLines())
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ]
     })
 
@@ -1015,7 +1015,7 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
   })
 
-  it('shows the file intake trace on the actual final page only when debug mode is enabled through the live URL', async () => {
+  it('shows readable ToUnicode-mapped PDF intake trace on the actual final page only when debug mode is enabled through the live URL', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const defaultRendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-24T18:05:00.000Z',
@@ -1025,7 +1025,7 @@ describe('buildWebDemo', () => {
         createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
         createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
         createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
-        createWebDemoRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildGlyphSeparatedBookingPayoutStatementPdfLines())
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ]
     })
 
@@ -1038,7 +1038,7 @@ describe('buildWebDemo', () => {
         createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
         createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
         createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
-        createWebDemoRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildGlyphSeparatedBookingPayoutStatementPdfLines())
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
       ]
     })
 
@@ -1276,8 +1276,15 @@ async function executeWebDemoMainWorkflow(input: {
   elements['month-label'].value = input.month
   elements['prepare-upload'].listeners.click()
 
-  for (let index = 0; index < 8; index += 1) {
-    await Promise.resolve()
+  for (let index = 0; index < 50; index += 1) {
+    if (
+      elements['prepared-files-content'].innerHTML.includes('Rozpoznáno souborů:')
+      || elements['prepared-files-content'].innerHTML.includes('Runtime běh selhal.')
+    ) {
+      break
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
   return {
@@ -1424,6 +1431,21 @@ function createWebDemoRuntimePdfFileFromTextLines(name: string, lines: string[])
   }
 }
 
+function createWebDemoRuntimePdfFileFromToUnicodeTextLines(name: string, lines: string[]) {
+  const binary = Buffer.from(buildWebDemoRuntimePdfFromToUnicodeTextLines(lines), 'base64')
+
+  return {
+    name,
+    type: 'application/pdf',
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      return binary.buffer.slice(binary.byteOffset, binary.byteOffset + binary.byteLength)
+    }
+  }
+}
+
 function buildWebDemoRuntimePdfFromTextLines(lines: string[]): string {
   const stream = [
     'BT',
@@ -1464,6 +1486,101 @@ function buildWebDemoRuntimePdfFromTextLines(lines: string[]): string {
   return Buffer.from(pdf, 'latin1').toString('base64')
 }
 
+function buildWebDemoRuntimePdfFromToUnicodeTextLines(lines: string[]): string {
+  const definition = buildWebDemoToUnicodePdfDefinition(lines)
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${definition.contentStream.length} >>\nstream\n${definition.contentStream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /MockBookingFont /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 6 0 R >>\nendobj\n',
+    `6 0 obj\n<< /Length ${definition.toUnicodeStream.length} >>\nstream\n${definition.toUnicodeStream}\nendstream\nendobj\n`,
+    '7 0 obj\n<< /Type /Font /Subtype /CIDFontType2 /BaseFont /MockBookingFont /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>\nendobj\n'
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function buildWebDemoToUnicodePdfDefinition(lines: string[]): {
+  contentStream: string
+  toUnicodeStream: string
+} {
+  const codeByCharacter = new Map<string, string>()
+  const mappingEntries: Array<{ code: string; unicodeHex: string }> = []
+  let nextCodePoint = 1
+
+  const encodedLines = lines.map((line) =>
+    Array.from(line).map((character) => {
+      const existingCode = codeByCharacter.get(character)
+
+      if (existingCode) {
+        return existingCode
+      }
+
+      const code = nextCodePoint.toString(16).toUpperCase().padStart(4, '0')
+      nextCodePoint += 1
+      codeByCharacter.set(character, code)
+      mappingEntries.push({
+        code,
+        unicodeHex: character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')
+      })
+      return code
+    }).join('')
+  )
+
+  const contentStream = [
+    'BT',
+    '/F1 12 Tf',
+    '50 780 Td',
+    ...encodedLines.flatMap((line, index) => index === 0
+      ? [`<${line}> Tj`]
+      : ['0 -18 Td', `<${line}> Tj`]),
+    'ET'
+  ].join('\n')
+
+  const toUnicodeStream = [
+    '/CIDInit /ProcSet findresource begin',
+    '12 dict begin',
+    'begincmap',
+    '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def',
+    '/CMapName /Adobe-Identity-UCS def',
+    '/CMapType 2 def',
+    '1 begincodespacerange',
+    '<0000> <FFFF>',
+    'endcodespacerange',
+    `${mappingEntries.length} beginbfchar`,
+    ...mappingEntries.map((entry) => `<${entry.code}> <${entry.unicodeHex}>`),
+    'endbfchar',
+    'endcmap',
+    'CMapName currentdict /CMap defineresource pop',
+    'end',
+    'end'
+  ].join('\n')
+
+  return {
+    contentStream,
+    toUnicodeStream
+  }
+}
+
 function encodeWebDemoPdfHexString(value: string): string {
   return Array.from(value)
     .map((char) => char.charCodeAt(0).toString(16).padStart(4, '0'))
@@ -1478,6 +1595,18 @@ function buildGlyphSeparatedBookingPayoutStatementPdfLines(): string[] {
     'Payment date: 2 0 2 6 - 0 3 - 1 2',
     'Transfer total: 1 2 5 0 , 0 0 C Z K',
     'IBAN: C Z 6 5 5 5 0 0 0 0 0 0 0 0 0 0 5 5 9 9 5 5 5 9 5 6',
+    'Included reservations: RES-BOOK-8841 1 250,00 CZK'
+  ]
+}
+
+function buildBookingPayoutStatementVariantPdfLines(): string[] {
+  return [
+    'Booking.com',
+    'Payment overview',
+    'Payment ID: PAYOUT-BOOK-20260310',
+    'Payment date: 2026-03-12',
+    'Transfer total: 1 250,00 CZK',
+    'IBAN: CZ65 5500 0000 0000 5599 555956',
     'Included reservations: RES-BOOK-8841 1 250,00 CZK'
   ]
 }
