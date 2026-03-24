@@ -1123,6 +1123,44 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('recognizes Booking payout statement PDFs from later Czech payout cues even when the header preview looks unrelated', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Bookinng35k.pdf',
+        content: buildCzechLateCueBookingPayoutStatementContent(),
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-24T08:06:30.000Z'
+      }
+    ])
+
+    expect(prepared.importedFiles).toEqual([
+      expect.objectContaining({
+        sourceDocument: expect.objectContaining({
+          fileName: 'Bookinng35k.pdf',
+          sourceSystem: 'booking',
+          documentType: 'payout_statement'
+        }),
+        routing: expect.objectContaining({
+          classificationBasis: 'content',
+          parserId: 'booking-payout-statement-pdf',
+          role: 'supplemental'
+        })
+      })
+    ])
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        parserId: 'booking-payout-statement-pdf',
+        role: 'supplemental'
+      })
+    ])
+  })
+
   it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {
     const booking = getRealInputFixture('booking-payout-export')
 
@@ -1439,6 +1477,27 @@ function buildGlyphSeparatedBookingPayoutStatementContent(): string {
     'Transfer total: 1 2 5 0 , 0 0 C Z K',
     'IBAN: C Z 6 5 5 5 0 0 0 0 0 0 0 0 0 0 5 5 9 9 5 5 5 9 5 6',
     'Included reservations: RES-BOOK-8841 1 250,00 CZK'
+  ].join('\n')
+}
+
+function buildCzechLateCueBookingPayoutStatementContent(): string {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Property reference CHILL-APT-PRG',
+    'Reservation contact summary',
+    'Building access instructions',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celkem (CZK) 35,530.12 Kč',
+    'IBAN CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
   ].join('\n')
 }
 

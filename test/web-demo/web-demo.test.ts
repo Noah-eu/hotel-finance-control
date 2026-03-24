@@ -1058,6 +1058,55 @@ describe('buildWebDemo', () => {
     expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
   })
 
+  it('renders the final operator page with a real-like Czech Booking payout PDF as a supported supplement instead of unsupported even when the head preview is just property details', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T19:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-final-czech-booking-pdf',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Podporovaný doplňkový payout dokument')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Booking payout statement PDF')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Nepodporované nebo nerozpoznané soubory</h4><ul><li><strong>Bookinng35k.pdf</strong>')
+    expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
+  })
+
+  it('shows full-document PDF handoff evidence in debug mode by exposing text length, head preview, tail preview, and keyword hits from the actual final page', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const debugRendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T19:15:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-final-czech-booking-debug',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(debugRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bookinng35k.pdf')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Délka textu:')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text preview: Chill apartment with city view and balcony')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text tail: března 2026 ID platby 010638445054 Celková čá')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Keyword hits: Booking.com B.V., Výkaz plateb, ID platby, Datum vyplacení částky, Celkem (CZK), Celková částka k vyplacení, IBAN, Reservation reference')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payout-total')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: booking / payout_statement / content')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: supplemental supported · Podporovaný doplňkový payout dokument')
+    expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+  })
+
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:15.000Z',
@@ -1608,6 +1657,27 @@ function buildBookingPayoutStatementVariantPdfLines(): string[] {
     'Transfer total: 1 250,00 CZK',
     'IBAN: CZ65 5500 0000 0000 5599 555956',
     'Included reservations: RES-BOOK-8841 1 250,00 CZK'
+  ]
+}
+
+function buildCzechLateCueBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Property reference CHILL-APT-PRG',
+    'Reservation contact summary',
+    'Building access instructions',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celkem (CZK) 35,530.12 Kč',
+    'IBAN CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
   ]
 }
 

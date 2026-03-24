@@ -20,6 +20,7 @@ export { BookingPayoutParser, parseBookingPayoutExport } from './parsers/booking
 export type { BookingPayoutStatementSignals, ParseBookingPayoutStatementPdfInput } from './parsers/booking-payout-statement.parser'
 export {
   BookingPayoutStatementPdfParser,
+  detectBookingPayoutStatementKeywordHits,
   detectBookingPayoutStatementSignals,
   parseBookingPayoutStatementPdf
 } from './parsers/booking-payout-statement.parser'

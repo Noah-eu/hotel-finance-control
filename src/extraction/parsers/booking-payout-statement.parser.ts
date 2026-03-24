@@ -85,42 +85,102 @@ export function parseBookingPayoutStatementPdf(
 }
 
 export function detectBookingPayoutStatementSignals(content: string): BookingPayoutStatementSignals {
-  const normalized = normalizeBookingPayoutStatementSignalContent(content)
-  const compact = normalized.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const scan = buildBookingPayoutStatementSignalScan(content)
 
   return {
     hasBookingBranding:
-      /\bbooking(?:\s*\.\s*com|\s+com|\s+bv)?\b/i.test(normalized)
-      || compact.includes('BOOKINGCOM')
-      || compact.includes('BOOKINGBV'),
+      /\bbooking(?:\s*\.\s*com|\s+com|\s+bv)?\b/i.test(scan.normalized)
+      || scan.compact.includes('BOOKINGCOM')
+      || scan.compact.includes('BOOKINGBV'),
     hasStatementWording:
-      /\b(?:payout|payment|transfer)\s+(?:statement|overview|summary)\b/i.test(normalized)
-      || compact.includes('PAYOUTSTATEMENT')
-      || compact.includes('PAYOUTOVERVIEW')
-      || compact.includes('PAYOUTSUMMARY')
-      || compact.includes('PAYMENTOVERVIEW')
-      || compact.includes('PAYMENTSUMMARY')
-      || compact.includes('PAYMENTSTATEMENT')
-      || compact.includes('TRANSFEROVERVIEW')
-      || compact.includes('TRANSFERSUMMARY'),
-    paymentId: captureBookingStatementValue(normalized, [
+      /\b(?:payout|payment|transfer)\s+(?:statement|overview|summary)\b/i.test(scan.asciiNormalized)
+      || /\b(?:vykaz|prehled|souhrn)\s+plateb\b/i.test(scan.asciiNormalized)
+      || scan.compact.includes('PAYOUTSTATEMENT')
+      || scan.compact.includes('PAYOUTOVERVIEW')
+      || scan.compact.includes('PAYOUTSUMMARY')
+      || scan.compact.includes('PAYMENTOVERVIEW')
+      || scan.compact.includes('PAYMENTSUMMARY')
+      || scan.compact.includes('PAYMENTSTATEMENT')
+      || scan.compact.includes('TRANSFEROVERVIEW')
+      || scan.compact.includes('TRANSFERSUMMARY')
+      || scan.compact.includes('VYKAZPLATEB')
+      || scan.compact.includes('PREHLEDPLATEB'),
+    paymentId: captureBookingStatementValue(scan.normalized, [
       /\b(?:payment|payout)\s*id\b[:\s-]*([A-Z0-9-]{6,})/i,
       /\bbooking\s+payment\s+id\b[:\s-]*([A-Z0-9-]{6,})/i
-    ]) ?? captureStandaloneBookingPaymentId(normalized, compact),
-    payoutDateRaw: normalizeBookingStatementDateValue(captureBookingStatementValue(normalized, [
-      /\b(?:payment|payout|transfer)\s*date\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4})/i,
+    ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
+      /\bid\s+platby\b[:\s-]*([A-Z0-9-]{6,})/i,
+      /\bid\s+vyplaty\b[:\s-]*([A-Z0-9-]{6,})/i
+    ]) ?? captureStandaloneBookingPaymentId(scan.normalized, scan.compact),
+    payoutDateRaw: normalizeBookingStatementDateValue(captureBookingStatementValue(scan.normalized, [
+      /\b(?:payment|payout|transfer)\s*date\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[A-Za-zÀ-ž]+\s+\d{4})/i,
       /\bdate\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2})/i
-    ]) ?? captureStandaloneBookingPayoutDate(normalized) ?? captureCompactBookingPayoutDate(compact)),
-    payoutTotalRaw: captureBookingStatementValue(normalized, [
-      /\b(?:payout|payment|transfer)\s*total\b[:\s-]*([0-9][0-9\s.,-]*\s*[A-Z]{3})/i,
-      /\btotal\s+(?:payout|payment|transfer)\b[:\s-]*([0-9][0-9\s.,-]*\s*[A-Z]{3})/i
-    ]) ?? captureStandaloneBookingPayoutTotal(normalized) ?? captureCompactBookingPayoutTotal(compact),
-    ibanValue: captureBookingStatementValue(normalized, [
-      /\biban\b[:\s-]*([A-Z]{2}[0-9A-Z ]{8,})/i,
-      /\bbank\s+account\b[:\s-]*([A-Z]{2}[0-9A-Z ]{8,})/i
-    ]) ?? captureStandaloneIban(normalized),
-    reservationIds: extractReservationIds(normalized)
+    ]) ?? captureBookingStatementValue(scan.asciiNormalized, [
+      /\bdatum\s+vyplaceni\s+castky\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
+      /\bdatum\s+platby\b[:\s-]*([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
+    ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized) ?? captureCompactBookingPayoutDate(scan.compact)),
+    payoutTotalRaw: normalizeBookingStatementMoneyValue(
+      captureBookingLocalCurrencyTotal(scan.asciiNormalized)
+      ?? captureBookingStatementValue(scan.normalized, [
+        /\b(?:payout|payment|transfer)\s*total\b[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i,
+        /\btotal\s+(?:payout|payment|transfer)\b[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i,
+        /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i
+      ])
+      ?? captureStandaloneBookingPayoutTotal(scan.normalized, scan.asciiNormalized)
+      ?? captureCompactBookingPayoutTotal(scan.compact)
+    ),
+    ibanValue: captureStandaloneIban(scan.normalized),
+    reservationIds: extractReservationIds(scan.normalized)
   }
+}
+
+export function detectBookingPayoutStatementKeywordHits(content: string): string[] {
+  const scan = buildBookingPayoutStatementSignalScan(content)
+  const hits: string[] = []
+
+  if (scan.compact.includes('BOOKINGCOMBV')) {
+    hits.push('Booking.com B.V.')
+  } else if (scan.compact.includes('BOOKINGCOM')) {
+    hits.push('Booking.com')
+  }
+
+  if (/\b(?:vykaz|prehled|souhrn)\s+plateb\b/i.test(scan.asciiNormalized)) {
+    hits.push('Výkaz plateb')
+  } else if (/\b(?:payment|payout|transfer)\s+(?:statement|overview|summary)\b/i.test(scan.asciiNormalized)) {
+    hits.push('Payment overview')
+  }
+
+  if (/\bid\s+platby\b/i.test(scan.asciiNormalized)) {
+    hits.push('ID platby')
+  } else if (/\b(?:payment|payout)\s*id\b/i.test(scan.asciiNormalized)) {
+    hits.push('Payment ID')
+  }
+
+  if (/\bdatum\s+vyplaceni\s+castky\b/i.test(scan.asciiNormalized)) {
+    hits.push('Datum vyplacení částky')
+  } else if (/\b(?:payment|payout|transfer)\s*date\b/i.test(scan.asciiNormalized)) {
+    hits.push('Payment date')
+  }
+
+  if (/\bcelkem\s*\(\s*czk\s*\)/i.test(scan.asciiNormalized)) {
+    hits.push('Celkem (CZK)')
+  }
+
+  if (/\bcelkova\s+castka\s+k\s+vyplaceni\b/i.test(scan.asciiNormalized)) {
+    hits.push('Celková částka k vyplacení')
+  } else if (/\b(?:payout|payment|transfer)\s*total\b|\btotal\s+(?:payout|payment|transfer)\b/i.test(scan.asciiNormalized)) {
+    hits.push('Payout total')
+  }
+
+  if (/\biban\b/i.test(scan.asciiNormalized)) {
+    hits.push('IBAN')
+  }
+
+  if (extractReservationIds(scan.normalized).length > 0) {
+    hits.push('Reservation reference')
+  }
+
+  return Array.from(new Set(hits))
 }
 
 function extractIbanSuffix(value: string | undefined): string | undefined {
@@ -142,6 +202,21 @@ function extractReservationIds(content: string): string[] {
   return Array.from(new Set(matches.map((value) => value.trim())))
 }
 
+function buildBookingPayoutStatementSignalScan(content: string): {
+  normalized: string
+  asciiNormalized: string
+  compact: string
+} {
+  const normalized = normalizeBookingPayoutStatementSignalContent(content)
+  const asciiNormalized = foldToAscii(normalized)
+
+  return {
+    normalized,
+    asciiNormalized,
+    compact: asciiNormalized.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  }
+}
+
 function normalizeBookingPayoutStatementSignalContent(content: string): string {
   let normalized = content
     .replace(/^\uFEFF/, '')
@@ -154,9 +229,9 @@ function normalizeBookingPayoutStatementSignalContent(content: string): string {
   while (normalized !== previous) {
     previous = normalized
     normalized = normalized
-      .replace(/\b(?:[A-Za-z0-9]\s+){2,}[A-Za-z0-9]\b/g, (match) => match.replace(/\s+/g, ''))
+      .replace(/\b(?:[\p{L}\p{N}]\s+){2,}[\p{L}\p{N}]\b/gu, (match) => match.replace(/\s+/g, ''))
       .replace(/\b(?:[A-Z]\s+){1,}[A-Z]\b/g, (match) => match.replace(/\s+/g, ''))
-      .replace(/([A-Za-z0-9])\s*([.:\-/])\s*([A-Za-z0-9])/g, '$1$2$3')
+      .replace(/([\p{L}\p{N}])\s*([.:\-/])\s*([\p{L}\p{N}])/gu, '$1$2$3')
       .replace(/(\d)\s*,\s*(\d)/g, '$1,$2')
       .replace(/(\d)\s*\.\s*(\d)/g, '$1.$2')
       .replace(/\s+/g, ' ')
@@ -164,6 +239,13 @@ function normalizeBookingPayoutStatementSignalContent(content: string): string {
   }
 
   return normalized
+}
+
+function foldToAscii(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/ß/g, 'ss')
 }
 
 function captureStandaloneBookingPaymentId(
@@ -185,19 +267,24 @@ function captureStandaloneBookingPaymentId(
   return `PAYOUT-BOOK-${compactMatch[1]}`
 }
 
-function captureStandaloneBookingPayoutDate(normalized: string): string | undefined {
-  const keywordDate = captureBookingStatementValue(normalized, [
-    /\b(?:payment|payout|transfer)\b.{0,24}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4})/i
+function captureStandaloneBookingPayoutDate(
+  normalized: string,
+  asciiNormalized: string
+): string | undefined {
+  const asciiKeywordDate = captureBookingStatementValue(asciiNormalized, [
+    /\b(?:payment|payout|transfer)\b.{0,32}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
+    /\bdatum\s+vyplaceni\s+castky\b.{0,16}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
   ])
 
-  if (keywordDate) {
-    return keywordDate
+  if (asciiKeywordDate) {
+    return asciiKeywordDate
   }
 
   const uniqueDates = Array.from(new Set(
-    Array.from(normalized.matchAll(/\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4})\b/g))
-      .map((match) => match[1]?.trim())
-      .filter((value): value is string => Boolean(value))
+    [
+      ...Array.from(normalized.matchAll(/\b([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4})\b/g)).map((match) => match[1]?.trim()),
+      ...Array.from(asciiNormalized.matchAll(/\b(\d{1,2}\.\s*[a-z]+\s+\d{4})\b/g)).map((match) => match[1]?.trim())
+    ].filter((value): value is string => Boolean(value))
   ))
 
   return uniqueDates.length === 1 ? uniqueDates[0] : undefined
@@ -213,9 +300,30 @@ function captureCompactBookingPayoutDate(compact: string): string | undefined {
   return `${match[1]}-${match[2]}-${match[3]}`
 }
 
-function captureStandaloneBookingPayoutTotal(normalized: string): string | undefined {
+function captureBookingLocalCurrencyTotal(asciiNormalized: string): string | undefined {
+  const localCurrencyMatch = asciiNormalized.match(
+    /\bcelkem\s*\(\s*(CZK|EUR|USD)\s*\)\s*[:\s-]*([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:KC|CZK|EUR|USD))?)/i
+  )
+
+  if (!localCurrencyMatch?.[1] || !localCurrencyMatch[2]) {
+    return undefined
+  }
+
+  return `${localCurrencyMatch[2].trim()} ${localCurrencyMatch[1].toUpperCase()}`
+}
+
+function captureStandaloneBookingPayoutTotal(normalized: string, asciiNormalized: string): string | undefined {
+  const localCurrencyMoney = normalizeBookingStatementMoneyValue(captureBookingLocalCurrencyTotal(asciiNormalized))
+
+  if (localCurrencyMoney) {
+    return localCurrencyMoney
+  }
+
   const keywordMoney = normalizeBookingStatementMoneyValue(captureBookingStatementValue(normalized, [
-    /\b(?:payout|payment|transfer)\b.{0,32}?([0-9][0-9\s.,-]*\s*[A-Z]{3})\b/i
+    /\b(?:payout|payment|transfer)\b.{0,40}?([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i,
+    /\bcelkov[áa]\s+částka\s+k\s+vyplacení\b.{0,24}?([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD))?)/i
+  ]) ?? captureBookingStatementValue(asciiNormalized, [
+    /\bcelkova\s+castka\s+k\s+vyplaceni\b.{0,24}?([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:kcz|kc|czk|eur|usd))?)/i
   ]))
 
   if (keywordMoney) {
@@ -223,7 +331,7 @@ function captureStandaloneBookingPayoutTotal(normalized: string): string | undef
   }
 
   const uniqueMoneyValues = Array.from(new Set(
-    Array.from(normalized.matchAll(/\b([0-9][0-9\s.,-]*\s*[A-Z]{3})\b/g))
+    Array.from(normalized.matchAll(/([€$]?\s*[0-9][0-9\s.,-]*(?:\s*(?:Kč|CZK|EUR|USD)))/gi))
       .map((match) => match[1]?.trim())
       .filter((value): value is string => Boolean(value))
       .map((value) => normalizeBookingStatementMoneyValue(value))
@@ -253,7 +361,51 @@ function captureCompactBookingPayoutTotal(compact: string): string | undefined {
 }
 
 function captureStandaloneIban(normalized: string): string | undefined {
-  return normalized.match(/\b([A-Z]{2}\d{2}(?:\s?[A-Z0-9]){8,})\b/i)?.[1]?.trim()
+  const upper = foldToAscii(normalized).toUpperCase()
+  const labelIndex = upper.search(/\bIBAN\b/)
+  const searchSpace = labelIndex === -1
+    ? upper
+    : upper.slice(labelIndex)
+  const tokens = searchSpace
+    .replace(/\bIBAN\b[:\s-]*/i, '')
+    .trim()
+    .split(/\s+/)
+
+  let collected: string[] = []
+  let compact = ''
+
+  for (const token of tokens) {
+    const cleaned = token.replace(/[^A-Z0-9]/g, '')
+
+    if (!cleaned) {
+      if (compact.length >= 15) {
+        break
+      }
+
+      continue
+    }
+
+    if (collected.length === 0 && !/^[A-Z]{2}\d{2}[A-Z0-9]*$/.test(cleaned)) {
+      continue
+    }
+
+    if (collected.length > 0 && !/^[A-Z0-9]+$/.test(cleaned)) {
+      break
+    }
+
+    if ((compact + cleaned).length > 34) {
+      break
+    }
+
+    collected.push(cleaned)
+    compact += cleaned
+  }
+
+  if (compact.length < 15) {
+    return undefined
+  }
+
+  return collected.join(' ')
 }
 
 function normalizeBookingStatementMoneyValue(value: string | undefined): string | undefined {
@@ -261,7 +413,7 @@ function normalizeBookingStatementMoneyValue(value: string | undefined): string 
     return undefined
   }
 
-  return value
+  const normalized = value
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/\b(?:\d\s+){2,}\d\b/g, (match) => match.replace(/\s+/g, ''))
@@ -269,6 +421,14 @@ function normalizeBookingStatementMoneyValue(value: string | undefined): string 
     .replace(/(\d)\s*,\s*(\d)/g, '$1,$2')
     .replace(/(\d)\s*\.\s*(\d)/g, '$1.$2')
     .replace(/([0-9.,-])([A-Z]{3})$/i, '$1 $2')
+  const currency = detectBookingStatementCurrency(normalized)
+  const amount = normalizeBookingStatementAmountValue(normalized)
+
+  if (!currency || !amount) {
+    return normalized
+  }
+
+  return `${amount} ${currency}`
 }
 
 function normalizeBookingStatementDateValue(value: string | undefined): string | undefined {
@@ -276,7 +436,36 @@ function normalizeBookingStatementDateValue(value: string | undefined): string |
     return undefined
   }
 
-  return value.trim().replace(/\s+/g, '')
+  const normalized = value.trim().replace(/\s+/g, ' ')
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized
+  }
+
+  const dottedNumeric = normalized.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+
+  if (dottedNumeric?.[1] && dottedNumeric[2] && dottedNumeric[3]) {
+    return `${dottedNumeric[3]}-${dottedNumeric[2].padStart(2, '0')}-${dottedNumeric[1].padStart(2, '0')}`
+  }
+
+  const slashedNumeric = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+
+  if (slashedNumeric?.[1] && slashedNumeric[2] && slashedNumeric[3]) {
+    return `${slashedNumeric[3]}-${slashedNumeric[2].padStart(2, '0')}-${slashedNumeric[1].padStart(2, '0')}`
+  }
+
+  const asciiNormalized = foldToAscii(normalized).toLowerCase()
+  const monthNameMatch = asciiNormalized.match(/^(\d{1,2})\.?\s*([a-z]+)\s+(\d{4})$/)
+
+  if (monthNameMatch?.[1] && monthNameMatch[2] && monthNameMatch[3]) {
+    const month = normalizeBookingStatementMonthName(monthNameMatch[2])
+
+    if (month) {
+      return `${monthNameMatch[3]}-${month}-${monthNameMatch[1].padStart(2, '0')}`
+    }
+  }
+
+  return normalized.replace(/\s+/g, '')
 }
 
 function normalizeBookingStatementReferenceValue(value: string | undefined): string | undefined {
@@ -289,11 +478,12 @@ function normalizeBookingStatementReferenceValue(value: string | undefined): str
 
 function captureBookingStatementValue(
   content: string,
-  patterns: RegExp[]
+  patterns: RegExp[],
+  groupIndex = 1
 ): string | undefined {
   for (const pattern of patterns) {
     const match = content.match(pattern)
-    const value = match?.[1]?.trim()
+    const value = match?.[groupIndex]?.trim()
 
     if (value) {
       return value
@@ -301,4 +491,118 @@ function captureBookingStatementValue(
   }
 
   return undefined
+}
+
+function detectBookingStatementCurrency(value: string): 'CZK' | 'EUR' | 'USD' | undefined {
+  const normalized = foldToAscii(value).toUpperCase()
+
+  if (normalized.includes('CZK') || normalized.includes('KC')) {
+    return 'CZK'
+  }
+
+  if (normalized.includes('EUR') || value.includes('€')) {
+    return 'EUR'
+  }
+
+  if (normalized.includes('USD') || value.includes('$')) {
+    return 'USD'
+  }
+
+  return undefined
+}
+
+function normalizeBookingStatementAmountValue(value: string): string | undefined {
+  const amountMatch = value.match(/-?[0-9][0-9\s.,-]*/)
+
+  if (!amountMatch?.[0]) {
+    return undefined
+  }
+
+  let normalized = amountMatch[0]
+    .replace(/\s+/g, '')
+    .replace(/(?!^)-/g, '')
+
+  const lastCommaIndex = normalized.lastIndexOf(',')
+  const lastDotIndex = normalized.lastIndexOf('.')
+
+  if (lastCommaIndex !== -1 && lastDotIndex !== -1) {
+    if (lastDotIndex > lastCommaIndex) {
+      normalized = normalized.replace(/,/g, '')
+    } else {
+      normalized = normalized.replace(/\./g, '').replace(',', '.')
+    }
+
+    return normalized
+  }
+
+  if (lastCommaIndex !== -1) {
+    const decimalLength = normalized.length - lastCommaIndex - 1
+    normalized = decimalLength === 2
+      ? normalized.replace(',', '.')
+      : normalized.replace(/,/g, '')
+    return normalized
+  }
+
+  if (lastDotIndex !== -1) {
+    const decimalLength = normalized.length - lastDotIndex - 1
+    normalized = decimalLength === 2
+      ? normalized
+      : normalized.replace(/\./g, '')
+  }
+
+  return normalized
+}
+
+function normalizeBookingStatementMonthName(value: string): string | undefined {
+  const monthNameMap = new Map<string, string>([
+    ['january', '01'],
+    ['jan', '01'],
+    ['leden', '01'],
+    ['ledna', '01'],
+    ['february', '02'],
+    ['feb', '02'],
+    ['unor', '02'],
+    ['unora', '02'],
+    ['march', '03'],
+    ['mar', '03'],
+    ['brezen', '03'],
+    ['brezna', '03'],
+    ['april', '04'],
+    ['apr', '04'],
+    ['duben', '04'],
+    ['dubna', '04'],
+    ['may', '05'],
+    ['kveten', '05'],
+    ['kvetna', '05'],
+    ['june', '06'],
+    ['jun', '06'],
+    ['cerven', '06'],
+    ['cervna', '06'],
+    ['july', '07'],
+    ['jul', '07'],
+    ['cervenec', '07'],
+    ['cervence', '07'],
+    ['august', '08'],
+    ['aug', '08'],
+    ['srpen', '08'],
+    ['srpna', '08'],
+    ['september', '09'],
+    ['sep', '09'],
+    ['sept', '09'],
+    ['zari', '09'],
+    ['rijen', '10'],
+    ['rijna', '10'],
+    ['october', '10'],
+    ['oct', '10'],
+    ['november', '11'],
+    ['nov', '11'],
+    ['listopad', '11'],
+    ['listopadu', '11'],
+    ['december', '12'],
+    ['dec', '12'],
+    ['prosinec', '12'],
+    ['prosince', '12']
+  ])
+
+  return monthNameMap.get(value.toLowerCase())
 }

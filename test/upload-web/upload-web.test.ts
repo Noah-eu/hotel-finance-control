@@ -2292,6 +2292,116 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('classifies a real-like Czech Booking payout PDF from full browser-extracted document text instead of only the early header preview', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const uploadedFiles = await prepareBrowserRuntimeUploadedFilesFromSelectedFiles({
+      files: [
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ],
+      generatedAt: '2026-03-24T18:45:00.000Z'
+    })
+
+    expect(uploadedFiles[3]?.content.startsWith('Chill apartment with city view and balcony')).toBe(true)
+    expect(uploadedFiles[3]?.content).toContain('Booking.com B.V.')
+    expect(uploadedFiles[3]?.content).toContain('Výkaz plateb')
+    expect(uploadedFiles[3]?.content).toContain('ID platby 010638445054')
+    expect(uploadedFiles[3]?.content).toContain('Celkem (CZK) 35,530.12 Kč')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T18:45:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv'
+      }),
+      expect.objectContaining({
+        fileName: 'airbnb.csv'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        extractedTextPresent: true,
+        textLength: expect.any(Number),
+        textPreview: expect.stringContaining('Chill apartment'),
+        textTailPreview: expect.stringContaining('Celkem (CZK) 35,530.12 Kč'),
+        keywordHits: expect.arrayContaining([
+          'Booking.com B.V.',
+          'Výkaz plateb',
+          'ID platby',
+          'Datum vyplacení částky',
+          'Celkem (CZK)',
+          'IBAN'
+        ]),
+        detectedSignatures: expect.arrayContaining([
+          'booking-branding',
+          'booking-payout-statement-wording',
+          'booking-payment-id',
+          'booking-payout-date',
+          'booking-payout-total',
+          'iban-hint'
+        ]),
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        role: 'supplemental'
+      })
+    ])
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+  })
+
   it('keeps PDF ingest failures visible in browser routing instead of silently losing the selected file', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -2899,6 +3009,27 @@ function buildBookingPayoutStatementVariantPdfLines(): string[] {
     'IBAN: CZ65 5500 0000 0000 5599 555956',
     'Included reservations:',
     'RES-BOOK-8841 1 250,00 CZK'
+  ]
+}
+
+function buildCzechLateCueBookingPayoutStatementPdfLines(): string[] {
+  return [
+    'Chill apartment with city view and balcony',
+    'Sokolská 55, Nové Město',
+    '120 00 Prague 2',
+    'Czech Republic',
+    'Jokeland s.r.o.',
+    'Property reference CHILL-APT-PRG',
+    'Reservation contact summary',
+    'Building access instructions',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celkem (CZK) 35,530.12 Kč',
+    'IBAN CZ65 5500 0000 0000 5599 555956',
+    'Rezervace RES-BOOK-8841'
   ]
 }
 

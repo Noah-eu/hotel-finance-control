@@ -1,4 +1,5 @@
 import { buildExportArtifactsFiles } from '../export/shared'
+import { detectBookingPayoutStatementKeywordHits } from '../extraction'
 import {
   ingestUploadedMonthlyFiles,
   type UploadedMonthlyFile
@@ -186,7 +187,10 @@ function buildRuntimeAudit(
         textExtractionMode: browserTextExtraction?.mode,
         textExtractionStatus: browserTextExtraction?.status,
         extractedTextPresent: file.content.trim().length > 0,
+        textLength: file.content.length,
         textPreview: buildFileIntakeTextPreview(browserTextExtraction?.textPreview, file.content),
+        textTailPreview: buildFileIntakeTextTailPreview(file.content),
+        keywordHits: buildFileIntakeKeywordHits(file, browserTextExtraction?.detectedSignatures ?? []),
         detectedSignatures: browserTextExtraction?.detectedSignatures ?? [],
         sourceSystem: route?.sourceSystem ?? 'unknown',
         documentType: route?.documentType ?? 'other',
@@ -209,6 +213,41 @@ function buildFileIntakeTextPreview(textPreview: string | undefined, fallbackCon
   }
 
   return normalized.slice(0, 160)
+}
+
+function buildFileIntakeTextTailPreview(fallbackContent: string): string | undefined {
+  const normalized = String(fallbackContent ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (normalized.length === 0) {
+    return undefined
+  }
+
+  return normalized.length <= 160
+    ? normalized
+    : normalized.slice(-160)
+}
+
+function buildFileIntakeKeywordHits(
+  file: UploadedMonthlyFile,
+  detectedSignatures: string[]
+): string[] {
+  if ((file.contentFormat ?? file.sourceDescriptor?.browserTextExtraction?.mode) !== 'pdf-text') {
+    return []
+  }
+
+  const hits = detectBookingPayoutStatementKeywordHits(file.content)
+
+  if (hits.length > 0) {
+    return hits
+  }
+
+  if (detectedSignatures.length > 0) {
+    return detectedSignatures
+  }
+
+  return []
 }
 
 function findBatchFileExtractedCount(
