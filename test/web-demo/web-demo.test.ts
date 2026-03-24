@@ -290,7 +290,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="report-preview-body"')
     expect(result.html).toContain('id="export-handoff-section"')
     expect(result.html).toContain('renderRunningState(files)')
-    expect(result.html).toContain('applyVisibleRuntimeState({')
+    expect(result.html).toContain('const visibleState = buildCompletedVisibleRuntimeState(state);')
+    expect(result.html).toContain("applyVisibleRuntimeState(visibleState, 'completed');")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
     expect(result.html).not.toContain('původní snapshot zůstává finální odpovědí')
   })
@@ -576,8 +577,24 @@ describe('buildWebDemo', () => {
 
     expect(result.html).toContain('if (state.reportTransactions.length === 0)')
     expect(result.html).toContain('function buildVisibleTransactionLabel(transactionId, source) {')
+    expect(result.html).toContain('function buildCompletedVisibleRuntimeState(state) {')
     expect(result.html).toContain("reportTransactions: (state.reportTransactions || []).map((transaction) => ({")
     expect(result.html).toContain("labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)")
+  })
+
+  it('keeps the completed operator-facing runtime projection on the full shared state so file routing and upload counts cannot disappear after completion', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-24T16:20:00.000Z'
+    })
+
+    expect(result.html).toContain('function buildCompletedVisibleRuntimeState(state) {')
+    expect(result.html).toContain("const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];")
+    expect(result.html).toContain("const hasRoutedFiles = fileRoutes.length > 0;")
+    expect(result.html).toContain("uploadedFileCount: hasRoutedFiles ? fileRoutes.length : Number(state.routingSummary?.uploadedFileCount ?? 0),")
+    expect(result.html).toContain("supportedFileCount: hasRoutedFiles ? fileRoutes.filter((file) => file.status === 'supported').length : Number(state.routingSummary?.supportedFileCount ?? 0),")
+    expect(result.html).toContain("const visibleState = buildCompletedVisibleRuntimeState(state);")
+    expect(result.html).toContain("applyVisibleRuntimeState(visibleState, 'completed');")
+    expect(result.html).not.toContain("applyVisibleRuntimeState({\n            generatedAt: state.generatedAt,")
   })
 
   it('builds non-empty report preview rows in the shared runtime state consumed by the web demo', async () => {
@@ -678,7 +695,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('runtimePayoutDiagnosticsContent.innerHTML = buildRuntimePayoutDiagnosticsMarkup(state);')
     expect(result.html).toContain('Runtime matched refs count:')
     expect(result.html).toContain('Extracted Airbnb payout row ids')
-    expect(result.html).toContain('airbnb-payout-1')
+    expect(result.html).toContain('Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.')
+    expect(result.html).not.toContain('airbnb-payout-1')
   })
 
   it('keeps the real two-file Airbnb to RB browser demo coherent and business-facing in default mode', async () => {

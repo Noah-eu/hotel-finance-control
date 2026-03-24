@@ -848,6 +848,33 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
+      function buildCompletedVisibleRuntimeState(state) {
+        const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
+        const hasRoutedFiles = fileRoutes.length > 0;
+
+        return {
+          ...state,
+          routingSummary: {
+            uploadedFileCount: hasRoutedFiles ? fileRoutes.length : Number(state.routingSummary?.uploadedFileCount ?? 0),
+            supportedFileCount: hasRoutedFiles ? fileRoutes.filter((file) => file.status === 'supported').length : Number(state.routingSummary?.supportedFileCount ?? 0),
+            unsupportedFileCount: hasRoutedFiles ? fileRoutes.filter((file) => file.status === 'unsupported').length : Number(state.routingSummary?.unsupportedFileCount ?? 0),
+            errorFileCount: hasRoutedFiles ? fileRoutes.filter((file) => file.status === 'error').length : Number(state.routingSummary?.errorFileCount ?? 0)
+          },
+          fileRoutes,
+          preparedFiles: Array.isArray(state.preparedFiles) ? state.preparedFiles : [],
+          extractedRecords: Array.isArray(state.extractedRecords) ? state.extractedRecords : [],
+          supportedExpenseLinks: Array.isArray(state.supportedExpenseLinks) ? state.supportedExpenseLinks : [],
+          reportSummary: state.reportSummary || {},
+          reviewSummary: state.reviewSummary || {},
+          reviewSections: state.reviewSections || {},
+          reportTransactions: (state.reportTransactions || []).map((transaction) => ({
+            ...transaction,
+            labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)
+          })),
+          exportFiles: Array.isArray(state.exportFiles) ? state.exportFiles : []
+        };
+      }
+
       function renderMainRuntimeState(state) {
         return [
           '<h3>Výsledek spuštěného browser workflow</h3>',
@@ -1024,27 +1051,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
             month: monthInput.value,
             generatedAt
           });
-
-          applyVisibleRuntimeState({
-            ...state,
-            reportTransactions: ${JSON.stringify(input.browserRun.run.report.transactions.slice(0, 1))}.slice(0, 0)
-          }, 'completed');
-          applyVisibleRuntimeState({
-            generatedAt: state.generatedAt,
-            runId: state.runId,
-            monthLabel: state.monthLabel,
-            runtimeAudit: state.runtimeAudit,
-            preparedFiles: state.preparedFiles,
-            extractedRecords: state.extractedRecords,
-            reviewSummary: state.reviewSummary,
-            reviewSections: state.reviewSections,
-            reportTransactions: (state.reportTransactions || []).map((transaction) => ({
-              ...transaction,
-              labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)
-            })),
-            exportFiles: state.exportFiles
-          }, 'completed');
-          runtimeOutput.innerHTML = renderMainRuntimeState(state);
+          const visibleState = buildCompletedVisibleRuntimeState(state);
+          applyVisibleRuntimeState(visibleState, 'completed');
+          runtimeOutput.innerHTML = renderMainRuntimeState(visibleState);
         } catch (error) {
           runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime běh selhal</strong>. Viditelně zobrazujeme chybu místo tichého ponechání ukázkového snapshotu.';
           renderFailedState(error);
