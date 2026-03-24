@@ -594,6 +594,24 @@ ${showRuntimePayoutDiagnostics ? `
         return 'Nepřiřazený vstup';
       }
 
+      function buildFileRouteOutcomeLabel(file) {
+        if (file.status === 'supported') {
+          return file.role === 'supplemental'
+            ? 'Podporovaný doplňkový payout dokument'
+            : 'Rozpoznaný a zpracovaný zdroj';
+        }
+
+        if (file.status === 'error') {
+          return 'Selhání ingestu';
+        }
+
+        if (file.intakeStatus === 'unsupported') {
+          return 'Rozpoznaný, ale nepodporovaný vstup';
+        }
+
+        return 'Nerozpoznaný vstup';
+      }
+
       function buildPreparedFilesMarkup(state) {
         const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
         const recognizedFiles = fileRoutes.filter((file) => file.status === 'supported');
@@ -602,16 +620,13 @@ ${showRuntimePayoutDiagnostics ? `
         const preparedFiles = recognizedFiles.length === 0
           ? '<li>Žádné rozpoznané soubory.</li>'
           : recognizedFiles.map((file) => {
-            const parserLine = file.parserId ? ' · parser ' + escapeHtml(file.parserId) : '';
-            const roleLine = file.role === 'supplemental' ? ' · doplňkový zdroj' : '';
             const warningLine = file.warnings && file.warnings.length > 0
               ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
               : '';
 
             return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
-              + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
-              + parserLine
-              + roleLine
+              + escapeHtml(buildFileRouteOutcomeLabel(file))
+              + ' · ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
               + ' · ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis))
               + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount || 0)) + '</span>'
               + warningLine

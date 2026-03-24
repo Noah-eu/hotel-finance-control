@@ -73,11 +73,7 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
     const binaryContentBase64 = arrayBufferToBase64(buffer)
 
     if (looksLikePdfUpload(file.name, bytes)) {
-      const content = await extractPdfTextFromBytes(bytes)
-
-      if (!content.trim()) {
-        throw new Error(`Nepodařilo se deterministicky extrahovat text z PDF souboru ${file.name}.`)
-      }
+      const content = await extractPdfTextFromBytes(bytes, file.name)
 
       return {
         content,
@@ -177,10 +173,12 @@ function buildBrowserRuntimeRunId(month?: string): string {
   return `browser-runtime-upload-${suffix}`
 }
 
-async function extractPdfTextFromBytes(bytes: Uint8Array): Promise<string> {
+async function extractPdfTextFromBytes(bytes: Uint8Array, fileName: string): Promise<string> {
   const binary = fallbackDecodeBytesAsLatin1(bytes)
-  const streamMatches = Array.from(binary.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g))
+  const streamMatches = Array.from(binary.matchAll(/stream(?:\r\n|\n|\r)([\s\S]*?)(?:\r\n|\n|\r)endstream/g))
   const textChunks: string[] = []
+  let sawCompressedStream = false
+  let sawUnsupportedDecompression = false
 
   for (const match of streamMatches) {
     const streamContent = match[1]
@@ -189,26 +187,44 @@ async function extractPdfTextFromBytes(bytes: Uint8Array): Promise<string> {
       ? ''
       : binary.slice(Math.max(0, streamStart - 200), streamStart)
     const streamBytes = Uint8Array.from((streamContent ?? '').split('').map((char) => char.charCodeAt(0)))
-    const decodedStream = headerSnippet.includes('/FlateDecode')
+    const isFlateEncoded = headerSnippet.includes('/FlateDecode')
+    sawCompressedStream ||= isFlateEncoded
+
+    const decodedStream = isFlateEncoded
       ? await inflatePdfStream(streamBytes)
       : fallbackDecodeBytesAsLatin1(streamBytes)
 
-    textChunks.push(...extractPdfLiteralStrings(decodedStream))
+    if (decodedStream === undefined) {
+      sawUnsupportedDecompression = true
+      continue
+    }
+
+    textChunks.push(...extractPdfTextStrings(decodedStream))
   }
 
   if (textChunks.length === 0) {
-    textChunks.push(...extractPdfLiteralStrings(binary))
+    textChunks.push(...extractPdfTextStrings(binary))
   }
 
-  return textChunks
+  const normalizedText = textChunks
     .map((chunk) => chunk.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .join('\n')
+
+  if (normalizedText) {
+    return normalizedText
+  }
+
+  if (sawCompressedStream && sawUnsupportedDecompression) {
+    throw new Error(`Browser runtime nepodporuje deterministickou dekompresi textového PDF streamu pro ${fileName}.`)
+  }
+
+  throw new Error(`PDF soubor ${fileName} neobsahuje deterministicky čitelnou textovou vrstvu.`)
 }
 
-async function inflatePdfStream(bytes: Uint8Array): Promise<string> {
+async function inflatePdfStream(bytes: Uint8Array): Promise<string | undefined> {
   if (typeof DecompressionStream !== 'function') {
-    return fallbackDecodeBytesAsLatin1(bytes)
+    return undefined
   }
 
   try {
@@ -221,17 +237,38 @@ async function inflatePdfStream(bytes: Uint8Array): Promise<string> {
   }
 }
 
-function extractPdfLiteralStrings(content: string): string[] {
-  const matches = [
-    ...Array.from(content.matchAll(/\((?:\\.|[^\\()])*\)\s*Tj/g)).map((match) => match[0]),
-    ...Array.from(content.matchAll(/\[(.*?)\]\s*TJ/gs)).map((match) => match[1] ?? '')
-  ]
+function extractPdfTextStrings(content: string): string[] {
+  const directMatches = Array.from(
+    content.matchAll(/(\((?:\\.|[^\\()])*\)|<[\da-fA-F\s]+>)\s*(?:Tj|')/g)
+  ).map((match) => decodePdfTextToken(match[1] ?? ''))
 
-  return matches.flatMap((segment) =>
-    Array.from(segment.matchAll(/\((?:\\.|[^\\()])*\)/g)).map((match) =>
-      decodePdfLiteralString(match[0].slice(1, -1))
+  const doubleQuoteMatches = Array.from(
+    content.matchAll(/-?\d+(?:\.\d+)?\s+-?\d+(?:\.\d+)?\s+(\((?:\\.|[^\\()])*\)|<[\da-fA-F\s]+>)\s*"/g)
+  ).map((match) => decodePdfTextToken(match[1] ?? ''))
+
+  const arrayMatches = Array.from(content.matchAll(/\[(.*?)\]\s*TJ/gs)).flatMap((match) =>
+    Array.from((match[1] ?? '').matchAll(/\((?:\\.|[^\\()])*\)|<[\da-fA-F\s]+>/g)).map((segment) =>
+      decodePdfTextToken(segment[0] ?? '')
     )
   )
+
+  return [...directMatches, ...doubleQuoteMatches, ...arrayMatches].filter(Boolean)
+}
+
+function decodePdfTextToken(value: string): string {
+  if (!value) {
+    return ''
+  }
+
+  if (value.startsWith('(') && value.endsWith(')')) {
+    return decodePdfLiteralString(value.slice(1, -1))
+  }
+
+  if (value.startsWith('<') && value.endsWith('>')) {
+    return decodePdfHexString(value.slice(1, -1))
+  }
+
+  return ''
 }
 
 function decodePdfLiteralString(value: string): string {
@@ -241,6 +278,97 @@ function decodePdfLiteralString(value: string): string {
     .replace(/\\r/g, '\r')
     .replace(/\\t/g, '\t')
     .replace(/\\([0-7]{3})/g, (_, octal: string) => String.fromCharCode(Number.parseInt(octal, 8)))
+}
+
+function decodePdfHexString(value: string): string {
+  const normalized = value.replace(/\s+/g, '')
+
+  if (!normalized) {
+    return ''
+  }
+
+  const evenLengthValue = normalized.length % 2 === 0 ? normalized : `${normalized}0`
+  const bytes = new Uint8Array(evenLengthValue.length / 2)
+
+  for (let index = 0; index < evenLengthValue.length; index += 2) {
+    bytes[index / 2] = Number.parseInt(evenLengthValue.slice(index, index + 2), 16)
+  }
+
+  return decodePdfTextBytes(bytes)
+}
+
+function decodePdfTextBytes(bytes: Uint8Array): string {
+  if (bytes.length === 0) {
+    return ''
+  }
+
+  if (bytes.length >= 2) {
+    if (bytes[0] === 0xfe && bytes[1] === 0xff) {
+      return decodeUtf16Bytes(bytes.subarray(2), 'be')
+    }
+
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) {
+      return decodeUtf16Bytes(bytes.subarray(2), 'le')
+    }
+  }
+
+  const inferredUtf16 = inferUtf16Endianness(bytes)
+
+  if (inferredUtf16) {
+    return decodeUtf16Bytes(bytes, inferredUtf16)
+  }
+
+  const utf8 = decodeBytes(bytes, 'utf-8')
+  if (utf8 && !utf8.includes('�')) {
+    return utf8
+  }
+
+  return fallbackDecodeBytesAsLatin1(bytes)
+}
+
+function inferUtf16Endianness(bytes: Uint8Array): 'be' | 'le' | undefined {
+  if (bytes.length < 4 || bytes.length % 2 !== 0) {
+    return undefined
+  }
+
+  let zeroEvenCount = 0
+  let zeroOddCount = 0
+
+  for (let index = 0; index < bytes.length; index += 2) {
+    if (bytes[index] === 0) {
+      zeroEvenCount += 1
+    }
+
+    if (bytes[index + 1] === 0) {
+      zeroOddCount += 1
+    }
+  }
+
+  const pairCount = bytes.length / 2
+
+  if (zeroEvenCount >= Math.ceil(pairCount * 0.4) && zeroOddCount < zeroEvenCount) {
+    return 'be'
+  }
+
+  if (zeroOddCount >= Math.ceil(pairCount * 0.4) && zeroEvenCount < zeroOddCount) {
+    return 'le'
+  }
+
+  return undefined
+}
+
+function decodeUtf16Bytes(bytes: Uint8Array, endianness: 'be' | 'le'): string {
+  let text = ''
+
+  for (let index = 0; index + 1 < bytes.length; index += 2) {
+    const codeUnit = endianness === 'be'
+      ? (bytes[index] << 8) | bytes[index + 1]
+      : (bytes[index + 1] << 8) | bytes[index]
+
+    text += String.fromCharCode(codeUnit)
+  }
+
+  return text
 }
 
 function ensureBrowserCompatibleBuffer(): void {

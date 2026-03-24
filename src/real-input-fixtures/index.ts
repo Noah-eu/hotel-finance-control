@@ -79,8 +79,8 @@ function pdfBase64FromTextLines(lines: string[]): string {
     '/F1 12 Tf',
     '50 780 Td',
     ...lines.flatMap((line, index) => index === 0
-      ? [`(${escapePdfLiteral(line)}) Tj`]
-      : ['0 -18 Td', `(${escapePdfLiteral(line)}) Tj`]),
+      ? [`<${encodePdfHexString(line)}> Tj`]
+      : ['0 -18 Td', `<${encodePdfHexString(line)}> Tj`]),
     'ET'
   ].join('\n')
 
@@ -113,11 +113,10 @@ function pdfBase64FromTextLines(lines: string[]): string {
   return Buffer.from(pdf, 'latin1').toString('base64')
 }
 
-function escapePdfLiteral(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
+function encodePdfHexString(value: string): string {
+  return Array.from(value)
+    .map((char) => char.charCodeAt(0).toString(16).padStart(4, '0'))
+    .join('')
 }
 
 export const realInputFixtures: RealInputFixture[] = [

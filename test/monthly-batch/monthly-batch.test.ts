@@ -1180,7 +1180,7 @@ describe('runMonthlyReconciliationBatch', () => {
           name: 'booking-payout-broken.pdf',
           content: '',
           contentFormat: 'pdf-text',
-          ingestError: 'Nepodařilo se deterministicky extrahovat text z PDF souboru booking-payout-broken.pdf.',
+          ingestError: 'PDF soubor booking-payout-broken.pdf neobsahuje deterministicky čitelnou textovou vrstvu.',
           uploadedAt: '2026-03-24T11:01:30.000Z'
         }
       ],
@@ -1228,7 +1228,7 @@ describe('runMonthlyReconciliationBatch', () => {
         sourceSystem: 'booking',
         documentType: 'payout_statement',
         role: 'supplemental',
-        errorMessage: 'Nepodařilo se deterministicky extrahovat text z PDF souboru booking-payout-broken.pdf.'
+        errorMessage: 'PDF soubor booking-payout-broken.pdf neobsahuje deterministicky čitelnou textovou vrstvu.'
       })
     ])
     expect(result.importedFiles.map((file) => file.sourceDocument.fileName)).toEqual([

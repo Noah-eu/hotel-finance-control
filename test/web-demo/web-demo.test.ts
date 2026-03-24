@@ -984,7 +984,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Rozpoznáno souborů:')
     expect(result.html).toContain('Nepodporované nebo nerozpoznané soubory')
     expect(result.html).toContain('Booking payout statement PDF')
-    expect(result.html).toContain('doplňkový zdroj')
+    expect(result.html).toContain('Podporovaný doplňkový payout dokument')
     expect(result.html).toContain('Selhání ingestu')
     expect(result.html).toContain('buildClassificationBasisLabel')
     expect(result.html).toContain('state.routingSummary?.uploadedFileCount')

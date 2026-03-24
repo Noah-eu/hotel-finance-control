@@ -566,6 +566,64 @@ ${renderBrowserRuntimeClientBootstrap()}
         return 'bez rozpoznání';
       }
 
+      function buildRuntimeFileSourceLabel(sourceSystem, documentType) {
+        if (sourceSystem === 'bank') {
+          return 'Bankovní výpis';
+        }
+
+        if (sourceSystem === 'booking' && documentType === 'payout_statement') {
+          return 'Booking payout statement PDF';
+        }
+
+        if (sourceSystem === 'booking') {
+          return 'Booking payout report';
+        }
+
+        if (sourceSystem === 'airbnb') {
+          return 'Airbnb payout report';
+        }
+
+        if (sourceSystem === 'comgate') {
+          return 'Comgate platební report';
+        }
+
+        if (sourceSystem === 'expedia') {
+          return 'Expedia payout report';
+        }
+
+        if (sourceSystem === 'previo') {
+          return 'Previo rezervační export';
+        }
+
+        if (documentType === 'invoice' || sourceSystem === 'invoice') {
+          return 'Dodavatelská faktura';
+        }
+
+        if (documentType === 'receipt' || sourceSystem === 'receipt') {
+          return 'Výdajový doklad';
+        }
+
+        return 'Nepřiřazený vstup';
+      }
+
+      function buildRuntimeFileOutcomeLabel(file) {
+        if (file.status === 'supported') {
+          return file.role === 'supplemental'
+            ? 'Podporovaný doplňkový payout dokument'
+            : 'Rozpoznaný a zpracovaný zdroj';
+        }
+
+        if (file.status === 'error') {
+          return 'Selhání ingestu';
+        }
+
+        if (file.intakeStatus === 'unsupported') {
+          return 'Rozpoznaný, ale nepodporovaný vstup';
+        }
+
+        return 'Nerozpoznaný vstup';
+      }
+
       function buildRuntimeFileRouting(state) {
         const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
 
@@ -574,11 +632,9 @@ ${renderBrowserRuntimeClientBootstrap()}
         }
 
         return '<ul class="trace-list">' + fileRoutes.map((file) => {
-          const roleLine = file.role === 'supplemental' ? ' · doplňkový zdroj' : '';
           const statusLine = file.status === 'supported'
-            ? 'Rozpoznáno jako ' + escapeHtml(file.sourceSystem) + ' / ' + escapeHtml(file.documentType)
-              + roleLine
-              + (file.parserId ? ' · parser ' + escapeHtml(file.parserId) : '')
+            ? escapeHtml(buildRuntimeFileOutcomeLabel(file))
+              + ' · ' + escapeHtml(buildRuntimeFileSourceLabel(file.sourceSystem, file.documentType))
             : file.status === 'error'
               ? 'Rozpoznaný vstup se selháním ingestu'
               : file.intakeStatus === 'unsupported'
@@ -922,12 +978,9 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
           ${run.fileRoutes.map((file) => `
             <article class="trace-card">
               <h3>${escapeHtml(file.fileName)}</h3>
-              <p><strong>Stav:</strong> ${escapeHtml(file.status === 'supported' ? 'Rozpoznáno a zpracováno' : file.status === 'error' ? 'Selhání ingestu' : file.intakeStatus === 'unsupported' ? 'Rozpoznáno, ale nepodporováno' : 'Nerozpoznáno')}</p>
-              <p><strong>Role:</strong> ${escapeHtml(file.role === 'supplemental' ? 'Doplňkový zdroj' : 'Primární zdroj')}</p>
-              <p><strong>Zdroj:</strong> ${escapeHtml(file.sourceSystem)}</p>
-              <p><strong>Typ:</strong> ${escapeHtml(file.documentType)}</p>
+              <p><strong>Stav:</strong> ${escapeHtml(buildUploadedFileOutcomeLabel(file))}</p>
+              <p><strong>Zdroj:</strong> ${escapeHtml(buildUploadedFileSourceLabel(file))}</p>
               <p><strong>Klasifikace:</strong> ${escapeHtml(buildUploadedFileClassificationLabel(file.classificationBasis))}</p>
-              ${file.parserId ? `<p><strong>Parser:</strong> ${escapeHtml(file.parserId)}</p>` : ''}
               ${file.sourceDocumentId ? `<p><strong>ID zdrojového dokumentu:</strong> <code>${escapeHtml(file.sourceDocumentId)}</code></p>` : ''}
               ${file.sourceDocumentId ? `<p><strong>Extrahované záznamy:</strong> ${escapeHtml(String(file.extractedCount ?? findBatchFileExtractedCount(run.batch, file.sourceDocumentId)))}</p>` : ''}
               ${file.reason ? `<p class="hint">${escapeHtml(file.reason)}</p>` : ''}
@@ -1001,6 +1054,64 @@ function buildUploadedFileClassificationLabel(value: UploadedMonthlyFileRoute['c
     default:
       return 'bez rozpoznání'
   }
+}
+
+function buildUploadedFileSourceLabel(file: UploadedMonthlyFileRoute): string {
+  if (file.sourceSystem === 'bank') {
+    return 'Bankovní výpis'
+  }
+
+  if (file.sourceSystem === 'booking' && file.documentType === 'payout_statement') {
+    return 'Booking payout statement PDF'
+  }
+
+  if (file.sourceSystem === 'booking') {
+    return 'Booking payout report'
+  }
+
+  if (file.sourceSystem === 'airbnb') {
+    return 'Airbnb payout report'
+  }
+
+  if (file.sourceSystem === 'comgate') {
+    return 'Comgate platební report'
+  }
+
+  if (file.sourceSystem === 'expedia') {
+    return 'Expedia payout report'
+  }
+
+  if (file.sourceSystem === 'previo') {
+    return 'Previo rezervační export'
+  }
+
+  if (file.documentType === 'invoice' || file.sourceSystem === 'invoice') {
+    return 'Dodavatelská faktura'
+  }
+
+  if (file.documentType === 'receipt' || file.sourceSystem === 'receipt') {
+    return 'Výdajový doklad'
+  }
+
+  return 'Nepřiřazený vstup'
+}
+
+function buildUploadedFileOutcomeLabel(file: UploadedMonthlyFileRoute): string {
+  if (file.status === 'supported') {
+    return file.role === 'supplemental'
+      ? 'Podporovaný doplňkový payout dokument'
+      : 'Rozpoznaný a zpracovaný zdroj'
+  }
+
+  if (file.status === 'error') {
+    return 'Selhání ingestu'
+  }
+
+  if (file.intakeStatus === 'unsupported') {
+    return 'Rozpoznaný, ale nepodporovaný vstup'
+  }
+
+  return 'Nerozpoznaný vstup'
 }
 
 function findBatchFileExtractedCount(batch: MonthlyBatchResult, sourceDocumentId: string): number {

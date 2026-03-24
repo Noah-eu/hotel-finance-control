@@ -2074,6 +2074,7 @@ describe('buildUploadWebFlow', () => {
         extractedCount: 1
       })
     ])
+    expect(result.fileRoutes.some((file) => file.fileName === 'Bookinng35k.pdf' && file.status === 'error')).toBe(false)
     expect(result.preparedFiles.map((file) => file.fileName)).toEqual([
       'booking35k.csv',
       'airbnb.csv',
@@ -2120,7 +2121,7 @@ describe('buildUploadWebFlow', () => {
         sourceSystem: 'booking',
         documentType: 'payout_statement',
         role: 'supplemental',
-        errorMessage: 'Nepodařilo se deterministicky extrahovat text z PDF souboru booking-payout-broken.pdf.'
+        errorMessage: 'PDF soubor booking-payout-broken.pdf neobsahuje deterministicky čitelnou textovou vrstvu.'
       })
     ])
     expect(result.preparedFiles).toEqual([
@@ -2156,6 +2157,7 @@ describe('buildUploadWebFlow', () => {
         role: 'supplemental'
       })
     ])
+    expect(result.reportTransactions).toHaveLength(1)
     expect(result.reviewSections.payoutBatchMatched).toEqual([])
     expect(result.reviewSections.payoutBatchUnmatched).toEqual([
       expect.objectContaining({
