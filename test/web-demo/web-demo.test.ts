@@ -1,12 +1,13 @@
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
-import { buildBrowserRuntimeStateFromSelectedFiles, createBrowserRuntime } from '../../src/upload-web/browser-runtime'
+import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
 
 function collectRuntimePayoutDiagnosticDataFromState(state: Awaited<ReturnType<typeof buildBrowserRuntimeStateFromSelectedFiles>>) {
   const runtimeAudit = state.runtimeAudit.payoutDiagnostics
@@ -1014,6 +1015,33 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
   })
 
+  it('shows debug-only file intake trace from the same final rendered browser state without affecting the default operator page', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-24T18:05:00.000Z',
+      month: '2026-03',
+      debugMode: true,
+      outputDirName: 'test-web-demo-final-debug-trace',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content),
+        createWebDemoRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildGlyphSeparatedBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.html).toContain('id="runtime-file-intake-diagnostics-section"')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bookinng35k.pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('MIME: application/pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Extrahovaný text: ano')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text extraction: extracted / pdf-text')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-branding')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payment-id')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Booking payout statement PDF · podle obsahu')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bucket: recognized · Podporovaný doplňkový payout dokument')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+  })
+
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:15.000Z',
@@ -1172,6 +1200,8 @@ interface StubDomElement {
 async function executeWebDemoMainWorkflow(input: {
   generatedAt: string
   month: string
+  debugMode?: boolean
+  outputDirName?: string
   files: Array<{
     name: string
     type?: string
@@ -1179,18 +1209,35 @@ async function executeWebDemoMainWorkflow(input: {
     arrayBuffer?: () => Promise<ArrayBuffer>
   }>
 }): Promise<{
+  html: string
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
+  runtimeFileIntakeDiagnosticsContent: StubDomElement
 }> {
-  const result = await buildWebDemo({
-    generatedAt: input.generatedAt
+  const outputDirName = input.outputDirName ?? 'test-web-demo-main-workflow'
+  const outputPath = resolve(`dist/${outputDirName}/index.html`)
+  rmSync(resolve(`dist/${outputDirName}`), {
+    recursive: true,
+    force: true
   })
-  const script = extractMainInlineWebDemoScript(result.html)
+
+  const result = await buildWebDemo({
+    generatedAt: input.generatedAt,
+    debugMode: Boolean(input.debugMode),
+    outputPath
+  })
+  const html = readFileSync(outputPath, 'utf8')
+  const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
-  const windowObject = {
-    location: { search: '' },
-    __hotelFinanceCreateBrowserRuntime: () => createBrowserRuntime()
+  const windowObject: {
+    location: { search: string }
+    __hotelFinanceCreateBrowserRuntime?: unknown
+  } = {
+    location: { search: input.debugMode ? '?debug=1' : '' }
   }
+
+  await loadBuiltWebDemoRuntimeModule(outputPath, result.runtimeAssetPath!, windowObject)
+  expect(typeof windowObject.__hotelFinanceCreateBrowserRuntime).toBe('function')
 
   runInNewContext(stripRuntimeBootstrap(script), {
     window: windowObject,
@@ -1212,8 +1259,10 @@ async function executeWebDemoMainWorkflow(input: {
   }
 
   return {
+    html,
     preparedFilesContent: elements['prepared-files-content'],
-    runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files']
+    runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
+    runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content']
   }
 }
 
@@ -1236,6 +1285,30 @@ function extractMainInlineWebDemoScript(html: string): string {
 
 function stripRuntimeBootstrap(script: string): string {
   return script
+}
+
+async function loadBuiltWebDemoRuntimeModule(
+  outputPath: string,
+  runtimeAssetPath: string,
+  windowObject: {
+    location: { search: string }
+    __hotelFinanceCreateBrowserRuntime?: unknown
+  }
+) {
+  const assetPath = resolve(dirname(outputPath), runtimeAssetPath.slice(2))
+  const previousWindow = (globalThis as { window?: unknown }).window
+
+  ;(globalThis as { window?: unknown }).window = windowObject
+
+  try {
+    await import(`${pathToFileURL(assetPath).href}?web-demo-test=${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  } finally {
+    if (typeof previousWindow === 'undefined') {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = previousWindow
+    }
+  }
 }
 
 function createWebDemoDomStub(): Record<string, StubDomElement> {
@@ -1267,7 +1340,11 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'unmatched-reservations-section',
     'unmatched-reservations-content',
     'export-handoff-section',
-    'export-handoff-content'
+    'export-handoff-content',
+    'runtime-payout-diagnostics-section',
+    'runtime-payout-diagnostics-content',
+    'runtime-file-intake-diagnostics-section',
+    'runtime-file-intake-diagnostics-content'
   ]
 
   for (const id of ids) {

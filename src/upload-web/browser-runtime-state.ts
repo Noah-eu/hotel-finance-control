@@ -36,7 +36,7 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     batch,
     review
   })
-  const runtimeAudit = buildRuntimeAudit(importedFiles, batch, review)
+  const runtimeAudit = buildRuntimeAudit(input.files, ingestion.fileRoutes, importedFiles, batch, review)
 
   return {
     generatedAt: input.generatedAt,
@@ -127,6 +127,8 @@ export function buildBrowserRuntimeUploadStateFromFiles(
 }
 
 function buildRuntimeAudit(
+  uploadedFiles: UploadedMonthlyFile[],
+  fileRoutes: ReturnType<typeof ingestUploadedMonthlyFiles>['fileRoutes'],
   importedFiles: ReturnType<typeof ingestUploadedMonthlyFiles>['importedFiles'],
   batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
   review: ReturnType<typeof buildReviewScreen>
@@ -173,7 +175,26 @@ function buildRuntimeAudit(
       reportUnmatchedPayoutReferences: reportUnmatchedAirbnb.map((item) => String(item.payoutReference ?? '')),
       runtimeMatchedTitleSourceValues,
       runtimeUnmatchedTitleSourceValues
-    }
+    },
+    fileIntakeDiagnostics: uploadedFiles.map((file, index) => {
+      const route = fileRoutes[index]
+      const browserTextExtraction = file.sourceDescriptor?.browserTextExtraction
+
+      return {
+        fileName: file.name,
+        mimeType: file.sourceDescriptor?.mimeType,
+        textExtractionMode: browserTextExtraction?.mode,
+        textExtractionStatus: browserTextExtraction?.status,
+        extractedTextPresent: file.content.trim().length > 0,
+        detectedSignatures: browserTextExtraction?.detectedSignatures ?? [],
+        sourceSystem: route?.sourceSystem ?? 'unknown',
+        documentType: route?.documentType ?? 'other',
+        classificationBasis: route?.classificationBasis ?? 'unknown',
+        status: route?.status ?? 'unsupported',
+        intakeStatus: route?.intakeStatus ?? 'unclassified',
+        role: route?.role ?? 'primary'
+      }
+    })
   }
 }
 

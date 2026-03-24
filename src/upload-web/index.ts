@@ -76,6 +76,20 @@ export interface BrowserRuntimeUploadState {
       runtimeMatchedTitleSourceValues: string[]
       runtimeUnmatchedTitleSourceValues: string[]
     }
+    fileIntakeDiagnostics: Array<{
+      fileName: string
+      mimeType?: string
+      textExtractionMode?: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
+      textExtractionStatus?: 'extracted' | 'failed' | 'not-attempted'
+      extractedTextPresent: boolean
+      detectedSignatures: string[]
+      sourceSystem: string
+      documentType: string
+      classificationBasis: string
+      status: 'supported' | 'unsupported' | 'error'
+      intakeStatus: 'parsed' | 'unsupported' | 'unclassified' | 'error'
+      role: 'primary' | 'supplemental'
+    }>
   }
   preparedFiles: Array<{
     fileName: string

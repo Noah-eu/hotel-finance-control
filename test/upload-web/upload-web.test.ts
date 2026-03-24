@@ -2228,6 +2228,67 @@ describe('buildUploadWebFlow', () => {
     expect(renderedRun.html).not.toContain('<strong>Unsupported:</strong>')
   })
 
+  it('keeps per-file intake diagnostics aligned with the final browser routing outcome', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimePdfFileFromTextLines('Bookinng35k.pdf', buildBookingPayoutStatementVariantPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-24T18:10:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual([
+      expect.objectContaining({
+        fileName: 'booking35k.csv',
+        status: 'supported',
+        classificationBasis: 'content',
+        extractedTextPresent: true,
+        sourceSystem: 'booking',
+        documentType: 'ota_report'
+      }),
+      expect.objectContaining({
+        fileName: 'airbnb.csv',
+        status: 'supported',
+        classificationBasis: 'content',
+        extractedTextPresent: true,
+        sourceSystem: 'airbnb',
+        documentType: 'ota_report'
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603191023.csv',
+        status: 'supported',
+        classificationBasis: 'content',
+        extractedTextPresent: true,
+        sourceSystem: 'bank',
+        documentType: 'bank_statement'
+      }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        mimeType: 'application/pdf',
+        textExtractionMode: 'pdf-text',
+        textExtractionStatus: 'extracted',
+        extractedTextPresent: true,
+        detectedSignatures: expect.arrayContaining([
+          'booking-branding',
+          'booking-payment-id',
+          'booking-payout-date',
+          'booking-payout-total'
+        ]),
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'content',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        role: 'supplemental'
+      })
+    ])
+  })
+
   it('keeps PDF ingest failures visible in browser routing instead of silently losing the selected file', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [

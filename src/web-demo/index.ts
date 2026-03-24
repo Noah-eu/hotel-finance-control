@@ -108,6 +108,7 @@ function renderOperatorWebDemoHtml(input: {
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
   const showRuntimePayoutDiagnostics = Boolean(input.debugMode)
+  const showRuntimeFileIntakeDiagnostics = Boolean(input.debugMode)
   const buildExtractedRecordsMarkupFunction = input.debugMode
     ? buildDebugExtractedRecordsMarkupFunctionSource()
     : buildDefaultExtractedRecordsMarkupFunctionSource()
@@ -118,6 +119,13 @@ function renderOperatorWebDemoHtml(input: {
     : `
   const runtimePayoutDiagnosticsSection = null;
   const runtimePayoutDiagnosticsContent = null;`
+  const runtimeFileIntakeDiagnosticsBindings = showRuntimeFileIntakeDiagnostics
+    ? `
+  const runtimeFileIntakeDiagnosticsSection = document.getElementById('runtime-file-intake-diagnostics-section');
+  const runtimeFileIntakeDiagnosticsContent = document.getElementById('runtime-file-intake-diagnostics-content');`
+    : `
+  const runtimeFileIntakeDiagnosticsSection = null;
+  const runtimeFileIntakeDiagnosticsContent = null;`
 
   const initialRuntimeState = {
     debugMode: Boolean(input.debugMode),
@@ -156,7 +164,8 @@ function renderOperatorWebDemoHtml(input: {
         reportUnmatchedPayoutReferences: [],
         runtimeMatchedTitleSourceValues: [],
         runtimeUnmatchedTitleSourceValues: []
-      }
+      },
+      fileIntakeDiagnostics: []
     },
     reviewSections: {
       matched: [],
@@ -454,6 +463,15 @@ ${showRuntimePayoutDiagnostics ? `
         </div>
       </section>
 ` : ''}
+${showRuntimeFileIntakeDiagnostics ? `
+      <section id="runtime-file-intake-diagnostics-section" class="card" data-runtime-phase="placeholder">
+        <h2>Diagnostika intake souborů</h2>
+        <div id="runtime-file-intake-diagnostics-content">
+          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+          <p class="hint">Po spuštění zde uvidíte skutečný browser intake handoff pro každý vybraný soubor.</p>
+        </div>
+      </section>
+` : ''}
     </main>
     <script>
       ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
@@ -484,7 +502,7 @@ ${showRuntimePayoutDiagnostics ? `
   const unmatchedReservationsSection = document.getElementById('unmatched-reservations-section');
   const unmatchedReservationsContent = document.getElementById('unmatched-reservations-content');
   const exportHandoffSection = document.getElementById('export-handoff-section');
-  const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}
+  const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}${runtimeFileIntakeDiagnosticsBindings}
       const generatedAt = ${JSON.stringify(input.generatedAt)};
   const buildFingerprintVersion = ${JSON.stringify(buildFingerprintVersion)};
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
@@ -610,6 +628,22 @@ ${showRuntimePayoutDiagnostics ? `
         }
 
         return 'Nerozpoznaný vstup';
+      }
+
+      function buildDebugBooleanLabel(value) {
+        return value ? 'ano' : 'ne';
+      }
+
+      function buildDebugOutcomeBucketLabel(file) {
+        if (file.status === 'supported') {
+          return 'recognized';
+        }
+
+        if (file.status === 'error') {
+          return 'error';
+        }
+
+        return 'unsupported';
       }
 
       function buildPreparedFilesMarkup(state) {
@@ -796,6 +830,58 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function renderInitialRuntimePayoutDiagnostics() {}
 `}
+${showRuntimeFileIntakeDiagnostics ? `
+      function buildRuntimeFileIntakeDiagnosticsMarkup(state) {
+        const diagnostics = (state && state.runtimeAudit && state.runtimeAudit.fileIntakeDiagnostics) || [];
+
+        if (diagnostics.length === 0) {
+          return '<p class="hint">Browser intake trace zatím není k dispozici.</p>';
+        }
+
+        return '<ul class="diagnostic-list">' + diagnostics.map((file) => [
+          '<li>',
+          '<strong>' + escapeHtml(file.fileName || '') + '</strong>',
+          '<br /><span class="hint">MIME: ' + escapeHtml(file.mimeType || 'neuvedeno') + '</span>',
+          '<br /><span class="hint">Extrahovaný text: ' + escapeHtml(buildDebugBooleanLabel(Boolean(file.extractedTextPresent))) + '</span>',
+          '<br /><span class="hint">Text extraction: ' + escapeHtml(String(file.textExtractionStatus || 'not-attempted')) + ' / ' + escapeHtml(String(file.textExtractionMode || 'unknown')) + '</span>',
+          '<br /><span class="hint">Signály: ' + escapeHtml((file.detectedSignatures && file.detectedSignatures.length > 0 ? file.detectedSignatures.join(', ') : 'žádné')) + '</span>',
+          '<br /><span class="hint">Klasifikovaný zdroj: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(buildClassificationBasisLabel(file.classificationBasis)) + '</span>',
+          '<br /><span class="hint">Bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
+          '</li>'
+        ].join('')).join('') + '</ul>';
+      }
+
+      function syncRuntimeFileIntakeDiagnosticsPhase(phase) {
+        runtimeFileIntakeDiagnosticsSection.setAttribute('data-runtime-phase', phase);
+      }
+
+      function renderCompletedRuntimeFileIntakeDiagnostics(state) {
+        runtimeFileIntakeDiagnosticsContent.innerHTML = buildRuntimeFileIntakeDiagnosticsMarkup(state);
+      }
+
+      function renderRunningRuntimeFileIntakeDiagnostics() {
+        runtimeFileIntakeDiagnosticsContent.innerHTML = '<p class="hint">Browser intake trace se právě načítá z aktuálního runtime běhu…</p>';
+      }
+
+      function renderFailedRuntimeFileIntakeDiagnostics() {
+        runtimeFileIntakeDiagnosticsContent.innerHTML = '<p class="hint">Browser intake trace není k dispozici, protože runtime běh selhal.</p>';
+      }
+
+      function renderInitialRuntimeFileIntakeDiagnostics() {
+        runtimeFileIntakeDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte browser intake handoff pro každý soubor a jeho finální render bucket.</p>';
+      }
+` : ''}
+${showRuntimeFileIntakeDiagnostics ? '' : `
+      function syncRuntimeFileIntakeDiagnosticsPhase() {}
+
+      function renderCompletedRuntimeFileIntakeDiagnostics() {}
+
+      function renderRunningRuntimeFileIntakeDiagnostics() {}
+
+      function renderFailedRuntimeFileIntakeDiagnostics() {}
+
+      function renderInitialRuntimeFileIntakeDiagnostics() {}
+`}
 
       function buildFingerprintMarkup(state) {
         const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
@@ -908,9 +994,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', phase);
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', phase);
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', phase);
-  unmatchedReservationsSection.setAttribute('data-runtime-phase', phase);
+        unmatchedReservationsSection.setAttribute('data-runtime-phase', phase);
         exportHandoffSection.setAttribute('data-runtime-phase', phase);
         syncRuntimePayoutDiagnosticsPhase(phase);
+        syncRuntimeFileIntakeDiagnosticsPhase(phase);
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(state.routingSummary?.uploadedFileCount ?? (state.fileRoutes || []).length ?? (state.preparedFiles || []).length);
@@ -938,6 +1025,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(state);
         exportHandoffContent.innerHTML = buildExportMarkup(state);
         renderCompletedRuntimePayoutDiagnostics(state);
+        renderCompletedRuntimeFileIntakeDiagnostics(state);
       }
 
       function renderRunningState(files) {
@@ -952,9 +1040,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'running');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
-  unmatchedReservationsSection.setAttribute('data-runtime-phase', 'running');
+        unmatchedReservationsSection.setAttribute('data-runtime-phase', 'running');
         exportHandoffSection.setAttribute('data-runtime-phase', 'running');
         syncRuntimePayoutDiagnosticsPhase('running');
+        syncRuntimeFileIntakeDiagnosticsPhase('running');
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(files.length);
@@ -973,6 +1062,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff se právě připravuje ze stejného runtime výsledku…</p>';
         renderRunningRuntimePayoutDiagnostics();
+        renderRunningRuntimeFileIntakeDiagnostics();
       }
 
       function renderFailedState(error) {
@@ -985,9 +1075,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'failed');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
-  unmatchedReservationsSection.setAttribute('data-runtime-phase', 'failed');
+        unmatchedReservationsSection.setAttribute('data-runtime-phase', 'failed');
         exportHandoffSection.setAttribute('data-runtime-phase', 'failed');
         syncRuntimePayoutDiagnosticsPhase('failed');
+        syncRuntimeFileIntakeDiagnosticsPhase('failed');
 
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
@@ -999,6 +1090,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací není k dispozici, protože runtime běh selhal.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
         renderFailedRuntimePayoutDiagnostics();
+        renderFailedRuntimeFileIntakeDiagnostics();
         if (buildFingerprint) {
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
         }
@@ -1015,6 +1107,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'placeholder');
         exportHandoffSection.setAttribute('data-runtime-phase', 'placeholder');
         syncRuntimePayoutDiagnosticsPhase('placeholder');
+        syncRuntimeFileIntakeDiagnosticsPhase('placeholder');
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
         if (runtimeSummaryUploadedFiles) runtimeSummaryUploadedFiles.textContent = '0';
@@ -1035,6 +1128,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         unmatchedReservationsContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované rezervace.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p><p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>';
         renderInitialRuntimePayoutDiagnostics();
+        renderInitialRuntimeFileIntakeDiagnostics();
       }
 
       async function startMainWorkflow() {
