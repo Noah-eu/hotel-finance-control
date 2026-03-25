@@ -132,6 +132,49 @@ describe('PayoutLineNormalizer', () => {
     expect(result.transactions[0]?.bookingPayoutBatchKey).toBe('booking-batch:2024-01-20:PAYOUT-BOOK-20240120')
   })
 
+  it('propagates Booking payout supplement metadata when present on payout rows', () => {
+    const input: NormalizationInput = {
+      extractedRecords: [
+        makeRecord({
+          data: {
+            amountMinor: 3553012,
+            currency: 'CZK',
+            bookedAt: '2026-03-12',
+            accountId: 'expected-payouts',
+            platform: 'booking',
+            reference: 'PAYOUT-BOOK-20260310',
+            bookingPayoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+            payoutSupplementPaymentId: '010638445054',
+            payoutSupplementPayoutDate: '2026-03-12',
+            payoutSupplementPayoutTotalAmountMinor: 145642,
+            payoutSupplementPayoutTotalCurrency: 'EUR',
+            payoutSupplementLocalAmountMinor: 3553012,
+            payoutSupplementLocalCurrency: 'CZK',
+            payoutSupplementIbanSuffix: '5956',
+            payoutSupplementExchangeRate: '24.3955',
+            payoutSupplementSourceDocumentIds: ['doc-booking-pdf-1'],
+            payoutSupplementReservationIds: ['RES-BOOK-8841']
+          }
+        })
+      ]
+    }
+
+    const result = normalizer.normalize(input, context)
+
+    expect(result.transactions[0]).toEqual(expect.objectContaining({
+      payoutSupplementPaymentId: '010638445054',
+      payoutSupplementPayoutDate: '2026-03-12',
+      payoutSupplementPayoutTotalAmountMinor: 145642,
+      payoutSupplementPayoutTotalCurrency: 'EUR',
+      payoutSupplementLocalAmountMinor: 3553012,
+      payoutSupplementLocalCurrency: 'CZK',
+      payoutSupplementIbanSuffix: '5956',
+      payoutSupplementExchangeRate: '24.3955',
+      payoutSupplementSourceDocumentIds: ['doc-booking-pdf-1'],
+      payoutSupplementReservationIds: ['RES-BOOK-8841']
+    }))
+  })
+
   it('skips records with wrong recordType', () => {
     const input: NormalizationInput = {
       extractedRecords: [makeRecord({ recordType: 'bank-transaction' })]

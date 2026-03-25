@@ -88,8 +88,26 @@ export class PayoutLineNormalizer implements Normalizer {
         payoutSupplementPaymentId: typeof data.payoutSupplementPaymentId === 'string'
           ? data.payoutSupplementPaymentId
           : undefined,
+        payoutSupplementPayoutDate: typeof data.payoutSupplementPayoutDate === 'string'
+          ? data.payoutSupplementPayoutDate
+          : undefined,
+        payoutSupplementPayoutTotalAmountMinor: typeof data.payoutSupplementPayoutTotalAmountMinor === 'number'
+          ? data.payoutSupplementPayoutTotalAmountMinor
+          : undefined,
+        payoutSupplementPayoutTotalCurrency: typeof data.payoutSupplementPayoutTotalCurrency === 'string'
+          ? data.payoutSupplementPayoutTotalCurrency
+          : undefined,
+        payoutSupplementLocalAmountMinor: typeof data.payoutSupplementLocalAmountMinor === 'number'
+          ? data.payoutSupplementLocalAmountMinor
+          : undefined,
+        payoutSupplementLocalCurrency: typeof data.payoutSupplementLocalCurrency === 'string'
+          ? data.payoutSupplementLocalCurrency
+          : undefined,
         payoutSupplementIbanSuffix: typeof data.payoutSupplementIbanSuffix === 'string'
           ? data.payoutSupplementIbanSuffix
+          : undefined,
+        payoutSupplementExchangeRate: typeof data.payoutSupplementExchangeRate === 'string'
+          ? data.payoutSupplementExchangeRate
           : undefined,
         payoutSupplementSourceDocumentIds: Array.isArray(data.payoutSupplementSourceDocumentIds)
           ? data.payoutSupplementSourceDocumentIds.filter(

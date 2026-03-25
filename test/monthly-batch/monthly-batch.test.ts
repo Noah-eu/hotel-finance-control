@@ -1633,6 +1633,11 @@ describe('runMonthlyReconciliationBatch', () => {
         payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
         payoutReference: 'PAYOUT-BOOK-20260310',
         payoutSupplementPaymentId: '010638445054',
+        payoutSupplementPayoutDate: '2026-03-12',
+        payoutSupplementPayoutTotalAmountMinor: 145642,
+        payoutSupplementPayoutTotalCurrency: 'EUR',
+        payoutSupplementLocalAmountMinor: 3553012,
+        payoutSupplementLocalCurrency: 'CZK',
         payoutSupplementIbanSuffix: '5956',
         payoutSupplementReservationIds: ['RES-BOOK-8841'],
         payoutSupplementSourceDocumentIds: ['uploaded:booking:2:bookinng35k-pdf']
@@ -1645,10 +1650,86 @@ describe('runMonthlyReconciliationBatch', () => {
         payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
         display: {
           title: 'Booking payout 010638445054 / 35 530,12 Kč',
-          context: 'Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1'
+          context: 'Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · IBAN 5956 · rezervace: 1'
         }
       })
     ])
+  })
+
+  it('uses Booking supplement paymentId and local payout total to match a bank inflow without changing Airbnb payout results', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'booking35k.csv',
+          content: buildBooking35kBrowserUploadContent(),
+          uploadedAt: '2026-03-25T10:10:00.000Z'
+        },
+        {
+          name: 'airbnb.csv',
+          content: buildActualUploadedAirbnbContent(),
+          uploadedAt: '2026-03-25T10:10:10.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(),
+          uploadedAt: '2026-03-25T10:10:20.000Z'
+        },
+        {
+          name: 'Bookinng35k.pdf',
+          content: buildCzechLateCueBookingPayoutStatementContent(),
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-25T10:10:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-supplement-bank-match',
+        requestedAt: '2026-03-25T10:11:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-25T10:12:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({ fileName: 'booking35k.csv', status: 'supported' }),
+      expect.objectContaining({ fileName: 'airbnb.csv', status: 'supported' }),
+      expect.objectContaining({ fileName: 'Pohyby_5599955956_202603191023.csv', status: 'supported' }),
+      expect.objectContaining({
+        fileName: 'Bookinng35k.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        role: 'supplemental'
+      })
+    ])
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toContainEqual(
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        payoutSupplementPaymentId: '010638445054',
+        payoutSupplementLocalAmountMinor: 3553012,
+        payoutSupplementLocalCurrency: 'CZK'
+      })
+    )
+    expect(result.batch.report.payoutBatchMatches).toContainEqual(
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        amountMinor: 3553012,
+        currency: 'CZK',
+        reason: 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu a ID platby Booking.',
+        display: {
+          title: 'Booking payout 010638445054 / 35 530,12 Kč',
+          context: 'Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · IBAN 5956 · rezervace: 1'
+        }
+      })
+    )
+    expect(
+      result.batch.report.payoutBatchMatches.filter((item) => item.platform === 'Airbnb')
+    ).toHaveLength(15)
+    expect(
+      result.batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')
+    ).toHaveLength(2)
+    expect(
+      result.batch.report.unmatchedPayoutBatches.some(
+        (item) => item.payoutBatchKey === 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
+      )
+    ).toBe(false)
   })
 })
 
@@ -1755,5 +1836,12 @@ function buildActualUploadedRbCitiContent(): string {
     '15.03.2026 06:33;15.03.2026 06:36;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;9771,27;CZK;G-FE2CKQSBT6E7N',
     '15.03.2026 06:34;15.03.2026 06:37;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;1475,08;CZK;G-OLIOSSDGKKF3X',
     '15.03.2026 06:35;15.03.2026 06:38;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;555,55;CZK;NON-MATCHING-CITIBANK-ROW'
+  ].join('\n')
+}
+
+function buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(): string {
+  return [
+    buildActualUploadedRbCitiContent(),
+    '12.03.2026 09:10;12.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;35530,12;CZK;010638445054'
   ].join('\n')
 }

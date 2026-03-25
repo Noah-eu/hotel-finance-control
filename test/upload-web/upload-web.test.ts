@@ -2573,11 +2573,55 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched).toEqual([
       expect.objectContaining({
         title: 'Booking payout 010638445054 / 35 530,12 Kč',
-        detail: expect.stringContaining('Kontext payoutu: Datum payoutu: 2026-03-12 · IBAN 5956 · rezervace: 1.')
+        detail: expect.stringContaining(
+          'Kontext payoutu: Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · IBAN 5956 · rezervace: 1.'
+        )
       })
     ])
     expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
     expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
+  })
+
+  it('matches a Booking payout batch in the final browser runtime when the bank line carries the PDF paymentId instead of the Booking payout reference', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContentWithBookingPaymentIdMatch()),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-25T10:35:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+    expect(result.reviewSections.payoutBatchMatched).toContainEqual(
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč',
+        detail: expect.stringContaining(
+          'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu a ID platby Booking.'
+        )
+      })
+    )
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(false)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
   })
 
   it('keeps Booking PDF parsed in the final browser path when payout labels and values are split into separate text blocks', async () => {
@@ -3613,6 +3657,13 @@ function buildActualUploadedRbCitiContent(): string {
     '15.03.2026 06:33;15.03.2026 06:36;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;9771,27;CZK;G-FE2CKQSBT6E7N',
     '15.03.2026 06:34;15.03.2026 06:37;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;1475,08;CZK;G-OLIOSSDGKKF3X',
     '15.03.2026 06:35;15.03.2026 06:38;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;555,55;CZK;NON-MATCHING-CITIBANK-ROW'
+  ].join('\n')
+}
+
+function buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(): string {
+  return [
+    buildActualUploadedRbCitiContent(),
+    '12.03.2026 09:10;12.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;35530,12;CZK;010638445054'
   ].join('\n')
 }
 

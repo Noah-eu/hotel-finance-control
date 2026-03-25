@@ -37,8 +37,26 @@ function mergeBookingPayoutStatementSupplements(extractedRecords: ExtractedRecor
           ...(typeof supplement.data.paymentId === 'string'
             ? { payoutSupplementPaymentId: supplement.data.paymentId }
             : {}),
+          ...(typeof supplement.data.payoutDate === 'string'
+            ? { payoutSupplementPayoutDate: supplement.data.payoutDate }
+            : {}),
+          ...(typeof supplement.data.payoutTotalAmountMinor === 'number'
+            ? { payoutSupplementPayoutTotalAmountMinor: supplement.data.payoutTotalAmountMinor }
+            : {}),
+          ...(typeof supplement.data.payoutTotalCurrency === 'string'
+            ? { payoutSupplementPayoutTotalCurrency: supplement.data.payoutTotalCurrency }
+            : {}),
+          ...(typeof supplement.data.localAmountMinor === 'number'
+            ? { payoutSupplementLocalAmountMinor: supplement.data.localAmountMinor }
+            : {}),
+          ...(typeof supplement.data.localCurrency === 'string'
+            ? { payoutSupplementLocalCurrency: supplement.data.localCurrency }
+            : {}),
           ...(typeof supplement.data.ibanSuffix === 'string'
             ? { payoutSupplementIbanSuffix: supplement.data.ibanSuffix }
+            : {}),
+          ...(typeof supplement.data.exchangeRate === 'string'
+            ? { payoutSupplementExchangeRate: supplement.data.exchangeRate }
             : {}),
           payoutSupplementSourceDocumentIds: [supplement.sourceDocumentId],
           ...(Array.isArray(supplement.data.reservationIds)

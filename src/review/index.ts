@@ -116,9 +116,14 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
 function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payoutBatchKey: string): string[] {
   const ids = new Set<string>()
   const payoutRows = batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.payoutBatchKey === payoutBatchKey) ?? []
+  const payoutBatch = batch.reconciliation.workflowPlan?.payoutBatches.find((item) => item.payoutBatchKey === payoutBatchKey)
 
   for (const row of payoutRows) {
     ids.add(row.sourceDocumentId)
+  }
+
+  for (const sourceDocumentId of payoutBatch?.payoutSupplementSourceDocumentIds ?? []) {
+    ids.add(sourceDocumentId)
   }
 
   return [...ids]

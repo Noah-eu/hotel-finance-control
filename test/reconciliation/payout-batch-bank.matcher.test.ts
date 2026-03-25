@@ -23,16 +23,36 @@ function bankTransaction(overrides: Partial<NormalizedTransaction>): NormalizedT
 }
 
 function bookingBatch(): PayoutBatchExpectation {
-    return {
-        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
-        platform: 'booking',
+  return {
+    payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+    platform: 'booking',
         payoutReference: 'PAYOUT-BOOK-20260310',
         payoutDate: '2026-03-12',
         bankRoutingTarget: 'rb_bank_inflow',
         rowIds: ['txn:payout:booking-payout-1', 'txn:payout:booking-payout-2'],
         expectedTotalMinor: 125000,
-        currency: 'CZK'
-    }
+    currency: 'CZK'
+  }
+}
+
+function bookingBatchWithSupplement(
+  overrides: Partial<PayoutBatchExpectation> = {}
+): PayoutBatchExpectation {
+  return {
+    ...bookingBatch(),
+    payoutSupplementPaymentId: '010638445054',
+    payoutSupplementPayoutDate: '2026-03-12',
+    payoutSupplementPayoutTotalAmountMinor: 145642,
+    payoutSupplementPayoutTotalCurrency: 'EUR',
+    payoutSupplementLocalAmountMinor: 3553012,
+    payoutSupplementLocalCurrency: 'CZK',
+    payoutSupplementIbanSuffix: '5956',
+    payoutSupplementSourceDocumentIds: [
+      'doc-booking-pdf-1' as unknown as NonNullable<PayoutBatchExpectation['payoutSupplementSourceDocumentIds']>[number]
+    ],
+    payoutSupplementReservationIds: ['RES-BOOK-8841'],
+    ...overrides
+  }
 }
 
 describe('matchPayoutBatchesToBank', () => {
@@ -81,6 +101,39 @@ describe('matchPayoutBatchesToBank', () => {
             })
         ])
         expect(matches[0]?.reasons).toContain('counterpartyClueAligned')
+    })
+
+    it('matches a Booking payout batch by supplemental paymentId and local bank amount when the bank line does not contain the Booking payout reference', () => {
+        const matches = matchPayoutBatchesToBank({
+            payoutBatches: [bookingBatchWithSupplement({
+                expectedTotalMinor: 145642,
+                currency: 'EUR'
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-payment-id' as NormalizedTransaction['id'],
+                    amountMinor: 3553012,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-12',
+                    counterparty: 'Incoming bank transfer',
+                    reference: '010638445054'
+                })
+            ]
+        })
+
+        expect(matches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+                bankTransactionId: 'txn:bank:booking-payment-id',
+                amountMinor: 3553012,
+                currency: 'CZK',
+                matched: true
+            })
+        ])
+        expect(matches[0]?.reasons).toContain('supplementPaymentIdAligned')
+        expect(matches[0]?.evidence).toEqual(expect.arrayContaining([
+            expect.objectContaining({ key: 'paymentId', value: '010638445054' })
+        ]))
     })
 
     it('leaves ambiguous bank candidates unmatched', () => {
@@ -207,7 +260,45 @@ describe('matchPayoutBatchesToBank', () => {
         expect(diagnostics[0]?.allInboundBankCandidates[0]).toEqual(
             expect.objectContaining({
                 clueScore: 0,
-                clueLabels: []
+                clueLabels: [],
+                evidenceScore: 0,
+                evidenceLabels: []
+            })
+        )
+    })
+
+    it('keeps a Booking payout batch unmatched when only the local amount exists but no booking evidence aligns on the bank line', () => {
+        const diagnostics = diagnoseUnmatchedPayoutBatchesToBank({
+            payoutBatches: [bookingBatchWithSupplement({
+                expectedTotalMinor: 145642,
+                currency: 'EUR'
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-generic' as NormalizedTransaction['id'],
+                    amountMinor: 3553012,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-12',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit'
+                })
+            ]
+        })
+
+        expect(diagnostics).toEqual([
+            expect.objectContaining({
+                expectedTotalMinor: 3553012,
+                currency: 'CZK',
+                noMatchReason: 'counterpartyClueMismatch',
+                matched: false
+            })
+        ])
+        expect(diagnostics[0]?.allInboundBankCandidates[0]).toEqual(
+            expect.objectContaining({
+                amountMinor: 3553012,
+                currency: 'CZK',
+                evidenceScore: 0,
+                rejectionReasons: []
             })
         )
     })

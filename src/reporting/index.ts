@@ -186,8 +186,14 @@ function buildUnmatchedPayoutBatchEntries(
         amountMinor: diagnostic.expectedTotalMinor,
         currency: diagnostic.currency,
         payoutSupplementPaymentId: batch?.payoutSupplementPaymentId,
+        payoutSupplementPayoutDate: batch?.payoutSupplementPayoutDate,
+        payoutSupplementPayoutTotalAmountMinor: batch?.payoutSupplementPayoutTotalAmountMinor,
+        payoutSupplementPayoutTotalCurrency: batch?.payoutSupplementPayoutTotalCurrency,
+        payoutSupplementLocalAmountMinor: batch?.payoutSupplementLocalAmountMinor,
+        payoutSupplementLocalCurrency: batch?.payoutSupplementLocalCurrency,
         payoutSupplementIbanSuffix: batch?.payoutSupplementIbanSuffix,
-        payoutSupplementReservationIds: batch?.payoutSupplementReservationIds
+        payoutSupplementReservationIds: batch?.payoutSupplementReservationIds,
+        payoutSupplementExchangeRate: batch?.payoutSupplementExchangeRate
       })
     }
   })
@@ -227,8 +233,14 @@ function buildPayoutBatchMatchEntries(
         amountMinor: match.amountMinor,
         currency: match.currency,
         payoutSupplementPaymentId: batch.payoutSupplementPaymentId,
+        payoutSupplementPayoutDate: batch.payoutSupplementPayoutDate,
+        payoutSupplementPayoutTotalAmountMinor: batch.payoutSupplementPayoutTotalAmountMinor,
+        payoutSupplementPayoutTotalCurrency: batch.payoutSupplementPayoutTotalCurrency,
+        payoutSupplementLocalAmountMinor: batch.payoutSupplementLocalAmountMinor,
+        payoutSupplementLocalCurrency: batch.payoutSupplementLocalCurrency,
         payoutSupplementIbanSuffix: batch.payoutSupplementIbanSuffix,
-        payoutSupplementReservationIds: batch.payoutSupplementReservationIds
+        payoutSupplementReservationIds: batch.payoutSupplementReservationIds,
+        payoutSupplementExchangeRate: batch.payoutSupplementExchangeRate
       })
     }]
   })
@@ -242,24 +254,51 @@ function buildPayoutBatchDisplayMetadata(input: {
   amountMinor: number
   currency: string
   payoutSupplementPaymentId?: string
+  payoutSupplementPayoutDate?: string
+  payoutSupplementPayoutTotalAmountMinor?: number
+  payoutSupplementPayoutTotalCurrency?: string
+  payoutSupplementLocalAmountMinor?: number
+  payoutSupplementLocalCurrency?: string
   payoutSupplementIbanSuffix?: string
   payoutSupplementReservationIds?: string[]
+  payoutSupplementExchangeRate?: string
 }): PayoutBatchDisplayMetadata {
   const normalizedReference = input.payoutReference.trim()
   const supplementPaymentId = input.payoutSupplementPaymentId?.trim()
+  const supplementPayoutDate = input.payoutSupplementPayoutDate?.trim()
+  const supplementPayoutTotalAmountMinor = input.payoutSupplementPayoutTotalAmountMinor
+  const supplementPayoutTotalCurrency = input.payoutSupplementPayoutTotalCurrency?.trim()
+  const supplementLocalAmountMinor = input.payoutSupplementLocalAmountMinor
+  const supplementLocalCurrency = input.payoutSupplementLocalCurrency?.trim()
   const supplementIbanSuffix = input.payoutSupplementIbanSuffix?.trim()
   const supplementReservationCount = input.payoutSupplementReservationIds?.length ?? 0
+  const supplementExchangeRate = input.payoutSupplementExchangeRate?.trim()
+  const titleAmountMinor = supplementLocalAmountMinor ?? input.amountMinor
+  const titleCurrency = supplementLocalCurrency ?? input.currency
+  const shouldShowSupplementPayoutTotal = Boolean(
+    supplementPayoutTotalAmountMinor !== undefined
+    && supplementPayoutTotalCurrency
+    && (
+      supplementPayoutTotalAmountMinor !== titleAmountMinor
+      || supplementPayoutTotalCurrency !== titleCurrency
+    )
+  )
+  const formattedSupplementPayoutTotal = shouldShowSupplementPayoutTotal
+    ? formatAmountMinorCs(supplementPayoutTotalAmountMinor!, supplementPayoutTotalCurrency!)
+    : undefined
 
   if (input.platform === 'booking' && (supplementPaymentId || supplementIbanSuffix)) {
     const primaryId = supplementPaymentId || normalizedReference
     const contextParts = [
-      input.payoutDate ? `Datum payoutu: ${input.payoutDate}` : undefined,
+      supplementPayoutDate || input.payoutDate ? `Datum payoutu: ${supplementPayoutDate ?? input.payoutDate}` : undefined,
+      formattedSupplementPayoutTotal ? `Celkem payoutu: ${formattedSupplementPayoutTotal}` : undefined,
+      supplementExchangeRate && shouldShowSupplementPayoutTotal ? `Kurz: ${supplementExchangeRate}` : undefined,
       supplementIbanSuffix ? `IBAN ${supplementIbanSuffix}` : undefined,
       supplementReservationCount > 0 ? `rezervace: ${supplementReservationCount}` : undefined
     ].filter((value): value is string => typeof value === 'string')
 
     return {
-      title: `${input.platformLabel} payout ${primaryId} / ${formatAmountMinorCs(input.amountMinor, input.currency)}`,
+      title: `${input.platformLabel} payout ${primaryId} / ${formatAmountMinorCs(titleAmountMinor, titleCurrency)}`,
       ...(contextParts.length > 0 ? { context: contextParts.join(' · ') } : {})
     }
   }
@@ -317,6 +356,10 @@ function toPlatformLabel(platform: string): string {
 }
 
 function buildConcisePayoutBatchReason(reasons: string[]): string {
+  if (reasons.includes('supplementPaymentIdAligned')) {
+    return 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu a ID platby Booking.'
+  }
+
   if (reasons.includes('payoutReferenceAligned')) {
     return 'Shoda dávky a bankovního přípisu podle částky, měny a reference payoutu.'
   }

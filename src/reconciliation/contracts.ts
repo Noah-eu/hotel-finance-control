@@ -49,6 +49,8 @@ export interface PayoutBatchCandidateDiagnostic {
   eligible: boolean
   clueScore: number
   clueLabels: string[]
+  evidenceScore: number
+  evidenceLabels: string[]
   rejectionReasons: Array<
     'noExactAmount'
     | 'currencyMismatch'

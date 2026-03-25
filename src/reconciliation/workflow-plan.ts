@@ -114,7 +114,13 @@ function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpect
             currency: transaction.currency,
             bankRoutingTarget: 'rb_bank_inflow',
             payoutSupplementPaymentId: transaction.payoutSupplementPaymentId,
+            payoutSupplementPayoutDate: transaction.payoutSupplementPayoutDate,
+            payoutSupplementPayoutTotalAmountMinor: transaction.payoutSupplementPayoutTotalAmountMinor,
+            payoutSupplementPayoutTotalCurrency: transaction.payoutSupplementPayoutTotalCurrency,
+            payoutSupplementLocalAmountMinor: transaction.payoutSupplementLocalAmountMinor,
+            payoutSupplementLocalCurrency: transaction.payoutSupplementLocalCurrency,
             payoutSupplementIbanSuffix: transaction.payoutSupplementIbanSuffix,
+            payoutSupplementExchangeRate: transaction.payoutSupplementExchangeRate,
             payoutSupplementSourceDocumentIds: transaction.payoutSupplementSourceDocumentIds,
             payoutSupplementReservationIds: transaction.payoutSupplementReservationIds
         }))
@@ -139,7 +145,21 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
         expectedTotalMinor: batchRows.reduce((sum, row) => sum + row.amountMinor, 0),
         currency: batchRows[0]!.currency,
         payoutSupplementPaymentId: firstDefined(batchRows.map((row) => row.payoutSupplementPaymentId)),
+        payoutSupplementPayoutDate: firstDefined(batchRows.map((row) => row.payoutSupplementPayoutDate)),
+        payoutSupplementPayoutTotalAmountMinor: firstDefined(
+          batchRows.map((row) => row.payoutSupplementPayoutTotalAmountMinor)
+        ),
+        payoutSupplementPayoutTotalCurrency: firstDefined(
+          batchRows.map((row) => row.payoutSupplementPayoutTotalCurrency)
+        ),
+        payoutSupplementLocalAmountMinor: firstDefined(
+          batchRows.map((row) => row.payoutSupplementLocalAmountMinor)
+        ),
+        payoutSupplementLocalCurrency: firstDefined(
+          batchRows.map((row) => row.payoutSupplementLocalCurrency)
+        ),
         payoutSupplementIbanSuffix: firstDefined(batchRows.map((row) => row.payoutSupplementIbanSuffix)),
+        payoutSupplementExchangeRate: firstDefined(batchRows.map((row) => row.payoutSupplementExchangeRate)),
         payoutSupplementSourceDocumentIds: uniqueValues(
           batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
         ),

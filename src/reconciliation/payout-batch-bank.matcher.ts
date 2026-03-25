@@ -39,27 +39,36 @@ export function matchPayoutBatchesToBank(
         }
 
         const candidate = winner
+        const bankExpectation = resolveBankMatchingExpectation(batch)
         const reasons = ['amountExact', 'currencyExact', 'directionInbound', 'routingAllowed']
         const evidence: PayoutBatchBankMatch['evidence'] = [
             { key: 'payoutBatchKey', value: batch.payoutBatchKey },
             { key: 'bankTransactionId', value: candidate.bankTransactionId },
-            { key: 'amountMinor', value: batch.expectedTotalMinor },
-            { key: 'currency', value: batch.currency },
+            { key: 'amountMinor', value: bankExpectation.amountMinor },
+            { key: 'currency', value: bankExpectation.currency },
             { key: 'dateDistanceDays', value: candidate.dateDistanceDays }
         ]
+
+        if (candidate.evidenceLabels.length > 0) {
+            evidence.push({ key: 'evidenceLabels', value: candidate.evidenceLabels.join(', ') })
+        }
 
         if (candidate.clueLabels.length > 0) {
             reasons.push('counterpartyClueAligned')
             evidence.push({ key: 'counterpartyClues', value: candidate.clueLabels.join(', ') })
         }
 
-        const normalizedReference = normalizeComparable(candidate.reference)
-        if (normalizedReference && normalizedReference.includes(normalizeComparable(batch.payoutReference))) {
+        if (candidate.evidenceLabels.includes('Payment ID')) {
+            reasons.push('supplementPaymentIdAligned')
+            evidence.push({ key: 'paymentId', value: batch.payoutSupplementPaymentId ?? '' })
+        }
+
+        if (candidate.evidenceLabels.includes('Payout reference')) {
             reasons.push('payoutReferenceAligned')
             evidence.push({ key: 'payoutReference', value: batch.payoutReference })
         }
 
-        if (normalizeComparable(candidate.reference).includes(normalizeComparable(batch.payoutBatchKey))) {
+        if (candidate.evidenceLabels.includes('Batch identity')) {
             reasons.push('batchIdentityAligned')
             evidence.push({ key: 'batchIdentity', value: batch.payoutBatchKey })
         }
@@ -69,9 +78,15 @@ export function matchPayoutBatchesToBank(
             payoutBatchRowIds: batch.rowIds,
             bankTransactionId: candidate.bankTransactionId,
             bankAccountId: candidate.bankAccountId,
-            amountMinor: batch.expectedTotalMinor,
-            currency: batch.currency,
-            confidence: reasons.includes('payoutReferenceAligned') ? 0.99 : reasons.includes('counterpartyClueAligned') ? 0.97 : 0.95,
+            amountMinor: bankExpectation.amountMinor,
+            currency: bankExpectation.currency,
+            confidence: reasons.includes('supplementPaymentIdAligned')
+              ? 0.995
+              : reasons.includes('payoutReferenceAligned')
+                ? 0.99
+                : reasons.includes('counterpartyClueAligned')
+                  ? 0.97
+                  : 0.95,
             ruleKey: PAYOUT_BATCH_BANK_RULE_KEY,
             matched: true,
             reasons,
@@ -100,8 +115,8 @@ export function diagnoseUnmatchedPayoutBatchesToBank(
             payoutBatchKey: batch.payoutBatchKey,
             payoutReference: batch.payoutReference,
             platform: batch.platform,
-            expectedTotalMinor: batch.expectedTotalMinor,
-            currency: batch.currency,
+            expectedTotalMinor: resolveBankMatchingExpectation(batch).amountMinor,
+            currency: resolveBankMatchingExpectation(batch).currency,
             payoutDate: batch.payoutDate,
             bankRoutingTarget: batch.bankRoutingTarget,
             eligibleCandidates,
@@ -129,12 +144,14 @@ function buildCandidateDiagnostic(
 ): PayoutBatchCandidateDiagnostic {
     const rejectionReasons: PayoutBatchCandidateDiagnostic['rejectionReasons'] = []
     const clueMatch = evaluateDatasetCounterpartyClues(batch, transaction)
+    const evidenceMatch = evaluateBatchEvidence(batch, transaction)
+    const bankExpectation = resolveBankMatchingExpectation(batch)
 
-    if (transaction.amountMinor !== batch.expectedTotalMinor) {
+    if (transaction.amountMinor !== bankExpectation.amountMinor) {
         rejectionReasons.push('noExactAmount')
     }
 
-    if (transaction.currency !== batch.currency) {
+    if (transaction.currency !== bankExpectation.currency) {
         rejectionReasons.push('currencyMismatch')
     }
 
@@ -158,6 +175,8 @@ function buildCandidateDiagnostic(
         eligible: rejectionReasons.length === 0,
         clueScore: clueMatch.score,
         clueLabels: clueMatch.labels,
+        evidenceScore: evidenceMatch.score,
+        evidenceLabels: evidenceMatch.labels,
         rejectionReasons,
         dateDistanceDays
     }
@@ -187,8 +206,8 @@ function determineNoMatchReason(
         return 'wrongBankRouting'
     }
 
-    const hasCounterpartyClue = exactAmountCandidates.some((candidate) => candidate.clueScore > 0)
-    if (!hasCounterpartyClue && hasDatasetCounterpartyClues(batch.platform)) {
+    const hasPositiveEvidence = exactAmountCandidates.some((candidate) => candidate.evidenceScore > 0)
+    if (!hasPositiveEvidence && requiresPositiveEvidence(batch)) {
         return 'counterpartyClueMismatch'
     }
 
@@ -201,6 +220,10 @@ function determineNoMatchReason(
 }
 
 function compareBatchCandidates(left: PayoutBatchCandidateDiagnostic, right: PayoutBatchCandidateDiagnostic): number {
+    if (right.evidenceScore !== left.evidenceScore) {
+        return right.evidenceScore - left.evidenceScore
+    }
+
     if (right.clueScore !== left.clueScore) {
         return right.clueScore - left.clueScore
     }
@@ -254,24 +277,18 @@ function selectUniqueTopCandidate(
     }
 
     if (!second) {
-        if (first.clueScore > 0) {
+        if (first.evidenceScore > 0) {
             return first
         }
 
-        const expectedReference = normalizeComparable(batch.payoutReference)
-        const candidateReference = normalizeComparable(first.reference)
-        if (expectedReference && candidateReference.includes(expectedReference)) {
-            return first
-        }
-
-        if (!hasDatasetCounterpartyClues(batch.platform)) {
+        if (!requiresPositiveEvidence(batch)) {
             return first
         }
 
         return undefined
     }
 
-    if (first.clueScore > second.clueScore && first.clueScore > 0) {
+    if (first.evidenceScore > second.evidenceScore && first.evidenceScore > 0) {
         return first
     }
 
@@ -286,4 +303,80 @@ function calculateDayDistance(left: string, right: string): number {
 
 function normalizeComparable(value?: string): string {
     return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function requiresPositiveEvidence(batch: PayoutBatchExpectation): boolean {
+    return hasDatasetCounterpartyClues(batch.platform) || Boolean(batch.payoutSupplementPaymentId?.trim())
+}
+
+function resolveBankMatchingExpectation(
+    batch: PayoutBatchExpectation
+): { amountMinor: number, currency: PayoutBatchExpectation['currency'] } {
+    if (
+        batch.platform === 'booking'
+        && typeof batch.payoutSupplementLocalAmountMinor === 'number'
+        && typeof batch.payoutSupplementLocalCurrency === 'string'
+    ) {
+        return {
+            amountMinor: batch.payoutSupplementLocalAmountMinor,
+            currency: batch.payoutSupplementLocalCurrency
+        }
+    }
+
+    return {
+        amountMinor: batch.expectedTotalMinor,
+        currency: batch.currency
+    }
+}
+
+function evaluateBatchEvidence(
+    batch: PayoutBatchExpectation,
+    transaction: NormalizedTransaction
+): { score: number, labels: string[] } {
+    const labels: string[] = []
+    let score = 0
+    const haystack = normalizeComparable(`${transaction.counterparty ?? ''} ${transaction.reference ?? ''}`)
+    const payoutReference = normalizeComparable(batch.payoutReference)
+    const payoutBatchKey = normalizeComparable(batch.payoutBatchKey)
+    const supplementPaymentId = normalizeComparable(batch.payoutSupplementPaymentId)
+    const supplementIbanSuffix = normalizeDigits(batch.payoutSupplementIbanSuffix)
+    const transactionAccountDigits = normalizeDigits(transaction.accountId)
+
+    if (supplementPaymentId && haystack.includes(supplementPaymentId)) {
+        labels.push('Payment ID')
+        score += 6
+    }
+
+    if (payoutReference && haystack.includes(payoutReference)) {
+        labels.push('Payout reference')
+        score += 4
+    }
+
+    if (payoutBatchKey && haystack.includes(payoutBatchKey)) {
+        labels.push('Batch identity')
+        score += 2
+    }
+
+    const clueMatch = evaluateDatasetCounterpartyClues(batch, transaction)
+    if (clueMatch.labels.length > 0) {
+        labels.push(...clueMatch.labels)
+        score += clueMatch.score
+    }
+
+    if (supplementIbanSuffix && transactionAccountDigits.endsWith(supplementIbanSuffix)) {
+        labels.push(`IBAN ${batch.payoutSupplementIbanSuffix!.trim()}`)
+    }
+
+    return {
+        score,
+        labels: uniqueLabels(labels)
+    }
+}
+
+function normalizeDigits(value?: string): string {
+    return (value ?? '').replace(/\D+/g, '')
+}
+
+function uniqueLabels(values: string[]): string[] {
+    return [...new Set(values)]
 }

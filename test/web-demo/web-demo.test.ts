@@ -1238,6 +1238,33 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
   })
 
+  it('matches the Booking payout on the final built page when the bank line only carries the Booking PDF paymentId and local total', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-25T10:45:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-booking-supplement-bank-match',
+      files: [
+        createWebDemoRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createWebDemoRuntimeFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content),
+        createWebDemoRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildActualUploadedRbCitiContentWithBookingPaymentIdMatch()
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechLateCueBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain(
+      'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu a ID platby Booking.'
+    )
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain(
+      'Kontext payoutu: Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · IBAN 5956 · rezervace: 1.'
+    )
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
+  })
+
   it('renders browser arrayBuffer CSV uploads through capability-aware structured routing on the built page', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-24T20:45:00.000Z',
@@ -1450,6 +1477,8 @@ async function executeWebDemoMainWorkflow(input: {
   html: string
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
+  matchedPayoutBatchesContent: StubDomElement
+  unmatchedPayoutBatchesContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
 }> {
@@ -1511,6 +1540,8 @@ async function executeWebDemoMainWorkflow(input: {
     html,
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
+    matchedPayoutBatchesContent: elements['matched-payout-batches-content'],
+    unmatchedPayoutBatchesContent: elements['unmatched-payout-batches-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content']
   }
@@ -1867,6 +1898,13 @@ function buildBooking35kBrowserUploadContent(): string {
   return [
     'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
     'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;35530,12;12 Mar 2026;PAYOUT-BOOK-20260310'
+  ].join('\n')
+}
+
+function buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(): string {
+  return [
+    getRealInputFixture('raiffeisenbank-statement').rawInput.content,
+    '2026-03-12,3553012,CZK,raiffeisen-main,Incoming bank transfer,010638445054,booking-payout'
   ].join('\n')
 }
 
