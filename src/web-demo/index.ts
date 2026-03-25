@@ -1065,6 +1065,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const payoutProjection = getVisiblePayoutProjection(state);
         const buildInfo = (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo || {};
         const reviewSections = (state && state.reviewSections) || {};
+        const reportSummary = (state && state.reportSummary) || {};
+        const reviewSummary = (state && state.reviewSummary) || {};
         const matchedSectionCount = Array.isArray(reviewSections.payoutBatchMatched) ? reviewSections.payoutBatchMatched.length : 0;
         const unmatchedSectionCount = Array.isArray(reviewSections.payoutBatchUnmatched) ? reviewSections.payoutBatchUnmatched.length : 0;
 
@@ -1081,6 +1083,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Projection object path:</strong> <code>' + escapeHtml(String(payoutProjection.objectPath || 'state.finalPayoutProjection')) + '</code></li>',
           '<li><strong>Matched payout count:</strong> ' + escapeHtml(String(payoutProjection.matchedCount || 0)) + '</li>',
           '<li><strong>Unmatched payout count:</strong> ' + escapeHtml(String(payoutProjection.unmatchedCount || 0)) + '</li>',
+          '<li><strong>Raw reportSummary matched:</strong> ' + escapeHtml(String(reportSummary.payoutBatchMatchCount || 0)) + '</li>',
+          '<li><strong>Raw reportSummary unmatched:</strong> ' + escapeHtml(String(reportSummary.unmatchedPayoutBatchCount || 0)) + '</li>',
+          '<li><strong>Raw reviewSummary matched:</strong> ' + escapeHtml(String(reviewSummary.payoutBatchMatchCount || 0)) + '</li>',
+          '<li><strong>Raw reviewSummary unmatched:</strong> ' + escapeHtml(String(reviewSummary.unmatchedPayoutBatchCount || 0)) + '</li>',
           '<li><strong>Matched review section count:</strong> ' + escapeHtml(String(matchedSectionCount)) + '</li>',
           '<li><strong>Unmatched review section count:</strong> ' + escapeHtml(String(unmatchedSectionCount)) + '</li>',
           buildDiagnosticListMarkup('Matched payout batch ids', payoutProjection.matchedIds || []),

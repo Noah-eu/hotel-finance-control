@@ -1379,6 +1379,10 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Projection object path:</strong> <code>state.finalPayoutProjection</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Matched payout count:</strong> 16')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Unmatched payout count:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reportSummary matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reportSummary unmatched:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reviewSummary matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reviewSummary unmatched:</strong> 2')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Matched review section count:</strong> 16')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Unmatched review section count:</strong> 2')
     expect(rendered.buildFingerprint.innerHTML).toContain('Payout matched: <strong>16</strong>')
@@ -1396,6 +1400,14 @@ describe('buildWebDemo', () => {
     expect((rendered.lastVisibleRuntimeState as { finalPayoutProjection?: { matchedCount: number; unmatchedCount: number } }).finalPayoutProjection).toMatchObject({
       matchedCount: 16,
       unmatchedCount: 2
+    })
+    expect((rendered.lastVisibleRuntimeState as { reportSummary?: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number } }).reportSummary).toMatchObject({
+      payoutBatchMatchCount: 16,
+      unmatchedPayoutBatchCount: 2
+    })
+    expect((rendered.lastVisibleRuntimeState as { reviewSummary?: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number } }).reviewSummary).toMatchObject({
+      payoutBatchMatchCount: 16,
+      unmatchedPayoutBatchCount: 2
     })
   })
 
