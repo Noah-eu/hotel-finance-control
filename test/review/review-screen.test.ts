@@ -503,6 +503,95 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
+  it('shows the matched bank-line summary on Booking payout review items resolved from supplement reference hints', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-25T11:30:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            ancillaryRevenueSources: [],
+            reservationSettlementMatches: [],
+            reservationSettlementNoMatches: [],
+            payoutRows: [],
+            payoutBatches: [],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [],
+          payoutBatchNoMatchDiagnostics: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-25T11:30:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 1,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+              platform: 'Booking',
+              payoutReference: 'PAYOUT-BOOK-20260310',
+              payoutDate: '2026-03-12',
+              bankAccountId: 'raiffeisen-main',
+              matchedBankSummary: '2026-03-13T09:12:00 · BOOKING.COM B.V. · NO.AAOS6MOZUH8BFTER/2206371',
+              amountMinor: 3553012,
+              currency: 'CZK',
+              status: 'matched',
+              confidence: 0.992,
+              reason: 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu, Booking protiúčtu a booking reference hintu.',
+              evidence: ['referenceHints: 2206371'],
+              display: {
+                title: 'Booking payout 010638445054 / 35 530,12 Kč',
+                context: 'Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · IBAN 5956'
+              }
+            }
+          ],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.payoutBatchMatched[0]).toMatchObject({
+      title: 'Booking payout 010638445054 / 35 530,12 Kč'
+    })
+    expect(review.payoutBatchMatched[0]?.detail).toContain(
+      'Bankovní přípis: 2026-03-13T09:12:00 · BOOKING.COM B.V. · NO.AAOS6MOZUH8BFTER/2206371.'
+    )
+  })
+
   it('uses explicit payout-batch display metadata instead of re-deriving titles from synthetic payout references', () => {
     const review = buildReviewScreen({
       generatedAt: '2026-03-24T10:10:00.000Z',

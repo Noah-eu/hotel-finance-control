@@ -121,6 +121,7 @@ function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpect
             payoutSupplementLocalCurrency: transaction.payoutSupplementLocalCurrency,
             payoutSupplementIbanSuffix: transaction.payoutSupplementIbanSuffix,
             payoutSupplementExchangeRate: transaction.payoutSupplementExchangeRate,
+            payoutSupplementReferenceHints: transaction.payoutSupplementReferenceHints,
             payoutSupplementSourceDocumentIds: transaction.payoutSupplementSourceDocumentIds,
             payoutSupplementReservationIds: transaction.payoutSupplementReservationIds
         }))
@@ -160,6 +161,9 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
         ),
         payoutSupplementIbanSuffix: firstDefined(batchRows.map((row) => row.payoutSupplementIbanSuffix)),
         payoutSupplementExchangeRate: firstDefined(batchRows.map((row) => row.payoutSupplementExchangeRate)),
+        payoutSupplementReferenceHints: uniqueValues(
+          batchRows.flatMap((row) => row.payoutSupplementReferenceHints ?? [])
+        ),
         payoutSupplementSourceDocumentIds: uniqueValues(
           batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
         ),

@@ -18,6 +18,7 @@ export interface ReconciliationPayoutBatchMatchEntry {
   payoutReference: string
   payoutDate: string
   bankAccountId: string
+  matchedBankSummary?: string
   amountMinor: number
   currency: string
   status: 'matched'
@@ -219,6 +220,7 @@ function buildPayoutBatchMatchEntries(
       payoutReference: batch.payoutReference,
       payoutDate: batch.payoutDate,
       bankAccountId: match.bankAccountId,
+      matchedBankSummary: buildMatchedBankSummary(match.evidence),
       amountMinor: match.amountMinor,
       currency: match.currency,
       status: 'matched',
@@ -360,6 +362,10 @@ function buildConcisePayoutBatchReason(reasons: string[]): string {
     return 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu a ID platby Booking.'
   }
 
+  if (reasons.includes('supplementReferenceHintAligned')) {
+    return 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu, Booking protiúčtu a booking reference hintu.'
+  }
+
   if (reasons.includes('payoutReferenceAligned')) {
     return 'Shoda dávky a bankovního přípisu podle částky, měny a reference payoutu.'
   }
@@ -400,6 +406,25 @@ function toNoMatchReasonCs(reason: UnmatchedPayoutBatchReason): string {
   }
 
   return 'Žádný vhodný kandidát.'
+}
+
+function buildMatchedBankSummary(
+  evidence: Array<{ key: string, value: string | number | boolean }>
+): string | undefined {
+  const bookedAt = stringEvidence(evidence, 'bankBookedAt')
+  const counterparty = stringEvidence(evidence, 'bankCounterparty')
+  const reference = stringEvidence(evidence, 'bankReference')
+  const parts = [bookedAt, counterparty, reference].filter((value): value is string => Boolean(value))
+
+  return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+function stringEvidence(
+  evidence: Array<{ key: string, value: string | number | boolean }>,
+  key: string
+): string | undefined {
+  const value = evidence.find((item) => item.key === key)?.value
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 }
 
 export function placeholder() {

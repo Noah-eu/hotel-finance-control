@@ -58,6 +58,9 @@ function mergeBookingPayoutStatementSupplements(extractedRecords: ExtractedRecor
           ...(typeof supplement.data.exchangeRate === 'string'
             ? { payoutSupplementExchangeRate: supplement.data.exchangeRate }
             : {}),
+          ...(Array.isArray(supplement.data.referenceHints)
+            ? { payoutSupplementReferenceHints: supplement.data.referenceHints }
+            : {}),
           payoutSupplementSourceDocumentIds: [supplement.sourceDocumentId],
           ...(Array.isArray(supplement.data.reservationIds)
             ? { payoutSupplementReservationIds: supplement.data.reservationIds }
@@ -129,8 +132,9 @@ function findBookingSupplementBatchKey(
       const currencyExact = Boolean(supplementCurrency && currency && supplementCurrency === currency)
       const payoutDateExact = Boolean(supplementPayoutDate && payoutDate && supplementPayoutDate === payoutDate)
       const reservationOverlapCount = Array.from(reservationIds).filter((value) => supplementReservationIds.has(value)).length
-      const eligible = amountExact && currencyExact && payoutDateExact && (directReferenceMatch || reservationOverlapCount > 0)
-      const score = (directReferenceMatch ? 100 : 0) + reservationOverlapCount
+      const exactPayoutShapeMatch = amountExact && currencyExact && payoutDateExact
+      const eligible = exactPayoutShapeMatch
+      const score = (directReferenceMatch ? 100 : 0) + (reservationOverlapCount * 10) + (exactPayoutShapeMatch ? 1 : 0)
 
       return {
         batchKey,

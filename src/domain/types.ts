@@ -62,6 +62,7 @@ export interface NormalizedTransaction {
   payoutSupplementLocalCurrency?: CurrencyCode
   payoutSupplementIbanSuffix?: string
   payoutSupplementExchangeRate?: string
+  payoutSupplementReferenceHints?: string[]
   payoutSupplementSourceDocumentIds?: DocumentId[]
   payoutSupplementReservationIds?: string[]
   invoiceNumber?: string
@@ -175,6 +176,7 @@ export interface PayoutRowExpectation {
   payoutSupplementLocalCurrency?: CurrencyCode
   payoutSupplementIbanSuffix?: string
   payoutSupplementExchangeRate?: string
+  payoutSupplementReferenceHints?: string[]
   payoutSupplementSourceDocumentIds?: DocumentId[]
   payoutSupplementReservationIds?: string[]
 }
@@ -196,6 +198,7 @@ export interface PayoutBatchExpectation {
   payoutSupplementLocalCurrency?: CurrencyCode
   payoutSupplementIbanSuffix?: string
   payoutSupplementExchangeRate?: string
+  payoutSupplementReferenceHints?: string[]
   payoutSupplementSourceDocumentIds?: DocumentId[]
   payoutSupplementReservationIds?: string[]
 }

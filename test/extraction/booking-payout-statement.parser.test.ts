@@ -126,7 +126,9 @@ describe('parseBookingPayoutStatementPdf', () => {
       ibanValue: 'CZ65 5500 0000 0000 5599 555956',
       ibanSuffix: '5956',
       exchangeRate: '24.3941',
-      reservationIds: ['RES-BOOK-8841']
+      reservationIds: ['RES-BOOK-8841'],
+      propertyId: 'CHILL-APT-PRG',
+      referenceHints: ['CHILL-APT-PRG', 'RES-BOOK-8841']
     })
   })
 

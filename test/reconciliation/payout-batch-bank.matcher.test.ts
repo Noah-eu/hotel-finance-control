@@ -47,6 +47,7 @@ function bookingBatchWithSupplement(
     payoutSupplementLocalAmountMinor: 3553012,
     payoutSupplementLocalCurrency: 'CZK',
     payoutSupplementIbanSuffix: '5956',
+    payoutSupplementReferenceHints: ['2206371'],
     payoutSupplementSourceDocumentIds: [
       'doc-booking-pdf-1' as unknown as NonNullable<PayoutBatchExpectation['payoutSupplementSourceDocumentIds']>[number]
     ],
@@ -134,6 +135,53 @@ describe('matchPayoutBatchesToBank', () => {
         expect(matches[0]?.evidence).toEqual(expect.arrayContaining([
             expect.objectContaining({ key: 'paymentId', value: '010638445054' })
         ]))
+    })
+
+    it('matches a Booking payout batch by supplemental reference hint when the bank line carries the local amount, Booking counterparty, and property reference fragment', () => {
+        const matches = matchPayoutBatchesToBank({
+            payoutBatches: [bookingBatchWithSupplement({
+                expectedTotalMinor: 145642,
+                currency: 'EUR',
+                payoutSupplementReservationIds: undefined
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-reference-hint' as NormalizedTransaction['id'],
+                    amountMinor: 3553012,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-13',
+                    counterparty: 'BOOKING.COM B.V.',
+                    reference: 'NO.AAOS6MOZUH8BFTER/2206371'
+                }),
+                bankTransaction({
+                    id: 'txn:bank:booking-other' as NormalizedTransaction['id'],
+                    amountMinor: 3553012,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-13',
+                    counterparty: 'BOOKING.COM B.V.',
+                    reference: 'NO.AAOS6MOZUH8BFTER/9999999'
+                })
+            ]
+        })
+
+        expect(matches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+                bankTransactionId: 'txn:bank:booking-reference-hint',
+                amountMinor: 3553012,
+                currency: 'CZK',
+                matched: true,
+                reasons: expect.arrayContaining([
+                    'supplementReferenceHintAligned',
+                    'counterpartyClueAligned'
+                ]),
+                evidence: expect.arrayContaining([
+                    expect.objectContaining({ key: 'referenceHints', value: '2206371' }),
+                    expect.objectContaining({ key: 'bankCounterparty', value: 'BOOKING.COM B.V.' }),
+                    expect.objectContaining({ key: 'bankReference', value: 'NO.AAOS6MOZUH8BFTER/2206371' })
+                ])
+            })
+        ])
     })
 
     it('leaves ambiguous bank candidates unmatched', () => {

@@ -141,9 +141,10 @@ function buildPayoutBatchMatchDetail(
 ): string {
   const detailParts = [
     match.reason,
+    match.matchedBankSummary ? `Bankovní přípis: ${match.matchedBankSummary}.` : undefined,
     `Bankovní účet: ${match.bankAccountId}.`,
     `Částka: ${formatAmountMinorCs(match.amountMinor, match.currency)}.`
-  ]
+  ].filter((value): value is string => typeof value === 'string')
 
   const descriptor = findTransferBatchDescriptor(batch, match.payoutBatchKey)
   if (descriptor) {

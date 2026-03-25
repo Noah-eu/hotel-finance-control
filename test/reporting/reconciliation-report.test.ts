@@ -301,6 +301,96 @@ describe('buildReconciliationReport', () => {
     expect(report.matches).toHaveLength(1)
   })
 
+  it('surfaces Booking supplement reference-hint matches with bank-line summary and business-facing reason text', () => {
+    const report = buildReconciliationReport({
+      reconciliation: reconciliationResult({
+        workflowPlan: {
+          reservationSources: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:payout:booking-1',
+              platform: 'booking',
+              sourceDocumentId: 'doc-booking-1' as never,
+              payoutReference: 'PAYOUT-BOOK-20260310',
+              payoutDate: '2026-03-12',
+              payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+              amountMinor: 3553012,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow',
+              payoutSupplementPaymentId: '010638445054',
+              payoutSupplementPayoutDate: '2026-03-12',
+              payoutSupplementPayoutTotalAmountMinor: 145642,
+              payoutSupplementPayoutTotalCurrency: 'EUR',
+              payoutSupplementLocalAmountMinor: 3553012,
+              payoutSupplementLocalCurrency: 'CZK',
+              payoutSupplementIbanSuffix: '5956',
+              payoutSupplementReferenceHints: ['2206371']
+            }
+          ],
+          payoutBatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+              platform: 'booking',
+              payoutReference: 'PAYOUT-BOOK-20260310',
+              payoutDate: '2026-03-12',
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: ['txn:payout:booking-1'],
+              expectedTotalMinor: 3553012,
+              currency: 'CZK',
+              payoutSupplementPaymentId: '010638445054',
+              payoutSupplementPayoutDate: '2026-03-12',
+              payoutSupplementPayoutTotalAmountMinor: 145642,
+              payoutSupplementPayoutTotalCurrency: 'EUR',
+              payoutSupplementLocalAmountMinor: 3553012,
+              payoutSupplementLocalCurrency: 'CZK',
+              payoutSupplementIbanSuffix: '5956',
+              payoutSupplementReferenceHints: ['2206371']
+            }
+          ],
+          directBankSettlements: [],
+          expenseDocuments: [],
+          bankFeeClassifications: []
+        },
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+            payoutBatchRowIds: ['txn:payout:booking-1'],
+            bankTransactionId: 'txn:bank:booking-1' as ReconciliationResult['normalizedTransactions'][number]['id'],
+            bankAccountId: 'raiffeisen-main',
+            amountMinor: 3553012,
+            currency: 'CZK',
+            confidence: 0.992,
+            ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+            matched: true,
+            reasons: ['amountExact', 'currencyExact', 'counterpartyClueAligned', 'supplementReferenceHintAligned'],
+            evidence: [
+              { key: 'bankBookedAt', value: '2026-03-13T09:12:00' },
+              { key: 'bankCounterparty', value: 'BOOKING.COM B.V.' },
+              { key: 'bankReference', value: 'NO.AAOS6MOZUH8BFTER/2206371' },
+              { key: 'referenceHints', value: '2206371' }
+            ]
+          }
+        ]
+      }),
+      generatedAt: '2026-03-25T11:25:00.000Z'
+    })
+
+    expect(report.payoutBatchMatches).toEqual([
+      expect.objectContaining({
+        platform: 'Booking',
+        reason: 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu, Booking protiúčtu a booking reference hintu.',
+        matchedBankSummary: '2026-03-13T09:12:00 · BOOKING.COM B.V. · NO.AAOS6MOZUH8BFTER/2206371',
+        display: {
+          title: 'Booking payout 010638445054 / 35 530,12 Kč',
+          context: 'Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · IBAN 5956'
+        }
+      })
+    ])
+  })
+
   it('keeps a real Airbnb provider reference as the primary operator-facing payout-batch title', () => {
     const report = buildReconciliationReport({
       reconciliation: reconciliationResult({

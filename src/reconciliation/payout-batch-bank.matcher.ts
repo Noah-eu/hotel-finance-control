@@ -44,6 +44,9 @@ export function matchPayoutBatchesToBank(
         const evidence: PayoutBatchBankMatch['evidence'] = [
             { key: 'payoutBatchKey', value: batch.payoutBatchKey },
             { key: 'bankTransactionId', value: candidate.bankTransactionId },
+            ...(candidate.bookedAt ? [{ key: 'bankBookedAt', value: candidate.bookedAt }] : []),
+            ...(candidate.counterparty ? [{ key: 'bankCounterparty', value: candidate.counterparty }] : []),
+            ...(candidate.reference ? [{ key: 'bankReference', value: candidate.reference }] : []),
             { key: 'amountMinor', value: bankExpectation.amountMinor },
             { key: 'currency', value: bankExpectation.currency },
             { key: 'dateDistanceDays', value: candidate.dateDistanceDays }
@@ -61,6 +64,15 @@ export function matchPayoutBatchesToBank(
         if (candidate.evidenceLabels.includes('Payment ID')) {
             reasons.push('supplementPaymentIdAligned')
             evidence.push({ key: 'paymentId', value: batch.payoutSupplementPaymentId ?? '' })
+        }
+
+        const matchedReferenceHints = candidate.evidenceLabels
+            .filter((label) => label.startsWith('Reference hint '))
+            .map((label) => label.slice('Reference hint '.length))
+
+        if (matchedReferenceHints.length > 0) {
+            reasons.push('supplementReferenceHintAligned')
+            evidence.push({ key: 'referenceHints', value: matchedReferenceHints.join(', ') })
         }
 
         if (candidate.evidenceLabels.includes('Payout reference')) {
@@ -82,6 +94,8 @@ export function matchPayoutBatchesToBank(
             currency: bankExpectation.currency,
             confidence: reasons.includes('supplementPaymentIdAligned')
               ? 0.995
+              : reasons.includes('supplementReferenceHintAligned')
+                ? 0.992
               : reasons.includes('payoutReferenceAligned')
                 ? 0.99
                 : reasons.includes('counterpartyClueAligned')
@@ -296,9 +310,31 @@ function selectUniqueTopCandidate(
 }
 
 function calculateDayDistance(left: string, right: string): number {
-    const leftDate = new Date(`${left}T00:00:00Z`)
-    const rightDate = new Date(`${right}T00:00:00Z`)
+    const normalizedLeft = normalizeIsoCalendarDate(left)
+    const normalizedRight = normalizeIsoCalendarDate(right)
+
+    if (!normalizedLeft || !normalizedRight) {
+        return Number.NaN
+    }
+
+    const leftDate = new Date(`${normalizedLeft}T00:00:00Z`)
+    const rightDate = new Date(`${normalizedRight}T00:00:00Z`)
     return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function normalizeIsoCalendarDate(value?: string): string | undefined {
+    if (!value) {
+        return undefined
+    }
+
+    const trimmed = value.trim()
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return trimmed
+    }
+
+    const timestampMatch = /^(\d{4}-\d{2}-\d{2})[ T]/.exec(trimmed)
+    return timestampMatch?.[1]
 }
 
 function normalizeComparable(value?: string): string {
@@ -339,6 +375,9 @@ function evaluateBatchEvidence(
     const payoutReference = normalizeComparable(batch.payoutReference)
     const payoutBatchKey = normalizeComparable(batch.payoutBatchKey)
     const supplementPaymentId = normalizeComparable(batch.payoutSupplementPaymentId)
+    const supplementReferenceHints = (batch.payoutSupplementReferenceHints ?? [])
+        .map((value) => value.trim())
+        .filter((value) => value.length >= 4)
     const supplementIbanSuffix = normalizeDigits(batch.payoutSupplementIbanSuffix)
     const transactionAccountDigits = normalizeDigits(transaction.accountId)
 
@@ -355,6 +394,17 @@ function evaluateBatchEvidence(
     if (payoutBatchKey && haystack.includes(payoutBatchKey)) {
         labels.push('Batch identity')
         score += 2
+    }
+
+    for (const hint of supplementReferenceHints) {
+        const normalizedHint = normalizeComparable(hint)
+
+        if (!normalizedHint || !haystack.includes(normalizedHint)) {
+            continue
+        }
+
+        labels.push(`Reference hint ${hint}`)
+        score += 5
     }
 
     const clueMatch = evaluateDatasetCounterpartyClues(batch, transaction)

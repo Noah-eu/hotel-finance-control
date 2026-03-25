@@ -544,9 +544,9 @@ describe('buildUploadWebFlow', () => {
         currency: 'CZK',
         bookedAt: '2026-03-19T06:23:00',
         eligible: false,
-        dateDistanceDays: Number.NaN,
+        dateDistanceDays: 7,
         reference: 'Platba rezervace WEB-2001',
-        rejectionReasons: ['noExactAmount']
+        rejectionReasons: ['noExactAmount', 'dateToleranceMiss']
       }),
       expect.objectContaining({
         bankTransactionId: 'txn:bank:fio-row-1',
@@ -555,9 +555,9 @@ describe('buildUploadWebFlow', () => {
         currency: 'CZK',
         bookedAt: '2026-03-19T06:23:00',
         eligible: false,
-        dateDistanceDays: Number.NaN,
+        dateDistanceDays: 7,
         reference: 'Platba rezervace WEB-2001',
-        rejectionReasons: ['noExactAmount', 'wrongBankRouting']
+        rejectionReasons: ['noExactAmount', 'wrongBankRouting', 'dateToleranceMiss']
       })
     ])
   })
@@ -2624,6 +2624,67 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
   })
 
+  it('matches the real Booking payout in the final browser runtime when the bank line carries the Booking counterparty and reference fragment', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('booking35k.csv', buildBooking35kBrowserUploadContent()),
+        createRuntimeFile('airbnb.csv', buildActualUploadedAirbnbContent()),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildActualUploadedRbCitiContentWithBookingReferenceHintMatch()
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-25T11:10:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.reviewSections.payoutBatchMatched).toContainEqual(
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč',
+        detail: expect.stringContaining(
+          'Shoda dávky a bankovního přípisu podle částky, měny, povoleného směrování a pozorovaného protiúčtu.'
+        )
+      })
+    )
+    expect(result.reviewSections.payoutBatchMatched).toContainEqual(
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč',
+        detail: expect.stringContaining(
+          'Bankovní přípis: 2026-03-13T09:12:00 · BOOKING.COM B.V. · NO.AAOS6MOZUH8BFTER/2206371.'
+        )
+      })
+    )
+    expect(result.reviewSections.payoutBatchMatched).toContainEqual(
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč',
+        detail: expect.stringContaining(
+          'Kontext payoutu: Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · Kurz: 24.3955.'
+        )
+      })
+    )
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(false)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+  })
+
   it('keeps Booking PDF parsed in the final browser path when payout labels and values are split into separate text blocks', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -3664,6 +3725,13 @@ function buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(): string {
   return [
     buildActualUploadedRbCitiContent(),
     '12.03.2026 09:10;12.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;35530,12;CZK;010638445054'
+  ].join('\n')
+}
+
+function buildActualUploadedRbCitiContentWithBookingReferenceHintMatch(): string {
+  return [
+    buildActualUploadedRbCitiContent(),
+    '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
   ].join('\n')
 }
 

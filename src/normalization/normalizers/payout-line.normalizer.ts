@@ -109,6 +109,9 @@ export class PayoutLineNormalizer implements Normalizer {
         payoutSupplementExchangeRate: typeof data.payoutSupplementExchangeRate === 'string'
           ? data.payoutSupplementExchangeRate
           : undefined,
+        payoutSupplementReferenceHints: Array.isArray(data.payoutSupplementReferenceHints)
+          ? data.payoutSupplementReferenceHints.filter((value): value is string => typeof value === 'string')
+          : undefined,
         payoutSupplementSourceDocumentIds: Array.isArray(data.payoutSupplementSourceDocumentIds)
           ? data.payoutSupplementSourceDocumentIds.filter(
             (value): value is NormalizedTransaction['sourceDocumentIds'][number] => typeof value === 'string'

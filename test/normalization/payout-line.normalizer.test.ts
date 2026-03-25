@@ -152,6 +152,7 @@ describe('PayoutLineNormalizer', () => {
             payoutSupplementLocalCurrency: 'CZK',
             payoutSupplementIbanSuffix: '5956',
             payoutSupplementExchangeRate: '24.3955',
+            payoutSupplementReferenceHints: ['2206371'],
             payoutSupplementSourceDocumentIds: ['doc-booking-pdf-1'],
             payoutSupplementReservationIds: ['RES-BOOK-8841']
           }
@@ -170,6 +171,7 @@ describe('PayoutLineNormalizer', () => {
       payoutSupplementLocalCurrency: 'CZK',
       payoutSupplementIbanSuffix: '5956',
       payoutSupplementExchangeRate: '24.3955',
+      payoutSupplementReferenceHints: ['2206371'],
       payoutSupplementSourceDocumentIds: ['doc-booking-pdf-1'],
       payoutSupplementReservationIds: ['RES-BOOK-8841']
     }))

@@ -16,6 +16,7 @@ export interface BookingPayoutStatementSignals {
   hasBookingBranding: boolean
   hasStatementWording: boolean
   paymentId?: string
+  propertyId?: string
   payoutDateRaw?: string
   payoutTotalRaw?: string
   localTotalRaw?: string
@@ -28,6 +29,7 @@ export interface BookingPayoutStatementFields {
   hasBookingBranding: boolean
   hasStatementWording: boolean
   paymentId?: string
+  propertyId?: string
   payoutDate?: string
   payoutTotalRaw?: string
   payoutTotalAmountMinor?: number
@@ -38,6 +40,7 @@ export interface BookingPayoutStatementFields {
   ibanValue?: string
   ibanSuffix?: string
   exchangeRate?: string
+  referenceHints: string[]
   reservationIds: string[]
 }
 
@@ -114,6 +117,8 @@ export class BookingPayoutStatementPdfParser {
         ...(localCurrency ? { localCurrency } : {}),
         ...(ibanSuffix ? { ibanSuffix } : {}),
         ...(fields.exchangeRate ? { exchangeRate: fields.exchangeRate } : {}),
+        ...(fields.propertyId ? { propertyId: fields.propertyId } : {}),
+        ...(fields.referenceHints.length > 0 ? { referenceHints: fields.referenceHints } : {}),
         ...(reservationIds.length > 0 ? { reservationIds } : {})
       }
     }]
@@ -170,6 +175,7 @@ export function extractBookingPayoutStatementFields(content: string): BookingPay
     hasBookingBranding: signals.hasBookingBranding,
     hasStatementWording: signals.hasStatementWording,
     paymentId: candidates.paymentId,
+    propertyId: candidates.propertyId,
     payoutDate: candidates.payoutDateRaw,
     payoutTotalRaw: candidates.payoutTotalRaw,
     payoutTotalAmountMinor: payoutTotal?.amountMinor,
@@ -180,6 +186,7 @@ export function extractBookingPayoutStatementFields(content: string): BookingPay
     ibanValue: candidates.ibanValue,
     ibanSuffix: extractIbanSuffix(candidates.ibanValue),
     exchangeRate: candidates.exchangeRate,
+    referenceHints: uniqueBookingReferenceHints(candidates.propertyId, candidates.reservationIds, candidates.paymentId),
     reservationIds: candidates.reservationIds
   }
 }
@@ -302,6 +309,7 @@ function extractReservationIds(content: string): string[] {
 function collectBookingPayoutStatementFieldCandidates(content: string): {
   scan: ReturnType<typeof buildBookingPayoutStatementSignalScan>
   paymentId?: string
+  propertyId?: string
   payoutDateRaw?: string
   payoutTotalRaw?: string
   localTotalRaw?: string
@@ -368,6 +376,27 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
     ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized)
       ?? captureDenseBookingPayoutDate(scan.denseAsciiNormalized)
       ?? captureCompactBookingPayoutDate(scan.compact)
+  )
+  const propertyId = normalizeBookingStatementReferenceValue(
+    pickRequiredField(fields, [
+      'property id',
+      'propertyid',
+      'property reference',
+      'id ubytování',
+      'id ubytovani',
+      'id objektu',
+      'id hotelu'
+    ]) ?? captureBookingPropertyReferenceAfterLabels(scan.structuredAsciiNormalized, [
+      /\bproperty\s+(?:id|reference)\b/i,
+      /\bid\s+ubytovani\b/i,
+      /\bid\s+objektu\b/i,
+      /\bid\s+hotelu\b/i
+    ]) ?? captureBookingPropertyReferenceAfterLabels(scan.asciiNormalized, [
+      /\bproperty\s+(?:id|reference)\b/i,
+      /\bid\s+ubytovani\b/i,
+      /\bid\s+objektu\b/i,
+      /\bid\s+hotelu\b/i
+    ]) ?? captureDenseBookingPropertyReference(scan.denseAsciiNormalized)
   )
   const localTotalRaw = normalizeBookingStatementMoneyValue(
     pickRequiredField(fields, [
@@ -441,6 +470,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
   return {
     scan,
     paymentId,
+    propertyId,
     payoutDateRaw,
     payoutTotalRaw,
     localTotalRaw,
@@ -448,6 +478,22 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
     exchangeRate,
     reservationIds
   }
+}
+
+function uniqueBookingReferenceHints(
+  propertyId: string | undefined,
+  reservationIds: string[],
+  paymentId?: string
+): string[] {
+  const normalizedPaymentId = paymentId?.trim().toUpperCase()
+
+  return Array.from(new Set(
+    [propertyId, ...reservationIds]
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 4)
+      .filter((value) => value.toUpperCase() !== normalizedPaymentId)
+  ))
 }
 
 function buildBookingPayoutStatementSignalScan(content: string): {
@@ -724,6 +770,16 @@ function captureDenseBookingPrimaryPayoutTotal(
   return currency === 'EUR' || currency === 'USD' ? candidate : undefined
 }
 
+function captureDenseBookingPropertyReference(denseAsciiNormalized: string): string | undefined {
+  const normalized = denseAsciiNormalized.toUpperCase()
+  const stopPattern = '(?:BOOKINGCOMBV|BOOKINGCOM|VYKAZPLATEB|PREHLEDPLATEB|DATUMVYPLACENICASTKY|IDPLATBY|IDVYPLATY|PAYMENTID|PAYOUTID|TYPFAKTURY|REFERENCNICISLO|TYPPLATBY|PRIJEZD|ODJEZD|JMENOHOSTA|MENA|CASTKA|REZERVACE|RESERVATION|CELKEM|CELKOVA|IBAN|SMENNYKURZ|BANKOVNIUDAJE|$)'
+  const match = normalized.match(
+    new RegExp(`(?:PROPERTYID|PROPERTYREFERENCE|IDUBYTOVANI|IDOBJEKTU|IDHOTELU)([A-Z0-9-]{4,}?)(?=${stopPattern})`)
+  )
+
+  return match?.[1]
+}
+
 function captureBookingLocalCurrencyTotal(normalized: string, asciiNormalized: string): string | undefined {
   const localCurrencyMatch = [
     asciiNormalized.match(
@@ -858,6 +914,23 @@ function captureBookingReferenceAfterLabels(
     return captureBookingReferenceToken(section)
   }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
     return captureBookingReferenceToken(section)
+  })
+}
+
+function captureBookingPropertyReferenceAfterLabels(
+  content: string,
+  labelPatterns: RegExp[]
+): string | undefined {
+  return captureBookingValueAfterLabelLines(content, labelPatterns, (section, sectionLines) => {
+    const multilineCandidate = captureBookingPropertyReferenceFromFragmentedLines(sectionLines)
+
+    if (multilineCandidate) {
+      return multilineCandidate
+    }
+
+    return captureBookingPropertyReferenceToken(section)
+  }) ?? captureBookingValueAfterLabels(content, labelPatterns, (section) => {
+    return captureBookingPropertyReferenceToken(section)
   })
 }
 
@@ -1162,6 +1235,27 @@ function captureBookingReferenceFromStandaloneLine(line: string): string | undef
   return /^\d{10,16}$/.test(digits) ? digits : undefined
 }
 
+function captureBookingPropertyReferenceFromFragmentedLines(sectionLines: string[]): string | undefined {
+  const candidateLines = sectionLines
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .slice(0, 12)
+
+  for (const line of candidateLines) {
+    const direct = captureBookingPropertyReferenceFromStandaloneLine(line)
+
+    if (direct) {
+      return direct
+    }
+  }
+
+  return undefined
+}
+
+function captureBookingPropertyReferenceFromStandaloneLine(line: string): string | undefined {
+  return captureBookingPropertyReferenceToken(line)
+}
+
 function looksLikeReferenceFragment(value: string): boolean {
   const trimmed = value.trim()
 
@@ -1187,6 +1281,39 @@ function sanitizeReferenceFragment(value: string): string {
 function isLikelyIbanFragment(value: string): boolean {
   const compact = value.replace(/\s+/g, '').toUpperCase()
   return /^[A-Z]{2}\d{2}[A-Z0-9]{10,}$/.test(compact)
+}
+
+function captureBookingPropertyReferenceToken(section: string): string | undefined {
+  if (/\bIBAN\b/i.test(section)) {
+    return undefined
+  }
+
+  const tokens = section
+    .split(/[\s,;:()]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  for (const token of tokens) {
+    const cleaned = token.replace(/[^A-Z0-9-]/gi, '').toUpperCase()
+
+    if (!cleaned || cleaned.length < 4) {
+      continue
+    }
+
+    if (isLikelyIbanFragment(cleaned) || /^PAYOUT-BOOK-\d/.test(cleaned)) {
+      continue
+    }
+
+    if (BOOKING_PROPERTY_REFERENCE_STOPWORDS.has(cleaned)) {
+      continue
+    }
+
+    if (/^[A-Z0-9-]{4,}$/.test(cleaned)) {
+      return cleaned
+    }
+  }
+
+  return undefined
 }
 
 function captureBookingDateFromFragmentedLines(sectionLines: string[]): string | undefined {
@@ -1244,6 +1371,43 @@ function isPlausibleBookingPayoutTotalCandidate(value: string): boolean {
 
   return majorUnits >= 10
 }
+
+const BOOKING_PROPERTY_REFERENCE_STOPWORDS = new Set([
+  'BOOKING',
+  'BOOKINGCOM',
+  'BV',
+  'PROPERTY',
+  'REFERENCE',
+  'ID',
+  'PLATBY',
+  'PAYMENT',
+  'PAYOUT',
+  'DATE',
+  'DATUM',
+  'VYPLACENI',
+  'CASTKY',
+  'CASTKA',
+  'CELKEM',
+  'CELKOVA',
+  'TOTAL',
+  'REZERVACE',
+  'RESERVATION',
+  'CZK',
+  'EUR',
+  'USD',
+  'IBAN',
+  'SMENNY',
+  'KURZ',
+  'BANKOVNI',
+  'UDAJE',
+  'TYP',
+  'FAKTURY',
+  'REFERENCNICISLO',
+  'PRIJEZD',
+  'ODJEZD',
+  'JMENOHOSTA',
+  'MENA'
+])
 
 function normalizeBookingStatementMoneyValue(value: string | undefined): string | undefined {
   if (!value) {

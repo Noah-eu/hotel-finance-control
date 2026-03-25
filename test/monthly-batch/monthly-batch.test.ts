@@ -1624,6 +1624,7 @@ describe('runMonthlyReconciliationBatch', () => {
           localAmountMinor: 3553012,
           localCurrency: 'CZK',
           ibanSuffix: '5956',
+          referenceHints: ['CHILL-APT-PRG', 'RES-BOOK-8841'],
           reservationIds: ['RES-BOOK-8841']
         })
       })
@@ -1639,6 +1640,7 @@ describe('runMonthlyReconciliationBatch', () => {
         payoutSupplementLocalAmountMinor: 3553012,
         payoutSupplementLocalCurrency: 'CZK',
         payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReferenceHints: ['CHILL-APT-PRG', 'RES-BOOK-8841'],
         payoutSupplementReservationIds: ['RES-BOOK-8841'],
         payoutSupplementSourceDocumentIds: ['uploaded:booking:2:bookinng35k-pdf']
       })
@@ -1731,6 +1733,70 @@ describe('runMonthlyReconciliationBatch', () => {
       )
     ).toBe(false)
   })
+
+  it('matches a Booking payout by supplement reference hint when the bank line carries the Booking counterparty and property reference fragment', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'booking35k.csv',
+          content: buildBooking35kBrowserUploadContent(),
+          uploadedAt: '2026-03-25T11:05:00.000Z'
+        },
+        {
+          name: 'airbnb.csv',
+          content: buildActualUploadedAirbnbContent(),
+          uploadedAt: '2026-03-25T11:05:10.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: buildActualUploadedRbCitiContentWithBookingReferenceHintMatch(),
+          uploadedAt: '2026-03-25T11:05:20.000Z'
+        },
+        {
+          name: 'Bookinng35k.pdf',
+          content: buildCzechSingleGlyphBookingPayoutStatementContent(),
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-25T11:05:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-supplement-reference-hint-match',
+        requestedAt: '2026-03-25T11:06:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-25T11:07:00.000Z'
+    })
+
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toContainEqual(
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        payoutSupplementPaymentId: '010638445054',
+        payoutSupplementLocalAmountMinor: 3553012,
+        payoutSupplementLocalCurrency: 'CZK',
+        payoutSupplementReferenceHints: ['2206371', 'RES-BOOK-8841']
+      })
+    )
+    expect(result.batch.report.payoutBatchMatches).toContainEqual(
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        amountMinor: 3553012,
+        currency: 'CZK',
+        reason: 'Shoda dávky a bankovního přípisu podle lokální payout částky, data payoutu, Booking protiúčtu a booking reference hintu.',
+        matchedBankSummary: '2026-03-13T09:12:00 · BOOKING.COM B.V. · NO.AAOS6MOZUH8BFTER/2206371',
+        display: {
+          title: 'Booking payout 010638445054 / 35 530,12 Kč',
+          context: 'Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · Kurz: 24.3955 · IBAN 5956 · rezervace: 1'
+        }
+      })
+    )
+    expect(
+      result.batch.report.payoutBatchMatches.filter((item) => item.platform === 'Airbnb')
+    ).toHaveLength(15)
+    expect(
+      result.batch.report.unmatchedPayoutBatches.filter((item) => item.platform === 'Airbnb')
+    ).toHaveLength(2)
+    expect(result.batch.report.summary.payoutBatchMatchCount).toBe(16)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(2)
+  })
 })
 
 function buildActualUploadedAirbnbContent(): string {
@@ -1817,6 +1883,34 @@ function buildCzechLateCueBookingPayoutStatementContent(): string {
   ].join('\n')
 }
 
+function buildCzechSingleGlyphBookingPayoutStatementContent(): string {
+  return [
+    'Chill apartments',
+    'Sokolská 64',
+    '120 00 Prague',
+    'ID ubytování 2206371',
+    'Booking.com B.V.',
+    'Výkaz plateb',
+    'Datum vyplacení částky 12. března 2026',
+    'ID platby 010638445054',
+    'Typ faktury',
+    'Referenční číslo',
+    'Typ platby',
+    'Příjezd',
+    'Odjezd',
+    'Jméno hosta',
+    'Měna',
+    'Částka',
+    'Rezervace RES-BOOK-8841',
+    'Celkem (CZK) 35,530.12 Kč',
+    'Celková částka k vyplacení € 1,456.42',
+    'Celková částka k vyplacení (CZK)',
+    'Směnný kurz 24.3955',
+    'Bankovní údaje',
+    'IBAN CZ65 5500 0000 0000 5599 555956'
+  ].join('\n')
+}
+
 function buildActualUploadedRbCitiContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
@@ -1843,5 +1937,12 @@ function buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(): string {
   return [
     buildActualUploadedRbCitiContent(),
     '12.03.2026 09:10;12.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;35530,12;CZK;010638445054'
+  ].join('\n')
+}
+
+function buildActualUploadedRbCitiContentWithBookingReferenceHintMatch(): string {
+  return [
+    buildActualUploadedRbCitiContent(),
+    '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
   ].join('\n')
 }
