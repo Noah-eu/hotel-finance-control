@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
 import { getDemoFixture, type DemoFixture } from '../demo-fixtures'
 import { reconcileExtractedRecords } from '../reconciliation'
@@ -40,6 +40,7 @@ export interface FixtureWebDemoResult {
 }
 
 const WEB_DEMO_RENDERER_MARKER = 'web-demo-operator-v3'
+const WEB_DEMO_PAYOUT_PROJECTION_MARKER = 'payout-projection-v4'
 
 export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<WebDemoResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
@@ -107,6 +108,13 @@ function renderOperatorWebDemoHtml(input: {
   debugMode?: boolean
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
+  const runtimeBuildInfo = {
+    gitCommitHash: resolveGitCommitHash(),
+    buildTimestamp: input.generatedAt,
+    runtimeModuleVersion: buildFingerprintVersion,
+    rendererVersion: WEB_DEMO_RENDERER_MARKER,
+    payoutProjectionVersion: WEB_DEMO_PAYOUT_PROJECTION_MARKER
+  }
   const showRuntimePayoutDiagnostics = Boolean(input.debugMode)
   const buildExtractedRecordsMarkupFunction = input.debugMode
     ? buildDebugExtractedRecordsMarkupFunctionSource()
@@ -125,6 +133,7 @@ function renderOperatorWebDemoHtml(input: {
   const initialRuntimeState = {
     debugMode: Boolean(input.debugMode),
     generatedAt: input.generatedAt,
+    runtimeBuildInfo,
     runId: 'web-demo-empty-initial-state',
     monthLabel: '',
     routingSummary: {
@@ -172,6 +181,18 @@ function renderOperatorWebDemoHtml(input: {
       unmatched: [],
       suspicious: [],
       missingDocuments: []
+    },
+    finalPayoutProjection: {
+      sourceFunction: 'buildCompletedVisibleRuntimeState -> collectVisiblePayoutProjection',
+      objectPath: 'state.finalPayoutProjection',
+      matchedCount: 0,
+      unmatchedCount: 0,
+      matchedSectionCount: 0,
+      unmatchedSectionCount: 0,
+      matchedIds: [],
+      unmatchedIds: [],
+      matchedItems: [],
+      unmatchedItems: []
     },
     reportTransactions: [],
     exportFiles: []
@@ -474,6 +495,13 @@ ${showRuntimePayoutDiagnostics ? `
           <p class="hint">Po spuštění zde uvidíte skutečný browser intake handoff pro každý vybraný soubor.</p>
         </div>
       </section>
+      <section id="runtime-payout-projection-debug-section" class="card" data-runtime-phase="placeholder" hidden>
+        <h2>Diagnostika finální payout projekce</h2>
+        <div id="runtime-payout-projection-debug-content">
+          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+          <p class="hint">Po spuštění zde uvidíte build/runtime marker a finální payout projekci ze stejného state objektu, který používá summary i detailní payout sekce.</p>
+        </div>
+      </section>
     </main>
     <script>
       ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
@@ -505,13 +533,17 @@ ${showRuntimePayoutDiagnostics ? `
   const unmatchedReservationsContent = document.getElementById('unmatched-reservations-content');
   const exportHandoffSection = document.getElementById('export-handoff-section');
   const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}${runtimeFileIntakeDiagnosticsBindings}
+  const runtimePayoutProjectionDebugSection = document.getElementById('runtime-payout-projection-debug-section');
+  const runtimePayoutProjectionDebugContent = document.getElementById('runtime-payout-projection-debug-content');
       const generatedAt = ${JSON.stringify(input.generatedAt)};
   const buildFingerprintVersion = ${JSON.stringify(buildFingerprintVersion)};
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
       let browserRuntime;
       const debugModeFromQuery = new URLSearchParams(window.location.search).get('debug') === '1';
       const debugModeFromHash = /(^#debug(?:=1)?$|[?&#]debug(?:=1)?(?:$|[&#]))/i.test(String(window.location.hash || ''));
-      const runtimeFileIntakeDebugMode = Boolean(initialRuntimeState.debugMode || debugModeFromQuery || debugModeFromHash);
+      const runtimeOperatorDebugMode = Boolean(initialRuntimeState.debugMode || debugModeFromQuery || debugModeFromHash);
+      const runtimeFileIntakeDebugMode = runtimeOperatorDebugMode;
+      const runtimePayoutProjectionDebugMode = runtimeOperatorDebugMode;
 
       function escapeHtml(value) {
         return String(value)
@@ -741,6 +773,33 @@ ${showRuntimePayoutDiagnostics ? `
         runtimeFileIntakeDiagnosticsSection.hidden = !runtimeFileIntakeDebugMode;
       }
 
+      function collectVisiblePayoutProjection(state) {
+        const reviewSections = (state && state.reviewSections) || {};
+        const matchedItems = Array.isArray(reviewSections.payoutBatchMatched) ? reviewSections.payoutBatchMatched : [];
+        const unmatchedItems = Array.isArray(reviewSections.payoutBatchUnmatched) ? reviewSections.payoutBatchUnmatched : [];
+
+        return {
+          sourceFunction: 'buildCompletedVisibleRuntimeState -> collectVisiblePayoutProjection',
+          objectPath: 'state.finalPayoutProjection',
+          matchedCount: matchedItems.length,
+          unmatchedCount: unmatchedItems.length,
+          matchedSectionCount: matchedItems.length,
+          unmatchedSectionCount: unmatchedItems.length,
+          matchedIds: matchedItems.map((item) => String(item.id || '')),
+          unmatchedIds: unmatchedItems.map((item) => String(item.id || '')),
+          matchedItems,
+          unmatchedItems
+        };
+      }
+
+      function getVisiblePayoutProjection(state) {
+        if (state && state.finalPayoutProjection) {
+          return state.finalPayoutProjection;
+        }
+
+        return collectVisiblePayoutProjection(state);
+      }
+
       function buildPreparedFilesMarkup(state) {
         const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
         const recognizedFiles = fileRoutes.filter((file) => file.status === 'supported');
@@ -816,8 +875,9 @@ ${showRuntimePayoutDiagnostics ? `
       }
 
       function buildReviewSummaryMarkup(state) {
-        const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
-        const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;
+        const payoutProjection = getVisiblePayoutProjection(state);
+        const payoutBatchMatchedCount = payoutProjection.matchedCount;
+        const payoutBatchUnmatchedCount = payoutProjection.unmatchedCount;
         const reviewSummaryItems = [
           ['Spárované Airbnb / OTA payout dávky', payoutBatchMatchedCount],
           ['Nespárované payout dávky', payoutBatchUnmatchedCount],
@@ -831,6 +891,14 @@ ${showRuntimePayoutDiagnostics ? `
           '<ul>' + reviewSummaryItems + '</ul>',
           '<p class="hint">Souhrn kontroly: ' + escapeHtml(String(state.reviewSummary.exceptionCount)) + ' položek ke kontrole.</p>'
         ].join('');
+      }
+
+      function buildDiagnosticListMarkup(label, values) {
+        if (!values || values.length === 0) {
+          return '<li><strong>' + escapeHtml(label) + ':</strong> <span class="hint">žádné</span></li>';
+        }
+
+        return '<li><strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(values.join(', ')) + '</li>';
       }
 
 ${showRuntimePayoutDiagnostics ? `
@@ -863,14 +931,6 @@ ${showRuntimePayoutDiagnostics ? `
           runtimeMatchedTitles: ((reviewSections.payoutBatchMatched) || []).map((item) => item.title),
           runtimeUnmatchedTitles: ((reviewSections.payoutBatchUnmatched) || []).map((item) => item.title)
         };
-      }
-
-      function buildDiagnosticListMarkup(label, values) {
-        if (!values || values.length === 0) {
-          return '<li><strong>' + escapeHtml(label) + ':</strong> <span class="hint">žádné</span></li>';
-        }
-
-        return '<li><strong>' + escapeHtml(label) + ':</strong> ' + escapeHtml(values.join(', ')) + '</li>';
       }
 
       function buildRuntimePayoutDiagnosticsMarkup(state) {
@@ -997,9 +1057,63 @@ ${showRuntimePayoutDiagnostics ? '' : `
         runtimeFileIntakeDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte browser intake handoff pro každý soubor a jeho finální render bucket.</p>';
       }
 
+      function syncRuntimePayoutProjectionDebugVisibility() {
+        runtimePayoutProjectionDebugSection.hidden = !runtimePayoutProjectionDebugMode;
+      }
+
+      function buildRuntimePayoutProjectionDebugMarkup(state, statusLabel) {
+        const payoutProjection = getVisiblePayoutProjection(state);
+        const buildInfo = (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo || {};
+        const reviewSections = (state && state.reviewSections) || {};
+        const matchedSectionCount = Array.isArray(reviewSections.payoutBatchMatched) ? reviewSections.payoutBatchMatched.length : 0;
+        const unmatchedSectionCount = Array.isArray(reviewSections.payoutBatchUnmatched) ? reviewSections.payoutBatchUnmatched.length : 0;
+
+        return [
+          '<p class="hint">Tento blok čte build marker i finální payout projekci ze stejného state objektu, který používá summary pás i detailní payout sekce.</p>',
+          '<ul class="diagnostic-list">',
+          '<li><strong>Stav renderu:</strong> ' + escapeHtml(statusLabel) + '</li>',
+          '<li><strong>Git commit:</strong> <code>' + escapeHtml(String(buildInfo.gitCommitHash || 'unknown')) + '</code></li>',
+          '<li><strong>Build timestamp:</strong> <code>' + escapeHtml(String(buildInfo.buildTimestamp || generatedAt)) + '</code></li>',
+          '<li><strong>Runtime module version:</strong> <code>' + escapeHtml(String(buildInfo.runtimeModuleVersion || buildFingerprintVersion)) + '</code></li>',
+          '<li><strong>Renderer version:</strong> <code>' + escapeHtml(String(buildInfo.rendererVersion || ${JSON.stringify(WEB_DEMO_RENDERER_MARKER)})) + '</code></li>',
+          '<li><strong>Payout projection version:</strong> <code>' + escapeHtml(String(buildInfo.payoutProjectionVersion || ${JSON.stringify(WEB_DEMO_PAYOUT_PROJECTION_MARKER)})) + '</code></li>',
+          '<li><strong>Projection source:</strong> <code>' + escapeHtml(String(payoutProjection.sourceFunction || 'collectVisiblePayoutProjection')) + '</code></li>',
+          '<li><strong>Projection object path:</strong> <code>' + escapeHtml(String(payoutProjection.objectPath || 'state.finalPayoutProjection')) + '</code></li>',
+          '<li><strong>Matched payout count:</strong> ' + escapeHtml(String(payoutProjection.matchedCount || 0)) + '</li>',
+          '<li><strong>Unmatched payout count:</strong> ' + escapeHtml(String(payoutProjection.unmatchedCount || 0)) + '</li>',
+          '<li><strong>Matched review section count:</strong> ' + escapeHtml(String(matchedSectionCount)) + '</li>',
+          '<li><strong>Unmatched review section count:</strong> ' + escapeHtml(String(unmatchedSectionCount)) + '</li>',
+          buildDiagnosticListMarkup('Matched payout batch ids', payoutProjection.matchedIds || []),
+          buildDiagnosticListMarkup('Unmatched payout batch ids', payoutProjection.unmatchedIds || []),
+          '</ul>'
+        ].join('');
+      }
+
+      function syncRuntimePayoutProjectionDebugPhase(phase) {
+        runtimePayoutProjectionDebugSection.setAttribute('data-runtime-phase', phase);
+        syncRuntimePayoutProjectionDebugVisibility();
+      }
+
+      function renderCompletedRuntimePayoutProjectionDebug(state) {
+        runtimePayoutProjectionDebugContent.innerHTML = buildRuntimePayoutProjectionDebugMarkup(state, 'completed');
+      }
+
+      function renderRunningRuntimePayoutProjectionDebug() {
+        runtimePayoutProjectionDebugContent.innerHTML = buildRuntimePayoutProjectionDebugMarkup(initialRuntimeState, 'running');
+      }
+
+      function renderFailedRuntimePayoutProjectionDebug() {
+        runtimePayoutProjectionDebugContent.innerHTML = buildRuntimePayoutProjectionDebugMarkup(initialRuntimeState, 'failed');
+      }
+
+      function renderInitialRuntimePayoutProjectionDebug() {
+        runtimePayoutProjectionDebugContent.innerHTML = buildRuntimePayoutProjectionDebugMarkup(initialRuntimeState, 'placeholder');
+      }
+
       function buildFingerprintMarkup(state) {
-        const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;
-        const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;
+        const payoutProjection = getVisiblePayoutProjection(state);
+        const payoutBatchMatchedCount = payoutProjection.matchedCount;
+        const payoutBatchUnmatchedCount = payoutProjection.unmatchedCount;
 
   return 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>' + escapeHtml(String(payoutBatchMatchedCount)) + '</strong> · Payout unmatched: <strong>' + escapeHtml(String(payoutBatchUnmatchedCount)) + '</strong>';
       }
@@ -1066,9 +1180,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
       function buildCompletedVisibleRuntimeState(state) {
         const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
         const hasRoutedFiles = fileRoutes.length > 0;
+        const payoutProjection = collectVisiblePayoutProjection(state);
 
         return {
           ...state,
+          runtimeBuildInfo: state.runtimeBuildInfo || initialRuntimeState.runtimeBuildInfo,
           routingSummary: {
             uploadedFileCount: hasRoutedFiles ? fileRoutes.length : Number(state.routingSummary?.uploadedFileCount ?? 0),
             supportedFileCount: hasRoutedFiles ? fileRoutes.filter((file) => file.status === 'supported').length : Number(state.routingSummary?.supportedFileCount ?? 0),
@@ -1079,9 +1195,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
           preparedFiles: Array.isArray(state.preparedFiles) ? state.preparedFiles : [],
           extractedRecords: Array.isArray(state.extractedRecords) ? state.extractedRecords : [],
           supportedExpenseLinks: Array.isArray(state.supportedExpenseLinks) ? state.supportedExpenseLinks : [],
-          reportSummary: state.reportSummary || {},
-          reviewSummary: state.reviewSummary || {},
+          reportSummary: {
+            ...(state.reportSummary || {}),
+            payoutBatchMatchCount: payoutProjection.matchedCount,
+            unmatchedPayoutBatchCount: payoutProjection.unmatchedCount
+          },
+          reviewSummary: {
+            ...(state.reviewSummary || {}),
+            payoutBatchMatchCount: payoutProjection.matchedCount,
+            unmatchedPayoutBatchCount: payoutProjection.unmatchedCount
+          },
           reviewSections: state.reviewSections || {},
+          finalPayoutProjection: payoutProjection,
           reportTransactions: (state.reportTransactions || []).map((transaction) => ({
             ...transaction,
             labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)
@@ -1101,6 +1226,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function applyVisibleRuntimeState(state, phase) {
+        const visibleState = state && state.finalPayoutProjection
+          ? state
+          : {
+            ...state,
+            runtimeBuildInfo: (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo,
+            finalPayoutProjection: collectVisiblePayoutProjection(state)
+          };
+        const payoutProjection = getVisiblePayoutProjection(visibleState);
+
         preparedFilesSection.setAttribute('data-runtime-phase', phase);
         reviewSummarySection.setAttribute('data-runtime-phase', phase);
         reportPreviewBody.setAttribute('data-runtime-phase', phase);
@@ -1112,34 +1246,41 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffSection.setAttribute('data-runtime-phase', phase);
         syncRuntimePayoutDiagnosticsPhase(phase);
         syncRuntimeFileIntakeDiagnosticsPhase(phase);
+        syncRuntimePayoutProjectionDebugPhase(phase);
 
         if (runtimeSummaryUploadedFiles) {
-          runtimeSummaryUploadedFiles.textContent = String(state.routingSummary?.uploadedFileCount ?? (state.fileRoutes || []).length ?? (state.preparedFiles || []).length);
+          runtimeSummaryUploadedFiles.textContent = String(visibleState.routingSummary?.uploadedFileCount ?? (visibleState.fileRoutes || []).length ?? (visibleState.preparedFiles || []).length);
         }
         if (runtimeSummaryNormalizedTransactions) {
-          runtimeSummaryNormalizedTransactions.textContent = String(state.reviewSummary?.normalizedTransactionCount ?? state.reportSummary?.normalizedTransactionCount ?? 0);
+          runtimeSummaryNormalizedTransactions.textContent = String(visibleState.reviewSummary?.normalizedTransactionCount ?? visibleState.reportSummary?.normalizedTransactionCount ?? 0);
         }
         if (runtimeSummaryReviewItems) {
-          runtimeSummaryReviewItems.textContent = String(state.reviewSummary?.exceptionCount ?? 0);
+          runtimeSummaryReviewItems.textContent = String(visibleState.reviewSummary?.exceptionCount ?? 0);
         }
         if (runtimeSummaryExportFiles) {
-          runtimeSummaryExportFiles.textContent = String((state.exportFiles || []).length);
+          runtimeSummaryExportFiles.textContent = String((visibleState.exportFiles || []).length);
         }
         if (buildFingerprint) {
-          buildFingerprint.innerHTML = buildFingerprintMarkup(state);
+          buildFingerprint.innerHTML = buildFingerprintMarkup(visibleState);
         }
 
-        preparedFilesContent.innerHTML = buildPreparedFilesMarkup(state);
-        reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(state);
-        reportPreviewBody.innerHTML = buildReportRowsMarkup(state);
-  matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchMatched) || []);
-  unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []);
-        reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.reservationSettlementOverview) || []);
-        ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.ancillarySettlementOverview) || []);
-        unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(state);
-        exportHandoffContent.innerHTML = buildExportMarkup(state);
-        renderCompletedRuntimePayoutDiagnostics(state);
-        renderCompletedRuntimeFileIntakeDiagnostics(state);
+        preparedFilesContent.innerHTML = buildPreparedFilesMarkup(visibleState);
+        reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(visibleState);
+        reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
+  matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || []);
+  unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);
+        reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
+        ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
+        unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
+        exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
+        renderCompletedRuntimePayoutDiagnostics(visibleState);
+        renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
+        renderCompletedRuntimePayoutProjectionDebug(visibleState);
+
+        if (runtimeOperatorDebugMode) {
+          window.__hotelFinanceLastVisibleRuntimeState = visibleState;
+          window.__hotelFinanceLastVisiblePayoutProjection = payoutProjection;
+        }
       }
 
       function renderRunningState(files) {
@@ -1158,6 +1299,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffSection.setAttribute('data-runtime-phase', 'running');
         syncRuntimePayoutDiagnosticsPhase('running');
         syncRuntimeFileIntakeDiagnosticsPhase('running');
+        syncRuntimePayoutProjectionDebugPhase('running');
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(files.length);
@@ -1177,6 +1319,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff se právě připravuje ze stejného runtime výsledku…</p>';
         renderRunningRuntimePayoutDiagnostics();
         renderRunningRuntimeFileIntakeDiagnostics();
+        renderRunningRuntimePayoutProjectionDebug();
       }
 
       function renderFailedState(error) {
@@ -1193,6 +1336,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffSection.setAttribute('data-runtime-phase', 'failed');
         syncRuntimePayoutDiagnosticsPhase('failed');
         syncRuntimeFileIntakeDiagnosticsPhase('failed');
+        syncRuntimePayoutProjectionDebugPhase('failed');
 
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
@@ -1205,6 +1349,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
         renderFailedRuntimePayoutDiagnostics();
         renderFailedRuntimeFileIntakeDiagnostics();
+        renderFailedRuntimePayoutProjectionDebug();
         if (buildFingerprint) {
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
         }
@@ -1222,6 +1367,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffSection.setAttribute('data-runtime-phase', 'placeholder');
         syncRuntimePayoutDiagnosticsPhase('placeholder');
         syncRuntimeFileIntakeDiagnosticsPhase('placeholder');
+        syncRuntimePayoutProjectionDebugPhase('placeholder');
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
         if (runtimeSummaryUploadedFiles) runtimeSummaryUploadedFiles.textContent = '0';
@@ -1243,6 +1389,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         exportHandoffContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p><p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>';
         renderInitialRuntimePayoutDiagnostics();
         renderInitialRuntimeFileIntakeDiagnostics();
+        renderInitialRuntimePayoutProjectionDebug();
       }
 
       async function startMainWorkflow() {
@@ -1331,6 +1478,63 @@ function buildDebugExtractedRecordsMarkupFunctionSource(): string {
           return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">Účet: ' + escapeHtml(file.accountLabelCs) + '</span><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount)) + '</span>' + debugBlock + '</li>';
         }).join('');
       }`
+}
+
+function resolveGitCommitHash(): string {
+  try {
+    const gitMetadataPath = resolve('.git')
+    const gitDirectory = resolveGitDirectory(gitMetadataPath)
+    const headPath = resolve(gitDirectory, 'HEAD')
+
+    if (!existsSync(headPath)) {
+      return 'unknown'
+    }
+
+    const headContent = readFileSync(headPath, 'utf8').trim()
+
+    if (!headContent) {
+      return 'unknown'
+    }
+
+    if (!headContent.startsWith('ref:')) {
+      return headContent
+    }
+
+    const refName = headContent.replace(/^ref:\s*/, '')
+    const refPath = resolve(gitDirectory, refName)
+
+    if (existsSync(refPath)) {
+      return readFileSync(refPath, 'utf8').trim()
+    }
+
+    const packedRefsPath = resolve(gitDirectory, 'packed-refs')
+
+    if (!existsSync(packedRefsPath)) {
+      return 'unknown'
+    }
+
+    const packedRefLine = readFileSync(packedRefsPath, 'utf8')
+      .split(/\r?\n/)
+      .find((line) => !line.startsWith('#') && !line.startsWith('^') && line.endsWith(` ${refName}`))
+
+    return packedRefLine?.split(' ')[0]?.trim() || 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+function resolveGitDirectory(gitMetadataPath: string): string {
+  try {
+    const metadataContent = readFileSync(gitMetadataPath, 'utf8').trim()
+
+    if (metadataContent.startsWith('gitdir:')) {
+      return resolve(dirname(gitMetadataPath), metadataContent.replace(/^gitdir:\s*/, ''))
+    }
+  } catch {
+    return gitMetadataPath
+  }
+
+  return gitMetadataPath
 }
 
 function fileNameFromSourceDocumentId(

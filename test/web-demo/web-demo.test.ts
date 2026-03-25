@@ -307,10 +307,10 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="runtime-summary-normalized-transactions"')
     expect(result.html).toContain('id="runtime-summary-review-items"')
     expect(result.html).toContain('id="runtime-summary-export-files"')
-    expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String(state.routingSummary?.uploadedFileCount ?? (state.fileRoutes || []).length ?? (state.preparedFiles || []).length);")
-    expect(result.html).toContain("runtimeSummaryNormalizedTransactions.textContent = String(state.reviewSummary?.normalizedTransactionCount ?? state.reportSummary?.normalizedTransactionCount ?? 0);")
-    expect(result.html).toContain("runtimeSummaryReviewItems.textContent = String(state.reviewSummary?.exceptionCount ?? 0);")
-    expect(result.html).toContain("runtimeSummaryExportFiles.textContent = String((state.exportFiles || []).length);")
+    expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String(visibleState.routingSummary?.uploadedFileCount ?? (visibleState.fileRoutes || []).length ?? (visibleState.preparedFiles || []).length);")
+    expect(result.html).toContain("runtimeSummaryNormalizedTransactions.textContent = String(visibleState.reviewSummary?.normalizedTransactionCount ?? visibleState.reportSummary?.normalizedTransactionCount ?? 0);")
+    expect(result.html).toContain("runtimeSummaryReviewItems.textContent = String(visibleState.reviewSummary?.exceptionCount ?? 0);")
+    expect(result.html).toContain("runtimeSummaryExportFiles.textContent = String((visibleState.exportFiles || []).length);")
     expect(result.html).toContain("runtimeSummaryUploadedFiles.textContent = String(files.length);")
   })
 
@@ -745,8 +745,9 @@ describe('buildWebDemo', () => {
       generatedAt: '2026-03-22T10:30:00.000Z'
     })
 
-    expect(result.html).toContain('const payoutBatchMatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchMatched) || []).length;')
-    expect(result.html).toContain('const payoutBatchUnmatchedCount = ((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []).length;')
+    expect(result.html).toContain('const payoutProjection = getVisiblePayoutProjection(state);')
+    expect(result.html).toContain('const payoutBatchMatchedCount = payoutProjection.matchedCount;')
+    expect(result.html).toContain('const payoutBatchUnmatchedCount = payoutProjection.unmatchedCount;')
     expect(result.html).toContain("['Spárované Airbnb / OTA payout dávky', payoutBatchMatchedCount]")
     expect(result.html).toContain("['Nespárované payout dávky', payoutBatchUnmatchedCount]")
     expect(result.browserRun.run.review.payoutBatchMatched).toHaveLength(15)
@@ -766,8 +767,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="unmatched-payout-batches-section"')
     expect(result.html).toContain('id="unmatched-payout-batches-content"')
     expect(result.html).toContain('Nespárované payout dávky')
-    expect(result.html).toContain("matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchMatched) || []);")
-    expect(result.html).toContain("unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup((state.reviewSections && state.reviewSections.payoutBatchUnmatched) || []);")
+    expect(result.html).toContain("matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || []);")
+    expect(result.html).toContain("unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);")
   })
 
   it('seeds the operator-facing snapshot from the real two-file Airbnb to RB uploaded path and keeps exact payout references visible', async () => {
@@ -913,7 +914,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Payout matched: <strong>žádný upload</strong>')
     expect(result.html).toContain('Payout unmatched: <strong>žádný upload</strong>')
     expect(result.html).toContain("const buildFingerprint = document.getElementById('build-fingerprint');")
-    expect(result.html).toContain('buildFingerprint.innerHTML = buildFingerprintMarkup(state);')
+    expect(result.html).toContain('buildFingerprint.innerHTML = buildFingerprintMarkup(visibleState);')
     expect(result.html).toContain('const buildFingerprintVersion = "browser-runtime";')
   })
 
@@ -1043,8 +1044,11 @@ describe('buildWebDemo', () => {
     })
 
     expect(defaultRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(true)
+    expect(defaultRendered.runtimePayoutProjectionDebugSection.hidden).toBe(true)
     expect(debugRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(debugRendered.runtimePayoutProjectionDebugSection.hidden).toBe(false)
     expect(debugRendered.html).toContain('id="runtime-file-intake-diagnostics-section"')
+    expect(debugRendered.html).toContain('id="runtime-payout-projection-debug-section"')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bookinng35k.pdf')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('MIME: application/pdf')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Browser extraction: extracted / pdf-text')
@@ -1344,6 +1348,57 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
   })
 
+  it('renders debug-only runtime markers and one authoritative payout projection snapshot on the actual built page', async () => {
+    const generatedAt = '2026-03-25T16:05:00.000Z'
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt,
+      month: '2026-03',
+      outputDirName: 'test-web-demo-payout-projection-debug-snapshot',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const gitCommitHash = resolveCurrentGitCommitHash()
+
+    expect(rendered.runtimePayoutProjectionDebugSection.hidden).toBe(false)
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Git commit:</strong> <code>${gitCommitHash}</code>`)
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Build timestamp:</strong> <code>${generatedAt}</code>`)
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Runtime module version:</strong> <code>browser-runtime.')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Renderer version:</strong> <code>web-demo-operator-v3</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Payout projection version:</strong> <code>payout-projection-v4</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Projection source:</strong> <code>buildCompletedVisibleRuntimeState -&gt; collectVisiblePayoutProjection</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Projection object path:</strong> <code>state.finalPayoutProjection</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Matched payout count:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Unmatched payout count:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Matched review section count:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Unmatched review section count:</strong> 2')
+    expect(rendered.buildFingerprint.innerHTML).toContain('Payout matched: <strong>16</strong>')
+    expect(rendered.buildFingerprint.innerHTML).toContain('Payout unmatched: <strong>2</strong>')
+    expect(rendered.lastVisiblePayoutProjection).toMatchObject({
+      sourceFunction: 'buildCompletedVisibleRuntimeState -> collectVisiblePayoutProjection',
+      objectPath: 'state.finalPayoutProjection',
+      matchedCount: 16,
+      unmatchedCount: 2,
+      matchedSectionCount: 16,
+      unmatchedSectionCount: 2
+    })
+    expect((rendered.lastVisiblePayoutProjection as { matchedIds: string[] }).matchedIds).toHaveLength(16)
+    expect((rendered.lastVisiblePayoutProjection as { unmatchedIds: string[] }).unmatchedIds).toHaveLength(2)
+    expect((rendered.lastVisibleRuntimeState as { finalPayoutProjection?: { matchedCount: number; unmatchedCount: number } }).finalPayoutProjection).toMatchObject({
+      matchedCount: 16,
+      unmatchedCount: 2
+    })
+  })
+
   it('renders scan-like PDFs on the OCR branch instead of treating them as ingest failures in the built page', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-24T21:10:00.000Z',
@@ -1482,7 +1537,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="unmatched-reservations-section"')
     expect(result.html).toContain('id="unmatched-reservations-content"')
     expect(result.html).toContain('function buildUnmatchedReservationDetailsMarkup(state)')
-    expect(result.html).toContain('unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(state);')
+    expect(result.html).toContain('unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);')
     expect(result.html).toContain('Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…')
     expect(result.html).not.toContain('noCandidate')
   })
@@ -1498,8 +1553,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="ancillary-settlement-overview-section"')
     expect(result.html).toContain('id="ancillary-settlement-overview-content"')
     expect(result.html).toContain('Doplňkové položky / ancillary revenue')
-    expect(result.html).toContain('buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.reservationSettlementOverview) || [])')
-    expect(result.html).toContain('buildSettlementOverviewMarkup((state.reviewSections && state.reviewSections.ancillarySettlementOverview) || [])')
+    expect(result.html).toContain('buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || [])')
+    expect(result.html).toContain('buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || [])')
     expect(result.html).toContain('Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…')
     expect(result.html).toContain('Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…')
   })
@@ -1533,12 +1588,17 @@ async function executeWebDemoMainWorkflow(input: {
   }>
 }): Promise<{
   html: string
+  buildFingerprint: StubDomElement
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
   matchedPayoutBatchesContent: StubDomElement
   unmatchedPayoutBatchesContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
+  runtimePayoutProjectionDebugSection: StubDomElement
+  runtimePayoutProjectionDebugContent: StubDomElement
+  lastVisibleRuntimeState?: unknown
+  lastVisiblePayoutProjection?: unknown
 }> {
   const outputDirName = input.outputDirName ?? 'test-web-demo-main-workflow'
   const outputPath = resolve(`dist/${outputDirName}/index.html`)
@@ -1558,6 +1618,8 @@ async function executeWebDemoMainWorkflow(input: {
   const windowObject: {
     location: { search: string; hash: string }
     __hotelFinanceCreateBrowserRuntime?: unknown
+    __hotelFinanceLastVisibleRuntimeState?: unknown
+    __hotelFinanceLastVisiblePayoutProjection?: unknown
   } = {
     location: {
       search: input.locationSearch ?? '',
@@ -1596,12 +1658,17 @@ async function executeWebDemoMainWorkflow(input: {
 
   return {
     html,
+    buildFingerprint: elements['build-fingerprint'],
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
     matchedPayoutBatchesContent: elements['matched-payout-batches-content'],
     unmatchedPayoutBatchesContent: elements['unmatched-payout-batches-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
-    runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content']
+    runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
+    runtimePayoutProjectionDebugSection: elements['runtime-payout-projection-debug-section'],
+    runtimePayoutProjectionDebugContent: elements['runtime-payout-projection-debug-content'],
+    lastVisibleRuntimeState: windowObject.__hotelFinanceLastVisibleRuntimeState,
+    lastVisiblePayoutProjection: windowObject.__hotelFinanceLastVisiblePayoutProjection
   }
 }
 
@@ -1683,7 +1750,9 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'runtime-payout-diagnostics-section',
     'runtime-payout-diagnostics-content',
     'runtime-file-intake-diagnostics-section',
-    'runtime-file-intake-diagnostics-content'
+    'runtime-file-intake-diagnostics-content',
+    'runtime-payout-projection-debug-section',
+    'runtime-payout-projection-debug-content'
   ]
 
   for (const id of ids) {
@@ -1714,6 +1783,53 @@ function createStubDomElement(
 
   elements[id] = element
   return element
+}
+
+function resolveCurrentGitCommitHash(): string {
+  try {
+    const gitMetadataPath = resolve('.git')
+    const gitDirectory = resolveGitDirectory(gitMetadataPath)
+    const headPath = resolve(gitDirectory, 'HEAD')
+
+    if (!existsSync(headPath)) {
+      return 'unknown'
+    }
+
+    const headContent = readFileSync(headPath, 'utf8').trim()
+
+    if (!headContent) {
+      return 'unknown'
+    }
+
+    if (!headContent.startsWith('ref:')) {
+      return headContent
+    }
+
+    const refName = headContent.replace(/^ref:\s*/, '')
+    const refPath = resolve(gitDirectory, refName)
+
+    if (existsSync(refPath)) {
+      return readFileSync(refPath, 'utf8').trim()
+    }
+
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+function resolveGitDirectory(gitMetadataPath: string): string {
+  try {
+    const metadataContent = readFileSync(gitMetadataPath, 'utf8').trim()
+
+    if (metadataContent.startsWith('gitdir:')) {
+      return resolve(dirname(gitMetadataPath), metadataContent.replace(/^gitdir:\s*/, ''))
+    }
+  } catch {
+    return gitMetadataPath
+  }
+
+  return gitMetadataPath
 }
 
 function createWebDemoRuntimeFile(name: string, content: string) {
