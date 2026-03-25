@@ -521,7 +521,7 @@ ${renderBrowserRuntimeClientBootstrap()}
       const summary = document.getElementById('upload-summary');
       const runtimeOutput = document.getElementById('runtime-output');
       const generatedAt = ${JSON.stringify(generatedAt)};
-  const browserRuntime = createBrowserRuntime();
+      let browserRuntime;
 
       function renderSummary() {
         const files = Array.from(fileInput.files || []);
@@ -559,6 +559,20 @@ ${renderBrowserRuntimeClientBootstrap()}
         runtimeOutput.className = 'runtime-panel loading';
   runtimeOutput.innerHTML = '<h3>3. Připravuji sdílený měsíční běh</h3><p class="hint">Načítám skutečně vybrané soubory a převádím je do sdíleného upload kontraktu <code>{ name, content, uploadedAt }</code>, ze kterého vznikne kontrola, report i export.</p>';
 
+        if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
+          browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
+        }
+
+        if (!browserRuntime) {
+          runtimeOutput.className = 'runtime-panel error';
+          runtimeOutput.innerHTML = [
+            '<h3>3. Připravuji sdílený měsíční běh</h3>',
+            '<p><strong>Zpracování se nepodařilo dokončit.</strong></p>',
+            '<p class="hint">Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.</p>'
+          ].join('');
+          return;
+        }
+
         try {
           const state = await browserRuntime.buildRuntimeState({
             files,
@@ -580,6 +594,8 @@ ${renderBrowserRuntimeClientBootstrap()}
       }
 
       function renderRuntimeState(state) {
+        const payoutCounts = buildRuntimeVisiblePayoutCounts(state);
+
         return [
           '<h3>3. Výsledek sdíleného měsíčního běhu</h3>',
           '<p class="hint">Tento panel ukazuje jeden skutečný běh nad právě vybranými soubory: příprava, kontrola, náhled reportu i exportní předání. Bez backendu a bez paralelního browserového modelu.</p>',
@@ -595,10 +611,10 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<div class="metric-tile"><strong>' + state.exportFiles.length + '</strong><br />Připravené exporty</div>',
           '</div>',
           '<div class="runtime-grid">',
-          '<section class="runtime-card"><h4>1. Připravené soubory a trasování</h4>' + renderRuntimeFileRouting(state) + '</section>',
+          '<section class="runtime-card"><h4>1. Připravené soubory a trasování</h4>' + buildRuntimeFileRouting(state) + '</section>',
           '<section class="runtime-card"><h4>2. Extrakce a příprava</h4><ul class="trace-list">' + state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br />Extrahováno: ' + file.extractedCount + '<br />' + (file.extractedRecordIds.length > 0 ? '<code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Žádné extrahované záznamy.</span>') + '</li>').join('') + '</ul></section>',
-          '<section class="runtime-card"><h4>3. Kontrola operátora</h4>' + renderRuntimeReviewSection(state.reviewSections) + '</section>',
-          '<section class="runtime-card"><h4>4. Náhled reportu</h4>' + renderRuntimeReportSummary(state) + '</section>',
+          '<section class="runtime-card"><h4>3. Kontrola operátora</h4>' + renderRuntimeReviewSection(state.reviewSections, payoutCounts) + '</section>',
+          '<section class="runtime-card"><h4>4. Náhled reportu</h4>' + renderRuntimeReportSummary(state, payoutCounts) + '</section>',
           '<section class="runtime-card"><h4>5. Vazby na podpůrné doklady</h4>' + renderSupportedExpenseLinks(state.supportedExpenseLinks) + '</section>',
           '<section class="runtime-card"><h4>6. Exportní předání</h4>' + renderRuntimeExportFiles(state.exportFiles) + '</section>',
           '</div>',
@@ -723,6 +739,84 @@ ${renderBrowserRuntimeClientBootstrap()}
         }).join('') + '</ul>';
       }
 
+      function buildRuntimeVisiblePayoutCounts(state) {
+        const matchedFromReview = state.reviewSections && Array.isArray(state.reviewSections.payoutBatchMatched)
+          ? state.reviewSections.payoutBatchMatched.length
+          : undefined;
+        const unmatchedFromReview = state.reviewSections && Array.isArray(state.reviewSections.payoutBatchUnmatched)
+          ? state.reviewSections.payoutBatchUnmatched.length
+          : undefined;
+
+        return {
+          matched: typeof matchedFromReview === 'number'
+            ? matchedFromReview
+            : Number(state.reportSummary && state.reportSummary.payoutBatchMatchCount ? state.reportSummary.payoutBatchMatchCount : 0),
+          unmatched: typeof unmatchedFromReview === 'number'
+            ? unmatchedFromReview
+            : Number(state.reportSummary && state.reportSummary.unmatchedPayoutBatchCount ? state.reportSummary.unmatchedPayoutBatchCount : 0)
+        };
+      }
+
+      function renderRuntimeReviewSection(sections, payoutCounts) {
+        const groups = [
+          { label: 'Spárované', items: sections.matched },
+          { label: 'Nespárované rezervace k úhradě', items: sections.unmatchedReservationSettlements },
+          { label: 'Spárované payout dávky', items: sections.payoutBatchMatched, count: payoutCounts.matched },
+          { label: 'Nespárované payout dávky', items: sections.payoutBatchUnmatched, count: payoutCounts.unmatched },
+          { label: 'Nespárované', items: sections.unmatched },
+          { label: 'Podezřelé', items: sections.suspicious },
+          { label: 'Chybějící doklady', items: sections.missingDocuments }
+        ];
+
+        return '<ul class="review-list">' + groups.map((group) => {
+          const count = typeof group.count === 'number' ? group.count : group.items.length;
+          return '<li><strong>' + escapeHtml(group.label) + ':</strong> ' + count
+            + (group.items[0]
+              ? '<br /><span class="hint">' + escapeHtml(group.items[0].title) + ' — ' + escapeHtml(group.items[0].detail) + '</span>'
+              : '<br /><span class="hint">Bez položek.</span>')
+            + '</li>';
+        }).join('') + '</ul>';
+      }
+
+      function renderRuntimeReportSummary(state, payoutCounts) {
+        return [
+          '<div class="metric-grid">',
+          '<div class="metric-tile"><strong>' + state.reportSummary.matchedGroupCount + '</strong><br />Spárované skupiny</div>',
+          '<div class="metric-tile"><strong>' + payoutCounts.matched + '</strong><br />Spárované payout dávky</div>',
+          '<div class="metric-tile"><strong>' + payoutCounts.unmatched + '</strong><br />Nespárované payout dávky</div>',
+          '<div class="metric-tile"><strong>' + state.reportSummary.unmatchedExpectedCount + '</strong><br />Nespárované očekávané</div>',
+          '<div class="metric-tile"><strong>' + state.reportSummary.unmatchedActualCount + '</strong><br />Nespárované skutečné</div>',
+          '</div>',
+          '<ul class="report-list">',
+          '<li><strong>Souhrn kontroly:</strong> ' + state.reviewSummary.exceptionCount + ' položek ke kontrole ve sdíleném reportu.</li>',
+          '<li><strong>Praktická čitelnost:</strong> částky jsou v operátorském náhledu zobrazené jako české koruny tam, kde jsou přímo relevantní.</li>',
+          '</ul>'
+        ].join('');
+      }
+
+      function renderSupportedExpenseLinks(links) {
+        if (links.length === 0) {
+          return '<p class="hint">V tomto běhu se neobjevily žádné doložené výdajové vazby mezi bankovní transakcí a fakturou nebo účtenkou.</p>';
+        }
+
+        return '<ul class="link-list">' + links.map((link) =>
+          '<li><strong><code>' + escapeHtml(link.expenseTransactionId) + '</code></strong> → <code>' + escapeHtml(link.supportTransactionId) + '</code>'
+            + '<br /><span class="hint">Skóre ' + escapeHtml(link.matchScore.toFixed(2)) + '; důvody: ' + escapeHtml(link.reasons.join(', ')) + '</span>'
+            + '<br /><span class="hint">Zdrojové dokumenty: ' + (link.supportSourceDocumentIds.length > 0 ? '<code>' + escapeHtml(link.supportSourceDocumentIds.join(', ')) + '</code>' : 'neuvedeno') + '</span>'
+            + '</li>'
+        ).join('') + '</ul>';
+      }
+
+      function renderRuntimeExportFiles(files) {
+        if (files.length === 0) {
+          return '<p class="hint">Pro tento běh zatím nevznikly žádné exporty.</p>';
+        }
+
+        return '<ul class="export-list">' + files.map((file) =>
+          '<li><strong>' + escapeHtml(file.labelCs) + '</strong><br /><code>' + escapeHtml(file.fileName) + '</code></li>'
+        ).join('') + '</ul>';
+      }
+
       button.addEventListener('click', () => {
         void prepareAndRenderRuntime();
       });
@@ -738,56 +832,6 @@ ${renderBrowserRuntimeClientBootstrap()}
 function buildBrowserRuntimeRunId(month?: string): string {
   const suffix = month && month.trim() ? month.trim() : 'local'
   return `browser-runtime-upload-${suffix}`
-}
-
-function renderRuntimeReviewSection(sections: BrowserRuntimeUploadState['reviewSections']): string {
-  const groups = [
-    { label: 'Spárované', items: sections.matched },
-    { label: 'Nespárované rezervace k úhradě', items: sections.unmatchedReservationSettlements },
-    { label: 'Spárované payout dávky', items: sections.payoutBatchMatched },
-    { label: 'Nespárované payout dávky', items: sections.payoutBatchUnmatched },
-    { label: 'Nespárované', items: sections.unmatched },
-    { label: 'Podezřelé', items: sections.suspicious },
-    { label: 'Chybějící doklady', items: sections.missingDocuments }
-  ]
-
-  return `<ul class="review-list">${groups.map((group) => `<li><strong>${escapeHtml(group.label)}:</strong> ${group.items.length}${group.items[0] ? `<br /><span class="hint">${escapeHtml(group.items[0].title)} — ${escapeHtml(group.items[0].detail)}</span>` : '<br /><span class="hint">Bez položek.</span>'}</li>`).join('')}</ul>`
-}
-
-function renderRuntimeReportSummary(state: BrowserRuntimeUploadState): string {
-  return `
-    <div class="metric-grid">
-      <div class="metric-tile"><strong>${state.reportSummary.matchedGroupCount}</strong><br />Spárované skupiny</div>
-      <div class="metric-tile"><strong>${state.reportSummary.payoutBatchMatchCount ?? 0}</strong><br />Spárované payout dávky</div>
-      <div class="metric-tile"><strong>${state.reportSummary.unmatchedPayoutBatchCount ?? 0}</strong><br />Nespárované payout dávky</div>
-      <div class="metric-tile"><strong>${state.reportSummary.unmatchedExpectedCount}</strong><br />Nespárované očekávané</div>
-      <div class="metric-tile"><strong>${state.reportSummary.unmatchedActualCount}</strong><br />Nespárované skutečné</div>
-    </div>
-    <ul class="report-list">
-      <li><strong>Souhrn kontroly:</strong> ${state.reviewSummary.exceptionCount} položek ke kontrole ve sdíleném reportu.</li>
-      <li><strong>Praktická čitelnost:</strong> částky jsou v operátorském náhledu zobrazené jako české koruny tam, kde jsou přímo relevantní.</li>
-    </ul>
-  `
-}
-
-function renderSupportedExpenseLinks(
-  links: BrowserRuntimeUploadState['supportedExpenseLinks']
-): string {
-  if (links.length === 0) {
-    return '<p class="hint">V tomto běhu se neobjevily žádné doložené výdajové vazby mezi bankovní transakcí a fakturou nebo účtenkou.</p>'
-  }
-
-  return `<ul class="link-list">${links.map((link) => `<li><strong><code>${escapeHtml(link.expenseTransactionId)}</code></strong> → <code>${escapeHtml(link.supportTransactionId)}</code><br /><span class="hint">Skóre ${escapeHtml(link.matchScore.toFixed(2))}; důvody: ${escapeHtml(link.reasons.join(', '))}</span><br /><span class="hint">Zdrojové dokumenty: ${link.supportSourceDocumentIds.length > 0 ? `<code>${escapeHtml(link.supportSourceDocumentIds.join(', '))}</code>` : 'neuvedeno'}</span></li>`).join('')}</ul>`
-}
-
-function renderRuntimeExportFiles(
-  files: BrowserRuntimeUploadState['exportFiles']
-): string {
-  if (files.length === 0) {
-    return '<p class="hint">Pro tento běh zatím nevznikly žádné exporty.</p>'
-  }
-
-  return `<ul class="export-list">${files.map((file) => `<li><strong>${escapeHtml(file.labelCs)}</strong><br /><code>${escapeHtml(file.fileName)}</code></li>`).join('')}</ul>`
 }
 
 function deriveMonthLabel(runId: string): string {

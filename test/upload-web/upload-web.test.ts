@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
@@ -157,7 +158,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.html).toContain('skutečně vybrané soubory')
     expect(result.html).toContain('Po kliknutí na tlačítko se ke sdílenému běhu použijí právě tyto skutečně vybrané soubory.')
     expect(result.html).toContain('uploadedAt')
-    expect(result.html).toContain('createBrowserRuntime()')
+    expect(result.html).toContain('typeof window.__hotelFinanceCreateBrowserRuntime === \'function\'')
     expect(result.html).toContain('buildBrowserRuntimeState')
     expect(result.html).not.toContain('Promise.resolve(null)')
     expect(result.html).not.toContain('findDataset(files)')
@@ -2929,6 +2930,60 @@ describe('buildUploadWebFlow', () => {
     ).toBe(2)
   })
 
+  it('keeps the real browser-like 4-file arrayBuffer path aligned with the true payout result instead of dropping to 0 matched and 18 unmatched', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-25T14:40:00.000Z'
+    })
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+    expect(result.reviewSections.payoutBatchMatched).toContainEqual(
+      expect.objectContaining({
+        title: 'Booking payout 010638445054 / 35 530,12 Kč'
+      })
+    )
+  })
+
+  it('renders the actual upload page summary and payout sections from the same 16 matched / 2 unmatched runtime state in the real 4-file scenario', async () => {
+    const rendered = await executeUploadWebFlowMainWorkflow({
+      generatedAt: '2026-03-25T15:20:00.000Z',
+      month: '2026-03',
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.runtimeOutput.innerHTML).toContain('<div class="metric-tile"><strong>16</strong><br />Spárované payout dávky</div>')
+    expect(rendered.runtimeOutput.innerHTML).toContain('<div class="metric-tile"><strong>2</strong><br />Nespárované payout dávky</div>')
+    expect(rendered.runtimeOutput.innerHTML).toContain('<strong>Spárované payout dávky:</strong> 16')
+    expect(rendered.runtimeOutput.innerHTML).toContain('<strong>Nespárované payout dávky:</strong> 2')
+    expect(rendered.runtimeOutput.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+  })
+
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
 
@@ -3259,6 +3314,138 @@ function createRuntimeArrayBufferTextFile(name: string, content: string, type = 
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
+}
+
+async function executeUploadWebFlowMainWorkflow(input: {
+  generatedAt: string
+  month: string
+  files: Array<{
+    name: string
+    type?: string
+    text?: () => Promise<string>
+    arrayBuffer?: () => Promise<ArrayBuffer>
+  }>
+}): Promise<{
+  html: string
+  uploadSummary: StubDomElement
+  runtimeOutput: StubDomElement
+}> {
+  const flow = buildUploadWebFlow({
+    generatedAt: input.generatedAt
+  })
+  const script = extractUploadWebInlineScript(flow.html)
+  const elements = createUploadWebDomStub()
+  const windowObject = {
+    __hotelFinanceCreateBrowserRuntime: createBrowserRuntime
+  }
+
+  runInNewContext(script, {
+    window: windowObject,
+    document: {
+      getElementById(id: string) {
+        return elements[id] ?? createStubDomElement(id, elements)
+      }
+    },
+    console,
+    Array
+  })
+
+  elements['monthly-files'].files = input.files
+  elements['month-label'].value = input.month
+  elements['prepare-upload'].listeners.click()
+
+  for (let index = 0; index < 50; index += 1) {
+    if (
+      elements['runtime-output'].innerHTML.includes('3. Výsledek sdíleného měsíčního běhu')
+      || elements['runtime-output'].innerHTML.includes('Zpracování se nepodařilo dokončit.')
+    ) {
+      break
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+
+  return {
+    html: flow.html,
+    uploadSummary: elements['upload-summary'],
+    runtimeOutput: elements['runtime-output']
+  }
+}
+
+function extractUploadWebInlineScript(html: string): string {
+  const match = html.match(/<script>\s*([\s\S]*?)\s*<\/script>\s*<\/body>/)
+
+  if (!match?.[1]) {
+    throw new Error('Upload-web inline script not found.')
+  }
+
+  const script = match[1]
+  const runtimeStart = script.indexOf("const fileInput = document.getElementById('monthly-files');")
+
+  if (runtimeStart === -1) {
+    throw new Error('Upload-web runtime body not found.')
+  }
+
+  return script.slice(runtimeStart)
+}
+
+function createUploadWebDomStub(): Record<string, StubDomElement> {
+  const elements: Record<string, StubDomElement> = {}
+  const ids = [
+    'monthly-files',
+    'month-label',
+    'prepare-upload',
+    'upload-summary',
+    'runtime-output'
+  ]
+
+  for (const id of ids) {
+    createStubDomElement(id, elements)
+  }
+
+  return elements
+}
+
+interface StubDomElement {
+  id: string
+  innerHTML: string
+  textContent: string
+  hidden: boolean
+  className: string
+  value: string
+  files: Array<{
+    name: string
+    type?: string
+    text?: () => Promise<string>
+    arrayBuffer?: () => Promise<ArrayBuffer>
+    size?: number
+  }>
+  listeners: Record<string, () => void>
+  setAttribute: (name: string, value: string) => void
+  addEventListener: (name: string, listener: () => void) => void
+}
+
+function createStubDomElement(
+  id: string,
+  elements: Record<string, StubDomElement>
+): StubDomElement {
+  const element: StubDomElement = {
+    id,
+    innerHTML: '',
+    textContent: '',
+    hidden: false,
+    className: '',
+    value: '',
+    files: [],
+    listeners: {},
+    setAttribute() {},
+    addEventListener(name: string, listener: () => void) {
+      element.listeners[name] = listener
+    }
+  }
+
+  elements[id] = element
+  return element
 }
 
 function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
@@ -3731,6 +3918,13 @@ function buildActualUploadedRbCitiContentWithBookingPaymentIdMatch(): string {
 function buildActualUploadedRbCitiContentWithBookingReferenceHintMatch(): string {
   return [
     buildActualUploadedRbCitiContent(),
+    '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
+function buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(): string {
+  return [
+    buildRealUploadedRbCitiContentForSharedAirbnbPayouts(),
     '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
   ].join('\n')
 }

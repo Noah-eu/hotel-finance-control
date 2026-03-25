@@ -1319,6 +1319,31 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toBe('4')
   })
 
+  it('keeps the actual browser-like built page aligned with 16 matched and 2 unmatched payout batches for the real 4-file scenario', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-25T14:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-arraybuffer-real-4-file-payout-truth',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
+  })
+
   it('renders scan-like PDFs on the OCR branch instead of treating them as ingest failures in the built page', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-24T21:10:00.000Z',
@@ -1985,6 +2010,91 @@ function buildActualUploadedRbCitiContentWithBookingReferenceHintMatch(): string
     '15.03.2026 06:35;15.03.2026 06:38;5599955956/5500;000000-1234567890/0100;CITIBANK EUROPE PLC;555,55;CZK;NON-MATCHING-CITIBANK-ROW',
     '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
   ].join('\n')
+}
+
+function buildRealUploadedAirbnbContentWithoutReferenceColumn(): string {
+  return [
+    'Datum;Bude připsán do dne;Typ;Potvrzující kód;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+    ...getRealUploadedAirbnbTransferRowsWithoutReferenceColumn().map((row) => [
+      row.sourceDate,
+      row.payoutDate,
+      'Payout',
+      '',
+      '',
+      '',
+      row.guestName,
+      'Jokeland apartment',
+      'Převod Jokeland s.r.o., IBAN 5956 (CZK)',
+      'CZK',
+      '',
+      row.amountText,
+      '0,00',
+      row.amountText
+    ].join(';'))
+  ].join('\n')
+}
+
+function buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(): string {
+  return [
+    buildRealUploadedRbCitiContentForSharedAirbnbPayouts(),
+    '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
+function buildRealUploadedRbCitiContentForSharedAirbnbPayouts(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    ...getRealUploadedAirbnbTransferRowsWithoutReferenceColumn()
+      .filter((row) => row.bankMatched)
+      .map((row, index) => {
+        const bookedAt = formatRbDateTime(row.payoutDate, 20 + index)
+        const postedAt = formatRbDateTime(row.payoutDate, 23 + index)
+
+        return [
+          bookedAt,
+          postedAt,
+          '5599955956/5500',
+          '000000-1234567890/0100',
+          'CITIBANK EUROPE PLC',
+          row.amountText.replace(/\s+/g, ''),
+          'CZK',
+          'Settlement credit'
+        ].join(';')
+      })
+  ].join('\n')
+}
+
+function getRealUploadedAirbnbTransferRowsWithoutReferenceColumn(): Array<{
+  sourceDate: string
+  payoutDate: string
+  guestName: string
+  amountText: string
+  bankMatched: boolean
+}> {
+  return [
+    { sourceDate: '2026-03-18', payoutDate: '2026-03-20', guestName: 'Jan Novak', amountText: '3 961,05', bankMatched: true },
+    { sourceDate: '2026-03-18', payoutDate: '2026-03-20', guestName: 'Host 2', amountText: '4 456,97', bankMatched: true },
+    { sourceDate: '2026-03-18', payoutDate: '2026-03-20', guestName: 'Host 3', amountText: '7 059,94', bankMatched: true },
+    { sourceDate: '2026-03-17', payoutDate: '2026-03-19', guestName: 'Host 4', amountText: '15 701,41', bankMatched: true },
+    { sourceDate: '2026-03-16', payoutDate: '2026-03-18', guestName: 'Host 5', amountText: '1 112,59', bankMatched: true },
+    { sourceDate: '2026-03-15', payoutDate: '2026-03-17', guestName: 'Host 6', amountText: '1 152,81', bankMatched: true },
+    { sourceDate: '2026-03-14', payoutDate: '2026-03-16', guestName: 'Host 7', amountText: '970,36', bankMatched: true },
+    { sourceDate: '2026-03-13', payoutDate: '2026-03-15', guestName: 'Host 8', amountText: '9 785,73', bankMatched: true },
+    { sourceDate: '2026-03-12', payoutDate: '2026-03-14', guestName: 'Host 9', amountText: '3 518,94', bankMatched: true },
+    { sourceDate: '2026-03-11', payoutDate: '2026-03-13', guestName: 'Host 10', amountText: '12 123,52', bankMatched: true },
+    { sourceDate: '2026-03-11', payoutDate: '2026-03-13', guestName: 'Host 11', amountText: '2 248,17', bankMatched: true },
+    { sourceDate: '2026-03-11', payoutDate: '2026-03-13', guestName: 'Host 12', amountText: '2 492,32', bankMatched: true },
+    { sourceDate: '2026-03-10', payoutDate: '2026-03-12', guestName: 'Host 13', amountText: '18 912,42', bankMatched: true },
+    { sourceDate: '2026-03-09', payoutDate: '2026-03-11', guestName: 'Host 14', amountText: '9 771,27', bankMatched: true },
+    { sourceDate: '2026-03-08', payoutDate: '2026-03-10', guestName: 'Host 15', amountText: '1 475,08', bankMatched: true },
+    { sourceDate: '2026-03-04', payoutDate: '2026-03-06', guestName: 'Host 16', amountText: '8 241,96', bankMatched: false },
+    { sourceDate: '2026-03-04', payoutDate: '2026-03-06', guestName: 'Host 17', amountText: '1 117,01', bankMatched: false }
+  ]
+}
+
+function formatRbDateTime(isoDate: string, minute: number): string {
+  const [year, month, day] = isoDate.split('-')
+  return `${day}.${month}.${year} 06:${String(minute).padStart(2, '0')}`
 }
 
 function buildCzechSeparatedBlockBookingPayoutStatementPdfLines(): string[] {

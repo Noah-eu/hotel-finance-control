@@ -38,6 +38,8 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     review
   })
   const runtimeAudit = buildRuntimeAudit(input.files, ingestion.fileRoutes, importedFiles, batch, review)
+  const payoutBatchMatchCount = review.payoutBatchMatched.length
+  const unmatchedPayoutBatchCount = review.payoutBatchUnmatched.length
 
   return {
     generatedAt: input.generatedAt,
@@ -96,7 +98,11 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       matchScore: link.matchScore,
       reasons: link.reasons
     })),
-    reportSummary: batch.report.summary,
+    reportSummary: {
+      ...batch.report.summary,
+      payoutBatchMatchCount,
+      unmatchedPayoutBatchCount
+    },
     reportTransactions: batch.report.transactions.slice(0, 5).map((transaction) => ({
       transactionId: transaction.transactionId,
       labelCs: buildVisibleTransactionLabel(
