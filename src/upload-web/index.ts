@@ -56,6 +56,14 @@ export interface BrowserRuntimeUploadState {
   generatedAt: string
   runId: string
   monthLabel: string
+  reconciliationSnapshot: {
+    sourceFunction: string
+    objectPath: string
+    matchedCount: number
+    unmatchedCount: number
+    matchedPayoutBatchKeys: string[]
+    unmatchedPayoutBatchKeys: string[]
+  }
   routingSummary: {
     uploadedFileCount: number
     supportedFileCount: number

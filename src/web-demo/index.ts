@@ -142,6 +142,14 @@ function renderOperatorWebDemoHtml(input: {
       unsupportedFileCount: 0,
       errorFileCount: 0
     },
+    reconciliationSnapshot: {
+      sourceFunction: 'buildBrowserRuntimeUploadStateFromFiles -> batch.reconciliation',
+      objectPath: 'state.reconciliationSnapshot',
+      matchedCount: 0,
+      unmatchedCount: 0,
+      matchedPayoutBatchKeys: [],
+      unmatchedPayoutBatchKeys: []
+    },
     preparedFiles: [],
     fileRoutes: [],
     extractedRecords: [],
@@ -1064,6 +1072,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
       function buildRuntimePayoutProjectionDebugMarkup(state, statusLabel) {
         const payoutProjection = getVisiblePayoutProjection(state);
         const buildInfo = (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo || {};
+        const reconciliationSnapshot = (state && state.reconciliationSnapshot) || initialRuntimeState.reconciliationSnapshot || {};
         const reviewSections = (state && state.reviewSections) || {};
         const reportSummary = (state && state.reportSummary) || {};
         const reviewSummary = (state && state.reviewSummary) || {};
@@ -1079,6 +1088,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Runtime module version:</strong> <code>' + escapeHtml(String(buildInfo.runtimeModuleVersion || buildFingerprintVersion)) + '</code></li>',
           '<li><strong>Renderer version:</strong> <code>' + escapeHtml(String(buildInfo.rendererVersion || ${JSON.stringify(WEB_DEMO_RENDERER_MARKER)})) + '</code></li>',
           '<li><strong>Payout projection version:</strong> <code>' + escapeHtml(String(buildInfo.payoutProjectionVersion || ${JSON.stringify(WEB_DEMO_PAYOUT_PROJECTION_MARKER)})) + '</code></li>',
+          '<li><strong>Reconciliation source:</strong> <code>' + escapeHtml(String(reconciliationSnapshot.sourceFunction || 'buildBrowserRuntimeUploadStateFromFiles -> batch.reconciliation')) + '</code></li>',
+          '<li><strong>Reconciliation object path:</strong> <code>' + escapeHtml(String(reconciliationSnapshot.objectPath || 'state.reconciliationSnapshot')) + '</code></li>',
+          '<li><strong>Raw reconciliation matched:</strong> ' + escapeHtml(String(reconciliationSnapshot.matchedCount || 0)) + '</li>',
+          '<li><strong>Raw reconciliation unmatched:</strong> ' + escapeHtml(String(reconciliationSnapshot.unmatchedCount || 0)) + '</li>',
           '<li><strong>Projection source:</strong> <code>' + escapeHtml(String(payoutProjection.sourceFunction || 'collectVisiblePayoutProjection')) + '</code></li>',
           '<li><strong>Projection object path:</strong> <code>' + escapeHtml(String(payoutProjection.objectPath || 'state.finalPayoutProjection')) + '</code></li>',
           '<li><strong>Matched payout count:</strong> ' + escapeHtml(String(payoutProjection.matchedCount || 0)) + '</li>',
@@ -1089,6 +1102,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Raw reviewSummary unmatched:</strong> ' + escapeHtml(String(reviewSummary.unmatchedPayoutBatchCount || 0)) + '</li>',
           '<li><strong>Matched review section count:</strong> ' + escapeHtml(String(matchedSectionCount)) + '</li>',
           '<li><strong>Unmatched review section count:</strong> ' + escapeHtml(String(unmatchedSectionCount)) + '</li>',
+          buildDiagnosticListMarkup('Raw reconciliation matched payout batch ids', reconciliationSnapshot.matchedPayoutBatchKeys || []),
+          buildDiagnosticListMarkup('Raw reconciliation unmatched payout batch ids', reconciliationSnapshot.unmatchedPayoutBatchKeys || []),
           buildDiagnosticListMarkup('Matched payout batch ids', payoutProjection.matchedIds || []),
           buildDiagnosticListMarkup('Unmatched payout batch ids', payoutProjection.unmatchedIds || []),
           '</ul>'

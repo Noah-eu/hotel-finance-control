@@ -45,6 +45,7 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     generatedAt: input.generatedAt,
     runId: input.runId,
     monthLabel: deriveMonthLabel(input.runId),
+    reconciliationSnapshot: buildReconciliationSnapshot(batch),
     routingSummary: {
       uploadedFileCount: ingestion.fileRoutes.length,
       supportedFileCount: ingestion.fileRoutes.filter((file) => file.status === 'supported').length,
@@ -131,6 +132,22 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       labelCs: file.labelCs,
       fileName: file.fileName
     }))
+  }
+}
+
+function buildReconciliationSnapshot(
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']
+): BrowserRuntimeUploadState['reconciliationSnapshot'] {
+  const matchedItems = (batch.reconciliation.payoutBatchMatches ?? []).filter((item) => item.matched)
+  const unmatchedItems = batch.reconciliation.payoutBatchNoMatchDiagnostics ?? []
+
+  return {
+    sourceFunction: 'buildBrowserRuntimeUploadStateFromFiles -> batch.reconciliation',
+    objectPath: 'state.reconciliationSnapshot',
+    matchedCount: matchedItems.length,
+    unmatchedCount: unmatchedItems.length,
+    matchedPayoutBatchKeys: matchedItems.map((item) => item.payoutBatchKey),
+    unmatchedPayoutBatchKeys: unmatchedItems.map((item) => item.payoutBatchKey)
   }
 }
 

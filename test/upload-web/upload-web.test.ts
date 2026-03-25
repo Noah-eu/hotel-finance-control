@@ -2946,6 +2946,14 @@ describe('buildUploadWebFlow', () => {
       generatedAt: '2026-03-25T14:40:00.000Z'
     })
 
+    expect(result.reconciliationSnapshot).toMatchObject({
+      sourceFunction: 'buildBrowserRuntimeUploadStateFromFiles -> batch.reconciliation',
+      objectPath: 'state.reconciliationSnapshot',
+      matchedCount: 16,
+      unmatchedCount: 2
+    })
+    expect(result.reconciliationSnapshot.matchedPayoutBatchKeys).toHaveLength(16)
+    expect(result.reconciliationSnapshot.unmatchedPayoutBatchKeys).toHaveLength(2)
     expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
     expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
     expect(

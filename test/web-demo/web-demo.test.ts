@@ -1375,6 +1375,10 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Runtime module version:</strong> <code>browser-runtime.')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Renderer version:</strong> <code>web-demo-operator-v3</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Payout projection version:</strong> <code>payout-projection-v4</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Reconciliation source:</strong> <code>buildBrowserRuntimeUploadStateFromFiles -&gt; batch.reconciliation</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Reconciliation object path:</strong> <code>state.reconciliationSnapshot</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Projection source:</strong> <code>buildCompletedVisibleRuntimeState -&gt; collectVisiblePayoutProjection</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Projection object path:</strong> <code>state.finalPayoutProjection</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Matched payout count:</strong> 16')
@@ -1408,6 +1412,10 @@ describe('buildWebDemo', () => {
     expect((rendered.lastVisibleRuntimeState as { reviewSummary?: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number } }).reviewSummary).toMatchObject({
       payoutBatchMatchCount: 16,
       unmatchedPayoutBatchCount: 2
+    })
+    expect((rendered.lastVisibleRuntimeState as { reconciliationSnapshot?: { matchedCount: number; unmatchedCount: number } }).reconciliationSnapshot).toMatchObject({
+      matchedCount: 16,
+      unmatchedCount: 2
     })
   })
 
