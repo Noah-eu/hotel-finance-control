@@ -428,19 +428,19 @@ describe('buildUploadWebFlow', () => {
             groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
             groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
             groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
-            groupedTotalsValues: ['10 437,62 Kč', '2 191,90 Kč', '12 629,52 Kč'],
+            groupedTotalsValues: ['10 437,62', '2 191,90', '12 629,52'],
             fieldExtractionDebug: expect.objectContaining({
               referenceNumber: expect.objectContaining({
-                winnerRule: 'structured-grouped-header-block',
+                winnerRule: 'vertical-grouped-block',
                 winnerValue: '141260183'
               }),
               paymentMethod: expect.objectContaining({
-                winnerRule: 'structured-grouped-header-block',
+                winnerRule: 'vertical-grouped-block',
                 winnerValue: 'Přev. příkaz'
               }),
             totalAmount: expect.objectContaining({
               winnerRule: 'line-window',
-              winnerValue: '12 629,52 Kč'
+              winnerValue: '12 629,52 CZK'
             })
           })
         }),

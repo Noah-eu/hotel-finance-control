@@ -265,31 +265,31 @@ describe('parseInvoiceDocument', () => {
       confidence: 'strong',
       missingRequiredFields: [],
       groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
-        groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
-        groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
-        groupedTotalsValues: ['10 437,62 Kč', '2 191,90 Kč', '12 629,52 Kč'],
-        fieldExtractionDebug: {
-          referenceNumber: expect.objectContaining({
-            winnerRule: 'structured-grouped-header-block',
-            winnerValue: '141260183'
-          }),
-          issueDate: expect.objectContaining({
-            winnerRule: 'structured-grouped-header-block',
-            winnerValue: '11.03.2026'
-          }),
-          dueDate: expect.objectContaining({
-            winnerRule: 'structured-grouped-header-block',
-            winnerValue: '25.03.2026'
-          }),
-          paymentMethod: expect.objectContaining({
-            winnerRule: 'structured-grouped-header-block',
-            winnerValue: 'Přev. příkaz',
-            candidateValues: expect.arrayContaining(['Přev.příkaz'])
-          }),
+      groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
+      groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
+      groupedTotalsValues: ['10 437,62', '2 191,90', '12 629,52'],
+      fieldExtractionDebug: {
+        referenceNumber: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: '141260183'
+        }),
+        issueDate: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: '11.03.2026'
+        }),
+        dueDate: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: '25.03.2026'
+        }),
+        paymentMethod: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: 'Přev. příkaz',
+          candidateValues: expect.arrayContaining(['Přev.příkaz'])
+        }),
         totalAmount: expect.objectContaining({
           winnerRule: 'line-window',
-          winnerValue: '12 629,52 Kč',
-          candidateValues: expect.arrayContaining(['12 629,52 Kč', '12 629,52'])
+          winnerValue: '12 629,52 CZK',
+          candidateValues: expect.arrayContaining(['12 629,52'])
         })
       }
     })
@@ -312,11 +312,11 @@ describe('parseInvoiceDocument', () => {
       'CZ4903000000000274621920',
       'Rozpis DPH',
       'Základ DPH DPH Celkem po zaokrouhlení',
-      '10 437,62 Kč',
-      '2 191,90 Kč',
-      '12 629,52 Kč',
+      '10 437,62',
+      '2 191,90',
+      '12 629,52',
       'Celkem Kč k úhradě',
-      '12 629,52 Kč'
+      '12 629,52'
     ].join('\n')
 
     expect(inspectInvoiceDocumentExtractionSummary(content)).toMatchObject({

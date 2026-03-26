@@ -1165,6 +1165,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
           file.documentExtractionSummary && file.documentExtractionSummary.customer
             ? '<br /><span class="hint">Document customer: ' + escapeHtml(String(file.documentExtractionSummary.customer)) + '</span>'
             : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.referenceNumber
+            ? '<br /><span class="hint">Final referenceNumber: ' + escapeHtml(String(file.documentExtractionSummary.referenceNumber)) + '</span>'
+            : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.issueDate
+            ? '<br /><span class="hint">Final issueDate: ' + escapeHtml(String(file.documentExtractionSummary.issueDate)) + '</span>'
+            : '',
           file.documentExtractionSummary
             && Array.isArray(file.documentExtractionSummary.groupedHeaderLabels)
             && file.documentExtractionSummary.groupedHeaderLabels.length > 0
@@ -1190,6 +1196,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : '',
           file.documentExtractionSummary && file.documentExtractionSummary.taxableDate
             ? '<br /><span class="hint">Document taxableDate: ' + escapeHtml(String(file.documentExtractionSummary.taxableDate)) + '</span>'
+            : '',
+          file.documentExtractionSummary
+            && typeof file.documentExtractionSummary.totalAmountMinor === 'number'
+            && file.documentExtractionSummary.totalCurrency
+            ? '<br /><span class="hint">Final totalAmount: '
+              + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.totalAmountMinor, file.documentExtractionSummary.totalCurrency))
+              + '</span>'
             : '',
           file.documentExtractionSummary && file.documentExtractionSummary.paymentMethod
             ? '<br /><span class="hint">Document paymentMethod: ' + escapeHtml(String(file.documentExtractionSummary.paymentMethod)) + '</span>'

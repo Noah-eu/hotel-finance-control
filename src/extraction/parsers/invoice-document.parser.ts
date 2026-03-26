@@ -115,8 +115,6 @@ const SUMMARY_FIELD_ALIASES: Record<InvoiceSummaryFieldKey, string[]> = {
 }
 
 const DATE_TOKEN_PATTERN = /\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g
-const MONEY_TOKEN_WITH_CURRENCY_PATTERN = /\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
-
 const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Faktura', pattern: /\bfaktura\b/i },
   { label: 'Faktura - daňový doklad', pattern: /\bfaktura\s*-\s*daňový\s+doklad\b/i },
@@ -262,10 +260,12 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   let groupedTotalsBlock: StructuredGroupedInvoiceTotalsBlock | undefined
 
   groupedHeaderBlock = groupedHeaderBlock ?? collectHorizontalGroupedInvoiceHeaderCandidates(content, debugStates)
-  collectSequentialInvoiceBlockCandidates(lines, debugStates)
+  const sequentialBlocks = collectSequentialInvoiceBlockCandidates(lines, debugStates)
+  groupedHeaderBlock = groupedHeaderBlock ?? sequentialBlocks.headerBlock
   collectLineWindowInvoiceCandidates(lines, debugStates)
   groupedTotalsBlock = collectStructuredGroupedInvoiceTotalsBlockCandidates(lines, debugStates)
     ?? collectHorizontalGroupedInvoiceAmountCandidates(lines, debugStates)
+    ?? sequentialBlocks.totalsBlock
   collectFallbackInvoiceCandidates(fields, content, debugStates)
 
   const extracted = {
@@ -837,7 +837,7 @@ function buildStructuredGroupedInvoiceTotalsBlock(
       break
     }
 
-    for (const token of extractLooseMoneyTokens(line)) {
+    for (const token of extractLooseMoneyTokens(line, true)) {
       if (!moneyCandidates.includes(token)) {
         moneyCandidates.push(token)
       }
@@ -897,8 +897,14 @@ function isInvoiceSectionBoundary(line: string): boolean {
 }
 
 function extractFirstInvoiceReferenceCandidate(value: string): string | undefined {
-  const match = value.match(/\b([A-Z]*\d[A-Z0-9/-]*)\b/i)
-  return match?.[1]
+  const compactValue = stripTrailingNoise(value)
+  const candidates = Array.from(
+    compactValue.matchAll(/\b(?:[A-Z]{0,6}[-/]?)?\d(?:[\dA-Z/-]|\s(?![A-Za-z])){4,}\b/gi)
+  )
+    .map((match) => normalizeInvoiceReferenceValue(match[0]))
+    .filter((candidate): candidate is string => Boolean(candidate))
+
+  return candidates[0]
 }
 
 function extractGroupedPaymentMethodCandidate(value: string, referenceNumber?: string): string | undefined {
@@ -915,7 +921,13 @@ function extractGroupedPaymentMethodCandidate(value: string, referenceNumber?: s
 function collectSequentialInvoiceBlockCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
-): void {
+): {
+  headerBlock?: StructuredGroupedInvoiceHeaderBlock
+  totalsBlock?: StructuredGroupedInvoiceTotalsBlock
+} {
+  let headerBlock: StructuredGroupedInvoiceHeaderBlock | undefined
+  let totalsBlock: StructuredGroupedInvoiceTotalsBlock | undefined
+
   for (let index = 0; index < lines.length - 1; index += 1) {
     const blockFields: InvoiceSummaryFieldKey[] = []
     const blockLabels: string[] = []
@@ -958,6 +970,25 @@ function collectSequentialInvoiceBlockCandidates(
         isValidInvoiceFieldValue(fieldKey, attemptedValue)
       )
     })
+
+    if (!headerBlock && blockFields.every((fieldKey) => ['referenceNumber', 'paymentMethod', 'issueDate', 'taxableDate', 'dueDate'].includes(fieldKey))) {
+      headerBlock = {
+        labels: blockFields.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey)),
+        values
+      }
+    }
+
+    if (!totalsBlock && blockFields.every((fieldKey) => ['vatBaseAmount', 'vatAmount', 'totalAmount'].includes(fieldKey))) {
+      totalsBlock = {
+        labels: blockFields.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey)),
+        values
+      }
+    }
+  }
+
+  return {
+    headerBlock,
+    totalsBlock
   }
 }
 
@@ -1019,7 +1050,7 @@ function collectFallbackInvoiceCandidates(
   recordDirectFieldCandidates(debugStates.vatAmount, fields, FIELD_ALIASES.vat, 'vatAmount', /./)
 
   recordRegexCandidate(debugStates.referenceNumber, content, 'regex-invoice-number', [
-    /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]+)/iu
+    /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
   ], 'referenceNumber')
   recordRegexCandidate(debugStates.issuerOrCounterparty, content, 'regex-supplier', [
     /(?:^|\n)\s*(?:dodavatel|supplier|vendor)\s*[:\-]?\s*([^\n]+)/iu,
@@ -1030,13 +1061,13 @@ function collectFallbackInvoiceCandidates(
     /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*\n\s*([^\n]+)/iu
   ], 'customer')
   recordRegexCandidate(debugStates.issueDate, content, 'regex-issue-date', [
-    /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]?\s*([0-9./-]+)/iu
+    /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'issueDate')
   recordRegexCandidate(debugStates.dueDate, content, 'regex-due-date', [
-    /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*([0-9./-]+)/iu
+    /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'dueDate')
   recordRegexCandidate(debugStates.taxableDate, content, 'regex-taxable-date', [
-    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*([0-9./-]+)/iu
+    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'taxableDate')
   recordRegexCandidate(debugStates.paymentMethod, content, 'regex-payment-method', [
     /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]?\s*([^\n]+)/iu
@@ -1082,6 +1113,8 @@ function normalizeInvoiceFieldWinnerValue(fieldKey: InvoiceSummaryFieldKey, valu
   const stripped = stripTrailingNoise(value)
 
   switch (fieldKey) {
+    case 'referenceNumber':
+      return normalizeInvoiceReferenceValue(stripped) ?? stripped
     case 'paymentMethod':
       return normalizePaymentMethodValue(stripped) ?? stripped
     case 'totalAmount':
@@ -1191,8 +1224,7 @@ function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: strin
 
     switch (fieldKey) {
       case 'referenceNumber':
-      return /[A-Z0-9/-]{4,}/i.test(normalizedValue)
-        && /\d/.test(normalizedValue)
+      return Boolean(normalizeInvoiceReferenceValue(normalizedValue))
         && !isInvoiceLabelText(normalizedValue)
       case 'issuerOrCounterparty':
       case 'customer':
@@ -1248,10 +1280,31 @@ function normalizeLabelSearch(value: string): string {
     .toLowerCase()
 }
 
-function extractLooseMoneyTokens(value: string): string[] {
-  return Array.from(value.matchAll(/\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu))
+function extractLooseMoneyTokens(value: string, allowMissingCurrency = false): string[] {
+  const pattern = allowMissingCurrency
+    ? /\d[\d\s]*(?:[.,]\d{2})(?:\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$))?/gu
+    : /\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
+
+  return Array.from(value.matchAll(pattern))
     .map((match) => normalizeDetectedMoneyValue(stripTrailingNoise(match[0] ?? '')))
     .filter((token): token is string => Boolean(token))
+}
+
+function normalizeInvoiceReferenceValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined
+  }
+
+  const normalized = stripTrailingNoise(value)
+    .replace(/\s+/g, '')
+    .replace(/^[^A-Z0-9]+/i, '')
+    .replace(/[^A-Z0-9/-]+$/i, '')
+
+  if (!/\d/.test(normalized)) {
+    return undefined
+  }
+
+  return normalized.length >= 6 ? normalized : undefined
 }
 
 function extractDateTokens(value: string): string[] {
