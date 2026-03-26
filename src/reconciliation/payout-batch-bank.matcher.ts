@@ -130,6 +130,13 @@ export function inspectPayoutBatchBankDecisions(
     input: MatchPayoutBatchesToBankInput
 ): PayoutBatchBankDecisionTrace[] {
     return buildBatchDecisions(input).map((decision) => {
+        const sameCurrencyCandidates = decision.allCandidates
+            .filter((candidate) => candidate.currency === decision.bankExpectation.currency)
+            .sort((left, right) =>
+                Math.abs(left.amountMinor - decision.bankExpectation.amountMinor)
+                - Math.abs(right.amountMinor - decision.bankExpectation.amountMinor)
+            )
+        const uniqueSameCurrencyAmountMinors = [...new Set(sameCurrencyCandidates.map((candidate) => candidate.amountMinor))]
         const amountCurrencyCandidates = decision.allCandidates.filter((candidate) =>
             !candidate.rejectionReasons.includes('noExactAmount')
             && !candidate.rejectionReasons.includes('currencyMismatch')
@@ -152,6 +159,8 @@ export function inspectPayoutBatchBankDecisions(
             documentCurrency: decision.batch.payoutSupplementPayoutTotalCurrency,
             expectedBankCurrency: decision.bankExpectation.currency,
             matchingAmountSource: decision.bankExpectation.source,
+            exactAmountMatchExistsBeforeDateEvidence: amountCurrencyCandidates.length > 0,
+            sameCurrencyCandidateAmountMinors: uniqueSameCurrencyAmountMinors.slice(0, 8),
             payoutDate: decision.batch.payoutDate,
             bankCandidateCountBeforeFiltering: decision.allCandidates.length,
             bankCandidateCountAfterAmountCurrency: amountCurrencyCandidates.length,

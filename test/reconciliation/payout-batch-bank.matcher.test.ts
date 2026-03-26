@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { NormalizedTransaction, PayoutBatchExpectation } from '../../src/domain'
 import {
     diagnoseUnmatchedPayoutBatchesToBank,
+    inspectPayoutBatchBankDecisions,
     matchPayoutBatchesToBank,
     reconcileExtractedRecords
 } from '../../src/reconciliation'
@@ -343,6 +344,57 @@ describe('matchPayoutBatchesToBank', () => {
                 matched: true,
                 amountMinor: 98000,
                 currency: 'CZK'
+            })
+        ])
+    })
+
+    it('exposes exact-amount pre-date/evidence diagnostics and same-currency bank amounts for Airbnb browser matching decisions', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [{
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                payoutDate: '2026-03-15',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:airbnb-payout-2'],
+                expectedTotalMinor: 98000,
+                currency: 'CZK'
+            }],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:airbnb-candidate-1' as NormalizedTransaction['id'],
+                    amountMinor: 97000,
+                    bookedAt: '2026-03-15',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit'
+                }),
+                bankTransaction({
+                    id: 'txn:bank:airbnb-candidate-2' as NormalizedTransaction['id'],
+                    amountMinor: 98000,
+                    bookedAt: '2026-03-15',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit'
+                }),
+                bankTransaction({
+                    id: 'txn:bank:airbnb-candidate-3' as NormalizedTransaction['id'],
+                    amountMinor: 125000,
+                    bookedAt: '2026-03-15',
+                    currency: 'EUR',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                expectedBankAmountMinor: 98000,
+                expectedBankCurrency: 'CZK',
+                exactAmountMatchExistsBeforeDateEvidence: true,
+                sameCurrencyCandidateAmountMinors: [98000, 97000],
+                bankCandidateCountAfterAmountCurrency: 1,
+                matched: true
             })
         ])
     })

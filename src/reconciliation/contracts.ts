@@ -92,6 +92,8 @@ export interface PayoutBatchBankDecisionTrace {
   documentCurrency?: NormalizedTransaction['currency']
   expectedBankCurrency: NormalizedTransaction['currency']
   matchingAmountSource: 'batch_total' | 'booking_local_total'
+  exactAmountMatchExistsBeforeDateEvidence: boolean
+  sameCurrencyCandidateAmountMinors: number[]
   payoutDate: PayoutBatchExpectation['payoutDate']
   bankCandidateCountBeforeFiltering: number
   bankCandidateCountAfterAmountCurrency: number

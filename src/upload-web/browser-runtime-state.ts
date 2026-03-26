@@ -182,6 +182,8 @@ function buildPayoutBatchDecisionSnapshot(
     documentCurrency: decision.documentCurrency,
     expectedBankCurrency: decision.expectedBankCurrency,
     matchingAmountSource: decision.matchingAmountSource,
+    exactAmountMatchExistsBeforeDateEvidence: decision.exactAmountMatchExistsBeforeDateEvidence,
+    sameCurrencyCandidateAmountMinors: decision.sameCurrencyCandidateAmountMinors,
     payoutDate: decision.payoutDate,
     bankCandidateCountBeforeFiltering: decision.bankCandidateCountBeforeFiltering,
     bankCandidateCountAfterAmountCurrency: decision.bankCandidateCountAfterAmountCurrency,

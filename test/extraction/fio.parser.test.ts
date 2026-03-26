@@ -182,6 +182,32 @@ describe('parseFioStatement', () => {
     )
   })
 
+  it('prefers the transaction-volume amount and booked-at columns when a localized Fio export contains duplicate amount-like and date-like headers', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        '"Datum provedení";"Datum zaúčtování";"Objem";"Zaúčtovaná částka";"Měna účtu";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+        '19.03.2026 05:55;19.03.2026 06:23;3961,05;999999,99;CZK;5599955956/2010;000000-1234567890/0100;Incoming bank transfer;Settlement credit'
+      ].join('\n'),
+      extractedAt: '2026-03-19T18:20:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'fio-row-1',
+        amountMinor: 396105,
+        occurredAt: '2026-03-19T06:23:00',
+        data: expect.objectContaining({
+          amountMinor: 396105,
+          bookedAt: '2026-03-19T06:23:00',
+          reference: 'Settlement credit'
+        })
+      })
+    ])
+  })
+
   it('keeps failure explicit when a localized Fio export still lacks a deterministic counterparty field', () => {
     const fixture = getRealInputFixture('fio-statement')
 

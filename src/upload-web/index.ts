@@ -73,6 +73,8 @@ export interface BrowserRuntimeUploadState {
       documentCurrency?: string
       expectedBankCurrency: string
       matchingAmountSource: 'batch_total' | 'booking_local_total'
+      exactAmountMatchExistsBeforeDateEvidence: boolean
+      sameCurrencyCandidateAmountMinors: number[]
       payoutDate: string
       bankCandidateCountBeforeFiltering: number
       bankCandidateCountAfterAmountCurrency: number

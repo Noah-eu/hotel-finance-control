@@ -21,43 +21,19 @@ const REQUIRED_HEADERS = [
   'counterparty'
 ]
 
-const HEADER_ALIASES = {
-  bookedAt: ['bookedAt', 'booked_at', 'date', 'datum', 'paidAt', 'datumZaúčtování', 'datumZauctovani'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'zaúčtovanáČástka', 'zauctovanaCastka', 'objem'],
-  currency: ['currency', 'mena', 'měna', 'měnaÚčtu', 'menaUctu'],
-  accountId: ['accountId', 'account_id', 'account', 'ucet', 'účet', 'čísloÚčtu', 'cisloUctu'],
-  counterparty: [
-    'counterparty',
-    'counterpartyName',
-    'partner',
-    'protistrana',
-    'názevProtiúčtu',
-    'nazevProtiuctu',
-    'čísloProtiúčtu',
-    'cisloProtiuctu',
-    'protiúčet',
-    'protiucet'
-  ],
-  reference: [
-    'reference',
-    'paymentReference',
-    'variableSymbol',
-    'zprava',
-    'poznámka',
-    'zprávaProPříjemce',
-    'zpravaProPrijemce'
-  ],
-  transactionType: ['transactionType', 'transaction_type', 'type', 'typTransakce', 'typ', 'typPohybu']
-} satisfies Record<string, string[]>
-
 export class FioParser {
   parse(input: ParseFioStatementInput): ExtractedRecord[] {
-    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES }).map((row) => {
+    const rows = parseDelimitedRows(input.content).map((row) => {
       const fallbackAccountId = getAccountIdFromFileName(input.sourceDocument.fileName)
 
       return {
-        ...row,
-        accountId: row.accountId || fallbackAccountId || ''
+        bookedAt: firstPresent(row, PRIORITIZED_HEADER_ALIASES.bookedAt),
+        amountMinor: firstPresent(row, PRIORITIZED_HEADER_ALIASES.amountMinor),
+        currency: firstPresent(row, PRIORITIZED_HEADER_ALIASES.currency),
+        accountId: firstPresent(row, PRIORITIZED_HEADER_ALIASES.accountId) || fallbackAccountId || '',
+        counterparty: firstPresent(row, PRIORITIZED_HEADER_ALIASES.counterparty),
+        reference: firstPresent(row, PRIORITIZED_HEADER_ALIASES.reference),
+        transactionType: firstPresent(row, PRIORITIZED_HEADER_ALIASES.transactionType)
       }
     }) as Array<Record<string, string>>
 
@@ -65,9 +41,11 @@ export class FioParser {
       return []
     }
 
-    const missing = findMissingHeaders(rows, REQUIRED_HEADERS)
+    const missing = findMissingHeaders(rows, REQUIRED_HEADERS).concat(
+      REQUIRED_HEADERS.filter((header) => rows.every((row) => row[header].trim().length === 0))
+    )
     if (missing.length > 0) {
-      throw new Error(`Fio statement is missing required columns: ${missing.join(', ')}`)
+      throw new Error(`Fio statement is missing required columns: ${Array.from(new Set(missing)).join(', ')}`)
     }
 
     return rows.map((row, index) => {
@@ -77,8 +55,8 @@ export class FioParser {
       const currency = row.currency.trim().toUpperCase()
       const accountId = row.accountId.trim()
       const counterparty = row.counterparty.trim()
-  const reference = row.reference?.trim() || ''
-    const transactionType = row.transactionType?.trim() ?? 'bank-transaction'
+      const reference = row.reference?.trim() || ''
+      const transactionType = row.transactionType?.trim() ?? 'bank-transaction'
 
       return {
         id: recordId,
@@ -109,4 +87,76 @@ const defaultFioParser = new FioParser()
 
 export function parseFioStatement(input: ParseFioStatementInput): ExtractedRecord[] {
   return defaultFioParser.parse(input)
+}
+
+const PRIORITIZED_HEADER_ALIASES = {
+  bookedAt: [
+    'datumZaúčtování',
+    'datumZauctovani',
+    'bookedAt',
+    'booked_at',
+    'paidAt',
+    'date',
+    'datum'
+  ],
+  amountMinor: [
+    'objem',
+    'zaúčtovanáČástka',
+    'zauctovanaCastka',
+    'amountMinor',
+    'amount_minor',
+    'amount',
+    'částka',
+    'castka'
+  ],
+  currency: ['měnaÚčtu', 'menaUctu', 'currency', 'měna', 'mena'],
+  accountId: ['čísloÚčtu', 'cisloUctu', 'accountId', 'account_id', 'account', 'účet', 'ucet'],
+  counterparty: [
+    'názevProtiúčtu',
+    'nazevProtiuctu',
+    'counterpartyName',
+    'counterparty',
+    'partner',
+    'protistrana',
+    'protiúčet',
+    'protiucet',
+    'čísloProtiúčtu',
+    'cisloProtiuctu'
+  ],
+  reference: [
+    'zprávaProPříjemce',
+    'zpravaProPrijemce',
+    'poznámka',
+    'zpráva',
+    'zprava',
+    'reference',
+    'paymentReference',
+    'variableSymbol'
+  ],
+  transactionType: ['typPohybu', 'typTransakce', 'transactionType', 'transaction_type', 'type', 'typ']
+} satisfies Record<string, string[]>
+
+function firstPresent(row: Record<string, string>, aliases: string[]): string {
+  const normalizedEntries = Object.entries(row).map(([key, value]) => [normalizeHeaderKey(key), value] as const)
+
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeHeaderKey(alias)
+    const value = normalizedEntries.find(([key]) => key === normalizedAlias)?.[1]
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value
+    }
+  }
+
+  return ''
+}
+
+function normalizeHeaderKey(value: string): string {
+  return value
+    .replace(/^\uFEFF/, '')
+    .replace(/^"|"$/g, '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[ _-]+/g, '')
 }

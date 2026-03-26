@@ -3002,6 +3002,49 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('keeps the real browser-like 4-file arrayBuffer path at 16 matched and 2 unmatched when the Fio bank export contains duplicate amount-like columns', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentWithDuplicateAmountColumnsForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T18:05:00.000Z'
+    })
+
+    const matchedAirbnbDecision = result.reconciliationSnapshot.payoutBatchDecisions.find((decision) =>
+      decision.platform === 'airbnb'
+      && decision.expectedBankAmountMinor === 396105
+    )
+
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(matchedAirbnbDecision).toEqual(
+      expect.objectContaining({
+        matchingAmountSource: 'batch_total',
+        expectedBankAmountMinor: 396105,
+        expectedBankCurrency: 'CZK',
+        exactAmountMatchExistsBeforeDateEvidence: true,
+        sameCurrencyCandidateAmountMinors: expect.arrayContaining([396105]),
+        bankCandidateCountAfterAmountCurrency: 1,
+        matched: true
+      })
+    )
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+  })
+
   it('keeps the real browser-like 4-file arrayBuffer path at 16 matched and 2 unmatched when Airbnb bank postings land three days before payout availability', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -4090,6 +4133,15 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
   ].join('\n')
 }
 
+function buildRealUploadedRbGenericContentWithDuplicateAmountColumnsForSharedAirbnbPayoutsWithBookingReferenceHintMatch(
+  daysShift = 0
+): string {
+  return [
+    buildRealUploadedRbGenericContentWithDuplicateAmountColumnsForSharedAirbnbPayouts(daysShift),
+    '13.03.2026 09:10;13.03.2026 09:12;35530,12;35530,12;CZK;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
 function buildRealUploadedAirbnbContentWithoutReferenceColumn(): string {
   return [
     'Datum;Bude připsán do dne;Typ;Potvrzující kód;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
@@ -4152,6 +4204,30 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayouts(daysShift = 0):
           'Incoming bank transfer',
           row.amountText.replace(/\s+/g, ''),
           'CZK',
+          'Settlement credit'
+        ].join(';')
+      })
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentWithDuplicateAmountColumnsForSharedAirbnbPayouts(daysShift = 0): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Objem";"Zaúčtovaná částka";"Měna účtu";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    ...getRealUploadedAirbnbTransferRowsWithoutReferenceColumn()
+      .filter((row) => row.bankMatched)
+      .map((row, index) => {
+        const bookedAt = formatRbDateTime(row.payoutDate, 20 + index, daysShift)
+        const postedAt = formatRbDateTime(row.payoutDate, 23 + index, daysShift)
+
+        return [
+          bookedAt,
+          postedAt,
+          row.amountText.replace(/\s+/g, ''),
+          `${90 + index}9999,99`,
+          'CZK',
+          '5599955956/5500',
+          '000000-1234567890/0100',
+          'Incoming bank transfer',
           'Settlement credit'
         ].join(';')
       })

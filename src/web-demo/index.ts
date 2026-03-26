@@ -1108,12 +1108,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
               const matchingSourceLabel = decision.matchingAmountSource === 'booking_local_total'
                 ? 'booking_local_total'
                 : 'batch_total';
+              const sameCurrencyAmountsLabel = Array.isArray(decision.sameCurrencyCandidateAmountMinors)
+                ? decision.sameCurrencyCandidateAmountMinors
+                  .map((amountMinor) => buildAmountDisplay(amountMinor, decision.expectedBankCurrency || decision.currency || 'CZK'))
+                  .join(', ')
+                : '';
 
               return '<li><code>' + escapeHtml(String(decision.payoutBatchKey || '')) + '</code>'
                 + ' · ' + escapeHtml(String(decision.platform || 'unknown'))
                 + ' · document total ' + escapeHtml(documentAmountLabel)
                 + ' · bank matching total ' + escapeHtml(amountLabel)
                 + ' · matching source ' + escapeHtml(matchingSourceLabel)
+                + ' · exact amount pre-date/evidence ' + escapeHtml(decision.exactAmountMatchExistsBeforeDateEvidence ? 'ano' : 'ne')
+                + (sameCurrencyAmountsLabel ? ' · same-currency bank amounts ' + escapeHtml(sameCurrencyAmountsLabel) : '')
                 + ' · payout date ' + escapeHtml(String(decision.payoutDate || 'n/a'))
                 + ' · candidates ' + escapeHtml(String(decision.bankCandidateCountBeforeFiltering || 0))
                 + ' -> amount/currency ' + escapeHtml(String(decision.bankCandidateCountAfterAmountCurrency || 0))
