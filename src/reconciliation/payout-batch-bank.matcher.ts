@@ -7,7 +7,8 @@ import type {
 } from './contracts'
 
 const PAYOUT_BATCH_BANK_RULE_KEY = 'deterministic:payout-batch-bank:1to1:v1'
-const MAX_DAY_DISTANCE = 2
+const DEFAULT_MAX_DAY_DISTANCE = 2
+const AIRBNB_MAX_DAY_DISTANCE = 3
 
 const DATASET_PLATFORM_COUNTERPARTY_CLUES: Record<string, string[]> = {
     airbnb: ['citibank'],
@@ -198,7 +199,7 @@ function buildCandidateDiagnostic(
     }
 
     const dateDistanceDays = calculateDayDistance(batch.payoutDate, transaction.bookedAt)
-    if (dateDistanceDays > MAX_DAY_DISTANCE) {
+    if (dateDistanceDays > resolveMaxDayDistance(batch)) {
         rejectionReasons.push('dateToleranceMiss')
     }
 
@@ -378,6 +379,14 @@ function calculateDayDistance(left: string, right: string): number {
     const leftDate = new Date(`${normalizedLeft}T00:00:00Z`)
     const rightDate = new Date(`${normalizedRight}T00:00:00Z`)
     return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function resolveMaxDayDistance(batch: PayoutBatchExpectation): number {
+    if (batch.platform === 'airbnb') {
+        return AIRBNB_MAX_DAY_DISTANCE
+    }
+
+    return DEFAULT_MAX_DAY_DISTANCE
 }
 
 function normalizeIsoCalendarDate(value?: string): string | undefined {

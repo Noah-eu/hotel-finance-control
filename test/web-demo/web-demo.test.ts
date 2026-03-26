@@ -1374,6 +1374,32 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
+  it('keeps the actual built page aligned with 16 matched and 2 unmatched payout batches when Airbnb bank postings land three days before payout availability', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-26T16:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-arraybuffer-real-4-file-airbnb-three-day-bank-gap',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(-3),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reportSummary matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reviewSummary matched:</strong> 16')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('shows Booking document total and local bank matching total separately on the actual built page when the CSV carries the payout document total in EUR', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-26T10:30:00.000Z',
@@ -2268,9 +2294,9 @@ function buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenc
   ].join('\n')
 }
 
-function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(): string {
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(daysShift = 0): string {
   return [
-    buildRealUploadedRbGenericContentForSharedAirbnbPayouts(),
+    buildRealUploadedRbGenericContentForSharedAirbnbPayouts(daysShift),
     '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
   ].join('\n')
 }
@@ -2298,14 +2324,14 @@ function buildRealUploadedRbCitiContentForSharedAirbnbPayouts(): string {
   ].join('\n')
 }
 
-function buildRealUploadedRbGenericContentForSharedAirbnbPayouts(): string {
+function buildRealUploadedRbGenericContentForSharedAirbnbPayouts(daysShift = 0): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     ...getRealUploadedAirbnbTransferRowsWithoutReferenceColumn()
       .filter((row) => row.bankMatched)
       .map((row, index) => {
-        const bookedAt = formatRbDateTime(row.payoutDate, 20 + index)
-        const postedAt = formatRbDateTime(row.payoutDate, 23 + index)
+        const bookedAt = formatRbDateTime(row.payoutDate, 20 + index, daysShift)
+        const postedAt = formatRbDateTime(row.payoutDate, 23 + index, daysShift)
 
         return [
           bookedAt,
@@ -2353,8 +2379,12 @@ function getRealUploadedAirbnbTransferRowsWithoutReferenceColumn(): Array<{
   ]
 }
 
-function formatRbDateTime(isoDate: string, minute: number): string {
-  const [year, month, day] = isoDate.split('-')
+function formatRbDateTime(isoDate: string, minute: number, dayShift = 0): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + dayShift)
+  const year = String(date.getUTCFullYear())
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
   return `${day}.${month}.${year} 06:${String(minute).padStart(2, '0')}`
 }
 
