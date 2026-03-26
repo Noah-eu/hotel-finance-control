@@ -63,6 +63,31 @@ export interface BrowserRuntimeUploadState {
     unmatchedCount: number
     matchedPayoutBatchKeys: string[]
     unmatchedPayoutBatchKeys: string[]
+    payoutBatchDecisions: Array<{
+      payoutBatchKey: string
+      platform: string
+      expectedTotalMinor: number
+      expectedBankAmountMinor: number
+      currency: string
+      expectedBankCurrency: string
+      payoutDate: string
+      bankCandidateCountBeforeFiltering: number
+      bankCandidateCountAfterAmountCurrency: number
+      bankCandidateCountAfterDateWindow: number
+      bankCandidateCountAfterEvidenceFiltering: number
+      matched: boolean
+      matchedBankTransactionId?: string
+      noMatchReason?: string
+    }>
+    inboundBankTransactions: Array<{
+      transactionId: string
+      bookedAt: string
+      amountMinor: number
+      currency: string
+      counterparty?: string
+      reference?: string
+      accountId: string
+    }>
   }
   routingSummary: {
     uploadedFileCount: number

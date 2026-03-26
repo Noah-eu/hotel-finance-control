@@ -1,6 +1,7 @@
 import type { NormalizedTransaction, PayoutBatchExpectation } from '../domain'
 import type {
     PayoutBatchBankMatch,
+    PayoutBatchBankDecisionTrace,
     PayoutBatchCandidateDiagnostic,
     PayoutBatchNoMatchDiagnostic
 } from './contracts'
@@ -22,23 +23,14 @@ export interface MatchPayoutBatchesToBankInput {
 export function matchPayoutBatchesToBank(
     input: MatchPayoutBatchesToBankInput
 ): PayoutBatchBankMatch[] {
-    const availableBankTransactions = input.bankTransactions.filter(
-        (transaction) => transaction.direction === 'in' && transaction.source === 'bank'
-    )
+    return buildBatchDecisions(input).flatMap((decision) => {
+        const candidate = decision.winner
 
-    return input.payoutBatches.flatMap((batch) => {
-        const candidates = availableBankTransactions
-            .map((transaction) => buildCandidateDiagnostic(batch, transaction))
-            .filter((candidate) => candidate.eligible)
-            .sort(compareBatchCandidates)
-
-        const winner = selectUniqueTopCandidate(batch, candidates)
-
-        if (!winner) {
+        if (!candidate) {
             return []
         }
 
-        const candidate = winner
+        const batch = decision.batch
         const bankExpectation = resolveBankMatchingExpectation(batch)
         const reasons = ['amountExact', 'currencyExact', 'directionInbound', 'routingAllowed']
         const evidence: PayoutBatchBankMatch['evidence'] = [
@@ -112,32 +104,61 @@ export function matchPayoutBatchesToBank(
 export function diagnoseUnmatchedPayoutBatchesToBank(
     input: MatchPayoutBatchesToBankInput
 ): PayoutBatchNoMatchDiagnostic[] {
-    const availableBankTransactions = input.bankTransactions.filter(
-        (transaction) => transaction.direction === 'in' && transaction.source === 'bank'
-    )
-
-    return input.payoutBatches.flatMap((batch) => {
-        const diagnostics = availableBankTransactions.map((transaction) => buildCandidateDiagnostic(batch, transaction))
-        const eligibleCandidates = diagnostics.filter((candidate) => candidate.eligible)
-        const winner = selectUniqueTopCandidate(batch, eligibleCandidates)
-
-        if (winner) {
+    return buildBatchDecisions(input).flatMap((decision) => {
+        if (decision.winner) {
             return []
         }
 
         return [{
-            payoutBatchKey: batch.payoutBatchKey,
-            payoutReference: batch.payoutReference,
-            platform: batch.platform,
-            expectedTotalMinor: resolveBankMatchingExpectation(batch).amountMinor,
-            currency: resolveBankMatchingExpectation(batch).currency,
-            payoutDate: batch.payoutDate,
-            bankRoutingTarget: batch.bankRoutingTarget,
-            eligibleCandidates,
-            allInboundBankCandidates: diagnostics,
-            noMatchReason: determineNoMatchReason(batch, diagnostics, eligibleCandidates),
+            payoutBatchKey: decision.batch.payoutBatchKey,
+            payoutReference: decision.batch.payoutReference,
+            platform: decision.batch.platform,
+            expectedTotalMinor: decision.bankExpectation.amountMinor,
+            currency: decision.bankExpectation.currency,
+            payoutDate: decision.batch.payoutDate,
+            bankRoutingTarget: decision.batch.bankRoutingTarget,
+            eligibleCandidates: decision.eligibleCandidates,
+            allInboundBankCandidates: decision.allCandidates,
+            noMatchReason: determineNoMatchReason(decision.batch, decision.allCandidates, decision.eligibleCandidates),
             matched: false
         }]
+    })
+}
+
+export function inspectPayoutBatchBankDecisions(
+    input: MatchPayoutBatchesToBankInput
+): PayoutBatchBankDecisionTrace[] {
+    return buildBatchDecisions(input).map((decision) => {
+        const amountCurrencyCandidates = decision.allCandidates.filter((candidate) =>
+            !candidate.rejectionReasons.includes('noExactAmount')
+            && !candidate.rejectionReasons.includes('currencyMismatch')
+        )
+        const dateWindowCandidates = amountCurrencyCandidates.filter((candidate) =>
+            !candidate.rejectionReasons.includes('dateToleranceMiss')
+        )
+        const evidenceFilteredCandidates = dateWindowCandidates.filter((candidate) =>
+            !requiresPositiveEvidence(decision.batch) || candidate.evidenceScore > 0
+        )
+
+        return {
+            payoutBatchKey: decision.batch.payoutBatchKey,
+            payoutReference: decision.batch.payoutReference,
+            platform: decision.batch.platform,
+            expectedTotalMinor: decision.batch.expectedTotalMinor,
+            expectedBankAmountMinor: decision.bankExpectation.amountMinor,
+            currency: decision.batch.currency,
+            expectedBankCurrency: decision.bankExpectation.currency,
+            payoutDate: decision.batch.payoutDate,
+            bankCandidateCountBeforeFiltering: decision.allCandidates.length,
+            bankCandidateCountAfterAmountCurrency: amountCurrencyCandidates.length,
+            bankCandidateCountAfterDateWindow: dateWindowCandidates.length,
+            bankCandidateCountAfterEvidenceFiltering: evidenceFilteredCandidates.length,
+            matched: Boolean(decision.winner),
+            matchedBankTransactionId: decision.winner?.bankTransactionId,
+            noMatchReason: decision.winner
+                ? undefined
+                : determineNoMatchReason(decision.batch, decision.allCandidates, decision.eligibleCandidates)
+        }
     })
 }
 
@@ -231,6 +252,36 @@ function determineNoMatchReason(
     }
 
     return 'noCandidateAtAll'
+}
+
+function buildBatchDecisions(
+    input: MatchPayoutBatchesToBankInput
+): Array<{
+    batch: PayoutBatchExpectation
+    bankExpectation: { amountMinor: number, currency: PayoutBatchExpectation['currency'] }
+    allCandidates: PayoutBatchCandidateDiagnostic[]
+    eligibleCandidates: PayoutBatchCandidateDiagnostic[]
+    winner?: PayoutBatchCandidateDiagnostic
+}> {
+    const availableBankTransactions = input.bankTransactions.filter(
+        (transaction) => transaction.direction === 'in' && transaction.source === 'bank'
+    )
+
+    return input.payoutBatches.map((batch) => {
+        const allCandidates = availableBankTransactions.map((transaction) => buildCandidateDiagnostic(batch, transaction))
+        const eligibleCandidates = allCandidates
+            .filter((candidate) => candidate.eligible)
+            .sort(compareBatchCandidates)
+        const winner = selectUniqueTopCandidate(batch, eligibleCandidates)
+
+        return {
+            batch,
+            bankExpectation: resolveBankMatchingExpectation(batch),
+            allCandidates,
+            eligibleCandidates,
+            winner
+        }
+    })
 }
 
 function compareBatchCandidates(left: PayoutBatchCandidateDiagnostic, right: PayoutBatchCandidateDiagnostic): number {

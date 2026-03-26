@@ -13,13 +13,15 @@ export type {
   ReconciliationService,
   PayoutBatchBankMatch,
   PayoutBatchNoMatchDiagnostic,
-  PayoutBatchCandidateDiagnostic
+  PayoutBatchCandidateDiagnostic,
+  PayoutBatchBankDecisionTrace
 } from './contracts'
 
 export { DefaultReconciliationService, reconcileExtractedRecords } from './service'
 export { buildReconciliationWorkflowPlan } from './workflow-plan'
 export {
   matchPayoutBatchesToBank,
-  diagnoseUnmatchedPayoutBatchesToBank
+  diagnoseUnmatchedPayoutBatchesToBank,
+  inspectPayoutBatchBankDecisions
 } from './payout-batch-bank.matcher'
 export { matchReservationSourcesToSettlements } from './reservation-settlement.matcher'

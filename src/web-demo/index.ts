@@ -148,7 +148,9 @@ function renderOperatorWebDemoHtml(input: {
       matchedCount: 0,
       unmatchedCount: 0,
       matchedPayoutBatchKeys: [],
-      unmatchedPayoutBatchKeys: []
+      unmatchedPayoutBatchKeys: [],
+      payoutBatchDecisions: [],
+      inboundBankTransactions: []
     },
     preparedFiles: [],
     fileRoutes: [],
@@ -560,6 +562,21 @@ ${showRuntimePayoutDiagnostics ? `
           .replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;')
           .replace(/'/g, '&#39;');
+      }
+
+      function buildAmountDisplay(amountMinor, currency) {
+        const minor = Number.isFinite(amountMinor) ? Number(amountMinor) : 0;
+        const normalizedCurrency = String(currency || 'CZK').toUpperCase();
+        const absolute = Math.abs(minor) / 100;
+
+        try {
+          return new Intl.NumberFormat('cs-CZ', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          }).format(absolute) + ' ' + normalizedCurrency;
+        } catch {
+          return String((absolute).toFixed(2)) + ' ' + normalizedCurrency;
+        }
       }
 
       function buildVisibleTransactionLabel(transactionId, source) {
@@ -1079,6 +1096,41 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const matchedSectionCount = Array.isArray(reviewSections.payoutBatchMatched) ? reviewSections.payoutBatchMatched.length : 0;
         const unmatchedSectionCount = Array.isArray(reviewSections.payoutBatchUnmatched) ? reviewSections.payoutBatchUnmatched.length : 0;
 
+        const reconciliationDecisionMarkup = Array.isArray(reconciliationSnapshot.payoutBatchDecisions) && reconciliationSnapshot.payoutBatchDecisions.length > 0
+          ? '<li><strong>Raw reconciliation batch decisions:</strong><ul>'
+            + reconciliationSnapshot.payoutBatchDecisions.map((decision) => {
+              const amountLabel = typeof decision.expectedBankAmountMinor === 'number'
+                ? buildAmountDisplay(decision.expectedBankAmountMinor, decision.expectedBankCurrency || decision.currency || 'CZK')
+                : buildAmountDisplay(decision.expectedTotalMinor || 0, decision.currency || 'CZK');
+
+              return '<li><code>' + escapeHtml(String(decision.payoutBatchKey || '')) + '</code>'
+                + ' · ' + escapeHtml(String(decision.platform || 'unknown'))
+                + ' · expected ' + escapeHtml(amountLabel)
+                + ' · payout date ' + escapeHtml(String(decision.payoutDate || 'n/a'))
+                + ' · candidates ' + escapeHtml(String(decision.bankCandidateCountBeforeFiltering || 0))
+                + ' -> amount/currency ' + escapeHtml(String(decision.bankCandidateCountAfterAmountCurrency || 0))
+                + ' -> date ' + escapeHtml(String(decision.bankCandidateCountAfterDateWindow || 0))
+                + ' -> evidence ' + escapeHtml(String(decision.bankCandidateCountAfterEvidenceFiltering || 0))
+                + ' · matched ' + escapeHtml(decision.matched ? 'ano' : 'ne')
+                + (decision.matchedBankTransactionId ? ' · bank line ' + escapeHtml(String(decision.matchedBankTransactionId)) : '')
+                + (decision.noMatchReason ? ' · reason ' + escapeHtml(String(decision.noMatchReason)) : '')
+                + '</li>';
+            }).join('')
+            + '</ul></li>'
+          : '';
+        const inboundBankTransactionsMarkup = Array.isArray(reconciliationSnapshot.inboundBankTransactions) && reconciliationSnapshot.inboundBankTransactions.length > 0
+          ? '<li><strong>Inbound bank transaction snapshot:</strong><ul>'
+            + reconciliationSnapshot.inboundBankTransactions.map((transaction) =>
+              '<li><code>' + escapeHtml(String(transaction.transactionId || '')) + '</code>'
+              + ' · ' + escapeHtml(String(transaction.bookedAt || ''))
+              + ' · ' + escapeHtml(buildAmountDisplay(transaction.amountMinor || 0, transaction.currency || 'CZK'))
+              + ' · ' + escapeHtml(String(transaction.counterparty || 'bez protiúčtu'))
+              + ' · ' + escapeHtml(String(transaction.reference || 'bez reference'))
+              + '</li>'
+            ).join('')
+            + '</ul></li>'
+          : '';
+
         return [
           '<p class="hint">Tento blok čte build marker i finální payout projekci ze stejného state objektu, který používá summary pás i detailní payout sekce.</p>',
           '<ul class="diagnostic-list">',
@@ -1104,6 +1156,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Unmatched review section count:</strong> ' + escapeHtml(String(unmatchedSectionCount)) + '</li>',
           buildDiagnosticListMarkup('Raw reconciliation matched payout batch ids', reconciliationSnapshot.matchedPayoutBatchKeys || []),
           buildDiagnosticListMarkup('Raw reconciliation unmatched payout batch ids', reconciliationSnapshot.unmatchedPayoutBatchKeys || []),
+          reconciliationDecisionMarkup,
+          inboundBankTransactionsMarkup,
           buildDiagnosticListMarkup('Matched payout batch ids', payoutProjection.matchedIds || []),
           buildDiagnosticListMarkup('Unmatched payout batch ids', payoutProjection.unmatchedIds || []),
           '</ul>'

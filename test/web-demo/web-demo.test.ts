@@ -1374,6 +1374,33 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
+  it('keeps the actual built page aligned with 16 matched and 2 unmatched payout batches when the bank CSV uses CR-only row separators', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-26T11:25:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-arraybuffer-real-4-file-cr-only-bank-csv',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          withCrOnlyLineEndings(buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch()),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('txn:bank:fio-row-16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation batch decisions:')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Inbound bank transaction snapshot:')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('renders debug-only runtime markers and one authoritative payout projection snapshot on the actual built page', async () => {
     const generatedAt = '2026-03-25T16:05:00.000Z'
     const rendered = await executeWebDemoMainWorkflow({
@@ -2254,6 +2281,10 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayouts(): string {
         ].join(';')
       })
   ].join('\n')
+}
+
+function withCrOnlyLineEndings(content: string): string {
+  return content.replace(/\r\n/g, '\n').replace(/\n/g, '\r')
 }
 
 function getRealUploadedAirbnbTransferRowsWithoutReferenceColumn(): Array<{

@@ -156,6 +156,32 @@ describe('parseFioStatement', () => {
     ])
   })
 
+  it('accepts CR-only row separators in the localized Fio export variant instead of silently returning zero rows', () => {
+    const fixture = getRealInputFixture('fio-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+        '19.03.2026 06:23;19.03.2026 06:23;8888997777/2010;000000-1234567890/0100;Comgate a.s.;1540,00;CZK;Platba rezervace WEB-2001'
+      ].join('\r'),
+      extractedAt: '2026-03-19T18:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toEqual(
+      expect.objectContaining({
+        id: 'fio-row-1',
+        amountMinor: 154000,
+        occurredAt: '2026-03-19T06:23:00',
+        data: expect.objectContaining({
+          counterparty: 'Comgate a.s.',
+          reference: 'Platba rezervace WEB-2001'
+        })
+      })
+    )
+  })
+
   it('keeps failure explicit when a localized Fio export still lacks a deterministic counterparty field', () => {
     const fixture = getRealInputFixture('fio-statement')
 

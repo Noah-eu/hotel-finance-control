@@ -4,6 +4,7 @@ import {
   ingestUploadedMonthlyFiles,
   type UploadedMonthlyFile
 } from '../monthly-batch'
+import { inspectPayoutBatchBankDecisions } from '../reconciliation'
 import { buildReviewScreen } from '../review'
 import { formatAmountMinorCs } from '../shared/money'
 import type { BrowserRuntimeUploadState } from './index.js'
@@ -140,6 +141,18 @@ function buildReconciliationSnapshot(
 ): BrowserRuntimeUploadState['reconciliationSnapshot'] {
   const matchedItems = (batch.reconciliation.payoutBatchMatches ?? []).filter((item) => item.matched)
   const unmatchedItems = batch.reconciliation.payoutBatchNoMatchDiagnostics ?? []
+  const payoutBatchDecisions = buildPayoutBatchDecisionSnapshot(batch)
+  const inboundBankTransactions = batch.reconciliation.normalizedTransactions
+    .filter((transaction) => transaction.source === 'bank' && transaction.direction === 'in')
+    .map((transaction) => ({
+      transactionId: transaction.id,
+      bookedAt: transaction.bookedAt,
+      amountMinor: transaction.amountMinor,
+      currency: transaction.currency,
+      counterparty: transaction.counterparty,
+      reference: transaction.reference,
+      accountId: transaction.accountId
+    }))
 
   return {
     sourceFunction: 'buildBrowserRuntimeUploadStateFromFiles -> batch.reconciliation',
@@ -147,8 +160,34 @@ function buildReconciliationSnapshot(
     matchedCount: matchedItems.length,
     unmatchedCount: unmatchedItems.length,
     matchedPayoutBatchKeys: matchedItems.map((item) => item.payoutBatchKey),
-    unmatchedPayoutBatchKeys: unmatchedItems.map((item) => item.payoutBatchKey)
+    unmatchedPayoutBatchKeys: unmatchedItems.map((item) => item.payoutBatchKey),
+    payoutBatchDecisions,
+    inboundBankTransactions
   }
+}
+
+function buildPayoutBatchDecisionSnapshot(
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']
+): BrowserRuntimeUploadState['reconciliationSnapshot']['payoutBatchDecisions'] {
+  return inspectPayoutBatchBankDecisions({
+    payoutBatches: batch.reconciliation.workflowPlan?.payoutBatches ?? [],
+    bankTransactions: batch.reconciliation.normalizedTransactions
+  }).map((decision) => ({
+    payoutBatchKey: decision.payoutBatchKey,
+    platform: decision.platform,
+    expectedTotalMinor: decision.expectedTotalMinor,
+    expectedBankAmountMinor: decision.expectedBankAmountMinor,
+    currency: decision.currency,
+    expectedBankCurrency: decision.expectedBankCurrency,
+    payoutDate: decision.payoutDate,
+    bankCandidateCountBeforeFiltering: decision.bankCandidateCountBeforeFiltering,
+    bankCandidateCountAfterAmountCurrency: decision.bankCandidateCountAfterAmountCurrency,
+    bankCandidateCountAfterDateWindow: decision.bankCandidateCountAfterDateWindow,
+    bankCandidateCountAfterEvidenceFiltering: decision.bankCandidateCountAfterEvidenceFiltering,
+    matched: decision.matched,
+    matchedBankTransactionId: decision.matchedBankTransactionId,
+    noMatchReason: decision.noMatchReason
+  }))
 }
 
 function buildRuntimeAudit(

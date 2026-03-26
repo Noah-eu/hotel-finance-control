@@ -37,7 +37,7 @@ export function parseDelimitedContent(
 ): ParsedDelimitedContent {
   const lines = content
     .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
+    .split(/\r\n|\n|\r/)
     .filter((line) => line.trim().length > 0)
 
   if (lines.length === 0) {

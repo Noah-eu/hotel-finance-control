@@ -81,6 +81,24 @@ export interface PayoutBatchNoMatchDiagnostic {
   matched: false
 }
 
+export interface PayoutBatchBankDecisionTrace {
+  payoutBatchKey: PayoutBatchExpectation['payoutBatchKey']
+  payoutReference: PayoutBatchExpectation['payoutReference']
+  platform: PayoutBatchExpectation['platform']
+  expectedTotalMinor: PayoutBatchExpectation['expectedTotalMinor']
+  expectedBankAmountMinor: number
+  currency: PayoutBatchExpectation['currency']
+  expectedBankCurrency: NormalizedTransaction['currency']
+  payoutDate: PayoutBatchExpectation['payoutDate']
+  bankCandidateCountBeforeFiltering: number
+  bankCandidateCountAfterAmountCurrency: number
+  bankCandidateCountAfterDateWindow: number
+  bankCandidateCountAfterEvidenceFiltering: number
+  matched: boolean
+  matchedBankTransactionId?: NormalizedTransaction['id']
+  noMatchReason?: PayoutBatchNoMatchDiagnostic['noMatchReason']
+}
+
 export interface ReconciliationInput {
   extractedRecords: ExtractedRecord[]
 }

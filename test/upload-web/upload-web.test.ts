@@ -3002,6 +3002,37 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('keeps the real browser-upload path at 16 matched and 2 unmatched when the bank CSV arrives with CR-only row separators', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          withCrOnlyLineEndings(buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch()),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T11:10:00.000Z'
+    })
+
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(
+      result.reconciliationSnapshot.payoutBatchDecisions.some((decision) =>
+        decision.payoutBatchKey.startsWith('booking-batch:')
+        && decision.matched
+        && decision.matchedBankTransactionId === 'txn:bank:fio-row-16'
+      )
+    ).toBe(true)
+  })
+
   it('renders the actual upload page summary and payout sections from the same 16 matched / 2 unmatched runtime state in the real 4-file scenario', async () => {
     const rendered = await executeUploadWebFlowMainWorkflow({
       generatedAt: '2026-03-25T15:20:00.000Z',
@@ -4043,6 +4074,10 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayouts(): string {
         ].join(';')
       })
   ].join('\n')
+}
+
+function withCrOnlyLineEndings(content: string): string {
+  return content.replace(/\r\n/g, '\n').replace(/\n/g, '\r')
 }
 
 function getRealUploadedAirbnbTransferRowsWithoutReferenceColumn(): Array<{
