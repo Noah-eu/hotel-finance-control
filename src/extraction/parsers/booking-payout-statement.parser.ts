@@ -1,4 +1,5 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
+import type { DeterministicDocumentExtractionSummary } from '../contracts'
 import {
   normalizeDocumentDate,
   parseDocumentMoney,
@@ -226,6 +227,40 @@ export function inspectBookingPayoutStatementFieldCheck(content: string): Bookin
     validatorInput,
     missingFields,
     requiredFieldsCheck: missingFields.length === 0 ? 'passed' : 'failed'
+  }
+}
+
+export function inspectBookingPayoutStatementExtractionSummary(
+  content: string
+): DeterministicDocumentExtractionSummary {
+  const fieldCheck = inspectBookingPayoutStatementFieldCheck(content)
+  const { fields } = fieldCheck
+  const hasMeaningfulFields = Boolean(
+    fields.paymentId
+    || fields.payoutDate
+    || fields.payoutTotalAmountMinor !== undefined
+    || fields.localAmountMinor !== undefined
+    || fields.ibanSuffix
+    || fields.referenceHints.length > 0
+  )
+
+  return {
+    documentKind: 'payout_statement',
+    sourceSystem: 'booking',
+    documentType: 'payout_statement',
+    issuerOrCounterparty: fields.hasBookingBranding ? 'Booking.com B.V.' : undefined,
+    paymentDate: fields.payoutDate,
+    totalAmountMinor: fields.payoutTotalAmountMinor,
+    totalCurrency: fields.payoutTotalCurrency,
+    localAmountMinor: fields.localAmountMinor,
+    localCurrency: fields.localCurrency,
+    referenceNumber: fields.paymentId,
+    confidence: fieldCheck.requiredFieldsCheck === 'passed'
+      ? 'strong'
+      : hasMeaningfulFields
+        ? 'hint'
+        : 'none',
+    missingRequiredFields: fieldCheck.missingFields
   }
 }
 

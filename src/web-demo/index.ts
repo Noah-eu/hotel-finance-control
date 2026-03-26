@@ -667,6 +667,50 @@ ${showRuntimePayoutDiagnostics ? `
         return 'Nepodporovaný vstup';
       }
 
+      function buildCapabilityTransportProfileLabel(value) {
+        if (value === 'structured_csv' || value === 'structured_workbook') {
+          return 'Strukturovaný export';
+        }
+
+        if (value === 'text_pdf') {
+          return 'Textové PDF';
+        }
+
+        if (value === 'image_pdf') {
+          return 'Scan / OCR potřeba';
+        }
+
+        if (value === 'text_document') {
+          return 'Textový doklad';
+        }
+
+        if (value === 'image_document') {
+          return 'Obrázkový doklad / OCR potřeba';
+        }
+
+        if (value === 'unsupported_binary') {
+          return 'Nepodporovaný vstup';
+        }
+
+        return 'Nepodporovaný vstup';
+      }
+
+      function buildDocumentHintLabel(value) {
+        if (value === 'invoice_like') {
+          return 'invoice_like';
+        }
+
+        if (value === 'receipt_like') {
+          return 'receipt_like';
+        }
+
+        if (value === 'payout_statement_like') {
+          return 'payout_statement_like';
+        }
+
+        return String(value || 'unknown_hint');
+      }
+
       function buildIngestionBranchLabel(value) {
         if (value === 'structured-parser') {
           return 'strukturovaný parser';
@@ -1038,6 +1082,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Text preview: ' + escapeHtml(buildDebugTextPreviewLabel(file.textPreview)) + '</span>',
           '<br /><span class="hint">Text tail: ' + escapeHtml(buildDebugTextPreviewLabel(file.textTailPreview)) + '</span>',
           '<br /><span class="hint">Capability: ' + escapeHtml(buildCapabilityProfileLabel(file.capabilityProfile)) + ' / ' + escapeHtml(String(file.capabilityProfile || 'unknown')) + ' / confidence=' + escapeHtml(String(file.capabilityConfidence || 'none')) + '</span>',
+          '<br /><span class="hint">Transport profile: ' + escapeHtml(buildCapabilityTransportProfileLabel(file.capabilityTransportProfile)) + ' / ' + escapeHtml(String(file.capabilityTransportProfile || 'unknown_document')) + '</span>',
+          '<br /><span class="hint">Document hints: ' + escapeHtml((file.capabilityDocumentHints && file.capabilityDocumentHints.length > 0 ? file.capabilityDocumentHints.map(buildDocumentHintLabel).join(', ') : 'žádné')) + '</span>',
           '<br /><span class="hint">Capability evidence: ' + escapeHtml((file.capabilityEvidence && file.capabilityEvidence.length > 0 ? file.capabilityEvidence.join(', ') : 'žádné')) + '</span>',
           '<br /><span class="hint">Ingestion branch: ' + escapeHtml(buildIngestionBranchLabel(file.ingestionBranch)) + ' / ' + escapeHtml(String(file.ingestionBranch || 'unsupported')) + '</span>',
           '<br /><span class="hint">Keyword hits: ' + escapeHtml((file.keywordHits && file.keywordHits.length > 0 ? file.keywordHits.join(', ') : 'žádné')) + '</span>',
@@ -1045,6 +1091,24 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Rozhodnutí klasifikátoru: ' + escapeHtml(buildDebugClassifierDecisionLabel(file)) + '</span>',
           '<br /><span class="hint">Decision reason: ' + escapeHtml(buildDebugDecisionReasonLabel(file)) + '</span>',
           file.ingestionReason ? '<br /><span class="hint">Branch reason: ' + escapeHtml(file.ingestionReason) + '</span>' : '',
+          file.documentExtractionSummary ? '<br /><span class="hint">Document summary: '
+            + escapeHtml(String(file.documentExtractionSummary.documentKind || 'other'))
+            + ' · ref ' + escapeHtml(String(file.documentExtractionSummary.referenceNumber || 'n/a'))
+            + ' · issuer ' + escapeHtml(String(file.documentExtractionSummary.issuerOrCounterparty || 'n/a'))
+            + ' · issue ' + escapeHtml(String(file.documentExtractionSummary.issueDate || 'n/a'))
+            + ' · payment ' + escapeHtml(String(file.documentExtractionSummary.paymentDate || 'n/a'))
+            + ' · total ' + escapeHtml(
+              (typeof file.documentExtractionSummary.totalAmountMinor === 'number' && file.documentExtractionSummary.totalCurrency)
+                ? buildAmountDisplay(file.documentExtractionSummary.totalAmountMinor, file.documentExtractionSummary.totalCurrency)
+                : 'n/a'
+            )
+            + ' · confidence ' + escapeHtml(String(file.documentExtractionSummary.confidence || 'none'))
+            + ' · missing ' + escapeHtml(
+              Array.isArray(file.documentExtractionSummary.missingRequiredFields) && file.documentExtractionSummary.missingRequiredFields.length > 0
+                ? file.documentExtractionSummary.missingRequiredFields.join(', ')
+                : 'žádné'
+            )
+            + '</span>' : '',
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',
           file.parserExtractedPayoutDate ? '<br /><span class="hint">parserExtracted.payoutDate: ' + escapeHtml(file.parserExtractedPayoutDate) + '</span>' : '',
           file.parserExtractedPayoutTotal ? '<br /><span class="hint">parserExtracted.payoutTotal: ' + escapeHtml(file.parserExtractedPayoutTotal) + '</span>' : '',

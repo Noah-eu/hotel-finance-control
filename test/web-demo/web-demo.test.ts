@@ -1605,6 +1605,43 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Ingestion branch: OCR potřeba / ocr-required')
   })
 
+  it('shows a generic text-layer invoice PDF as a recognized text PDF document without changing the known 16 / 2 payout result', async () => {
+    const invoice = getRealInputFixture('invoice-document')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-26T11:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-invoice-text-pdf',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('laundry-march-2026.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>laundry-march-2026.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Dodavatelská faktura')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Textové PDF')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('laundry-march-2026.pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Transport profile: Textové PDF / text_pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document hints: invoice_like')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document summary: invoice · ref INV-2026-332 · issuer Laundry Supply s.r.o.')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('total 18 500,00 CZK')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
+  })
+
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:15.000Z',

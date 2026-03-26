@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   documentIngestionCapabilities,
+  inspectInvoiceDocumentExtractionSummary,
+  inspectReceiptDocumentExtractionSummary,
   parseInvoiceDocument,
   parseReceiptDocument
 } from '../../src/extraction'
@@ -9,6 +11,7 @@ import { getRealInputFixture } from '../../src/real-input-fixtures'
 describe('parseInvoiceDocument', () => {
   it('exposes deterministic-first document ingestion capabilities with OCR left as future fallback', () => {
     expect(documentIngestionCapabilities()).toEqual({
+      browserCapabilityLadder: ['structured-parser', 'text-pdf-parser', 'text-document-parser', 'ocr-required'],
       mode: 'deterministic-primary',
       ocrFallback: 'not-implemented'
     })
@@ -176,5 +179,37 @@ describe('parseInvoiceDocument', () => {
       ].join('\n'),
       extractedAt: '2026-03-18T22:10:00.000Z'
     })[0].amountMinor).toBe(2490)
+  })
+
+  it('builds reusable extraction summaries for invoice and receipt documents', () => {
+    const invoice = getRealInputFixture('invoice-document')
+    const receipt = getRealInputFixture('receipt-document')
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toEqual({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      issuerOrCounterparty: 'Laundry Supply s.r.o.',
+      issueDate: '2026-03-19',
+      dueDate: '2026-03-26',
+      totalAmountMinor: 1850000,
+      totalCurrency: 'CZK',
+      referenceNumber: 'INV-2026-332',
+      confidence: 'strong',
+      missingRequiredFields: []
+    })
+
+    expect(inspectReceiptDocumentExtractionSummary(receipt.rawInput.content)).toEqual({
+      documentKind: 'receipt',
+      sourceSystem: 'receipt',
+      documentType: 'receipt',
+      issuerOrCounterparty: 'Metro Cash & Carry',
+      paymentDate: '2026-03-20',
+      totalAmountMinor: 249000,
+      totalCurrency: 'CZK',
+      referenceNumber: 'RCPT-2026-03-55',
+      confidence: 'strong',
+      missingRequiredFields: []
+    })
   })
 })

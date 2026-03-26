@@ -92,7 +92,7 @@ describe('buildUploadWebFlow', () => {
         fileName: 'invoice-2026-332.txt',
         status: 'supported',
         sourceSystem: 'invoice',
-        classificationBasis: 'file-name',
+        classificationBasis: 'content',
         parserId: 'invoice'
       })
     ])
@@ -336,7 +336,7 @@ describe('buildUploadWebFlow', () => {
         fileName: 'invoice-2026-332.txt',
         status: 'supported',
         sourceSystem: 'invoice',
-        classificationBasis: 'file-name',
+        classificationBasis: 'content',
         parserId: 'invoice'
       }),
       expect.objectContaining({
@@ -354,6 +354,87 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(result.reviewSections.payoutBatchMatched).toHaveLength(15)
     expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+  })
+
+  it('routes a generic text-layer invoice PDF by content without contaminating the known 4-file payout result', async () => {
+    const invoice = getRealInputFixture('invoice-document')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('laundry-march-2026.pdf', invoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:55:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 5,
+      supportedFileCount: 5,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'laundry-march-2026.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        parserId: 'invoice',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_text_layer',
+            transportProfile: 'text_pdf',
+            documentHints: ['invoice_like']
+          }),
+          ingestionBranch: 'text-pdf-parser',
+          resolvedBucket: 'recognized-supported'
+        })
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'laundry-march-2026.pdf',
+        capabilityProfile: 'pdf_text_layer',
+        capabilityTransportProfile: 'text_pdf',
+        capabilityDocumentHints: ['invoice_like'],
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        documentExtractionSummary: expect.objectContaining({
+          documentKind: 'invoice',
+          issuerOrCounterparty: 'Laundry Supply s.r.o.',
+          referenceNumber: 'INV-2026-332',
+          totalAmountMinor: 1850000,
+          totalCurrency: 'CZK',
+          confidence: 'strong',
+          missingRequiredFields: []
+        })
+      })
+    )
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
   })
 
   it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {

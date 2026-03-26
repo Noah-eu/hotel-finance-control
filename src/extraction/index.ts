@@ -6,6 +6,7 @@ export function placeholder() {
 }
 
 export type {
+  DeterministicDocumentExtractionSummary,
   DeterministicDocumentParser,
   DeterministicDocumentParserInput,
   DocumentIngestionCapabilities
@@ -28,6 +29,7 @@ export {
   detectBookingPayoutStatementKeywordHits,
   detectBookingPayoutStatementSignals,
   extractBookingPayoutStatementFields,
+  inspectBookingPayoutStatementExtractionSummary,
   inspectBookingPayoutStatementFieldCheck,
   parseBookingPayoutStatementPdf
 } from './parsers/booking-payout-statement.parser'
@@ -40,6 +42,14 @@ export { PrevioReservationParser, parsePrevioReservationExport } from './parsers
 export type { ParseComgateExportInput } from './parsers/comgate.parser'
 export { ComgateParser, parseComgateExport } from './parsers/comgate.parser'
 export type { ParseInvoiceDocumentInput } from './parsers/invoice-document.parser'
-export { InvoiceDocumentParser, parseInvoiceDocument } from './parsers/invoice-document.parser'
+export {
+  InvoiceDocumentParser,
+  inspectInvoiceDocumentExtractionSummary,
+  parseInvoiceDocument
+} from './parsers/invoice-document.parser'
 export type { ParseReceiptDocumentInput } from './parsers/receipt-document.parser'
-export { ReceiptDocumentParser, parseReceiptDocument } from './parsers/receipt-document.parser'
+export {
+  ReceiptDocumentParser,
+  inspectReceiptDocumentExtractionSummary,
+  parseReceiptDocument
+} from './parsers/receipt-document.parser'

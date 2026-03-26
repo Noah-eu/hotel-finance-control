@@ -1,9 +1,15 @@
 import type {
   UploadedMonthlyFile,
   UploadedMonthlyFileCapabilityAssessment,
+  UploadedMonthlyFileCapabilityDocumentHint,
   UploadedMonthlyFileDecisionConfidence,
   UploadedMonthlyFileIngestionBranch
 } from './contracts'
+import {
+  detectBookingPayoutStatementSignals,
+  inspectInvoiceDocumentExtractionSummary,
+  inspectReceiptDocumentExtractionSummary
+} from '../extraction'
 
 interface UploadedMonthlyFileCapabilityInput {
   fileName: string
@@ -27,84 +33,145 @@ export function detectUploadedMonthlyFileCapability(
     .map((field) => field.trim())
     .filter((field) => field.length > 0)
   const sourceDescriptorCapability = input.sourceDescriptor?.capability
+  const documentHints = detectUploadedMonthlyFileDocumentHints({
+    fileName,
+    content: trimmedContent,
+    detectedSignatures: extraction?.detectedSignatures ?? []
+  })
 
   if (sourceDescriptorCapability) {
     return sourceDescriptorCapability
   }
 
   if (input.contentFormat === 'binary-workbook' || fileName.endsWith('.xlsx')) {
-    return buildCapability('structured_tabular', 'strong', ['binary-workbook-upload'])
+    return buildCapability(
+      'structured_tabular',
+      'structured_workbook',
+      documentHints,
+      'strong',
+      ['binary-workbook-upload']
+    )
   }
 
   if (looksLikePdf(input)) {
     if (trimmedContent.length > 0) {
-      return buildCapability('pdf_text_layer', 'strong', [
-        'pdf-upload',
-        'text-layer-extracted',
-        ...(extraction?.detectedSignatures ?? [])
-      ])
+      return buildCapability(
+        'pdf_text_layer',
+        'text_pdf',
+        documentHints,
+        'strong',
+        [
+          'pdf-upload',
+          'text-layer-extracted',
+          ...(extraction?.detectedSignatures ?? []),
+          ...buildDocumentHintEvidence(documentHints)
+        ]
+      )
     }
 
     if (isPdfImageOnlyError(input.ingestError)) {
-      return buildCapability('pdf_image_only', 'strong', ['pdf-upload', 'text-layer-missing'])
+      return buildCapability(
+        'pdf_image_only',
+        'image_pdf',
+        documentHints,
+        'strong',
+        ['pdf-upload', 'text-layer-missing', ...buildDocumentHintEvidence(documentHints)]
+      )
     }
 
     if (isPdfTextExtractionUnavailableError(input.ingestError)) {
-      return buildCapability('pdf_text_layer', 'hint', ['pdf-upload', 'text-extraction-unavailable'])
+      return buildCapability(
+        'pdf_text_layer',
+        'text_pdf',
+        documentHints,
+        'hint',
+        ['pdf-upload', 'text-extraction-unavailable', ...buildDocumentHintEvidence(documentHints)]
+      )
     }
 
-    return buildCapability('unknown', 'hint', ['pdf-upload'])
+    return buildCapability('unknown', 'unknown_document', documentHints, 'hint', [
+      'pdf-upload',
+      ...buildDocumentHintEvidence(documentHints)
+    ])
   }
 
   if (looksLikeImageUpload(fileName, mimeType)) {
-    const receiptLike = looksExpenseLikeDocumentName(fileName)
+    const recognizedImageDocument = documentHints.length > 0
+    const expenseLikeName = looksExpenseLikeDocumentName(fileName)
 
     return buildCapability(
       'image_receipt_like',
-      receiptLike ? 'hint' : 'none',
-      receiptLike
-        ? ['image-upload', 'expense-document-name']
+      'image_document',
+      documentHints,
+      recognizedImageDocument || expenseLikeName ? 'hint' : 'none',
+      recognizedImageDocument || expenseLikeName
+        ? ['image-upload', 'expense-document-name', ...buildDocumentHintEvidence(documentHints)]
         : ['image-upload']
     )
   }
 
   if (input.contentFormat === 'binary' || mimeType === 'application/octet-stream') {
-    return buildCapability('unsupported_binary', 'strong', ['binary-upload'])
+    return buildCapability('unsupported_binary', 'unsupported_binary', documentHints, 'strong', [
+      'binary-upload',
+      ...buildDocumentHintEvidence(documentHints)
+    ])
   }
 
   if (looksLikeStructuredTabularContent(headerFields, trimmedContent)) {
-    return buildCapability('structured_tabular', 'strong', [
-      'delimited-header',
-      ...(headerFields.length > 0 ? ['header-fields-present'] : [])
+    return buildCapability(
+      'structured_tabular',
+      'structured_csv',
+      documentHints,
+      'strong',
+      [
+        'delimited-header',
+        ...(headerFields.length > 0 ? ['header-fields-present'] : [])
+      ]
+    )
+  }
+
+  if (trimmedContent.length > 0 && documentHints.length > 0) {
+    return buildCapability('text_document', 'text_document', documentHints, 'hint', [
+      'text-document-hints',
+      ...buildDocumentHintEvidence(documentHints)
     ])
   }
 
   if (trimmedContent.length > 0 && looksExpenseLikeDocumentName(fileName)) {
-    return buildCapability('text_document', 'hint', ['text-document-name'])
+    return buildCapability('text_document', 'text_document', documentHints, 'hint', [
+      'text-document-name',
+      ...buildDocumentHintEvidence(documentHints)
+    ])
   }
 
   if (trimmedContent.length > 0 && /[:]/.test(trimmedContent)) {
-    return buildCapability('text_document', 'hint', ['labeled-text-content'])
+    return buildCapability('text_document', 'text_document', documentHints, 'hint', [
+      'labeled-text-content',
+      ...buildDocumentHintEvidence(documentHints)
+    ])
   }
 
-  return buildCapability('unknown', 'none', [])
+  return buildCapability('unknown', 'unknown_document', documentHints, 'none', [
+    ...buildDocumentHintEvidence(documentHints)
+  ])
 }
 
 export function resolveUploadedMonthlyFileIngestionBranch(
   capability: UploadedMonthlyFileCapabilityAssessment
 ): UploadedMonthlyFileIngestionBranch {
-  switch (capability.profile) {
-    case 'structured_tabular':
+  switch (capability.transportProfile) {
+    case 'structured_csv':
+    case 'structured_workbook':
       return 'structured-parser'
+    case 'text_pdf':
+      return 'text-pdf-parser'
     case 'text_document':
       return 'text-document-parser'
-    case 'pdf_text_layer':
-      return 'text-pdf-parser'
-    case 'pdf_image_only':
-    case 'image_receipt_like':
+    case 'image_pdf':
+    case 'image_document':
       return 'ocr-required'
     case 'unsupported_binary':
-    case 'unknown':
+    case 'unknown_document':
     default:
       return 'unsupported'
   }
@@ -112,14 +179,101 @@ export function resolveUploadedMonthlyFileIngestionBranch(
 
 function buildCapability(
   profile: UploadedMonthlyFileCapabilityAssessment['profile'],
+  transportProfile: UploadedMonthlyFileCapabilityAssessment['transportProfile'],
+  documentHints: UploadedMonthlyFileCapabilityAssessment['documentHints'],
   confidence: UploadedMonthlyFileDecisionConfidence,
   evidence: string[]
 ): UploadedMonthlyFileCapabilityAssessment {
   return {
     profile,
+    transportProfile,
+    documentHints,
     confidence,
     evidence
   }
+}
+
+function detectUploadedMonthlyFileDocumentHints(input: {
+  fileName: string
+  content: string
+  detectedSignatures: string[]
+}): UploadedMonthlyFileCapabilityDocumentHint[] {
+  const hints = new Set<UploadedMonthlyFileCapabilityDocumentHint>()
+  const normalizedFileName = input.fileName.toLowerCase()
+  const invoiceSummary = input.content.length > 0 ? inspectInvoiceDocumentExtractionSummary(input.content) : undefined
+  const receiptSummary = input.content.length > 0 ? inspectReceiptDocumentExtractionSummary(input.content) : undefined
+  const bookingSignals = input.content.length > 0 ? detectBookingPayoutStatementSignals(input.content) : undefined
+
+  if (
+    normalizedFileName.includes('invoice')
+    || normalizedFileName.includes('faktura')
+    || invoiceSummary?.confidence === 'strong'
+    || looksLikeInvoiceDocumentText(input.content)
+  ) {
+    hints.add('invoice_like')
+  }
+
+  if (
+    normalizedFileName.includes('receipt')
+    || normalizedFileName.includes('uctenka')
+    || normalizedFileName.includes('účtenka')
+    || receiptSummary?.confidence === 'strong'
+    || looksLikeReceiptDocumentText(input.content)
+  ) {
+    hints.add('receipt_like')
+  }
+
+  if (
+    input.detectedSignatures.includes('booking-branding')
+    || input.detectedSignatures.includes('booking-payout-statement-wording')
+    || (bookingSignals?.hasBookingBranding && bookingSignals?.hasStatementWording)
+    || (normalizedFileName.endsWith('.pdf') && normalizedFileName.includes('booking'))
+  ) {
+    hints.add('payout_statement_like')
+  }
+
+  return Array.from(hints)
+}
+
+function buildDocumentHintEvidence(
+  documentHints: UploadedMonthlyFileCapabilityDocumentHint[]
+): string[] {
+  return documentHints.map((hint) => `document-hint:${hint}`)
+}
+
+function looksLikeInvoiceDocumentText(content: string): boolean {
+  return countMatchingPatterns(content, [
+    /\binvoice\s*(?:no|number)\b/i,
+    /\bčíslo\s+faktury\b/i,
+    /\bsupplier\b/i,
+    /\bdodavatel\b/i,
+    /\bissue\s+date\b/i,
+    /\bdatum\s+vystaven[íi]\b/i,
+    /\bdue\s+date\b/i,
+    /\bdatum\s+splatnosti\b/i,
+    /\bservice\b/i,
+    /\bpředmět\s+plněn[íi]\b/i
+  ]) >= 3
+}
+
+function looksLikeReceiptDocumentText(content: string): boolean {
+  return countMatchingPatterns(content, [
+    /\breceipt\s*(?:no|number)\b/i,
+    /\bčíslo\s+účtenky\b/i,
+    /\bmerchant\b/i,
+    /\bstore\b/i,
+    /\bobchod\b/i,
+    /\bpurchase\s+date\b/i,
+    /\bdatum\s+n[aá]kupu\b/i,
+    /\bcategory\b/i,
+    /\bkategorie\b/i,
+    /\bnote\b/i,
+    /\bpozn[aá]mka\b/i
+  ]) >= 3
+}
+
+function countMatchingPatterns(content: string, patterns: RegExp[]): number {
+  return patterns.filter((pattern) => pattern.test(content)).length
 }
 
 function looksLikePdf(input: UploadedMonthlyFileCapabilityInput): boolean {

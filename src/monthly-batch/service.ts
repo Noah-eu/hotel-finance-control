@@ -1,7 +1,10 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
   detectBookingPayoutStatementSignals,
+  inspectBookingPayoutStatementExtractionSummary,
   inspectBookingPayoutStatementFieldCheck,
+  inspectInvoiceDocumentExtractionSummary,
+  inspectReceiptDocumentExtractionSummary,
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
@@ -179,37 +182,50 @@ export function prepareUploadedMonthlyBatchFiles(
 function inspectUploadedFileParseDiagnostics(
   file: ImportedMonthlySourceFile
 ): PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['parseDiagnostics'] | undefined {
-  if (!(file.sourceDocument.sourceSystem === 'booking' && file.sourceDocument.documentType === 'payout_statement')) {
-    return undefined
+  if (file.sourceDocument.sourceSystem === 'booking' && file.sourceDocument.documentType === 'payout_statement') {
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(file.content)
+
+    return {
+      documentExtractionSummary: inspectBookingPayoutStatementExtractionSummary(file.content),
+      parserExtractedPaymentId: fieldCheck.parserExtracted.paymentId,
+      parserExtractedPayoutDate: fieldCheck.parserExtracted.payoutDate,
+      parserExtractedPayoutTotal: fieldCheck.parserExtracted.payoutTotal,
+      parserExtractedLocalTotal: fieldCheck.parserExtracted.localTotal,
+      parserExtractedIbanHint: fieldCheck.parserExtracted.ibanHint,
+      parserExtractedExchangeRate: fieldCheck.parserExtracted.exchangeRate,
+      validatorInputPaymentId: fieldCheck.validatorInput.paymentId,
+      validatorInputPayoutDate: fieldCheck.validatorInput.payoutDate,
+      validatorInputPayoutTotal: fieldCheck.validatorInput.payoutTotal,
+      parsedPaymentId: fieldCheck.fields.paymentId,
+      parsedPayoutDate: fieldCheck.fields.payoutDate,
+      parsedPayoutTotal: buildParseDiagnosticMoneyLabel(
+        fieldCheck.fields.payoutTotalAmountMinor,
+        fieldCheck.fields.payoutTotalCurrency
+      ),
+      parsedLocalTotal: buildParseDiagnosticMoneyLabel(
+        fieldCheck.fields.localAmountMinor,
+        fieldCheck.fields.localCurrency
+      ),
+      parsedIbanHint: fieldCheck.fields.ibanSuffix,
+      parsedExchangeRate: fieldCheck.fields.exchangeRate,
+      requiredFieldsCheck: fieldCheck.requiredFieldsCheck,
+      missingFields: fieldCheck.missingFields
+    }
   }
 
-  const fieldCheck = inspectBookingPayoutStatementFieldCheck(file.content)
-
-  return {
-    parserExtractedPaymentId: fieldCheck.parserExtracted.paymentId,
-    parserExtractedPayoutDate: fieldCheck.parserExtracted.payoutDate,
-    parserExtractedPayoutTotal: fieldCheck.parserExtracted.payoutTotal,
-    parserExtractedLocalTotal: fieldCheck.parserExtracted.localTotal,
-    parserExtractedIbanHint: fieldCheck.parserExtracted.ibanHint,
-    parserExtractedExchangeRate: fieldCheck.parserExtracted.exchangeRate,
-    validatorInputPaymentId: fieldCheck.validatorInput.paymentId,
-    validatorInputPayoutDate: fieldCheck.validatorInput.payoutDate,
-    validatorInputPayoutTotal: fieldCheck.validatorInput.payoutTotal,
-    parsedPaymentId: fieldCheck.fields.paymentId,
-    parsedPayoutDate: fieldCheck.fields.payoutDate,
-    parsedPayoutTotal: buildParseDiagnosticMoneyLabel(
-      fieldCheck.fields.payoutTotalAmountMinor,
-      fieldCheck.fields.payoutTotalCurrency
-    ),
-    parsedLocalTotal: buildParseDiagnosticMoneyLabel(
-      fieldCheck.fields.localAmountMinor,
-      fieldCheck.fields.localCurrency
-    ),
-    parsedIbanHint: fieldCheck.fields.ibanSuffix,
-    parsedExchangeRate: fieldCheck.fields.exchangeRate,
-    requiredFieldsCheck: fieldCheck.requiredFieldsCheck,
-    missingFields: fieldCheck.missingFields
+  if (file.sourceDocument.sourceSystem === 'invoice') {
+    return {
+      documentExtractionSummary: inspectInvoiceDocumentExtractionSummary(file.content)
+    }
   }
+
+  if (file.sourceDocument.sourceSystem === 'receipt') {
+    return {
+      documentExtractionSummary: inspectReceiptDocumentExtractionSummary(file.content)
+    }
+  }
+
+  return undefined
 }
 
 function parseImportedMonthlySourceFile(
@@ -579,7 +595,11 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
-  if (ingestionBranch === 'structured-parser' || ingestionBranch === 'text-document-parser') {
+  if (
+    ingestionBranch === 'structured-parser'
+    || ingestionBranch === 'text-document-parser'
+    || ingestionBranch === 'text-pdf-parser'
+  ) {
     const byContent = inferSourceSystemFromContent(input.content)
 
     if (byContent !== 'unknown') {
@@ -743,6 +763,16 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   const normalizedContent = content.trim().toLowerCase()
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
   const headerFields = getNormalizedHeaderFields(content)
+  const invoiceSummary = inspectInvoiceDocumentExtractionSummary(content)
+  const receiptSummary = inspectReceiptDocumentExtractionSummary(content)
+
+  if (invoiceSummary.confidence === 'strong' || looksLikeInvoiceDocumentText(content)) {
+    return 'invoice'
+  }
+
+  if (receiptSummary.confidence === 'strong' || looksLikeReceiptDocumentText(content)) {
+    return 'receipt'
+  }
 
   if (!normalizedHeaderSample) {
     return 'unknown'
@@ -1075,14 +1105,24 @@ function buildOcrRequiredReason(
   sourceSystem: SourceDocument['sourceSystem'],
   documentType: SourceDocument['documentType']
 ): string {
-  if (capability.profile === 'pdf_image_only') {
+  if (capability.transportProfile === 'image_pdf') {
     return sourceSystem === 'booking' && documentType === 'payout_statement'
       ? 'Booking payout statement vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.'
-      : 'PDF vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.'
+      : capability.documentHints.includes('invoice_like')
+        ? 'Doklad vypadá jako scan faktury bez čitelné textové vrstvy. V browser režimu zatím vyžaduje OCR.'
+        : capability.documentHints.includes('receipt_like')
+          ? 'Doklad vypadá jako scan účtenky bez čitelné textové vrstvy. V browser režimu zatím vyžaduje OCR.'
+          : capability.documentHints.includes('payout_statement_like')
+            ? 'Rozpoznaný payout statement je dostupný jen jako scan bez čitelné textové vrstvy. V browser režimu zatím vyžaduje OCR.'
+            : 'PDF vypadá jako scan bez čitelné textové vrstvy. Pro ingest je potřeba OCR.'
   }
 
-  if (capability.profile === 'image_receipt_like') {
-    return 'Soubor vypadá jako obrázkový doklad nebo scan. Pro ingest je potřeba OCR.'
+  if (capability.transportProfile === 'image_document') {
+    return capability.documentHints.includes('invoice_like')
+      ? 'Soubor vypadá jako obrázková faktura nebo scan. V browser režimu zatím vyžaduje OCR.'
+      : capability.documentHints.includes('receipt_like')
+        ? 'Soubor vypadá jako obrázkový výdajový doklad nebo scan. V browser režimu zatím vyžaduje OCR.'
+        : 'Soubor vypadá jako obrázkový doklad nebo scan. Pro ingest je potřeba OCR.'
   }
 
   return 'Soubor vyžaduje OCR větev, která zatím není zapojená do deterministického ingestu.'
@@ -1193,6 +1233,41 @@ function inferSupplementRole(
   contentFormat?: UploadedMonthlyFile['contentFormat']
 ): 'primary' | 'supplemental' {
   return looksLikeBookingPayoutStatementPdf(fileName, contentFormat) ? 'supplemental' : 'primary'
+}
+
+function looksLikeInvoiceDocumentText(content: string): boolean {
+  return countMatchingPatterns(content, [
+    /\binvoice\s*(?:no|number)\b/i,
+    /\bčíslo\s+faktury\b/i,
+    /\bsupplier\b/i,
+    /\bdodavatel\b/i,
+    /\bissue\s+date\b/i,
+    /\bdatum\s+vystaven[íi]\b/i,
+    /\bdue\s+date\b/i,
+    /\bdatum\s+splatnosti\b/i,
+    /\bservice\b/i,
+    /\bpředmět\s+plněn[íi]\b/i
+  ]) >= 3
+}
+
+function looksLikeReceiptDocumentText(content: string): boolean {
+  return countMatchingPatterns(content, [
+    /\breceipt\s*(?:no|number)\b/i,
+    /\bčíslo\s+účtenky\b/i,
+    /\bmerchant\b/i,
+    /\bstore\b/i,
+    /\bobchod\b/i,
+    /\bpurchase\s+date\b/i,
+    /\bdatum\s+n[aá]kupu\b/i,
+    /\bcategory\b/i,
+    /\bkategorie\b/i,
+    /\bnote\b/i,
+    /\bpozn[aá]mka\b/i
+  ]) >= 3
+}
+
+function countMatchingPatterns(content: string, patterns: RegExp[]): number {
+  return patterns.filter((pattern) => pattern.test(content)).length
 }
 
 function collectDuplicateWarnings(

@@ -1,4 +1,5 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
+import type { DeterministicDocumentExtractionSummary } from '../extraction'
 import type { ReconciliationContext, ReconciliationResult } from '../reconciliation'
 import type { ReconciliationReport } from '../reporting'
 
@@ -22,6 +23,21 @@ export type UploadedMonthlyFileCapabilityProfile =
   | 'unsupported_binary'
   | 'unknown'
 
+export type UploadedMonthlyFileCapabilityTransportProfile =
+  | 'structured_csv'
+  | 'structured_workbook'
+  | 'text_pdf'
+  | 'image_pdf'
+  | 'text_document'
+  | 'image_document'
+  | 'unsupported_binary'
+  | 'unknown_document'
+
+export type UploadedMonthlyFileCapabilityDocumentHint =
+  | 'invoice_like'
+  | 'receipt_like'
+  | 'payout_statement_like'
+
 export type UploadedMonthlyFileIngestionBranch =
   | 'structured-parser'
   | 'text-document-parser'
@@ -31,6 +47,8 @@ export type UploadedMonthlyFileIngestionBranch =
 
 export interface UploadedMonthlyFileCapabilityAssessment {
   profile: UploadedMonthlyFileCapabilityProfile
+  transportProfile: UploadedMonthlyFileCapabilityTransportProfile
+  documentHints: UploadedMonthlyFileCapabilityDocumentHint[]
   confidence: UploadedMonthlyFileDecisionConfidence
   evidence: string[]
 }
@@ -107,6 +125,7 @@ export interface UploadedMonthlyFileRoute {
   reason?: string
   errorMessage?: string
   parseDiagnostics?: {
+    documentExtractionSummary?: DeterministicDocumentExtractionSummary
     parserExtractedPaymentId?: string
     parserExtractedPayoutDate?: string
     parserExtractedPayoutTotal?: string

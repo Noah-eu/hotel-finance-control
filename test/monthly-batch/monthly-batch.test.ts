@@ -1019,7 +1019,7 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
 
     expect(prepared.importedFiles.map((file) => file.sourceDocument.sourceSystem)).toEqual(['booking', 'invoice'])
-    expect(prepared.importedFiles.map((file) => file.routing?.classificationBasis)).toEqual(['content', 'file-name'])
+    expect(prepared.importedFiles.map((file) => file.routing?.classificationBasis)).toEqual(['content', 'content'])
     expect(prepared.importedFiles.map((file) => file.routing?.parserId)).toEqual(['booking', 'invoice'])
     expect(prepared.fileRoutes).toEqual([
       expect.objectContaining({
@@ -1035,7 +1035,7 @@ describe('runMonthlyReconciliationBatch', () => {
         status: 'supported',
         sourceSystem: 'invoice',
         documentType: 'invoice',
-        classificationBasis: 'file-name',
+        classificationBasis: 'content',
         parserId: 'invoice'
       }),
       expect.objectContaining({
@@ -1100,6 +1100,8 @@ describe('runMonthlyReconciliationBatch', () => {
       contentFormat: 'text'
     })).toEqual({
       profile: 'structured_tabular',
+      transportProfile: 'structured_csv',
+      documentHints: [],
       confidence: 'strong',
       evidence: expect.arrayContaining(['delimited-header', 'header-fields-present'])
     })
@@ -1133,8 +1135,10 @@ describe('runMonthlyReconciliationBatch', () => {
       }
     })).toEqual({
       profile: 'image_receipt_like',
+      transportProfile: 'image_document',
+      documentHints: ['receipt_like'],
       confidence: 'hint',
-      evidence: ['image-upload', 'expense-document-name']
+      evidence: ['image-upload', 'expense-document-name', 'document-hint:receipt_like']
     })
 
     expect(detectUploadedMonthlyFileCapability({
@@ -1151,9 +1155,104 @@ describe('runMonthlyReconciliationBatch', () => {
       }
     })).toEqual({
       profile: 'unsupported_binary',
+      transportProfile: 'unsupported_binary',
+      documentHints: [],
       confidence: 'strong',
       evidence: ['binary-upload']
     })
+  })
+
+  it('recognizes generic text-layer invoice PDFs by content and routes them through the shared text-pdf capability path', () => {
+    const invoice = getRealInputFixture('invoice-document')
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'laundry-march-2026.pdf',
+        content: invoice.rawInput.content,
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-26T09:30:00.000Z',
+        sourceDescriptor: {
+          mimeType: 'application/pdf',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Invoice No: INV-2026-332',
+            detectedSignatures: []
+          }
+        }
+      }
+    ])
+
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'laundry-march-2026.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        parserId: 'invoice',
+        role: 'primary',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_text_layer',
+            transportProfile: 'text_pdf',
+            documentHints: ['invoice_like']
+          }),
+          ingestionBranch: 'text-pdf-parser',
+          resolvedBucket: 'recognized-supported'
+        })
+      })
+    ])
+  })
+
+  it('routes scan-like invoice PDFs to the explicit OCR-required branch without contaminating deterministic browser ingest', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'faktura-laundry-2026-03.pdf',
+          content: '',
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-26T09:35:00.000Z',
+          sourceDescriptor: {
+            mimeType: 'application/pdf',
+            browserTextExtraction: {
+              mode: 'pdf-text',
+              status: 'failed',
+              detectedSignatures: []
+            }
+          },
+          ingestError: 'PDF soubor faktura-laundry-2026-03.pdf neobsahuje deterministicky čitelnou textovou vrstvu.'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-invoice-ocr-branch',
+        requestedAt: '2026-03-26T09:35:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-26T09:36:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'faktura-laundry-2026-03.pdf',
+        status: 'unsupported',
+        intakeStatus: 'unsupported',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        reason: 'Doklad vypadá jako scan faktury bez čitelné textové vrstvy. V browser režimu zatím vyžaduje OCR.',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_image_only',
+            transportProfile: 'image_pdf',
+            documentHints: ['invoice_like']
+          }),
+          ingestionBranch: 'ocr-required',
+          resolvedBucket: 'unsupported'
+        })
+      })
+    ])
+    expect(result.importedFiles).toEqual([])
+    expect(result.batch.report.summary.payoutBatchMatchCount).toBe(0)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(0)
   })
 
   it('recognizes Booking payout statement PDFs from glyph-separated browser text content', () => {

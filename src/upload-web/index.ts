@@ -13,6 +13,7 @@ import type { ReconciliationReport } from '../reporting'
 import { formatAmountMinorCs } from '../shared/money'
 import { emitBrowserRuntimeBundle } from './browser-bundle'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state'
+import type { DeterministicDocumentExtractionSummary } from '../extraction'
 export {
   buildBrowserRuntimeStateFromSelectedFiles,
   createBrowserRuntime,
@@ -136,6 +137,8 @@ export interface BrowserRuntimeUploadState {
       textTailPreview?: string
       keywordHits: string[]
       capabilityProfile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
+      capabilityTransportProfile: 'structured_csv' | 'structured_workbook' | 'text_pdf' | 'image_pdf' | 'text_document' | 'image_document' | 'unsupported_binary' | 'unknown_document'
+      capabilityDocumentHints: Array<'invoice_like' | 'receipt_like' | 'payout_statement_like'>
       capabilityConfidence: 'none' | 'hint' | 'strong'
       capabilityEvidence: string[]
       ingestionBranch: 'structured-parser' | 'text-document-parser' | 'text-pdf-parser' | 'ocr-required' | 'unsupported'
@@ -146,6 +149,7 @@ export interface BrowserRuntimeUploadState {
       missingSignals: string[]
       parserSupported: boolean
       decisionConfidence: 'none' | 'hint' | 'strong'
+      documentExtractionSummary?: DeterministicDocumentExtractionSummary
       parserExtractedPaymentId?: string
       parserExtractedPayoutDate?: string
       parserExtractedPayoutTotal?: string
@@ -196,12 +200,14 @@ export interface BrowserRuntimeUploadState {
     warnings: string[]
     reason?: string
     errorMessage?: string
-    decision: {
-      capability: {
-        profile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
-        confidence: 'none' | 'hint' | 'strong'
-        evidence: string[]
-      }
+      decision: {
+        capability: {
+          profile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
+          transportProfile: 'structured_csv' | 'structured_workbook' | 'text_pdf' | 'image_pdf' | 'text_document' | 'image_document' | 'unsupported_binary' | 'unknown_document'
+          documentHints: Array<'invoice_like' | 'receipt_like' | 'payout_statement_like'>
+          confidence: 'none' | 'hint' | 'strong'
+          evidence: string[]
+        }
       ingestionBranch: 'structured-parser' | 'text-document-parser' | 'text-pdf-parser' | 'ocr-required' | 'unsupported'
       ingestionReason: string
       detectedSignals: string[]
