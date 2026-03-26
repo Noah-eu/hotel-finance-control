@@ -43,6 +43,7 @@ export type { ParseComgateExportInput } from './parsers/comgate.parser'
 export { ComgateParser, parseComgateExport } from './parsers/comgate.parser'
 export type { ParseInvoiceDocumentInput } from './parsers/invoice-document.parser'
 export {
+  detectInvoiceDocumentKeywordHits,
   InvoiceDocumentParser,
   inspectInvoiceDocumentExtractionSummary,
   parseInvoiceDocument

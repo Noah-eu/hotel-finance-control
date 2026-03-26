@@ -1162,11 +1162,11 @@ describe('runMonthlyReconciliationBatch', () => {
     })
   })
 
-  it('recognizes generic text-layer invoice PDFs by content and routes them through the shared text-pdf capability path', () => {
-    const invoice = getRealInputFixture('invoice-document')
+  it('recognizes Czech text-layer invoice PDFs by content and routes them through the shared text-pdf capability path', () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const prepared = prepareUploadedMonthlyBatchFiles([
       {
-        name: 'laundry-march-2026.pdf',
+        name: 'Lenner.pdf',
         content: invoice.rawInput.content,
         contentFormat: 'pdf-text',
         uploadedAt: '2026-03-26T09:30:00.000Z',
@@ -1175,7 +1175,7 @@ describe('runMonthlyReconciliationBatch', () => {
           browserTextExtraction: {
             mode: 'pdf-text',
             status: 'extracted',
-            textPreview: 'Invoice No: INV-2026-332',
+            textPreview: 'Faktura - daňový doklad Dodavatel: Lenner Motors s.r.o.',
             detectedSignatures: []
           }
         }
@@ -1184,7 +1184,7 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(prepared.fileRoutes).toEqual([
       expect.objectContaining({
-        fileName: 'laundry-march-2026.pdf',
+        fileName: 'Lenner.pdf',
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'invoice',

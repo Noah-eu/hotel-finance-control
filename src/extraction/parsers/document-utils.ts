@@ -1,12 +1,12 @@
 import type { CurrencyCode } from '../../domain'
 
-const MONEY_WITH_SPACE_CURRENCY = /^(?<amount>[\d\s.,-]+)\s+(?<currency>[A-Z]{3})$/i
-const MONEY_WITH_SYMBOL_PREFIX = /^(?<currency>CZK|EUR|USD)\s+(?<amount>[\d\s.,-]+)$/i
+const MONEY_WITH_SPACE_CURRENCY = /^(?<amount>[\d\s.,-]+)\s+(?<currency>[A-Z]{3}|KČ|Kc|€|\$)$/i
+const MONEY_WITH_SYMBOL_PREFIX = /^(?<currency>CZK|EUR|USD|KČ|Kc|€|\$)\s*(?<amount>[\d\s.,-]+)$/i
 
 export function parseLabeledDocumentText(content: string): Record<string, string> {
   return content
     .replace(/^\uFEFF/, '')
-    .split(/\r?\n/)
+    .split(/\r\n?|\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
     .reduce<Record<string, string>>((accumulator, line) => {
@@ -70,7 +70,7 @@ export function parseDocumentMoney(value: string, fieldName: string): {
     throw new Error(`${fieldName} has unsupported money format: ${value}`)
   }
 
-  const currency = match.groups.currency.toUpperCase()
+  const currency = normalizeDocumentCurrency(match.groups.currency)
   const amountMinor = parseDocumentAmountMinor(match.groups.amount, fieldName)
 
   return {
@@ -109,4 +109,22 @@ function findSeparatorIndex(line: string): number {
   }
 
   return line.indexOf('-')
+}
+
+function normalizeDocumentCurrency(value: string): CurrencyCode {
+  const normalized = value.trim().toUpperCase()
+
+  if (normalized === 'KČ' || normalized === 'KC') {
+    return 'CZK'
+  }
+
+  if (normalized === '€') {
+    return 'EUR'
+  }
+
+  if (normalized === '$') {
+    return 'USD'
+  }
+
+  return normalized as CurrencyCode
 }

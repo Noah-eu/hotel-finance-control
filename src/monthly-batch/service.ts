@@ -1,5 +1,6 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
+  detectInvoiceDocumentKeywordHits,
   detectBookingPayoutStatementSignals,
   inspectBookingPayoutStatementExtractionSummary,
   inspectBookingPayoutStatementFieldCheck,
@@ -1236,18 +1237,7 @@ function inferSupplementRole(
 }
 
 function looksLikeInvoiceDocumentText(content: string): boolean {
-  return countMatchingPatterns(content, [
-    /\binvoice\s*(?:no|number)\b/i,
-    /\bčíslo\s+faktury\b/i,
-    /\bsupplier\b/i,
-    /\bdodavatel\b/i,
-    /\bissue\s+date\b/i,
-    /\bdatum\s+vystaven[íi]\b/i,
-    /\bdue\s+date\b/i,
-    /\bdatum\s+splatnosti\b/i,
-    /\bservice\b/i,
-    /\bpředmět\s+plněn[íi]\b/i
-  ]) >= 3
+  return detectInvoiceDocumentKeywordHits(content).length >= 3
 }
 
 function looksLikeReceiptDocumentText(content: string): boolean {

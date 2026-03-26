@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  detectInvoiceDocumentKeywordHits,
   documentIngestionCapabilities,
   inspectInvoiceDocumentExtractionSummary,
   inspectReceiptDocumentExtractionSummary,
@@ -208,6 +209,58 @@ describe('parseInvoiceDocument', () => {
       totalAmountMinor: 249000,
       totalCurrency: 'CZK',
       referenceNumber: 'RCPT-2026-03-55',
+      confidence: 'strong',
+      missingRequiredFields: []
+    })
+  })
+
+  it('recognizes Czech text-layer invoice PDFs with structured accounting fields', () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    expect(detectInvoiceDocumentKeywordHits(invoice.rawInput.content)).toEqual(expect.arrayContaining([
+      'Faktura',
+      'Faktura - daňový doklad',
+      'daňový doklad',
+      'Dodavatel',
+      'Odběratel',
+      'Datum vystavení',
+      'Datum splatnosti',
+      'Datum zdanitelného plnění',
+      'Forma úhrady',
+      'Rozpis DPH',
+      'K úhradě',
+      'IBAN'
+    ]))
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-26T12:10:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-26T12:10:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toEqual({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      issuerOrCounterparty: 'Lenner Motors s.r.o.',
+      customer: 'JOKELAND s.r.o.',
+      issueDate: '2026-03-11',
+      taxableDate: '2026-03-11',
+      dueDate: '2026-03-25',
+      paymentMethod: 'Přev.příkaz',
+      totalAmountMinor: 1262952,
+      totalCurrency: 'CZK',
+      vatBaseAmountMinor: 1043762,
+      vatBaseCurrency: 'CZK',
+      vatAmountMinor: 219190,
+      vatCurrency: 'CZK',
+      referenceNumber: '141260183',
+      ibanHint: '1920',
       confidence: 'strong',
       missingRequiredFields: []
     })

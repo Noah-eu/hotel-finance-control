@@ -15,6 +15,7 @@ describe('realInputFixtures', () => {
       'previo-reservation-export',
       'comgate-export',
       'invoice-document',
+      'invoice-document-czech-pdf',
       'receipt-document'
     ])
 
@@ -34,6 +35,7 @@ describe('realInputFixtures', () => {
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
     const invoice = getRealInputFixture('invoice-document')
+    const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const receipt = getRealInputFixture('receipt-document')
 
     expect(raiffeisen.expectedExtractedRecords[0]).toMatchObject({
@@ -105,6 +107,16 @@ describe('realInputFixtures', () => {
         amountMinor: 1850000
       }
     })
+    expect(czechInvoicePdf.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'invoice-document',
+      amountMinor: 1262952,
+      data: {
+        invoiceNumber: '141260183',
+        supplier: 'Lenner Motors s.r.o.',
+        customer: 'JOKELAND s.r.o.',
+        paymentMethod: 'Přev.příkaz'
+      }
+    })
     expect(receipt.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'receipt-document',
       amountMinor: 249000,
@@ -156,11 +168,19 @@ describe('realInputFixtures', () => {
     })
 
     const invoice = getRealInputFixture('invoice-document')
+    const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const receipt = getRealInputFixture('receipt-document')
     expect(invoice.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'invoice',
       amountMinor: 1850000,
       accountId: 'document-expenses'
+    })
+    expect(czechInvoicePdf.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'invoice',
+      amountMinor: 1262952,
+      accountId: 'document-expenses',
+      counterparty: 'Lenner Motors s.r.o.',
+      reference: '141260183'
     })
     expect(receipt.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'receipt',

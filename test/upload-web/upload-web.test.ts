@@ -356,8 +356,8 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
   })
 
-  it('routes a generic text-layer invoice PDF by content without contaminating the known 4-file payout result', async () => {
-    const invoice = getRealInputFixture('invoice-document')
+  it('routes a Czech text-layer invoice PDF by content without contaminating the known 4-file payout result', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
 
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -369,7 +369,7 @@ describe('buildUploadWebFlow', () => {
           'text/csv'
         ),
         createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
-        createRuntimePdfFileFromToUnicodeTextLines('laundry-march-2026.pdf', invoice.rawInput.content.split('\n'))
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
       ],
       month: '2026-03',
       generatedAt: '2026-03-26T10:55:00.000Z'
@@ -383,7 +383,7 @@ describe('buildUploadWebFlow', () => {
     })
     expect(result.fileRoutes).toContainEqual(
       expect.objectContaining({
-        fileName: 'laundry-march-2026.pdf',
+        fileName: 'Lenner.pdf',
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'invoice',
@@ -403,7 +403,7 @@ describe('buildUploadWebFlow', () => {
     )
     expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
       expect.objectContaining({
-        fileName: 'laundry-march-2026.pdf',
+        fileName: 'Lenner.pdf',
         capabilityProfile: 'pdf_text_layer',
         capabilityTransportProfile: 'text_pdf',
         capabilityDocumentHints: ['invoice_like'],
@@ -411,10 +411,18 @@ describe('buildUploadWebFlow', () => {
         documentType: 'invoice',
         documentExtractionSummary: expect.objectContaining({
           documentKind: 'invoice',
-          issuerOrCounterparty: 'Laundry Supply s.r.o.',
-          referenceNumber: 'INV-2026-332',
-          totalAmountMinor: 1850000,
+          issuerOrCounterparty: 'Lenner Motors s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          referenceNumber: '141260183',
+          issueDate: '2026-03-11',
+          dueDate: '2026-03-25',
+          taxableDate: '2026-03-11',
+          paymentMethod: 'Přev.příkaz',
+          totalAmountMinor: 1262952,
           totalCurrency: 'CZK',
+          vatBaseAmountMinor: 1043762,
+          vatAmountMinor: 219190,
+          ibanHint: '1920',
           confidence: 'strong',
           missingRequiredFields: []
         })

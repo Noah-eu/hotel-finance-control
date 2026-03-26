@@ -1,5 +1,8 @@
 import { buildExportArtifactsFiles } from '../export/shared'
-import { detectBookingPayoutStatementKeywordHits } from '../extraction'
+import {
+  detectBookingPayoutStatementKeywordHits,
+  detectInvoiceDocumentKeywordHits
+} from '../extraction'
 import {
   ingestUploadedMonthlyFiles,
   type UploadedMonthlyFile
@@ -419,10 +422,13 @@ function buildFileIntakeKeywordHits(
     return []
   }
 
-  const hits = detectBookingPayoutStatementKeywordHits(file.content)
+  const hits = [
+    ...detectInvoiceDocumentKeywordHits(file.content),
+    ...detectBookingPayoutStatementKeywordHits(file.content)
+  ]
 
   if (hits.length > 0) {
-    return hits
+    return Array.from(new Set(hits))
   }
 
   if (detectedSignatures.length > 0) {

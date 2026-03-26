@@ -6,6 +6,7 @@ import type {
   UploadedMonthlyFileIngestionBranch
 } from './contracts'
 import {
+  detectInvoiceDocumentKeywordHits,
   detectBookingPayoutStatementSignals,
   inspectInvoiceDocumentExtractionSummary,
   inspectReceiptDocumentExtractionSummary
@@ -201,6 +202,7 @@ function detectUploadedMonthlyFileDocumentHints(input: {
   const hints = new Set<UploadedMonthlyFileCapabilityDocumentHint>()
   const normalizedFileName = input.fileName.toLowerCase()
   const invoiceSummary = input.content.length > 0 ? inspectInvoiceDocumentExtractionSummary(input.content) : undefined
+  const invoiceKeywordHits = input.content.length > 0 ? detectInvoiceDocumentKeywordHits(input.content) : []
   const receiptSummary = input.content.length > 0 ? inspectReceiptDocumentExtractionSummary(input.content) : undefined
   const bookingSignals = input.content.length > 0 ? detectBookingPayoutStatementSignals(input.content) : undefined
 
@@ -208,7 +210,7 @@ function detectUploadedMonthlyFileDocumentHints(input: {
     normalizedFileName.includes('invoice')
     || normalizedFileName.includes('faktura')
     || invoiceSummary?.confidence === 'strong'
-    || looksLikeInvoiceDocumentText(input.content)
+    || invoiceKeywordHits.length >= 3
   ) {
     hints.add('invoice_like')
   }
@@ -242,18 +244,7 @@ function buildDocumentHintEvidence(
 }
 
 function looksLikeInvoiceDocumentText(content: string): boolean {
-  return countMatchingPatterns(content, [
-    /\binvoice\s*(?:no|number)\b/i,
-    /\bčíslo\s+faktury\b/i,
-    /\bsupplier\b/i,
-    /\bdodavatel\b/i,
-    /\bissue\s+date\b/i,
-    /\bdatum\s+vystaven[íi]\b/i,
-    /\bdue\s+date\b/i,
-    /\bdatum\s+splatnosti\b/i,
-    /\bservice\b/i,
-    /\bpředmět\s+plněn[íi]\b/i
-  ]) >= 3
+  return detectInvoiceDocumentKeywordHits(content).length >= 3
 }
 
 function looksLikeReceiptDocumentText(content: string): boolean {

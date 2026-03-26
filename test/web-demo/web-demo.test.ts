@@ -1111,7 +1111,15 @@ describe('buildWebDemo', () => {
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Délka textu:')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text preview: Chill apartment with city view and balcony')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text tail: března 2026 ID platby 010638445054 Celková čá')
-    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Keyword hits: Booking.com B.V., Výkaz plateb, ID platby, Datum vyplacení částky, Celkem (CZK), Celková částka k vyplacení, IBAN, Reservation reference')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Keyword hits:')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Booking.com B.V.')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Výkaz plateb')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('ID platby')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Datum vyplacení částky')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Celkem (CZK)')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Celková částka k vyplacení')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('IBAN')
+    expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Reservation reference')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('booking-payout-total')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: booking / payout_statement / content')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Decision reason: confidence=strong · parser=ano · matched=pdf-like-upload, booking-payout-core-fields')
@@ -1605,8 +1613,8 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Ingestion branch: OCR potřeba / ocr-required')
   })
 
-  it('shows a generic text-layer invoice PDF as a recognized text PDF document without changing the known 16 / 2 payout result', async () => {
-    const invoice = getRealInputFixture('invoice-document')
+  it('shows a Czech text-layer invoice PDF as a recognized text PDF document without changing the known 16 / 2 payout result', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-26T11:05:00.000Z',
       month: '2026-03',
@@ -1621,19 +1629,27 @@ describe('buildWebDemo', () => {
           'text/csv'
         ),
         createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
-        createWebDemoRuntimePdfFileFromToUnicodeTextLines('laundry-march-2026.pdf', invoice.rawInput.content.split('\n'))
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
       ]
     })
 
     expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5 · Nepodporováno: 0 · Selhání ingestu: 0')
-    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>laundry-march-2026.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Lenner.pdf</strong>')
     expect(rendered.preparedFilesContent.innerHTML).toContain('Dodavatelská faktura')
     expect(rendered.preparedFilesContent.innerHTML).toContain('Textové PDF')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('laundry-march-2026.pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Lenner.pdf')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Transport profile: Textové PDF / text_pdf')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document hints: invoice_like')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document summary: invoice · ref INV-2026-332 · issuer Laundry Supply s.r.o.')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('total 18 500,00 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Keyword hits: Faktura, Faktura - daňový doklad')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document summary: invoice · ref 141260183 · issuer Lenner Motors s.r.o.')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('total 12 629,52 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document customer: JOKELAND s.r.o.')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document dueDate: 2026-03-25')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document taxableDate: 2026-03-11')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document paymentMethod: Přev.příkaz')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document ibanHint: 1920')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document VAT base: 10 437,62 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document VAT: 2 191,90 CZK')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)

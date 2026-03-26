@@ -1109,6 +1109,35 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 : 'žádné'
             )
             + '</span>' : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.customer
+            ? '<br /><span class="hint">Document customer: ' + escapeHtml(String(file.documentExtractionSummary.customer)) + '</span>'
+            : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.dueDate
+            ? '<br /><span class="hint">Document dueDate: ' + escapeHtml(String(file.documentExtractionSummary.dueDate)) + '</span>'
+            : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.taxableDate
+            ? '<br /><span class="hint">Document taxableDate: ' + escapeHtml(String(file.documentExtractionSummary.taxableDate)) + '</span>'
+            : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.paymentMethod
+            ? '<br /><span class="hint">Document paymentMethod: ' + escapeHtml(String(file.documentExtractionSummary.paymentMethod)) + '</span>'
+            : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.ibanHint
+            ? '<br /><span class="hint">Document ibanHint: ' + escapeHtml(String(file.documentExtractionSummary.ibanHint)) + '</span>'
+            : '',
+          file.documentExtractionSummary
+            && typeof file.documentExtractionSummary.vatBaseAmountMinor === 'number'
+            && file.documentExtractionSummary.vatBaseCurrency
+            ? '<br /><span class="hint">Document VAT base: '
+              + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.vatBaseAmountMinor, file.documentExtractionSummary.vatBaseCurrency))
+              + '</span>'
+            : '',
+          file.documentExtractionSummary
+            && typeof file.documentExtractionSummary.vatAmountMinor === 'number'
+            && file.documentExtractionSummary.vatCurrency
+            ? '<br /><span class="hint">Document VAT: '
+              + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.vatAmountMinor, file.documentExtractionSummary.vatCurrency))
+              + '</span>'
+            : '',
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',
           file.parserExtractedPayoutDate ? '<br /><span class="hint">parserExtracted.payoutDate: ' + escapeHtml(file.parserExtractedPayoutDate) + '</span>' : '',
           file.parserExtractedPayoutTotal ? '<br /><span class="hint">parserExtracted.payoutTotal: ' + escapeHtml(file.parserExtractedPayoutTotal) + '</span>' : '',

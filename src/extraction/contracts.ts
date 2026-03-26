@@ -21,17 +21,22 @@ export interface DeterministicDocumentExtractionSummary {
   sourceSystem: SourceDocument['sourceSystem']
   documentType: SourceDocument['documentType']
   issuerOrCounterparty?: string
+  customer?: string
   issueDate?: string
   taxableDate?: string
   paymentDate?: string
   dueDate?: string
+  paymentMethod?: string
   totalAmountMinor?: number
   totalCurrency?: string
   localAmountMinor?: number
   localCurrency?: string
+  vatBaseAmountMinor?: number
+  vatBaseCurrency?: string
   vatAmountMinor?: number
   vatCurrency?: string
   referenceNumber?: string
+  ibanHint?: string
   confidence: 'none' | 'hint' | 'strong'
   missingRequiredFields: string[]
 }

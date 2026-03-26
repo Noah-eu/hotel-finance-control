@@ -14,6 +14,7 @@ export interface RealInputFixture {
   | 'previo-reservation-export'
   | 'comgate-export'
   | 'invoice-document'
+  | 'invoice-document-czech-pdf'
   | 'receipt-document'
   description: string
   sourceDocument: SourceDocument
@@ -1042,6 +1043,80 @@ export const realInputFixtures: RealInputFixture[] = [
         invoiceNumber: 'INV-2026-332',
         extractedRecordIds: ['invoice-record-1'],
         sourceDocumentIds: ['doc-invoice-2026-332' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-czech-pdf',
+    description: 'Representative Czech text-layer invoice PDF fixture for browser document intake and invoice parsing.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-lenner-141260183' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'Lenner.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Faktura - daňový doklad',
+        'Dodavatel: Lenner Motors s.r.o.',
+        'Odběratel: JOKELAND s.r.o.',
+        'Číslo faktury: 141260183',
+        'Datum vystavení: 11.03.2026',
+        'Datum splatnosti: 25.03.2026',
+        'Datum zdanitelného plnění: 11.03.2026',
+        'Forma úhrady: Přev.příkaz',
+        'IBAN: CZ4903000000000274621920',
+        'Rozpis DPH',
+        'Základ DPH: 10 437,62 Kč',
+        'DPH: 2 191,90 Kč',
+        'K úhradě: 12 629,52 Kč',
+        'Předmět plnění: Servis vozidla'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record-1',
+        sourceDocumentId: 'doc-invoice-lenner-141260183' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: '141260183',
+        amountMinor: 1262952,
+        currency: 'CZK',
+        occurredAt: '2026-03-11',
+        data: {
+          sourceSystem: 'invoice',
+          invoiceNumber: '141260183',
+          supplier: 'Lenner Motors s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          issueDate: '2026-03-11',
+          dueDate: '2026-03-25',
+          taxableDate: '2026-03-11',
+          amountMinor: 1262952,
+          currency: 'CZK',
+          paymentMethod: 'Přev.příkaz',
+          description: 'Servis vozidla',
+          vatBaseAmountMinor: 1043762,
+          vatBaseCurrency: 'CZK',
+          vatAmountMinor: 219190,
+          vatCurrency: 'CZK',
+          ibanHint: '1920'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 1262952,
+        currency: 'CZK',
+        bookedAt: '2026-03-11',
+        accountId: 'document-expenses',
+        counterparty: 'Lenner Motors s.r.o.',
+        reference: '141260183',
+        invoiceNumber: '141260183',
+        extractedRecordIds: ['invoice-record-1'],
+        sourceDocumentIds: ['doc-invoice-lenner-141260183' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },
