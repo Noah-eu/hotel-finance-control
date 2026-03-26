@@ -185,10 +185,11 @@ function extractInvoiceDocumentFields(content: string): {
 } {
   const fields = parseLabeledDocumentText(content)
   const groupedHeaderFields = extractGroupedInvoiceHeaderFields(content)
+  const adjacentFields = extractAdjacentInvoiceFields(content)
   const groupedAmounts = extractGroupedInvoiceAmounts(content)
 
   return {
-    invoiceNumber: pickDocumentField(
+    invoiceNumber: adjacentFields.invoiceNumber ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.invoiceNumber,
@@ -214,7 +215,7 @@ function extractInvoiceDocumentFields(content: string): {
         /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*\n\s*([^\n]+)/iu
       ]
     ),
-    issueDateRaw: groupedHeaderFields.issueDateRaw ?? pickDocumentField(
+    issueDateRaw: groupedHeaderFields.issueDateRaw ?? adjacentFields.issueDateRaw ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.issueDate,
@@ -222,7 +223,7 @@ function extractInvoiceDocumentFields(content: string): {
         /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]\s*([0-9./-]+)/iu
       ]
     ),
-    dueDateRaw: groupedHeaderFields.dueDateRaw ?? pickDocumentField(
+    dueDateRaw: groupedHeaderFields.dueDateRaw ?? adjacentFields.dueDateRaw ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.dueDate,
@@ -230,7 +231,7 @@ function extractInvoiceDocumentFields(content: string): {
         /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]\s*([0-9./-]+)/iu
       ]
     ),
-    taxableDateRaw: groupedHeaderFields.taxableDateRaw ?? pickDocumentField(
+    taxableDateRaw: groupedHeaderFields.taxableDateRaw ?? adjacentFields.taxableDateRaw ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.taxableDate,
@@ -238,7 +239,7 @@ function extractInvoiceDocumentFields(content: string): {
         /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]\s*([0-9./-]+)/iu
       ]
     ),
-    totalRaw: pickMoneyDocumentField(
+    totalRaw: adjacentFields.totalRaw ?? pickMoneyDocumentField(
       fields,
       content,
       FIELD_ALIASES.total,
@@ -249,7 +250,7 @@ function extractInvoiceDocumentFields(content: string): {
       ],
       groupedAmounts.totalRaw
     ),
-    paymentMethod: normalizePaymentMethodValue(groupedHeaderFields.paymentMethod ?? pickDocumentField(
+    paymentMethod: normalizePaymentMethodValue(groupedHeaderFields.paymentMethod ?? adjacentFields.paymentMethod ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.paymentMethod,
@@ -283,7 +284,7 @@ function extractInvoiceDocumentFields(content: string): {
       ],
       groupedAmounts.vatRaw
     ),
-    ibanValue: pickDocumentField(
+    ibanValue: adjacentFields.ibanValue ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.iban,
@@ -451,7 +452,9 @@ function extractGroupedInvoiceHeaderFields(content: string): {
   for (let index = 0; index < lines.length - 1; index += 1) {
     const header = normalizeSearchText(lines[index]!)
     const values = lines[index + 1] ?? ''
+    const valuesAfter = lines[index + 2] ?? ''
     const dateTokens = values.match(DATE_TOKEN_PATTERN) ?? []
+    const dateTokensAfter = valuesAfter.match(DATE_TOKEN_PATTERN) ?? []
 
     const hasIssue = header.includes('datum vystaveni')
     const hasTaxable = header.includes('datum zdanitelneho plneni')
@@ -466,6 +469,15 @@ function extractGroupedInvoiceHeaderFields(content: string): {
         issueDateRaw: dateTokens[0],
         taxableDateRaw: dateTokens[1],
         dueDateRaw: dateTokens[2]
+      }
+    }
+
+    if (hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokensAfter.length >= 3) {
+      return {
+        paymentMethod: values.trim() || undefined,
+        issueDateRaw: dateTokensAfter[0],
+        taxableDateRaw: dateTokensAfter[1],
+        dueDateRaw: dateTokensAfter[2]
       }
     }
 
@@ -496,6 +508,56 @@ function extractGroupedInvoiceHeaderFields(content: string): {
   }
 
   return {}
+}
+
+function extractAdjacentInvoiceFields(content: string): {
+  invoiceNumber?: string
+  issueDateRaw?: string
+  dueDateRaw?: string
+  taxableDateRaw?: string
+  paymentMethod?: string
+  ibanValue?: string
+  totalRaw?: string
+} {
+  const lines = splitDocumentLines(content)
+
+  return {
+    invoiceNumber: findAdjacentInvoiceValue(lines, [
+      'faktura cislo',
+      'cislo faktury',
+      'doklad cislo',
+      'invoice no',
+      'invoice number'
+    ], (value) => /[A-Z0-9/-]{4,}/i.test(value)),
+    issueDateRaw: findAdjacentInvoiceValue(lines, ['datum vystaveni', 'issue date', 'issued on'], (value) => extractDateTokens(value).length > 0),
+    dueDateRaw: findAdjacentInvoiceValue(lines, ['datum splatnosti', 'due date', 'payment due'], (value) => extractDateTokens(value).length > 0),
+    taxableDateRaw: findAdjacentInvoiceValue(lines, ['datum zdanitelneho plneni', 'taxable date', 'tax point date'], (value) => extractDateTokens(value).length > 0),
+    paymentMethod: findAdjacentInvoiceValue(lines, ['forma uhrady', 'payment method'], (value) => extractDateTokens(value).length === 0),
+    ibanValue: findAdjacentInvoiceValue(lines, ['iban'], (value) => /[A-Z]{2}[0-9A-Z ]{10,}/i.test(value)),
+    totalRaw: findAdjacentInvoiceValue(lines, ['celkem kc k uhrade', 'k uhrade', 'celkem po zaokrouhleni', 'total due', 'amount due'], (value) => Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(value), 'Invoice adjacent total')))
+  }
+}
+
+function findAdjacentInvoiceValue(
+  lines: string[],
+  normalizedLabels: string[],
+  isValidValue: (value: string) => boolean
+): string | undefined {
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = normalizeSearchText(lines[index]!)
+
+    if (!normalizedLabels.some((label) => header === label || header.startsWith(`${label} `))) {
+      continue
+    }
+
+    const value = stripTrailingNoise(lines[index + 1] ?? '')
+
+    if (value && isValidValue(value)) {
+      return value
+    }
+  }
+
+  return undefined
 }
 
 function extractGroupedInvoiceAmounts(content: string): {
@@ -550,6 +612,10 @@ function extractMoneyTokens(value: string): string[] {
     .filter((token) => token.length > 0)
     .map((token) => normalizeDetectedMoneyValue(token))
     .filter((token): token is string => Boolean(token))
+}
+
+function extractDateTokens(value: string): string[] {
+  return value.match(DATE_TOKEN_PATTERN) ?? []
 }
 
 function safeNormalizeDocumentDate(value: string | undefined, fieldName: string): string | undefined {
