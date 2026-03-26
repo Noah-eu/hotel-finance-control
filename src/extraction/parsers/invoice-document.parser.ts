@@ -75,7 +75,7 @@ export class InvoiceDocumentParser {
     const total = parseDocumentMoney(extracted.totalRaw!, 'Invoice total')
     const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Invoice VAT base')
     const vat = safeParseDocumentMoney(extracted.vatRaw, 'Invoice VAT')
-    const ibanHint = extractIbanHint(extracted.ibanValue)
+    const ibanHint = normalizeIbanValue(extracted.ibanValue)
 
     const record: ExtractedRecord = {
       id: 'invoice-record-1',
@@ -123,7 +123,7 @@ export function inspectInvoiceDocumentExtractionSummary(content: string): Determ
   const total = safeParseDocumentMoney(extracted.totalRaw, 'Invoice total')
   const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Invoice VAT base')
   const vat = safeParseDocumentMoney(extracted.vatRaw, 'Invoice VAT')
-  const ibanHint = extractIbanHint(extracted.ibanValue)
+  const ibanHint = normalizeIbanValue(extracted.ibanValue)
   const hasMeaningfulFields = Boolean(
     extracted.invoiceNumber
     || extracted.supplier
@@ -184,7 +184,7 @@ function extractInvoiceDocumentFields(content: string): {
   ibanValue?: string
 } {
   const fields = parseLabeledDocumentText(content)
-  const groupedDates = extractGroupedInvoiceDates(content)
+  const groupedHeaderFields = extractGroupedInvoiceHeaderFields(content)
   const groupedAmounts = extractGroupedInvoiceAmounts(content)
 
   return {
@@ -214,32 +214,29 @@ function extractInvoiceDocumentFields(content: string): {
         /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*\n\s*([^\n]+)/iu
       ]
     ),
-    issueDateRaw: pickDocumentField(
+    issueDateRaw: groupedHeaderFields.issueDateRaw ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.issueDate,
       [
-        /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]?\s*([0-9./-]+)/iu
-      ],
-      groupedDates.issueDateRaw
+        /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]\s*([0-9./-]+)/iu
+      ]
     ),
-    dueDateRaw: pickDocumentField(
+    dueDateRaw: groupedHeaderFields.dueDateRaw ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.dueDate,
       [
-        /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*([0-9./-]+)/iu
-      ],
-      groupedDates.dueDateRaw
+        /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]\s*([0-9./-]+)/iu
+      ]
     ),
-    taxableDateRaw: pickDocumentField(
+    taxableDateRaw: groupedHeaderFields.taxableDateRaw ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.taxableDate,
       [
-        /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*([0-9./-]+)/iu
-      ],
-      groupedDates.taxableDateRaw
+        /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]\s*([0-9./-]+)/iu
+      ]
     ),
     totalRaw: pickMoneyDocumentField(
       fields,
@@ -252,14 +249,14 @@ function extractInvoiceDocumentFields(content: string): {
       ],
       groupedAmounts.totalRaw
     ),
-    paymentMethod: pickDocumentField(
+    paymentMethod: normalizePaymentMethodValue(groupedHeaderFields.paymentMethod ?? pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.paymentMethod,
       [
-        /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]?\s*([^\n]+)/iu
+        /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]\s*([^\n]+)/iu
       ]
-    ),
+    )),
     description: pickDocumentField(
       fields,
       content,
@@ -419,17 +416,32 @@ function normalizeDetectedMoneyValue(value: string | undefined): string | undefi
   return `${value} CZK`
 }
 
-function extractIbanHint(value: string | undefined): string | undefined {
+function normalizeIbanValue(value: string | undefined): string | undefined {
   if (!value) {
     return undefined
   }
 
-  const digits = value.replace(/\s+/g, '')
+  const normalized = value
+    .replace(/[^0-9A-Z]/gi, '')
+    .toUpperCase()
 
-  return digits.length >= 4 ? digits.slice(-4) : undefined
+  return normalized.length >= 10 ? normalized : undefined
 }
 
-function extractGroupedInvoiceDates(content: string): {
+function normalizePaymentMethodValue(value: string | undefined): string | undefined {
+  if (!value?.trim()) {
+    return undefined
+  }
+
+  const normalized = value.trim().replace(/\s+/g, ' ')
+
+  return normalized
+    .replace(/^Přev\.\s*příkaz$/iu, 'Přev. příkaz')
+    .replace(/^Prev\.\s*prikaz$/iu, 'Přev. příkaz')
+}
+
+function extractGroupedInvoiceHeaderFields(content: string): {
+  paymentMethod?: string
   issueDateRaw?: string
   taxableDateRaw?: string
   dueDateRaw?: string
@@ -441,12 +453,23 @@ function extractGroupedInvoiceDates(content: string): {
     const values = lines[index + 1] ?? ''
     const dateTokens = values.match(DATE_TOKEN_PATTERN) ?? []
 
-    if (
-      header.includes('datum vystaveni')
-      && header.includes('datum zdanitelneho plneni')
-      && header.includes('datum splatnosti')
-      && dateTokens.length >= 3
-    ) {
+    const hasIssue = header.includes('datum vystaveni')
+    const hasTaxable = header.includes('datum zdanitelneho plneni')
+    const hasDue = header.includes('datum splatnosti')
+    const hasPaymentMethod = header.includes('forma uhrady')
+
+    if (hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
+      const firstDateIndex = values.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
+
+      return {
+        paymentMethod: firstDateIndex > 0 ? values.slice(0, firstDateIndex).trim() : undefined,
+        issueDateRaw: dateTokens[0],
+        taxableDateRaw: dateTokens[1],
+        dueDateRaw: dateTokens[2]
+      }
+    }
+
+    if (hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
       return {
         issueDateRaw: dateTokens[0],
         taxableDateRaw: dateTokens[1],
@@ -454,7 +477,17 @@ function extractGroupedInvoiceDates(content: string): {
       }
     }
 
-    if (header.includes('datum vystaveni') && header.includes('datum splatnosti') && dateTokens.length >= 2) {
+    if (hasPaymentMethod && dateTokens.length >= 1) {
+      const firstDateIndex = values.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
+
+      if (firstDateIndex > 0) {
+        return {
+          paymentMethod: values.slice(0, firstDateIndex).trim()
+        }
+      }
+    }
+
+    if (hasIssue && hasDue && dateTokens.length >= 2) {
       return {
         issueDateRaw: dateTokens[0],
         dueDateRaw: dateTokens[dateTokens.length - 1]

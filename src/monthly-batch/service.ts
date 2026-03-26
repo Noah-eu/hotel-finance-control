@@ -215,8 +215,12 @@ function inspectUploadedFileParseDiagnostics(
   }
 
   if (file.sourceDocument.sourceSystem === 'invoice') {
+    const summary = inspectInvoiceDocumentExtractionSummary(file.content)
+
     return {
-      documentExtractionSummary: inspectInvoiceDocumentExtractionSummary(file.content)
+      documentExtractionSummary: summary,
+      requiredFieldsCheck: summary.missingRequiredFields.length === 0 ? 'passed' : 'failed',
+      missingFields: [...summary.missingRequiredFields]
     }
   }
 

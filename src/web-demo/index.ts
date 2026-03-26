@@ -1096,7 +1096,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
             + ' · ref ' + escapeHtml(String(file.documentExtractionSummary.referenceNumber || 'n/a'))
             + ' · issuer ' + escapeHtml(String(file.documentExtractionSummary.issuerOrCounterparty || 'n/a'))
             + ' · issue ' + escapeHtml(String(file.documentExtractionSummary.issueDate || 'n/a'))
-            + ' · payment ' + escapeHtml(String(file.documentExtractionSummary.paymentDate || 'n/a'))
+            + (
+              file.documentExtractionSummary.documentKind === 'invoice'
+                ? ' · due ' + escapeHtml(String(file.documentExtractionSummary.dueDate || 'n/a'))
+                : ' · payment ' + escapeHtml(String(file.documentExtractionSummary.paymentDate || 'n/a'))
+            )
             + ' · total ' + escapeHtml(
               (typeof file.documentExtractionSummary.totalAmountMinor === 'number' && file.documentExtractionSummary.totalCurrency)
                 ? buildAmountDisplay(file.documentExtractionSummary.totalAmountMinor, file.documentExtractionSummary.totalCurrency)

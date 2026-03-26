@@ -1065,10 +1065,8 @@ export const realInputFixtures: RealInputFixture[] = [
         'JOKELAND s.r.o.',
         'Faktura číslo',
         '141260183',
-        'Datum vystavení Datum zdanitelného plnění Datum splatnosti',
-        '11.03.2026 11.03.2026 25.03.2026',
-        'Forma úhrady',
-        'Přev.příkaz',
+        'Forma úhrady Datum vystavení Datum zdanitelného plnění Datum splatnosti',
+        'Přev.příkaz 11.03.2026 11.03.2026 25.03.2026',
         'Iban:',
         'CZ4903000000000274621920',
         'Rozpis DPH',
@@ -1100,13 +1098,13 @@ export const realInputFixtures: RealInputFixture[] = [
           taxableDate: '2026-03-11',
           amountMinor: 1262952,
           currency: 'CZK',
-          paymentMethod: 'Přev.příkaz',
+          paymentMethod: 'Přev. příkaz',
           description: 'Servis vozidla',
           vatBaseAmountMinor: 1043762,
           vatBaseCurrency: 'CZK',
           vatAmountMinor: 219190,
           vatCurrency: 'CZK',
-          ibanHint: '1920'
+          ibanHint: 'CZ4903000000000274621920'
         }
       })
     ],

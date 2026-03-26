@@ -253,7 +253,7 @@ describe('parseInvoiceDocument', () => {
       issueDate: '2026-03-11',
       taxableDate: '2026-03-11',
       dueDate: '2026-03-25',
-      paymentMethod: 'Přev.příkaz',
+      paymentMethod: 'Přev. příkaz',
       totalAmountMinor: 1262952,
       totalCurrency: 'CZK',
       vatBaseAmountMinor: 1043762,
@@ -261,7 +261,7 @@ describe('parseInvoiceDocument', () => {
       vatAmountMinor: 219190,
       vatCurrency: 'CZK',
       referenceNumber: '141260183',
-      ibanHint: '1920',
+      ibanHint: 'CZ4903000000000274621920',
       confidence: 'strong',
       missingRequiredFields: []
     })

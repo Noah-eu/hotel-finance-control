@@ -114,7 +114,7 @@ describe('realInputFixtures', () => {
         invoiceNumber: '141260183',
         supplier: 'Lenner Motors s.r.o.',
         customer: 'JOKELAND s.r.o.',
-        paymentMethod: 'Přev.příkaz'
+        paymentMethod: 'Přev. příkaz'
       }
     })
     expect(receipt.expectedExtractedRecords[0]).toMatchObject({
