@@ -223,6 +223,7 @@ describe('parseInvoiceDocument', () => {
       'daňový doklad',
       'Dodavatel',
       'Odběratel',
+      'Celkem po zaokrouhlení',
       'Datum vystavení',
       'Datum splatnosti',
       'Datum zdanitelného plnění',

@@ -425,9 +425,11 @@ describe('buildUploadWebFlow', () => {
           ibanHint: '1920',
           confidence: 'strong',
           missingRequiredFields: []
-        })
+        }),
+        missingFields: []
       })
     )
+    expect(result.fileRoutes.some((file) => file.fileName === 'Lenner.pdf' && file.status === 'error')).toBe(false)
     expect(result.reconciliationSnapshot.matchedCount).toBe(16)
     expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
     expect(result.reportSummary.payoutBatchMatchCount).toBe(16)

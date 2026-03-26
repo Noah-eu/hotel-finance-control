@@ -21,19 +21,22 @@ const REQUIRED_FIELDS = [
 export interface ParseInvoiceDocumentInput extends DeterministicDocumentParserInput {}
 
 const FIELD_ALIASES = {
-  invoiceNumber: ['Invoice No', 'Invoice number', 'Číslo faktury', 'Faktura č.', 'Číslo dokladu'],
+  invoiceNumber: ['Invoice No', 'Invoice number', 'Číslo faktury', 'Faktura číslo', 'Faktura č.', 'Doklad číslo', 'Číslo dokladu'],
   supplier: ['Supplier', 'Vendor', 'Dodavatel'],
   customer: ['Customer', 'Buyer', 'Odběratel'],
   issueDate: ['Issue date', 'Issued on', 'Datum vystavení'],
   dueDate: ['Due date', 'Payment due', 'Datum splatnosti'],
   taxableDate: ['Taxable date', 'Tax point date', 'Datum zdanitelného plnění'],
-  total: ['Total due', 'Amount due', 'Celkem Kč k úhradě', 'K úhradě', 'Celkem', 'Total'],
+  total: ['Total due', 'Amount due', 'Celkem Kč k úhradě', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem', 'Total'],
   paymentMethod: ['Payment method', 'Forma úhrady'],
   description: ['Service', 'Description', 'Položka', 'Předmět plnění'],
   vatBase: ['VAT base', 'Tax base', 'Základ DPH'],
   vat: ['VAT', 'DPH'],
-  iban: ['IBAN']
+  iban: ['IBAN', 'Iban']
 } satisfies Record<string, string[]>
+
+const DATE_TOKEN_PATTERN = /\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g
+const MONEY_TOKEN_WITH_CURRENCY_PATTERN = /\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
 
 const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Faktura', pattern: /\bfaktura\b/i },
@@ -51,6 +54,7 @@ const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Rozpis DPH', pattern: /\brozpis\s+dph\b/i },
   { label: 'K úhradě', pattern: /k\s+úhradě/iu },
   { label: 'Celkem Kč k úhradě', pattern: /\bcelkem(?:\s+kč)?\s+k\s+úhrad[ěe]\b/i },
+  { label: 'Celkem po zaokrouhlení', pattern: /celkem\s+po\s+zaokrouhlen[íi]/iu },
   { label: 'IBAN', pattern: /\biban\b/i },
   { label: 'IČ / DIČ', pattern: /\b(?:ič|ičo|dič)\b/i }
 ]
@@ -180,6 +184,8 @@ function extractInvoiceDocumentFields(content: string): {
   ibanValue?: string
 } {
   const fields = parseLabeledDocumentText(content)
+  const groupedDates = extractGroupedInvoiceDates(content)
+  const groupedAmounts = extractGroupedInvoiceAmounts(content)
 
   return {
     invoiceNumber: pickDocumentField(
@@ -187,7 +193,7 @@ function extractInvoiceDocumentFields(content: string): {
       content,
       FIELD_ALIASES.invoiceNumber,
       [
-        /(?:^|\n)\s*(?:číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]+)/iu
+        /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]+)/iu
       ]
     ),
     supplier: pickDocumentField(
@@ -214,7 +220,8 @@ function extractInvoiceDocumentFields(content: string): {
       FIELD_ALIASES.issueDate,
       [
         /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]?\s*([0-9./-]+)/iu
-      ]
+      ],
+      groupedDates.issueDateRaw
     ),
     dueDateRaw: pickDocumentField(
       fields,
@@ -222,7 +229,8 @@ function extractInvoiceDocumentFields(content: string): {
       FIELD_ALIASES.dueDate,
       [
         /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*([0-9./-]+)/iu
-      ]
+      ],
+      groupedDates.dueDateRaw
     ),
     taxableDateRaw: pickDocumentField(
       fields,
@@ -230,16 +238,19 @@ function extractInvoiceDocumentFields(content: string): {
       FIELD_ALIASES.taxableDate,
       [
         /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*([0-9./-]+)/iu
-      ]
+      ],
+      groupedDates.taxableDateRaw
     ),
-    totalRaw: pickDocumentField(
+    totalRaw: pickMoneyDocumentField(
       fields,
       content,
       FIELD_ALIASES.total,
       [
         /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|k\s+úhrad[ěe]|total\s+due|amount\s+due)\s*[:\-]?\s*([^\n]+)/iu,
+        /(?:^|\n)\s*(?:celkem\s+po\s+zaokrouhlen[íi])\s*[:\-]?\s*([^\n]+)/iu,
         /(?:^|\n)\s*total\s*[:\-]?\s*([^\n]+)/iu
-      ]
+      ],
+      groupedAmounts.totalRaw
     ),
     paymentMethod: pickDocumentField(
       fields,
@@ -257,28 +268,30 @@ function extractInvoiceDocumentFields(content: string): {
         /(?:^|\n)\s*(?:předmět\s+plněn[íi]|service|description|položka)\s*[:\-]?\s*([^\n]+)/iu
       ]
     ),
-    vatBaseRaw: pickDocumentField(
+    vatBaseRaw: pickMoneyDocumentField(
       fields,
       content,
       FIELD_ALIASES.vatBase,
       [
         /(?:^|\n)\s*(?:základ\s+dph|vat\s+base|tax\s+base)\s*[:\-]?\s*([^\n]+)/iu
-      ]
+      ],
+      groupedAmounts.vatBaseRaw
     ),
-    vatRaw: pickDocumentField(
+    vatRaw: pickMoneyDocumentField(
       fields,
       content,
       FIELD_ALIASES.vat,
       [
         /(?:^|\n)\s*(?:dph|vat)\s*[:\-]?\s*([^\n]+)/iu
-      ]
+      ],
+      groupedAmounts.vatRaw
     ),
     ibanValue: pickDocumentField(
       fields,
       content,
       FIELD_ALIASES.iban,
       [
-        /(?:^|\n)\s*iban\s*[:\-]?\s*([A-Z]{2}[0-9A-Z\s]{10,})/iu
+        /(?:^|\n)\s*iban\s*[:\-]?\s*([A-Z]{2}[0-9A-Z ]{10,})/iu
       ]
     )
   }
@@ -288,12 +301,13 @@ function pickDocumentField(
   fields: Record<string, string>,
   content: string,
   aliases: string[],
-  patterns: RegExp[]
+  patterns: RegExp[],
+  fallbackValue?: string
 ): string | undefined {
   const direct = pickRequiredField(fields, aliases)
 
   if (direct?.trim()) {
-    return direct.trim()
+    return stripTrailingNoise(direct.trim())
   }
 
   for (const pattern of patterns) {
@@ -305,7 +319,34 @@ function pickDocumentField(
     }
   }
 
-  return undefined
+  return fallbackValue ? stripTrailingNoise(fallbackValue) : undefined
+}
+
+function pickMoneyDocumentField(
+  fields: Record<string, string>,
+  content: string,
+  aliases: string[],
+  patterns: RegExp[],
+  fallbackValue?: string
+): string | undefined {
+  const direct = pickRequiredField(fields, aliases)
+  const directValue = normalizeDetectedMoneyValue(stripTrailingNoise(direct?.trim() ?? ''))
+
+  if (safeParseDocumentMoney(directValue, 'Invoice money field')) {
+    return directValue
+  }
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(content)
+    const candidate = normalizeDetectedMoneyValue(stripTrailingNoise(match?.[1]?.trim() ?? ''))
+
+    if (safeParseDocumentMoney(candidate, 'Invoice money field')) {
+      return candidate
+    }
+  }
+
+  const normalizedFallback = normalizeDetectedMoneyValue(stripTrailingNoise(fallbackValue ?? ''))
+  return safeParseDocumentMoney(normalizedFallback, 'Invoice money field') ? normalizedFallback : undefined
 }
 
 function collectMissingInvoiceFields(extracted: ReturnType<typeof extractInvoiceDocumentFields>): string[] {
@@ -363,6 +404,21 @@ function stripTrailingNoise(value: string): string {
     .trim()
 }
 
+function normalizeDetectedMoneyValue(value: string | undefined): string | undefined {
+  if (!value) {
+    return value
+  }
+
+  if (
+    /[€$]|(?:\bCZK\b|\bEUR\b|\bUSD\b|\bKč\b|\bKČ\b|\bKc\b|\bKC\b)/iu.test(value)
+    || !/^-?[\d\s]+(?:[.,]\d{2})?$/.test(value)
+  ) {
+    return value
+  }
+
+  return `${value} CZK`
+}
+
 function extractIbanHint(value: string | undefined): string | undefined {
   if (!value) {
     return undefined
@@ -371,6 +427,96 @@ function extractIbanHint(value: string | undefined): string | undefined {
   const digits = value.replace(/\s+/g, '')
 
   return digits.length >= 4 ? digits.slice(-4) : undefined
+}
+
+function extractGroupedInvoiceDates(content: string): {
+  issueDateRaw?: string
+  taxableDateRaw?: string
+  dueDateRaw?: string
+} {
+  const lines = splitDocumentLines(content)
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = normalizeSearchText(lines[index]!)
+    const values = lines[index + 1] ?? ''
+    const dateTokens = values.match(DATE_TOKEN_PATTERN) ?? []
+
+    if (
+      header.includes('datum vystaveni')
+      && header.includes('datum zdanitelneho plneni')
+      && header.includes('datum splatnosti')
+      && dateTokens.length >= 3
+    ) {
+      return {
+        issueDateRaw: dateTokens[0],
+        taxableDateRaw: dateTokens[1],
+        dueDateRaw: dateTokens[2]
+      }
+    }
+
+    if (header.includes('datum vystaveni') && header.includes('datum splatnosti') && dateTokens.length >= 2) {
+      return {
+        issueDateRaw: dateTokens[0],
+        dueDateRaw: dateTokens[dateTokens.length - 1]
+      }
+    }
+  }
+
+  return {}
+}
+
+function extractGroupedInvoiceAmounts(content: string): {
+  vatBaseRaw?: string
+  vatRaw?: string
+  totalRaw?: string
+} {
+  const lines = splitDocumentLines(content)
+
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = normalizeSearchText(lines[index]!)
+    const values = lines[index + 1] ?? ''
+    const moneyTokens = extractMoneyTokens(values)
+
+    if (
+      header.includes('zaklad dph')
+      && header.includes('dph')
+      && (header.includes('celkem po zaokrouhleni') || header.includes('celkem'))
+      && moneyTokens.length >= 3
+    ) {
+      return {
+        vatBaseRaw: moneyTokens[0],
+        vatRaw: moneyTokens[1],
+        totalRaw: moneyTokens[moneyTokens.length - 1]
+      }
+    }
+  }
+
+  return {}
+}
+
+function splitDocumentLines(content: string): string[] {
+  return content
+    .replace(/^\uFEFF/, '')
+    .split(/\r\n?|\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function extractMoneyTokens(value: string): string[] {
+  return Array.from(value.matchAll(MONEY_TOKEN_WITH_CURRENCY_PATTERN))
+    .map((match) => stripTrailingNoise(match[0] ?? ''))
+    .filter((token) => token.length > 0)
+    .map((token) => normalizeDetectedMoneyValue(token))
+    .filter((token): token is string => Boolean(token))
 }
 
 function safeNormalizeDocumentDate(value: string | undefined, fieldName: string): string | undefined {
