@@ -276,8 +276,8 @@ describe('matchPayoutBatchesToBank', () => {
         ])
     })
 
-    it('surfaces a clue mismatch reason when exact-amount RB candidates exist but none carry the observed platform clue', () => {
-        const diagnostics = diagnoseUnmatchedPayoutBatchesToBank({
+    it('matches a unique Airbnb exact-amount RB candidate even when the bank line only carries generic transfer wording', () => {
+        const matches = matchPayoutBatchesToBank({
             payoutBatches: [{
                 payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
                 platform: 'airbnb',
@@ -300,19 +300,16 @@ describe('matchPayoutBatchesToBank', () => {
             ]
         })
 
-        expect(diagnostics).toEqual([
+        expect(matches).toEqual([
             expect.objectContaining({
-                noMatchReason: 'counterpartyClueMismatch'
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                bankTransactionId: 'txn:bank:airbnb-noclued',
+                matched: true,
+                amountMinor: 98000,
+                currency: 'CZK'
             })
         ])
-        expect(diagnostics[0]?.allInboundBankCandidates[0]).toEqual(
-            expect.objectContaining({
-                clueScore: 0,
-                clueLabels: [],
-                evidenceScore: 0,
-                evidenceLabels: []
-            })
-        )
+        expect(matches[0]?.reasons).not.toContain('counterpartyClueAligned')
     })
 
     it('keeps a Booking payout batch unmatched when only the local amount exists but no booking evidence aligns on the bank line', () => {

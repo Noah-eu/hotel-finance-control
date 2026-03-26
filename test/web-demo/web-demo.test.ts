@@ -1348,6 +1348,32 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
   })
 
+  it('keeps the actual built page aligned with 16 matched and 2 unmatched payout batches when Airbnb bank lines only carry generic transfer wording', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-26T10:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-arraybuffer-real-4-file-generic-bank-transfer-wording',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reportSummary matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reviewSummary matched:</strong> 16')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('renders debug-only runtime markers and one authoritative payout projection snapshot on the actual built page', async () => {
     const generatedAt = '2026-03-25T16:05:00.000Z'
     const rendered = await executeWebDemoMainWorkflow({
@@ -2177,6 +2203,13 @@ function buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenc
   ].join('\n')
 }
 
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayouts(),
+    '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
 function buildRealUploadedRbCitiContentForSharedAirbnbPayouts(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
@@ -2192,6 +2225,29 @@ function buildRealUploadedRbCitiContentForSharedAirbnbPayouts(): string {
           '5599955956/5500',
           '000000-1234567890/0100',
           'CITIBANK EUROPE PLC',
+          row.amountText.replace(/\s+/g, ''),
+          'CZK',
+          'Settlement credit'
+        ].join(';')
+      })
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayouts(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    ...getRealUploadedAirbnbTransferRowsWithoutReferenceColumn()
+      .filter((row) => row.bankMatched)
+      .map((row, index) => {
+        const bookedAt = formatRbDateTime(row.payoutDate, 20 + index)
+        const postedAt = formatRbDateTime(row.payoutDate, 23 + index)
+
+        return [
+          bookedAt,
+          postedAt,
+          '5599955956/5500',
+          '000000-1234567890/0100',
+          'Incoming bank transfer',
           row.amountText.replace(/\s+/g, ''),
           'CZK',
           'Settlement credit'

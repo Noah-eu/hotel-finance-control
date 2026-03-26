@@ -342,7 +342,7 @@ function normalizeComparable(value?: string): string {
 }
 
 function requiresPositiveEvidence(batch: PayoutBatchExpectation): boolean {
-    return hasDatasetCounterpartyClues(batch.platform) || Boolean(batch.payoutSupplementPaymentId?.trim())
+    return Boolean(batch.payoutSupplementPaymentId?.trim())
 }
 
 function resolveBankMatchingExpectation(
