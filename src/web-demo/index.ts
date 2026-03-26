@@ -1165,6 +1165,26 @@ ${showRuntimePayoutDiagnostics ? '' : `
           file.documentExtractionSummary && file.documentExtractionSummary.customer
             ? '<br /><span class="hint">Document customer: ' + escapeHtml(String(file.documentExtractionSummary.customer)) + '</span>'
             : '',
+          file.documentExtractionSummary
+            && Array.isArray(file.documentExtractionSummary.groupedHeaderLabels)
+            && file.documentExtractionSummary.groupedHeaderLabels.length > 0
+            ? '<br /><span class="hint">Grouped header labels: ' + escapeHtml(file.documentExtractionSummary.groupedHeaderLabels.join(' | ')) + '</span>'
+            : '',
+          file.documentExtractionSummary
+            && Array.isArray(file.documentExtractionSummary.groupedHeaderValues)
+            && file.documentExtractionSummary.groupedHeaderValues.length > 0
+            ? '<br /><span class="hint">Grouped header values: ' + escapeHtml(file.documentExtractionSummary.groupedHeaderValues.join(' | ')) + '</span>'
+            : '',
+          file.documentExtractionSummary
+            && Array.isArray(file.documentExtractionSummary.groupedTotalsLabels)
+            && file.documentExtractionSummary.groupedTotalsLabels.length > 0
+            ? '<br /><span class="hint">Grouped totals labels: ' + escapeHtml(file.documentExtractionSummary.groupedTotalsLabels.join(' | ')) + '</span>'
+            : '',
+          file.documentExtractionSummary
+            && Array.isArray(file.documentExtractionSummary.groupedTotalsValues)
+            && file.documentExtractionSummary.groupedTotalsValues.length > 0
+            ? '<br /><span class="hint">Grouped totals values: ' + escapeHtml(file.documentExtractionSummary.groupedTotalsValues.join(' | ')) + '</span>'
+            : '',
           file.documentExtractionSummary && file.documentExtractionSummary.dueDate
             ? '<br /><span class="hint">Document dueDate: ' + escapeHtml(String(file.documentExtractionSummary.dueDate)) + '</span>'
             : '',

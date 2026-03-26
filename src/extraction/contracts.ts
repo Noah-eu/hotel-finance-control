@@ -39,6 +39,10 @@ export interface DeterministicDocumentExtractionSummary {
   ibanHint?: string
   confidence: 'none' | 'hint' | 'strong'
   missingRequiredFields: string[]
+  groupedHeaderLabels?: string[]
+  groupedHeaderValues?: string[]
+  groupedTotalsLabels?: string[]
+  groupedTotalsValues?: string[]
   fieldExtractionDebug?: Record<string, DeterministicDocumentFieldExtractionDebug>
 }
 

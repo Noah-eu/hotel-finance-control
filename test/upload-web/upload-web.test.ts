@@ -409,11 +409,11 @@ describe('buildUploadWebFlow', () => {
         capabilityDocumentHints: ['invoice_like'],
         sourceSystem: 'invoice',
         documentType: 'invoice',
-        documentExtractionSummary: expect.objectContaining({
-          documentKind: 'invoice',
-          issuerOrCounterparty: 'Lenner Motors s.r.o.',
-          customer: 'JOKELAND s.r.o.',
-          referenceNumber: '141260183',
+          documentExtractionSummary: expect.objectContaining({
+            documentKind: 'invoice',
+            issuerOrCounterparty: 'Lenner Motors s.r.o.',
+            customer: 'JOKELAND s.r.o.',
+            referenceNumber: '141260183',
           issueDate: '2026-03-11',
           dueDate: '2026-03-25',
           taxableDate: '2026-03-11',
@@ -421,19 +421,23 @@ describe('buildUploadWebFlow', () => {
           totalAmountMinor: 1262952,
           totalCurrency: 'CZK',
           vatBaseAmountMinor: 1043762,
-          vatAmountMinor: 219190,
-          ibanHint: 'CZ4903000000000274621920',
-          confidence: 'strong',
-          missingRequiredFields: [],
-          fieldExtractionDebug: expect.objectContaining({
-            referenceNumber: expect.objectContaining({
-              winnerRule: 'horizontal-combined-header',
-              winnerValue: '141260183'
-            }),
-            paymentMethod: expect.objectContaining({
-              winnerRule: 'horizontal-combined-header',
-              winnerValue: 'Přev. příkaz'
-            }),
+            vatAmountMinor: 219190,
+            ibanHint: 'CZ4903000000000274621920',
+            confidence: 'strong',
+            missingRequiredFields: [],
+            groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
+            groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
+            groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
+            groupedTotalsValues: ['10 437,62 Kč', '2 191,90 Kč', '12 629,52 Kč'],
+            fieldExtractionDebug: expect.objectContaining({
+              referenceNumber: expect.objectContaining({
+                winnerRule: 'structured-grouped-header-block',
+                winnerValue: '141260183'
+              }),
+              paymentMethod: expect.objectContaining({
+                winnerRule: 'structured-grouped-header-block',
+                winnerValue: 'Přev. příkaz'
+              }),
             totalAmount: expect.objectContaining({
               winnerRule: 'line-window',
               winnerValue: '12 629,52 Kč'

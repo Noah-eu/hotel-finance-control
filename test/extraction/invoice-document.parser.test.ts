@@ -264,30 +264,73 @@ describe('parseInvoiceDocument', () => {
       ibanHint: 'CZ4903000000000274621920',
       confidence: 'strong',
       missingRequiredFields: [],
-      fieldExtractionDebug: {
-        referenceNumber: expect.objectContaining({
-          winnerRule: 'horizontal-combined-header',
-          winnerValue: '141260183'
-        }),
-        issueDate: expect.objectContaining({
-          winnerRule: 'horizontal-combined-header',
-          winnerValue: '11.03.2026'
-        }),
-        dueDate: expect.objectContaining({
-          winnerRule: 'horizontal-combined-header',
-          winnerValue: '25.03.2026'
-        }),
-        paymentMethod: expect.objectContaining({
-          winnerRule: 'horizontal-combined-header',
-          winnerValue: 'Přev. příkaz',
-          candidateValues: expect.arrayContaining(['Přev.příkaz'])
-        }),
+      groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
+        groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
+        groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
+        groupedTotalsValues: ['10 437,62 Kč', '2 191,90 Kč', '12 629,52 Kč'],
+        fieldExtractionDebug: {
+          referenceNumber: expect.objectContaining({
+            winnerRule: 'structured-grouped-header-block',
+            winnerValue: '141260183'
+          }),
+          issueDate: expect.objectContaining({
+            winnerRule: 'structured-grouped-header-block',
+            winnerValue: '11.03.2026'
+          }),
+          dueDate: expect.objectContaining({
+            winnerRule: 'structured-grouped-header-block',
+            winnerValue: '25.03.2026'
+          }),
+          paymentMethod: expect.objectContaining({
+            winnerRule: 'structured-grouped-header-block',
+            winnerValue: 'Přev. příkaz',
+            candidateValues: expect.arrayContaining(['Přev.příkaz'])
+          }),
         totalAmount: expect.objectContaining({
           winnerRule: 'line-window',
           winnerValue: '12 629,52 Kč',
           candidateValues: expect.arrayContaining(['12 629,52 Kč', '12 629,52'])
         })
       }
+    })
+  })
+
+  it('keeps grouped Czech invoice header/value blocks aligned when the value cells spill into following lines', () => {
+    const content = [
+      'Faktura - daňový doklad',
+      'Dodavatel',
+      'Lenner Motors s.r.o.',
+      'Odběratel',
+      'JOKELAND s.r.o.',
+      'Faktura číslo Forma úhrady Datum vystavení Datum zdanitelného plnění Datum splatnosti',
+      '141260183',
+      'Přev.příkaz',
+      '11.03.2026',
+      '11.03.2026',
+      '25.03.2026',
+      'Iban:',
+      'CZ4903000000000274621920',
+      'Rozpis DPH',
+      'Základ DPH DPH Celkem po zaokrouhlení',
+      '10 437,62 Kč',
+      '2 191,90 Kč',
+      '12 629,52 Kč',
+      'Celkem Kč k úhradě',
+      '12 629,52 Kč'
+    ].join('\n')
+
+    expect(inspectInvoiceDocumentExtractionSummary(content)).toMatchObject({
+      referenceNumber: '141260183',
+      issueDate: '2026-03-11',
+      taxableDate: '2026-03-11',
+      dueDate: '2026-03-25',
+      paymentMethod: 'Přev. příkaz',
+      totalAmountMinor: 1262952,
+      totalCurrency: 'CZK',
+      ibanHint: 'CZ4903000000000274621920',
+      missingRequiredFields: [],
+      groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
+      groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026']
     })
   })
 })
