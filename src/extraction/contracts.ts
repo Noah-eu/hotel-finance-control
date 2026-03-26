@@ -39,6 +39,16 @@ export interface DeterministicDocumentExtractionSummary {
   ibanHint?: string
   confidence: 'none' | 'hint' | 'strong'
   missingRequiredFields: string[]
+  fieldExtractionDebug?: Record<string, DeterministicDocumentFieldExtractionDebug>
+}
+
+export interface DeterministicDocumentFieldExtractionDebug {
+  winnerRule?: string
+  winnerValue?: string
+  candidateValues: string[]
+  groupedRowMatches: string[]
+  lineWindowMatches: string[]
+  fullDocumentFallbackMatches: string[]
 }
 
 export interface DocumentIngestionCapabilities {

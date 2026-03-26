@@ -6,6 +6,7 @@ export function placeholder() {
 }
 
 export type {
+  DeterministicDocumentFieldExtractionDebug,
   DeterministicDocumentExtractionSummary,
   DeterministicDocumentParser,
   DeterministicDocumentParserInput,

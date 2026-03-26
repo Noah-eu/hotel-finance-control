@@ -424,8 +424,23 @@ describe('buildUploadWebFlow', () => {
           vatAmountMinor: 219190,
           ibanHint: 'CZ4903000000000274621920',
           confidence: 'strong',
-          missingRequiredFields: []
+          missingRequiredFields: [],
+          fieldExtractionDebug: expect.objectContaining({
+            referenceNumber: expect.objectContaining({
+              winnerRule: 'vertical-grouped-block',
+              winnerValue: '141260183'
+            }),
+            paymentMethod: expect.objectContaining({
+              winnerRule: 'vertical-grouped-block',
+              winnerValue: 'Přev. příkaz'
+            }),
+            totalAmount: expect.objectContaining({
+              winnerRule: 'line-window',
+              winnerValue: '12 629,52 Kč'
+            })
+          })
         }),
+        requiredFieldsCheck: 'passed',
         missingFields: []
       })
     )

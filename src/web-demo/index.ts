@@ -1065,6 +1065,55 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function renderInitialRuntimePayoutDiagnostics() {}
 `}
+      function buildDocumentFieldExtractionDebugLine(file, fieldKey, label) {
+        const summary = file && file.documentExtractionSummary;
+        const fieldDebug = summary && summary.fieldExtractionDebug && summary.fieldExtractionDebug[fieldKey];
+
+        if (!fieldDebug) {
+          return '';
+        }
+
+        const candidateValues = Array.isArray(fieldDebug.candidateValues) && fieldDebug.candidateValues.length > 0
+          ? fieldDebug.candidateValues.join(' | ')
+          : 'žádné';
+        const groupedMatches = Array.isArray(fieldDebug.groupedRowMatches) && fieldDebug.groupedRowMatches.length > 0
+          ? fieldDebug.groupedRowMatches.join(' || ')
+          : 'žádné';
+        const lineWindowMatches = Array.isArray(fieldDebug.lineWindowMatches) && fieldDebug.lineWindowMatches.length > 0
+          ? fieldDebug.lineWindowMatches.join(' || ')
+          : 'žádné';
+        const fallbackMatches = Array.isArray(fieldDebug.fullDocumentFallbackMatches) && fieldDebug.fullDocumentFallbackMatches.length > 0
+          ? fieldDebug.fullDocumentFallbackMatches.join(' || ')
+          : 'žádné';
+
+        return [
+          '<br /><span class="hint">Field ' + escapeHtml(label) + ': winner '
+            + escapeHtml(String(fieldDebug.winnerRule || 'n/a'))
+            + ' / '
+            + escapeHtml(String(fieldDebug.winnerValue || 'n/a'))
+            + '</span>',
+          '<br /><span class="hint">Field ' + escapeHtml(label) + ' candidates: ' + escapeHtml(candidateValues) + '</span>',
+          '<br /><span class="hint">Field ' + escapeHtml(label) + ' grouped: ' + escapeHtml(groupedMatches) + '</span>',
+          '<br /><span class="hint">Field ' + escapeHtml(label) + ' line-window: ' + escapeHtml(lineWindowMatches) + '</span>',
+          '<br /><span class="hint">Field ' + escapeHtml(label) + ' fallback: ' + escapeHtml(fallbackMatches) + '</span>'
+        ].join('');
+      }
+
+      function buildInvoiceFieldExtractionDebugMarkup(file) {
+        if (!file || !file.documentExtractionSummary || file.documentExtractionSummary.documentKind !== 'invoice') {
+          return '';
+        }
+
+        return [
+          buildDocumentFieldExtractionDebugLine(file, 'referenceNumber', 'referenceNumber'),
+          buildDocumentFieldExtractionDebugLine(file, 'issueDate', 'issueDate'),
+          buildDocumentFieldExtractionDebugLine(file, 'dueDate', 'dueDate'),
+          buildDocumentFieldExtractionDebugLine(file, 'taxableDate', 'taxableDate'),
+          buildDocumentFieldExtractionDebugLine(file, 'paymentMethod', 'paymentMethod'),
+          buildDocumentFieldExtractionDebugLine(file, 'totalAmount', 'totalAmount')
+        ].join('');
+      }
+
       function buildRuntimeFileIntakeDiagnosticsMarkup(state) {
         const diagnostics = (state && state.runtimeAudit && state.runtimeAudit.fileIntakeDiagnostics) || [];
 
@@ -1142,6 +1191,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.vatAmountMinor, file.documentExtractionSummary.vatCurrency))
               + '</span>'
             : '',
+          buildInvoiceFieldExtractionDebugMarkup(file),
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',
           file.parserExtractedPayoutDate ? '<br /><span class="hint">parserExtracted.payoutDate: ' + escapeHtml(file.parserExtractedPayoutDate) + '</span>' : '',
           file.parserExtractedPayoutTotal ? '<br /><span class="hint">parserExtracted.payoutTotal: ' + escapeHtml(file.parserExtractedPayoutTotal) + '</span>' : '',

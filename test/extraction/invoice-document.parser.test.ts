@@ -186,7 +186,7 @@ describe('parseInvoiceDocument', () => {
     const invoice = getRealInputFixture('invoice-document')
     const receipt = getRealInputFixture('receipt-document')
 
-    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toEqual({
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
       documentKind: 'invoice',
       sourceSystem: 'invoice',
       documentType: 'invoice',
@@ -244,7 +244,7 @@ describe('parseInvoiceDocument', () => {
       extractedAt: '2026-03-26T12:10:00.000Z'
     })
 
-    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toEqual({
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
       documentKind: 'invoice',
       sourceSystem: 'invoice',
       documentType: 'invoice',
@@ -263,7 +263,31 @@ describe('parseInvoiceDocument', () => {
       referenceNumber: '141260183',
       ibanHint: 'CZ4903000000000274621920',
       confidence: 'strong',
-      missingRequiredFields: []
+      missingRequiredFields: [],
+      fieldExtractionDebug: {
+        referenceNumber: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: '141260183'
+        }),
+        issueDate: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: '11.03.2026'
+        }),
+        dueDate: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: '25.03.2026'
+        }),
+        paymentMethod: expect.objectContaining({
+          winnerRule: 'vertical-grouped-block',
+          winnerValue: 'Přev. příkaz',
+          candidateValues: expect.arrayContaining(['Datum vystavení', 'Přev.příkaz'])
+        }),
+        totalAmount: expect.objectContaining({
+          winnerRule: 'line-window',
+          winnerValue: '12 629,52 Kč',
+          candidateValues: expect.arrayContaining(['12 629,52 Kč', 'K úhradě'])
+        })
+      }
     })
   })
 })

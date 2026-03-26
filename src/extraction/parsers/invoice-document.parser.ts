@@ -1,9 +1,11 @@
 import type { ExtractedRecord } from '../../domain'
 import type {
+  DeterministicDocumentFieldExtractionDebug,
   DeterministicDocumentExtractionSummary,
   DeterministicDocumentParserInput
 } from '../contracts'
 import {
+  normalizeLabel,
   normalizeDocumentDate,
   parseDocumentMoney,
   parseLabeledDocumentText,
@@ -20,6 +22,54 @@ const REQUIRED_FIELDS = [
 
 export interface ParseInvoiceDocumentInput extends DeterministicDocumentParserInput {}
 
+type InvoiceSummaryFieldKey =
+  | 'referenceNumber'
+  | 'issuerOrCounterparty'
+  | 'customer'
+  | 'issueDate'
+  | 'dueDate'
+  | 'taxableDate'
+  | 'paymentMethod'
+  | 'totalAmount'
+  | 'vatBaseAmount'
+  | 'vatAmount'
+  | 'ibanHint'
+  | 'description'
+
+type CandidateStage = 'grouped' | 'lineWindow' | 'fallback'
+
+interface InvoiceFieldCandidate {
+  value: string
+  rule: string
+  trace: string
+}
+
+interface InvoiceFieldDebugState extends DeterministicDocumentFieldExtractionDebug {
+  groupedCandidates: InvoiceFieldCandidate[]
+  lineWindowCandidates: InvoiceFieldCandidate[]
+  fallbackCandidates: InvoiceFieldCandidate[]
+}
+
+interface InvoiceDocumentExtractionDetails {
+  fields: {
+    invoiceNumber?: string
+    supplier?: string
+    customer?: string
+    issueDateRaw?: string
+    dueDateRaw?: string
+    taxableDateRaw?: string
+    totalRaw?: string
+    paymentMethod?: string
+    description?: string
+    vatBaseRaw?: string
+    vatRaw?: string
+    ibanValue?: string
+  }
+  fieldDebug: Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
+}
+
+type InvoiceExtractedFields = InvoiceDocumentExtractionDetails['fields']
+
 const FIELD_ALIASES = {
   invoiceNumber: ['Invoice No', 'Invoice number', 'Číslo faktury', 'Faktura číslo', 'Faktura č.', 'Doklad číslo', 'Číslo dokladu'],
   supplier: ['Supplier', 'Vendor', 'Dodavatel'],
@@ -34,6 +84,21 @@ const FIELD_ALIASES = {
   vat: ['VAT', 'DPH'],
   iban: ['IBAN', 'Iban']
 } satisfies Record<string, string[]>
+
+const SUMMARY_FIELD_ALIASES: Record<InvoiceSummaryFieldKey, string[]> = {
+  referenceNumber: FIELD_ALIASES.invoiceNumber,
+  issuerOrCounterparty: FIELD_ALIASES.supplier,
+  customer: FIELD_ALIASES.customer,
+  issueDate: FIELD_ALIASES.issueDate,
+  dueDate: FIELD_ALIASES.dueDate,
+  taxableDate: FIELD_ALIASES.taxableDate,
+  paymentMethod: FIELD_ALIASES.paymentMethod,
+  totalAmount: FIELD_ALIASES.total,
+  vatBaseAmount: FIELD_ALIASES.vatBase,
+  vatAmount: FIELD_ALIASES.vat,
+  ibanHint: FIELD_ALIASES.iban,
+  description: FIELD_ALIASES.description
+}
 
 const DATE_TOKEN_PATTERN = /\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g
 const MONEY_TOKEN_WITH_CURRENCY_PATTERN = /\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
@@ -61,7 +126,7 @@ const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
 
 export class InvoiceDocumentParser {
   parse(input: ParseInvoiceDocumentInput): ExtractedRecord[] {
-    const extracted = extractInvoiceDocumentFields(input.content)
+    const extracted = extractInvoiceDocumentDetails(input.content).fields
     const missing = collectMissingInvoiceFields(extracted)
 
     if (missing.length > 0) {
@@ -115,7 +180,8 @@ export function parseInvoiceDocument(input: ParseInvoiceDocumentInput): Extracte
 }
 
 export function inspectInvoiceDocumentExtractionSummary(content: string): DeterministicDocumentExtractionSummary {
-  const extracted = extractInvoiceDocumentFields(content)
+  const extraction = extractInvoiceDocumentDetails(content)
+  const extracted = extraction.fields
   const missingRequiredFields = collectMissingInvoiceSummaryFields(extracted)
   const issueDate = safeNormalizeDocumentDate(extracted.issueDateRaw, 'Invoice issue date')
   const taxableDate = safeNormalizeDocumentDate(extracted.taxableDateRaw, 'Invoice taxable date')
@@ -159,7 +225,8 @@ export function inspectInvoiceDocumentExtractionSummary(content: string): Determ
       : hasMeaningfulFields
         ? 'hint'
         : 'none',
-    missingRequiredFields
+    missingRequiredFields,
+    fieldExtractionDebug: extraction.fieldDebug
   }
 }
 
@@ -169,129 +236,43 @@ export function detectInvoiceDocumentKeywordHits(content: string): string[] {
     .map(({ label }) => label)
 }
 
-function extractInvoiceDocumentFields(content: string): {
-  invoiceNumber?: string
-  supplier?: string
-  customer?: string
-  issueDateRaw?: string
-  dueDateRaw?: string
-  taxableDateRaw?: string
-  totalRaw?: string
-  paymentMethod?: string
-  description?: string
-  vatBaseRaw?: string
-  vatRaw?: string
-  ibanValue?: string
-} {
+function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtractionDetails {
   const fields = parseLabeledDocumentText(content)
-  const groupedHeaderFields = extractGroupedInvoiceHeaderFields(content)
-  const adjacentFields = extractAdjacentInvoiceFields(content)
-  const groupedAmounts = extractGroupedInvoiceAmounts(content)
+  const lines = splitDocumentLines(content)
+  const debugStates = buildInvoiceFieldDebugStates()
+
+  collectHorizontalGroupedInvoiceHeaderCandidates(content, debugStates)
+  collectSequentialInvoiceBlockCandidates(lines, debugStates)
+  collectLineWindowInvoiceCandidates(lines, debugStates)
+  collectFallbackInvoiceCandidates(fields, content, debugStates)
+
+  const extracted = {
+    invoiceNumber: resolveInvoiceField('referenceNumber', debugStates.referenceNumber),
+    supplier: resolveInvoiceField('issuerOrCounterparty', debugStates.issuerOrCounterparty),
+    customer: resolveInvoiceField('customer', debugStates.customer),
+    issueDateRaw: resolveInvoiceField('issueDate', debugStates.issueDate),
+    dueDateRaw: resolveInvoiceField('dueDate', debugStates.dueDate),
+    taxableDateRaw: resolveInvoiceField('taxableDate', debugStates.taxableDate),
+    totalRaw: resolveInvoiceField('totalAmount', debugStates.totalAmount, ['lineWindowCandidates', 'groupedCandidates', 'fallbackCandidates']),
+    paymentMethod: normalizePaymentMethodValue(resolveInvoiceField('paymentMethod', debugStates.paymentMethod)),
+    description: resolveInvoiceField('description', debugStates.description),
+    vatBaseRaw: resolveInvoiceField('vatBaseAmount', debugStates.vatBaseAmount),
+    vatRaw: resolveInvoiceField('vatAmount', debugStates.vatAmount),
+    ibanValue: normalizeIbanValue(resolveInvoiceField('ibanHint', debugStates.ibanHint))
+  }
 
   return {
-    invoiceNumber: adjacentFields.invoiceNumber ?? pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.invoiceNumber,
-      [
-        /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]+)/iu
-      ]
-    ),
-    supplier: pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.supplier,
-      [
-        /(?:^|\n)\s*(?:dodavatel|supplier|vendor)\s*[:\-]?\s*([^\n]+)/iu,
-        /(?:^|\n)\s*(?:dodavatel|supplier|vendor)\s*\n\s*([^\n]+)/iu
-      ]
-    ),
-    customer: pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.customer,
-      [
-        /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*[:\-]?\s*([^\n]+)/iu,
-        /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*\n\s*([^\n]+)/iu
-      ]
-    ),
-    issueDateRaw: groupedHeaderFields.issueDateRaw ?? adjacentFields.issueDateRaw ?? pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.issueDate,
-      [
-        /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]\s*([0-9./-]+)/iu
-      ]
-    ),
-    dueDateRaw: groupedHeaderFields.dueDateRaw ?? adjacentFields.dueDateRaw ?? pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.dueDate,
-      [
-        /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]\s*([0-9./-]+)/iu
-      ]
-    ),
-    taxableDateRaw: groupedHeaderFields.taxableDateRaw ?? adjacentFields.taxableDateRaw ?? pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.taxableDate,
-      [
-        /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]\s*([0-9./-]+)/iu
-      ]
-    ),
-    totalRaw: adjacentFields.totalRaw ?? pickMoneyDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.total,
-      [
-        /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|k\s+úhrad[ěe]|total\s+due|amount\s+due)\s*[:\-]?\s*([^\n]+)/iu,
-        /(?:^|\n)\s*(?:celkem\s+po\s+zaokrouhlen[íi])\s*[:\-]?\s*([^\n]+)/iu,
-        /(?:^|\n)\s*total\s*[:\-]?\s*([^\n]+)/iu
-      ],
-      groupedAmounts.totalRaw
-    ),
-    paymentMethod: normalizePaymentMethodValue(groupedHeaderFields.paymentMethod ?? adjacentFields.paymentMethod ?? pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.paymentMethod,
-      [
-        /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]\s*([^\n]+)/iu
-      ]
-    )),
-    description: pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.description,
-      [
-        /(?:^|\n)\s*(?:předmět\s+plněn[íi]|service|description|položka)\s*[:\-]?\s*([^\n]+)/iu
-      ]
-    ),
-    vatBaseRaw: pickMoneyDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.vatBase,
-      [
-        /(?:^|\n)\s*(?:základ\s+dph|vat\s+base|tax\s+base)\s*[:\-]?\s*([^\n]+)/iu
-      ],
-      groupedAmounts.vatBaseRaw
-    ),
-    vatRaw: pickMoneyDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.vat,
-      [
-        /(?:^|\n)\s*(?:dph|vat)\s*[:\-]?\s*([^\n]+)/iu
-      ],
-      groupedAmounts.vatRaw
-    ),
-    ibanValue: adjacentFields.ibanValue ?? pickDocumentField(
-      fields,
-      content,
-      FIELD_ALIASES.iban,
-      [
-        /(?:^|\n)\s*iban\s*[:\-]?\s*([A-Z]{2}[0-9A-Z ]{10,})/iu
-      ]
-    )
+    fields: extracted,
+    fieldDebug: Object.fromEntries(
+      Object.entries(debugStates).map(([key, state]) => [key, {
+        winnerRule: state.winnerRule,
+        winnerValue: state.winnerValue,
+        candidateValues: state.candidateValues,
+        groupedRowMatches: state.groupedRowMatches,
+        lineWindowMatches: state.lineWindowMatches,
+        fullDocumentFallbackMatches: state.fullDocumentFallbackMatches
+      } satisfies DeterministicDocumentFieldExtractionDebug])
+    ) as Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
   }
 }
 
@@ -347,7 +328,7 @@ function pickMoneyDocumentField(
   return safeParseDocumentMoney(normalizedFallback, 'Invoice money field') ? normalizedFallback : undefined
 }
 
-function collectMissingInvoiceFields(extracted: ReturnType<typeof extractInvoiceDocumentFields>): string[] {
+function collectMissingInvoiceFields(extracted: InvoiceExtractedFields): string[] {
   return REQUIRED_FIELDS.filter((field) => {
     switch (field) {
       case 'Invoice No':
@@ -366,7 +347,7 @@ function collectMissingInvoiceFields(extracted: ReturnType<typeof extractInvoice
   })
 }
 
-function collectMissingInvoiceSummaryFields(extracted: ReturnType<typeof extractInvoiceDocumentFields>): string[] {
+function collectMissingInvoiceSummaryFields(extracted: InvoiceExtractedFields): string[] {
   const missing: string[] = []
 
   if (!extracted.invoiceNumber?.trim()) {
@@ -441,21 +422,49 @@ function normalizePaymentMethodValue(value: string | undefined): string | undefi
     .replace(/^Prev\.\s*prikaz$/iu, 'Přev. příkaz')
 }
 
-function extractGroupedInvoiceHeaderFields(content: string): {
-  paymentMethod?: string
-  issueDateRaw?: string
-  taxableDateRaw?: string
-  dueDateRaw?: string
-} {
+function buildInvoiceFieldDebugStates(): Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState> {
+  return {
+    referenceNumber: createInvoiceFieldDebugState(),
+    issuerOrCounterparty: createInvoiceFieldDebugState(),
+    customer: createInvoiceFieldDebugState(),
+    issueDate: createInvoiceFieldDebugState(),
+    dueDate: createInvoiceFieldDebugState(),
+    taxableDate: createInvoiceFieldDebugState(),
+    paymentMethod: createInvoiceFieldDebugState(),
+    totalAmount: createInvoiceFieldDebugState(),
+    vatBaseAmount: createInvoiceFieldDebugState(),
+    vatAmount: createInvoiceFieldDebugState(),
+    ibanHint: createInvoiceFieldDebugState(),
+    description: createInvoiceFieldDebugState()
+  }
+}
+
+function createInvoiceFieldDebugState(): InvoiceFieldDebugState {
+  return {
+    winnerRule: undefined,
+    winnerValue: undefined,
+    candidateValues: [],
+    groupedRowMatches: [],
+    lineWindowMatches: [],
+    fullDocumentFallbackMatches: [],
+    groupedCandidates: [],
+    lineWindowCandidates: [],
+    fallbackCandidates: []
+  }
+}
+
+function collectHorizontalGroupedInvoiceHeaderCandidates(
+  content: string,
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
   const lines = splitDocumentLines(content)
 
   for (let index = 0; index < lines.length - 1; index += 1) {
-    const header = normalizeSearchText(lines[index]!)
+    const header = normalizeLabelSearch(lines[index]!)
     const values = lines[index + 1] ?? ''
     const valuesAfter = lines[index + 2] ?? ''
-    const dateTokens = values.match(DATE_TOKEN_PATTERN) ?? []
-    const dateTokensAfter = valuesAfter.match(DATE_TOKEN_PATTERN) ?? []
-
+    const dateTokens = extractDateTokens(values)
+    const dateTokensAfter = extractDateTokens(valuesAfter)
     const hasIssue = header.includes('datum vystaveni')
     const hasTaxable = header.includes('datum zdanitelneho plneni')
     const hasDue = header.includes('datum splatnosti')
@@ -463,130 +472,353 @@ function extractGroupedInvoiceHeaderFields(content: string): {
 
     if (hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
       const firstDateIndex = values.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
+      const paymentMethod = firstDateIndex > 0 ? values.slice(0, firstDateIndex).trim() : undefined
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)}`
 
-      return {
-        paymentMethod: firstDateIndex > 0 ? values.slice(0, firstDateIndex).trim() : undefined,
-        issueDateRaw: dateTokens[0],
-        taxableDateRaw: dateTokens[1],
-        dueDateRaw: dateTokens[2]
+      if (paymentMethod) {
+        recordInvoiceFieldAttempt(debugStates.paymentMethod, 'grouped', paymentMethod, 'horizontal-grouped-header', trace, isValidInvoiceFieldValue('paymentMethod', paymentMethod))
       }
-    }
-
-    if (hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokensAfter.length >= 3) {
-      return {
-        paymentMethod: values.trim() || undefined,
-        issueDateRaw: dateTokensAfter[0],
-        taxableDateRaw: dateTokensAfter[1],
-        dueDateRaw: dateTokensAfter[2]
-      }
-    }
-
-    if (hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
-      return {
-        issueDateRaw: dateTokens[0],
-        taxableDateRaw: dateTokens[1],
-        dueDateRaw: dateTokens[2]
-      }
-    }
-
-    if (hasPaymentMethod && dateTokens.length >= 1) {
-      const firstDateIndex = values.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
-
-      if (firstDateIndex > 0) {
-        return {
-          paymentMethod: values.slice(0, firstDateIndex).trim()
-        }
-      }
-    }
-
-    if (hasIssue && hasDue && dateTokens.length >= 2) {
-      return {
-        issueDateRaw: dateTokens[0],
-        dueDateRaw: dateTokens[dateTokens.length - 1]
-      }
-    }
-  }
-
-  return {}
-}
-
-function extractAdjacentInvoiceFields(content: string): {
-  invoiceNumber?: string
-  issueDateRaw?: string
-  dueDateRaw?: string
-  taxableDateRaw?: string
-  paymentMethod?: string
-  ibanValue?: string
-  totalRaw?: string
-} {
-  const lines = splitDocumentLines(content)
-
-  return {
-    invoiceNumber: findAdjacentInvoiceValue(lines, [
-      'faktura cislo',
-      'cislo faktury',
-      'doklad cislo',
-      'invoice no',
-      'invoice number'
-    ], (value) => /[A-Z0-9/-]{4,}/i.test(value)),
-    issueDateRaw: findAdjacentInvoiceValue(lines, ['datum vystaveni', 'issue date', 'issued on'], (value) => extractDateTokens(value).length > 0),
-    dueDateRaw: findAdjacentInvoiceValue(lines, ['datum splatnosti', 'due date', 'payment due'], (value) => extractDateTokens(value).length > 0),
-    taxableDateRaw: findAdjacentInvoiceValue(lines, ['datum zdanitelneho plneni', 'taxable date', 'tax point date'], (value) => extractDateTokens(value).length > 0),
-    paymentMethod: findAdjacentInvoiceValue(lines, ['forma uhrady', 'payment method'], (value) => extractDateTokens(value).length === 0),
-    ibanValue: findAdjacentInvoiceValue(lines, ['iban'], (value) => /[A-Z]{2}[0-9A-Z ]{10,}/i.test(value)),
-    totalRaw: findAdjacentInvoiceValue(lines, ['celkem kc k uhrade', 'k uhrade', 'celkem po zaokrouhleni', 'total due', 'amount due'], (value) => Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(value), 'Invoice adjacent total')))
-  }
-}
-
-function findAdjacentInvoiceValue(
-  lines: string[],
-  normalizedLabels: string[],
-  isValidValue: (value: string) => boolean
-): string | undefined {
-  for (let index = 0; index < lines.length - 1; index += 1) {
-    const header = normalizeSearchText(lines[index]!)
-
-    if (!normalizedLabels.some((label) => header === label || header.startsWith(`${label} `))) {
+      recordInvoiceFieldAttempt(debugStates.issueDate, 'grouped', dateTokens[0], 'horizontal-grouped-header', trace, isValidInvoiceFieldValue('issueDate', dateTokens[0]))
+      recordInvoiceFieldAttempt(debugStates.taxableDate, 'grouped', dateTokens[1], 'horizontal-grouped-header', trace, isValidInvoiceFieldValue('taxableDate', dateTokens[1]))
+      recordInvoiceFieldAttempt(debugStates.dueDate, 'grouped', dateTokens[2], 'horizontal-grouped-header', trace, isValidInvoiceFieldValue('dueDate', dateTokens[2]))
       continue
     }
 
-    const value = stripTrailingNoise(lines[index + 1] ?? '')
+    if (hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokensAfter.length >= 3) {
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)} | ${stripTrailingNoise(valuesAfter)}`
 
-    if (value && isValidValue(value)) {
-      return value
+      recordInvoiceFieldAttempt(debugStates.paymentMethod, 'grouped', values, 'horizontal-grouped-header-two-line', trace, isValidInvoiceFieldValue('paymentMethod', values))
+      recordInvoiceFieldAttempt(debugStates.issueDate, 'grouped', dateTokensAfter[0], 'horizontal-grouped-header-two-line', trace, isValidInvoiceFieldValue('issueDate', dateTokensAfter[0]))
+      recordInvoiceFieldAttempt(debugStates.taxableDate, 'grouped', dateTokensAfter[1], 'horizontal-grouped-header-two-line', trace, isValidInvoiceFieldValue('taxableDate', dateTokensAfter[1]))
+      recordInvoiceFieldAttempt(debugStates.dueDate, 'grouped', dateTokensAfter[2], 'horizontal-grouped-header-two-line', trace, isValidInvoiceFieldValue('dueDate', dateTokensAfter[2]))
+      continue
+    }
+
+    if (hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)}`
+      recordInvoiceFieldAttempt(debugStates.issueDate, 'grouped', dateTokens[0], 'horizontal-date-header', trace, isValidInvoiceFieldValue('issueDate', dateTokens[0]))
+      recordInvoiceFieldAttempt(debugStates.taxableDate, 'grouped', dateTokens[1], 'horizontal-date-header', trace, isValidInvoiceFieldValue('taxableDate', dateTokens[1]))
+      recordInvoiceFieldAttempt(debugStates.dueDate, 'grouped', dateTokens[2], 'horizontal-date-header', trace, isValidInvoiceFieldValue('dueDate', dateTokens[2]))
+    }
+  }
+}
+
+function collectSequentialInvoiceBlockCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const blockFields: InvoiceSummaryFieldKey[] = []
+    const blockLabels: string[] = []
+    let cursor = index
+
+    while (cursor < lines.length) {
+      const fieldKey = detectInvoiceSummaryFieldKey(lines[cursor]!)
+
+      if (!fieldKey || blockFields.includes(fieldKey)) {
+        break
+      }
+
+      blockFields.push(fieldKey)
+      blockLabels.push(stripTrailingNoise(lines[cursor]!))
+      cursor += 1
+    }
+
+    if (blockFields.length < 2) {
+      continue
+    }
+
+    const values = lines
+      .slice(cursor, cursor + blockFields.length)
+      .map((line) => stripTrailingNoise(line))
+
+    if (values.length < blockFields.length) {
+      continue
+    }
+
+    const trace = `${blockLabels.join(' | ')} => ${values.join(' | ')}`
+
+    blockFields.forEach((fieldKey, fieldIndex) => {
+      const attemptedValue = values[fieldIndex] ?? ''
+      recordInvoiceFieldAttempt(
+        debugStates[fieldKey],
+        'grouped',
+        attemptedValue,
+        'vertical-grouped-block',
+        trace,
+        isValidInvoiceFieldValue(fieldKey, attemptedValue)
+      )
+    })
+  }
+}
+
+function collectLineWindowInvoiceCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const fieldKey = detectInvoiceSummaryFieldKey(lines[index]!)
+    const normalizedLabel = normalizeLabelSearch(lines[index]!)
+
+    if (!fieldKey) {
+      continue
+    }
+
+    if (fieldKey === 'totalAmount' && !isPreferredPayableTotalLabel(normalizedLabel)) {
+      continue
+    }
+
+    const lookaheadLimit = fieldKey === 'referenceNumber' ? 8 : 6
+
+    for (let lookahead = 1; lookahead <= lookaheadLimit && index + lookahead < lines.length; lookahead += 1) {
+      const attemptedValue = stripTrailingNoise(lines[index + lookahead] ?? '')
+      const trace = `${stripTrailingNoise(lines[index]!)} -> ${attemptedValue}`
+      const isValid = isValidInvoiceFieldValue(fieldKey, attemptedValue)
+
+      recordInvoiceFieldAttempt(debugStates[fieldKey], 'lineWindow', attemptedValue, 'line-window', trace, isValid)
+
+      if (isValid) {
+        break
+      }
+    }
+  }
+}
+
+function isPreferredPayableTotalLabel(normalizedLabel: string): boolean {
+  return normalizedLabel === 'celkem kc k uhrade'
+    || normalizedLabel === 'k uhrade'
+    || normalizedLabel === 'total due'
+    || normalizedLabel === 'amount due'
+}
+
+function collectFallbackInvoiceCandidates(
+  fields: Record<string, string>,
+  content: string,
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  recordDirectFieldCandidates(debugStates.referenceNumber, fields, FIELD_ALIASES.invoiceNumber, 'referenceNumber', /[A-Z0-9/-]{4,}/i)
+  recordDirectFieldCandidates(debugStates.issuerOrCounterparty, fields, FIELD_ALIASES.supplier, 'issuerOrCounterparty', /[^\d].+/u)
+  recordDirectFieldCandidates(debugStates.customer, fields, FIELD_ALIASES.customer, 'customer', /[^\d].+/u)
+  recordDirectFieldCandidates(debugStates.issueDate, fields, FIELD_ALIASES.issueDate, 'issueDate', /\d{1,2}[./]\d{1,2}[./]\d{4}/)
+  recordDirectFieldCandidates(debugStates.dueDate, fields, FIELD_ALIASES.dueDate, 'dueDate', /\d{1,2}[./]\d{1,2}[./]\d{4}/)
+  recordDirectFieldCandidates(debugStates.taxableDate, fields, FIELD_ALIASES.taxableDate, 'taxableDate', /\d{1,2}[./]\d{1,2}[./]\d{4}/)
+  recordDirectFieldCandidates(debugStates.paymentMethod, fields, FIELD_ALIASES.paymentMethod, 'paymentMethod', /[^\d].+/u)
+  recordDirectFieldCandidates(debugStates.description, fields, FIELD_ALIASES.description, 'description', /[^\d].+/u)
+  recordDirectFieldCandidates(debugStates.ibanHint, fields, FIELD_ALIASES.iban, 'ibanHint', /[A-Z]{2}[0-9A-Z ]{10,}/i)
+  recordDirectFieldCandidates(debugStates.totalAmount, fields, FIELD_ALIASES.total, 'totalAmount', /./)
+  recordDirectFieldCandidates(debugStates.vatBaseAmount, fields, FIELD_ALIASES.vatBase, 'vatBaseAmount', /./)
+  recordDirectFieldCandidates(debugStates.vatAmount, fields, FIELD_ALIASES.vat, 'vatAmount', /./)
+
+  recordRegexCandidate(debugStates.referenceNumber, content, 'regex-invoice-number', [
+    /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]+)/iu
+  ], 'referenceNumber')
+  recordRegexCandidate(debugStates.issuerOrCounterparty, content, 'regex-supplier', [
+    /(?:^|\n)\s*(?:dodavatel|supplier|vendor)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*(?:dodavatel|supplier|vendor)\s*\n\s*([^\n]+)/iu
+  ], 'issuerOrCounterparty')
+  recordRegexCandidate(debugStates.customer, content, 'regex-customer', [
+    /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*(?:odběratel|customer|buyer)\s*\n\s*([^\n]+)/iu
+  ], 'customer')
+  recordRegexCandidate(debugStates.issueDate, content, 'regex-issue-date', [
+    /(?:^|\n)\s*(?:datum\s+vystaven[íi]|issue\s+date|issued\s+on)\s*[:\-]?\s*([0-9./-]+)/iu
+  ], 'issueDate')
+  recordRegexCandidate(debugStates.dueDate, content, 'regex-due-date', [
+    /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*([0-9./-]+)/iu
+  ], 'dueDate')
+  recordRegexCandidate(debugStates.taxableDate, content, 'regex-taxable-date', [
+    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*([0-9./-]+)/iu
+  ], 'taxableDate')
+  recordRegexCandidate(debugStates.paymentMethod, content, 'regex-payment-method', [
+    /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]?\s*([^\n]+)/iu
+  ], 'paymentMethod')
+  recordRegexCandidate(debugStates.description, content, 'regex-description', [
+    /(?:^|\n)\s*(?:předmět\s+plněn[íi]|service|description|položka)\s*[:\-]?\s*([^\n]+)/iu
+  ], 'description')
+  recordRegexCandidate(debugStates.ibanHint, content, 'regex-iban', [
+    /(?:^|\n)\s*iban\s*[:\-]?\s*([A-Z]{2}[0-9A-Z ]{10,})/iu
+  ], 'ibanHint')
+  recordRegexCandidate(debugStates.totalAmount, content, 'regex-total', [
+    /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|k\s+úhrad[ěe]|total\s+due|amount\s+due)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*(?:celkem\s+po\s+zaokrouhlen[íi])\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*total\s*[:\-]?\s*([^\n]+)/iu
+  ], 'totalAmount')
+  recordRegexCandidate(debugStates.vatBaseAmount, content, 'regex-vat-base', [
+    /(?:^|\n)\s*(?:základ\s+dph|vat\s+base|tax\s+base)\s*[:\-]?\s*([^\n]+)/iu
+  ], 'vatBaseAmount')
+  recordRegexCandidate(debugStates.vatAmount, content, 'regex-vat', [
+    /(?:^|\n)\s*(?:dph|vat)\s*[:\-]?\s*([^\n]+)/iu
+  ], 'vatAmount')
+}
+
+function resolveInvoiceField(
+  fieldKey: InvoiceSummaryFieldKey,
+  state: InvoiceFieldDebugState,
+  stageOrder: Array<keyof Pick<InvoiceFieldDebugState, 'groupedCandidates' | 'lineWindowCandidates' | 'fallbackCandidates'>> = ['groupedCandidates', 'lineWindowCandidates', 'fallbackCandidates']
+): string | undefined {
+  for (const stage of stageOrder) {
+    for (const candidate of state[stage]) {
+      const normalizedValue = normalizeInvoiceFieldWinnerValue(fieldKey, candidate.value)
+
+      state.winnerRule = candidate.rule
+      state.winnerValue = normalizedValue
+      return normalizedValue
     }
   }
 
   return undefined
 }
 
-function extractGroupedInvoiceAmounts(content: string): {
-  vatBaseRaw?: string
-  vatRaw?: string
-  totalRaw?: string
-} {
-  const lines = splitDocumentLines(content)
+function normalizeInvoiceFieldWinnerValue(fieldKey: InvoiceSummaryFieldKey, value: string): string {
+  const stripped = stripTrailingNoise(value)
 
-  for (let index = 0; index < lines.length - 1; index += 1) {
-    const header = normalizeSearchText(lines[index]!)
-    const values = lines[index + 1] ?? ''
-    const moneyTokens = extractMoneyTokens(values)
+  switch (fieldKey) {
+    case 'paymentMethod':
+      return normalizePaymentMethodValue(stripped) ?? stripped
+    case 'totalAmount':
+    case 'vatBaseAmount':
+    case 'vatAmount':
+      return normalizeDetectedMoneyValue(stripped) ?? stripped
+    case 'ibanHint':
+      return normalizeIbanValue(stripped) ?? stripped
+    default:
+      return stripped
+  }
+}
 
-    if (
-      header.includes('zaklad dph')
-      && header.includes('dph')
-      && (header.includes('celkem po zaokrouhleni') || header.includes('celkem'))
-      && moneyTokens.length >= 3
-    ) {
-      return {
-        vatBaseRaw: moneyTokens[0],
-        vatRaw: moneyTokens[1],
-        totalRaw: moneyTokens[moneyTokens.length - 1]
-      }
-    }
+function recordInvoiceFieldAttempt(
+  state: InvoiceFieldDebugState,
+  stage: CandidateStage,
+  attemptedValue: string | undefined,
+  rule: string,
+  trace: string,
+  isValid: boolean
+): void {
+  const normalizedAttempt = stripTrailingNoise(attemptedValue ?? '')
+
+  if (normalizedAttempt.length > 0 && !state.candidateValues.includes(normalizedAttempt)) {
+    state.candidateValues.push(normalizedAttempt)
   }
 
-  return {}
+  if (stage === 'grouped' && !state.groupedRowMatches.includes(trace)) {
+    state.groupedRowMatches.push(trace)
+  }
+
+  if (stage === 'lineWindow' && !state.lineWindowMatches.includes(trace)) {
+    state.lineWindowMatches.push(trace)
+  }
+
+  if (stage === 'fallback' && !state.fullDocumentFallbackMatches.includes(trace)) {
+    state.fullDocumentFallbackMatches.push(trace)
+  }
+
+  if (!isValid || normalizedAttempt.length === 0) {
+    return
+  }
+
+  const candidate = { value: normalizedAttempt, rule, trace }
+  const bucket = stage === 'grouped'
+    ? state.groupedCandidates
+    : stage === 'lineWindow'
+      ? state.lineWindowCandidates
+      : state.fallbackCandidates
+
+  if (!bucket.some((existing) => existing.value === candidate.value && existing.rule === candidate.rule && existing.trace === candidate.trace)) {
+    bucket.push(candidate)
+  }
+}
+
+function recordDirectFieldCandidates(
+  state: InvoiceFieldDebugState,
+  fields: Record<string, string>,
+  aliases: string[],
+  fieldKey: InvoiceSummaryFieldKey,
+  _pattern: RegExp
+): void {
+  for (const alias of aliases) {
+    const candidate = fields[normalizeLabel(alias)]
+
+    if (!candidate) {
+      continue
+    }
+
+    const trace = `${alias} => ${candidate}`
+    recordInvoiceFieldAttempt(state, 'fallback', candidate, 'direct-labeled-field', trace, isValidInvoiceFieldValue(fieldKey, candidate))
+  }
+}
+
+function recordRegexCandidate(
+  state: InvoiceFieldDebugState,
+  content: string,
+  rule: string,
+  patterns: RegExp[],
+  fieldKey: InvoiceSummaryFieldKey
+): void {
+  for (const pattern of patterns) {
+    const match = pattern.exec(content)
+    const candidate = stripTrailingNoise(match?.[1] ?? '')
+
+    if (!candidate) {
+      continue
+    }
+
+    recordInvoiceFieldAttempt(state, 'fallback', candidate, rule, `${pattern.source} => ${candidate}`, isValidInvoiceFieldValue(fieldKey, candidate))
+  }
+}
+
+function detectInvoiceSummaryFieldKey(line: string): InvoiceSummaryFieldKey | undefined {
+  const normalized = normalizeLabelSearch(line)
+
+  return (Object.entries(SUMMARY_FIELD_ALIASES) as Array<[InvoiceSummaryFieldKey, string[]]>)
+    .find(([, aliases]) => aliases.some((alias) => normalizeLabelSearch(alias) === normalized))?.[0]
+}
+
+function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: string | undefined): boolean {
+  const normalizedValue = stripTrailingNoise(value ?? '')
+
+  if (!normalizedValue) {
+    return false
+  }
+
+    switch (fieldKey) {
+      case 'referenceNumber':
+      return /[A-Z0-9/-]{4,}/i.test(normalizedValue)
+        && /\d/.test(normalizedValue)
+        && !isInvoiceLabelText(normalizedValue)
+      case 'issuerOrCounterparty':
+      case 'customer':
+      case 'description':
+        return /[^\d].+/u.test(normalizedValue)
+          && !isInvoiceLabelText(normalizedValue)
+      case 'issueDate':
+      case 'dueDate':
+      case 'taxableDate':
+        return Boolean(safeNormalizeDocumentDate(normalizedValue, 'Invoice date'))
+      case 'paymentMethod':
+        return !isInvoiceLabelText(normalizedValue)
+          && extractDateTokens(normalizedValue).length === 0
+          && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice payment method')
+      case 'totalAmount':
+      case 'vatBaseAmount':
+      case 'vatAmount':
+        return Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
+      case 'ibanHint':
+        return Boolean(normalizeIbanValue(normalizedValue))
+    default:
+      return false
+  }
+}
+
+function isInvoiceLabelText(value: string): boolean {
+  const normalized = normalizeLabelSearch(value)
+
+  return (
+    Boolean(detectInvoiceSummaryFieldKey(normalized))
+    || normalized === 'faktura'
+    || normalized === 'faktura danovy doklad'
+    || normalized === 'danovy doklad'
+    || normalized === 'rozpis dph'
+  )
 }
 
 function splitDocumentLines(content: string): string[] {
@@ -597,21 +829,14 @@ function splitDocumentLines(content: string): string[] {
     .filter((line) => line.length > 0)
 }
 
-function normalizeSearchText(value: string): string {
+function normalizeLabelSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/[：:]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
-}
-
-function extractMoneyTokens(value: string): string[] {
-  return Array.from(value.matchAll(MONEY_TOKEN_WITH_CURRENCY_PATTERN))
-    .map((match) => stripTrailingNoise(match[0] ?? ''))
-    .filter((token) => token.length > 0)
-    .map((token) => normalizeDetectedMoneyValue(token))
-    .filter((token): token is string => Boolean(token))
 }
 
 function extractDateTokens(value: string): string[] {
