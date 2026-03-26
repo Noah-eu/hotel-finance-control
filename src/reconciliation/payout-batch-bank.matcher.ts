@@ -145,9 +145,12 @@ export function inspectPayoutBatchBankDecisions(
             payoutReference: decision.batch.payoutReference,
             platform: decision.batch.platform,
             expectedTotalMinor: decision.batch.expectedTotalMinor,
+            documentTotalMinor: decision.batch.payoutSupplementPayoutTotalAmountMinor,
             expectedBankAmountMinor: decision.bankExpectation.amountMinor,
             currency: decision.batch.currency,
+            documentCurrency: decision.batch.payoutSupplementPayoutTotalCurrency,
             expectedBankCurrency: decision.bankExpectation.currency,
+            matchingAmountSource: decision.bankExpectation.source,
             payoutDate: decision.batch.payoutDate,
             bankCandidateCountBeforeFiltering: decision.allCandidates.length,
             bankCandidateCountAfterAmountCurrency: amountCurrencyCandidates.length,
@@ -258,7 +261,11 @@ function buildBatchDecisions(
     input: MatchPayoutBatchesToBankInput
 ): Array<{
     batch: PayoutBatchExpectation
-    bankExpectation: { amountMinor: number, currency: PayoutBatchExpectation['currency'] }
+    bankExpectation: {
+        amountMinor: number
+        currency: PayoutBatchExpectation['currency']
+        source: 'batch_total' | 'booking_local_total'
+    }
     allCandidates: PayoutBatchCandidateDiagnostic[]
     eligibleCandidates: PayoutBatchCandidateDiagnostic[]
     winner?: PayoutBatchCandidateDiagnostic
@@ -398,7 +405,11 @@ function requiresPositiveEvidence(batch: PayoutBatchExpectation): boolean {
 
 function resolveBankMatchingExpectation(
     batch: PayoutBatchExpectation
-): { amountMinor: number, currency: PayoutBatchExpectation['currency'] } {
+): {
+    amountMinor: number
+    currency: PayoutBatchExpectation['currency']
+    source: 'batch_total' | 'booking_local_total'
+} {
     if (
         batch.platform === 'booking'
         && typeof batch.payoutSupplementLocalAmountMinor === 'number'
@@ -406,13 +417,15 @@ function resolveBankMatchingExpectation(
     ) {
         return {
             amountMinor: batch.payoutSupplementLocalAmountMinor,
-            currency: batch.payoutSupplementLocalCurrency
+            currency: batch.payoutSupplementLocalCurrency,
+            source: 'booking_local_total'
         }
     }
 
     return {
         amountMinor: batch.expectedTotalMinor,
-        currency: batch.currency
+        currency: batch.currency,
+        source: 'batch_total'
     }
 }
 

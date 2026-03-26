@@ -3002,6 +3002,48 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('uses Booking supplement local CZK total for bank matching when the browser-upload CSV carries the payout document total in EUR', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContentInEur(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:15:00.000Z'
+    })
+
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reconciliationSnapshot.payoutBatchDecisions).toContainEqual(
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        platform: 'booking',
+        expectedTotalMinor: 145642,
+        documentTotalMinor: 145642,
+        expectedBankAmountMinor: 3553012,
+        currency: 'EUR',
+        documentCurrency: 'EUR',
+        expectedBankCurrency: 'CZK',
+        matchingAmountSource: 'booking_local_total',
+        matched: true,
+        matchedBankTransactionId: 'txn:bank:fio-row-16'
+      })
+    )
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+  })
+
   it('keeps the real browser-upload path at 16 matched and 2 unmatched when the bank CSV arrives with CR-only row separators', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
@@ -3739,6 +3781,13 @@ function buildBooking35kBrowserUploadContent(): string {
   return [
     'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
     'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;35530,12;12 Mar 2026;PAYOUT-BOOK-20260310'
+  ].join('\n')
+}
+
+function buildBooking35kBrowserUploadContentInEur(): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;EUR;Paid;1456,42;12 Mar 2026;PAYOUT-BOOK-20260310'
   ].join('\n')
 }
 

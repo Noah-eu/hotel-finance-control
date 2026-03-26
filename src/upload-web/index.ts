@@ -67,9 +67,12 @@ export interface BrowserRuntimeUploadState {
       payoutBatchKey: string
       platform: string
       expectedTotalMinor: number
+      documentTotalMinor?: number
       expectedBankAmountMinor: number
       currency: string
+      documentCurrency?: string
       expectedBankCurrency: string
+      matchingAmountSource: 'batch_total' | 'booking_local_total'
       payoutDate: string
       bankCandidateCountBeforeFiltering: number
       bankCandidateCountAfterAmountCurrency: number

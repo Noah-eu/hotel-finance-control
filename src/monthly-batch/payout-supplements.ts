@@ -83,11 +83,17 @@ function findBookingSupplementBatchKey(
   const supplementPayoutDate = typeof supplement.data.payoutDate === 'string'
     ? supplement.data.payoutDate.trim()
     : ''
-  const supplementAmountMinor = typeof supplement.data.amountMinor === 'number'
-    ? supplement.data.amountMinor
+  const supplementLocalAmountMinor = typeof supplement.data.localAmountMinor === 'number'
+    ? supplement.data.localAmountMinor
     : undefined
-  const supplementCurrency = typeof supplement.data.currency === 'string'
-    ? supplement.data.currency.trim().toUpperCase()
+  const supplementLocalCurrency = typeof supplement.data.localCurrency === 'string'
+    ? supplement.data.localCurrency.trim().toUpperCase()
+    : ''
+  const supplementDocumentAmountMinor = typeof supplement.data.payoutTotalAmountMinor === 'number'
+    ? supplement.data.payoutTotalAmountMinor
+    : undefined
+  const supplementDocumentCurrency = typeof supplement.data.payoutTotalCurrency === 'string'
+    ? supplement.data.payoutTotalCurrency.trim().toUpperCase()
     : ''
   const supplementReservationIds = Array.isArray(supplement.data.reservationIds)
     ? new Set(
@@ -97,6 +103,15 @@ function findBookingSupplementBatchKey(
         .filter(Boolean)
     )
     : new Set<string>()
+  const supplementReferenceHints = new Set(
+    (Array.isArray(supplement.data.referenceHints)
+      ? supplement.data.referenceHints
+      : []
+    )
+      .filter((value): value is string => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean)
+  )
 
   const grouped = new Map<string, ExtractedRecord[]>()
 
@@ -122,19 +137,49 @@ function findBookingSupplementBatchKey(
           .map((row) => typeof row.data.reservationId === 'string' ? row.data.reservationId.trim() : '')
           .filter(Boolean)
       )
+      const propertyIds = new Set(
+        rows
+          .map((row) => typeof row.data.propertyId === 'string' ? row.data.propertyId.trim() : '')
+          .filter(Boolean)
+      )
 
       const directReferenceMatch = Boolean(
         supplementPaymentId
         && payoutReference
         && payoutReference.toUpperCase() === supplementPaymentId.toUpperCase()
       )
-      const amountExact = supplementAmountMinor !== undefined && amountMinor === supplementAmountMinor
-      const currencyExact = Boolean(supplementCurrency && currency && supplementCurrency === currency)
       const payoutDateExact = Boolean(supplementPayoutDate && payoutDate && supplementPayoutDate === payoutDate)
+      const localAmountExact = supplementLocalAmountMinor !== undefined && amountMinor === supplementLocalAmountMinor
+      const localCurrencyExact = Boolean(supplementLocalCurrency && currency && supplementLocalCurrency === currency)
+      const localPayoutShapeMatch = payoutDateExact && localAmountExact && localCurrencyExact
+      const documentAmountExact = supplementDocumentAmountMinor !== undefined && amountMinor === supplementDocumentAmountMinor
+      const documentCurrencyExact = Boolean(supplementDocumentCurrency && currency && supplementDocumentCurrency === currency)
+      const documentPayoutShapeMatch = payoutDateExact && documentAmountExact && documentCurrencyExact
       const reservationOverlapCount = Array.from(reservationIds).filter((value) => supplementReservationIds.has(value)).length
-      const exactPayoutShapeMatch = amountExact && currencyExact && payoutDateExact
-      const eligible = exactPayoutShapeMatch
-      const score = (directReferenceMatch ? 100 : 0) + (reservationOverlapCount * 10) + (exactPayoutShapeMatch ? 1 : 0)
+      const batchReferenceHints = new Set(
+        [payoutReference, ...Array.from(reservationIds), ...Array.from(propertyIds)]
+          .map(normalizeComparable)
+          .filter(Boolean)
+      )
+      const referenceHintOverlapCount = Array.from(supplementReferenceHints)
+        .map(normalizeComparable)
+        .filter((value) => batchReferenceHints.has(value))
+        .length
+      const eligible = directReferenceMatch || (
+        payoutDateExact && (
+          localPayoutShapeMatch
+          || documentPayoutShapeMatch
+          || reservationOverlapCount > 0
+          || referenceHintOverlapCount > 0
+        )
+      )
+      const score =
+        (directReferenceMatch ? 100 : 0)
+        + (localPayoutShapeMatch ? 40 : 0)
+        + (documentPayoutShapeMatch ? 35 : 0)
+        + (reservationOverlapCount * 10)
+        + (referenceHintOverlapCount * 8)
+        + (payoutDateExact ? 1 : 0)
 
       return {
         batchKey,
@@ -164,4 +209,12 @@ function isBookingPayoutSupplement(record: ExtractedRecord): boolean {
   return record.recordType === 'payout-supplement'
     && String(record.data.platform ?? '').toLowerCase() === 'booking'
     && String(record.data.supplementRole ?? '').toLowerCase() === 'payout_statement'
+}
+
+function normalizeComparable(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
 }

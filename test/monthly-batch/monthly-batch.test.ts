@@ -1658,6 +1658,57 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('merges Booking payout supplement metadata into a Booking batch even when the CSV carries the payout document total in EUR', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'booking35k.csv',
+          content: buildBooking35kBrowserUploadContentInEur(),
+          uploadedAt: '2026-03-24T19:40:00.000Z'
+        },
+        {
+          name: 'Bookinng35k.pdf',
+          content: buildCzechSingleGlyphBookingPayoutStatementContent(),
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-24T19:40:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-eur-csv-pdf-supplement',
+        requestedAt: '2026-03-24T19:41:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-24T19:42:00.000Z'
+    })
+
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        expectedTotalMinor: 145642,
+        currency: 'EUR',
+        payoutSupplementPaymentId: '010638445054',
+        payoutSupplementPayoutDate: '2026-03-12',
+        payoutSupplementPayoutTotalAmountMinor: 145642,
+        payoutSupplementPayoutTotalCurrency: 'EUR',
+        payoutSupplementLocalAmountMinor: 3553012,
+        payoutSupplementLocalCurrency: 'CZK',
+        payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReferenceHints: ['2206371', 'RES-BOOK-8841'],
+        payoutSupplementReservationIds: ['RES-BOOK-8841']
+      })
+    ])
+    expect(result.batch.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        amountMinor: 3553012,
+        currency: 'CZK',
+        display: {
+          title: 'Booking payout 010638445054 / 35 530,12 Kč',
+          context: 'Datum payoutu: 2026-03-12 · Celkem payoutu: 1 456,42 EUR · Kurz: 24.3955 · IBAN 5956 · rezervace: 1'
+        }
+      })
+    ])
+  })
+
   it('uses Booking supplement paymentId and local payout total to match a bank inflow without changing Airbnb payout results', () => {
     const result = ingestUploadedMonthlyFiles({
       files: [
@@ -1847,6 +1898,13 @@ function buildBooking35kBrowserUploadContent(): string {
   return [
     'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
     'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;CZK;Paid;35530,12;12 Mar 2026;PAYOUT-BOOK-20260310'
+  ].join('\n')
+}
+
+function buildBooking35kBrowserUploadContentInEur(): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;EUR;Paid;1456,42;12 Mar 2026;PAYOUT-BOOK-20260310'
   ].join('\n')
 }
 

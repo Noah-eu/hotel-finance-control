@@ -1102,10 +1102,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
               const amountLabel = typeof decision.expectedBankAmountMinor === 'number'
                 ? buildAmountDisplay(decision.expectedBankAmountMinor, decision.expectedBankCurrency || decision.currency || 'CZK')
                 : buildAmountDisplay(decision.expectedTotalMinor || 0, decision.currency || 'CZK');
+              const documentAmountLabel = typeof decision.documentTotalMinor === 'number' && decision.documentCurrency
+                ? buildAmountDisplay(decision.documentTotalMinor, decision.documentCurrency)
+                : buildAmountDisplay(decision.expectedTotalMinor || 0, decision.currency || 'CZK');
+              const matchingSourceLabel = decision.matchingAmountSource === 'booking_local_total'
+                ? 'booking_local_total'
+                : 'batch_total';
 
               return '<li><code>' + escapeHtml(String(decision.payoutBatchKey || '')) + '</code>'
                 + ' · ' + escapeHtml(String(decision.platform || 'unknown'))
-                + ' · expected ' + escapeHtml(amountLabel)
+                + ' · document total ' + escapeHtml(documentAmountLabel)
+                + ' · bank matching total ' + escapeHtml(amountLabel)
+                + ' · matching source ' + escapeHtml(matchingSourceLabel)
                 + ' · payout date ' + escapeHtml(String(decision.payoutDate || 'n/a'))
                 + ' · candidates ' + escapeHtml(String(decision.bankCandidateCountBeforeFiltering || 0))
                 + ' -> amount/currency ' + escapeHtml(String(decision.bankCandidateCountAfterAmountCurrency || 0))

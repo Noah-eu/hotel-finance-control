@@ -86,9 +86,12 @@ export interface PayoutBatchBankDecisionTrace {
   payoutReference: PayoutBatchExpectation['payoutReference']
   platform: PayoutBatchExpectation['platform']
   expectedTotalMinor: PayoutBatchExpectation['expectedTotalMinor']
+  documentTotalMinor?: number
   expectedBankAmountMinor: number
   currency: PayoutBatchExpectation['currency']
+  documentCurrency?: NormalizedTransaction['currency']
   expectedBankCurrency: NormalizedTransaction['currency']
+  matchingAmountSource: 'batch_total' | 'booking_local_total'
   payoutDate: PayoutBatchExpectation['payoutDate']
   bankCandidateCountBeforeFiltering: number
   bankCandidateCountAfterAmountCurrency: number
