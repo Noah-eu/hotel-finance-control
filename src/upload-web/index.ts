@@ -73,8 +73,12 @@ export interface BrowserRuntimeUploadState {
       documentCurrency?: string
       expectedBankCurrency: string
       matchingAmountSource: 'batch_total' | 'booking_local_total'
+      selectionMode?: 'eligible_candidate' | 'unique_exact_amount_fallback'
       exactAmountMatchExistsBeforeDateEvidence: boolean
       sameCurrencyCandidateAmountMinors: number[]
+      nearestAmountDeltaMinor?: number
+      componentRowCount: number
+      componentRowAmountMinors: number[]
       payoutDate: string
       bankCandidateCountBeforeFiltering: number
       bankCandidateCountAfterAmountCurrency: number
@@ -84,6 +88,13 @@ export interface BrowserRuntimeUploadState {
       matchedBankTransactionId?: string
       noMatchReason?: string
     }>
+    airbnbUnmatchedHistogram: {
+      noExactAmount: number
+      dateRejected: number
+      evidenceRejected: number
+      ambiguous: number
+      other: number
+    }
     inboundBankTransactions: Array<{
       transactionId: string
       bookedAt: string

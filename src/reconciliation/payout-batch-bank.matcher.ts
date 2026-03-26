@@ -159,6 +159,7 @@ export function inspectPayoutBatchBankDecisions(
             documentCurrency: decision.batch.payoutSupplementPayoutTotalCurrency,
             expectedBankCurrency: decision.bankExpectation.currency,
             matchingAmountSource: decision.bankExpectation.source,
+            selectionMode: decision.selectionMode,
             exactAmountMatchExistsBeforeDateEvidence: amountCurrencyCandidates.length > 0,
             sameCurrencyCandidateAmountMinors: uniqueSameCurrencyAmountMinors.slice(0, 8),
             payoutDate: decision.batch.payoutDate,
@@ -278,6 +279,7 @@ function buildBatchDecisions(
     }
     allCandidates: PayoutBatchCandidateDiagnostic[]
     eligibleCandidates: PayoutBatchCandidateDiagnostic[]
+    selectionMode?: 'eligible_candidate' | 'unique_exact_amount_fallback'
     winner?: PayoutBatchCandidateDiagnostic
 }> {
     const availableBankTransactions = input.bankTransactions.filter(
@@ -289,13 +291,21 @@ function buildBatchDecisions(
         const eligibleCandidates = allCandidates
             .filter((candidate) => candidate.eligible)
             .sort(compareBatchCandidates)
-        const winner = selectUniqueTopCandidate(batch, eligibleCandidates)
+        const directWinner = selectUniqueTopCandidate(batch, eligibleCandidates)
+        const fallbackWinner = directWinner ? undefined : selectUniqueExactAmountFallbackCandidate(batch, allCandidates)
+        const winner = directWinner ?? fallbackWinner
+        const selectionMode = directWinner
+            ? 'eligible_candidate'
+            : fallbackWinner
+                ? 'unique_exact_amount_fallback'
+                : undefined
 
         return {
             batch,
             bankExpectation: resolveBankMatchingExpectation(batch),
             allCandidates,
             eligibleCandidates,
+            selectionMode,
             winner
         }
     })
@@ -375,6 +385,33 @@ function selectUniqueTopCandidate(
     }
 
     return undefined
+}
+
+function selectUniqueExactAmountFallbackCandidate(
+    batch: PayoutBatchExpectation,
+    candidates: PayoutBatchCandidateDiagnostic[]
+): PayoutBatchCandidateDiagnostic | undefined {
+    if (batch.platform !== 'airbnb') {
+        return undefined
+    }
+
+    if (requiresPositiveEvidence(batch)) {
+        return undefined
+    }
+
+    const amountCurrencyRoutingCandidates = candidates
+        .filter((candidate) =>
+            !candidate.rejectionReasons.includes('noExactAmount')
+            && !candidate.rejectionReasons.includes('currencyMismatch')
+            && !candidate.rejectionReasons.includes('wrongBankRouting')
+        )
+        .sort(compareBatchCandidates)
+
+    if (amountCurrencyRoutingCandidates.length !== 1) {
+        return undefined
+    }
+
+    return amountCurrencyRoutingCandidates[0]
 }
 
 function calculateDayDistance(left: string, right: string): number {

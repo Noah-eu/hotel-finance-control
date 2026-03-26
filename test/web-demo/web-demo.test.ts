@@ -1429,6 +1429,34 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
+  it('shows the Airbnb unmatched histogram and exact-amount fallback decisions on the actual built page when bank postings fall outside the normal date window', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-26T20:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-arraybuffer-real-4-file-airbnb-exact-amount-fallback',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(-5),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Airbnb unmatched histogram:</strong> noExactAmount=2 · dateRejected=0 · evidenceRejected=0 · ambiguous=0 · other=0')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('selection mode unique_exact_amount_fallback')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('component rows 1')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('nearest amount delta')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('shows Booking document total and local bank matching total separately on the actual built page when the CSV carries the payout document total in EUR', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-26T10:30:00.000Z',

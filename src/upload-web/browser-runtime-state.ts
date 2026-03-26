@@ -162,6 +162,7 @@ function buildReconciliationSnapshot(
     matchedPayoutBatchKeys: matchedItems.map((item) => item.payoutBatchKey),
     unmatchedPayoutBatchKeys: unmatchedItems.map((item) => item.payoutBatchKey),
     payoutBatchDecisions,
+    airbnbUnmatchedHistogram: buildAirbnbUnmatchedHistogram(payoutBatchDecisions),
     inboundBankTransactions
   }
 }
@@ -169,30 +170,96 @@ function buildReconciliationSnapshot(
 function buildPayoutBatchDecisionSnapshot(
   batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']
 ): BrowserRuntimeUploadState['reconciliationSnapshot']['payoutBatchDecisions'] {
+  const payoutRows = batch.reconciliation.workflowPlan?.payoutRows ?? []
+  const payoutRowsByBatchKey = new Map<string, Array<(typeof payoutRows)[number]>>()
+
+  for (const row of payoutRows) {
+    const items = payoutRowsByBatchKey.get(row.payoutBatchKey) ?? []
+    items.push(row)
+    payoutRowsByBatchKey.set(row.payoutBatchKey, items)
+  }
+
   return inspectPayoutBatchBankDecisions({
     payoutBatches: batch.reconciliation.workflowPlan?.payoutBatches ?? [],
     bankTransactions: batch.reconciliation.normalizedTransactions
-  }).map((decision) => ({
-    payoutBatchKey: decision.payoutBatchKey,
-    platform: decision.platform,
-    expectedTotalMinor: decision.expectedTotalMinor,
-    documentTotalMinor: decision.documentTotalMinor,
-    expectedBankAmountMinor: decision.expectedBankAmountMinor,
-    currency: decision.currency,
-    documentCurrency: decision.documentCurrency,
-    expectedBankCurrency: decision.expectedBankCurrency,
-    matchingAmountSource: decision.matchingAmountSource,
-    exactAmountMatchExistsBeforeDateEvidence: decision.exactAmountMatchExistsBeforeDateEvidence,
-    sameCurrencyCandidateAmountMinors: decision.sameCurrencyCandidateAmountMinors,
-    payoutDate: decision.payoutDate,
-    bankCandidateCountBeforeFiltering: decision.bankCandidateCountBeforeFiltering,
-    bankCandidateCountAfterAmountCurrency: decision.bankCandidateCountAfterAmountCurrency,
-    bankCandidateCountAfterDateWindow: decision.bankCandidateCountAfterDateWindow,
-    bankCandidateCountAfterEvidenceFiltering: decision.bankCandidateCountAfterEvidenceFiltering,
-    matched: decision.matched,
-    matchedBankTransactionId: decision.matchedBankTransactionId,
-    noMatchReason: decision.noMatchReason
-  }))
+  }).map((decision) => {
+    const componentRows = payoutRowsByBatchKey.get(decision.payoutBatchKey) ?? []
+    const nearestAmountDeltaMinor = decision.exactAmountMatchExistsBeforeDateEvidence
+      ? 0
+      : decision.sameCurrencyCandidateAmountMinors
+        .map((amountMinor) => Math.abs(amountMinor - decision.expectedBankAmountMinor))
+        .sort((left, right) => left - right)[0]
+
+    return {
+      payoutBatchKey: decision.payoutBatchKey,
+      platform: decision.platform,
+      expectedTotalMinor: decision.expectedTotalMinor,
+      documentTotalMinor: decision.documentTotalMinor,
+      expectedBankAmountMinor: decision.expectedBankAmountMinor,
+      currency: decision.currency,
+      documentCurrency: decision.documentCurrency,
+      expectedBankCurrency: decision.expectedBankCurrency,
+      matchingAmountSource: decision.matchingAmountSource,
+      selectionMode: decision.selectionMode,
+      exactAmountMatchExistsBeforeDateEvidence: decision.exactAmountMatchExistsBeforeDateEvidence,
+      sameCurrencyCandidateAmountMinors: decision.sameCurrencyCandidateAmountMinors,
+      nearestAmountDeltaMinor,
+      componentRowCount: componentRows.length,
+      componentRowAmountMinors: componentRows.map((row) => row.amountMinor),
+      payoutDate: decision.payoutDate,
+      bankCandidateCountBeforeFiltering: decision.bankCandidateCountBeforeFiltering,
+      bankCandidateCountAfterAmountCurrency: decision.bankCandidateCountAfterAmountCurrency,
+      bankCandidateCountAfterDateWindow: decision.bankCandidateCountAfterDateWindow,
+      bankCandidateCountAfterEvidenceFiltering: decision.bankCandidateCountAfterEvidenceFiltering,
+      matched: decision.matched,
+      matchedBankTransactionId: decision.matchedBankTransactionId,
+      noMatchReason: decision.noMatchReason
+    }
+  })
+}
+
+function buildAirbnbUnmatchedHistogram(
+  decisions: BrowserRuntimeUploadState['reconciliationSnapshot']['payoutBatchDecisions']
+): BrowserRuntimeUploadState['reconciliationSnapshot']['airbnbUnmatchedHistogram'] {
+  const airbnbUnmatched = decisions.filter((decision) => decision.platform === 'airbnb' && !decision.matched)
+
+  let noExactAmount = 0
+  let dateRejected = 0
+  let evidenceRejected = 0
+  let ambiguous = 0
+  let other = 0
+
+  for (const decision of airbnbUnmatched) {
+    if (!decision.exactAmountMatchExistsBeforeDateEvidence) {
+      noExactAmount += 1
+      continue
+    }
+
+    if (decision.noMatchReason === 'ambiguousCandidates') {
+      ambiguous += 1
+      continue
+    }
+
+    if (decision.bankCandidateCountAfterDateWindow === 0) {
+      dateRejected += 1
+      continue
+    }
+
+    if (decision.bankCandidateCountAfterEvidenceFiltering === 0) {
+      evidenceRejected += 1
+      continue
+    }
+
+    other += 1
+  }
+
+  return {
+    noExactAmount,
+    dateRejected,
+    evidenceRejected,
+    ambiguous,
+    other
+  }
 }
 
 function buildRuntimeAudit(

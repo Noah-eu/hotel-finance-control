@@ -348,6 +348,45 @@ describe('matchPayoutBatchesToBank', () => {
         ])
     })
 
+    it('falls back to one unique Airbnb exact-amount candidate when date tolerance rejects it but no competing exact-amount candidate exists', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [{
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-TRANSFER:Jokeland s.r.o.:IBAN-5956-(CZK)',
+                payoutDate: '2026-03-15',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:airbnb-payout-2'],
+                expectedTotalMinor: 98000,
+                currency: 'CZK'
+            }],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:airbnb-five-day-gap' as NormalizedTransaction['id'],
+                    amountMinor: 98000,
+                    accountId: '5599955956/5500',
+                    bookedAt: '2026-03-10',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-15:AIRBNB-TRANSFER:JOKELAND S.R.O.:IBAN-5956-(CZK)',
+                expectedBankAmountMinor: 98000,
+                expectedBankCurrency: 'CZK',
+                selectionMode: 'unique_exact_amount_fallback',
+                exactAmountMatchExistsBeforeDateEvidence: true,
+                bankCandidateCountAfterAmountCurrency: 1,
+                bankCandidateCountAfterDateWindow: 0,
+                matched: true,
+                matchedBankTransactionId: 'txn:bank:airbnb-five-day-gap'
+            })
+        ])
+    })
+
     it('exposes exact-amount pre-date/evidence diagnostics and same-currency bank amounts for Airbnb browser matching decisions', () => {
         const decisions = inspectPayoutBatchBankDecisions({
             payoutBatches: [{

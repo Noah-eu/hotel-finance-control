@@ -3078,6 +3078,48 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('keeps the real browser-like 4-file arrayBuffer path at 16 matched and 2 unmatched when Airbnb bank postings land outside the normal date window but exact amounts stay unique', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(-5),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T20:10:00.000Z'
+    })
+
+    const airbnbMatchedDecisions = result.reconciliationSnapshot.payoutBatchDecisions.filter((decision) =>
+      decision.platform === 'airbnb' && decision.matched
+    )
+
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reconciliationSnapshot.airbnbUnmatchedHistogram).toEqual({
+      noExactAmount: 2,
+      dateRejected: 0,
+      evidenceRejected: 0,
+      ambiguous: 0,
+      other: 0
+    })
+    expect(airbnbMatchedDecisions).toHaveLength(15)
+    expect(
+      airbnbMatchedDecisions.every((decision) =>
+        decision.selectionMode === 'unique_exact_amount_fallback'
+        && decision.bankCandidateCountAfterAmountCurrency === 1
+        && decision.bankCandidateCountAfterDateWindow === 0
+      )
+    ).toBe(true)
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+  })
+
   it('uses Booking supplement local CZK total for bank matching when the browser-upload CSV carries the payout document total in EUR', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [

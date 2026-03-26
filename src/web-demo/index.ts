@@ -150,6 +150,13 @@ function renderOperatorWebDemoHtml(input: {
       matchedPayoutBatchKeys: [],
       unmatchedPayoutBatchKeys: [],
       payoutBatchDecisions: [],
+      airbnbUnmatchedHistogram: {
+        noExactAmount: 0,
+        dateRejected: 0,
+        evidenceRejected: 0,
+        ambiguous: 0,
+        other: 0
+      },
       inboundBankTransactions: []
     },
     preparedFiles: [],
@@ -1095,6 +1102,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const reviewSummary = (state && state.reviewSummary) || {};
         const matchedSectionCount = Array.isArray(reviewSections.payoutBatchMatched) ? reviewSections.payoutBatchMatched.length : 0;
         const unmatchedSectionCount = Array.isArray(reviewSections.payoutBatchUnmatched) ? reviewSections.payoutBatchUnmatched.length : 0;
+        const airbnbHistogram = reconciliationSnapshot.airbnbUnmatchedHistogram || {};
 
         const reconciliationDecisionMarkup = Array.isArray(reconciliationSnapshot.payoutBatchDecisions) && reconciliationSnapshot.payoutBatchDecisions.length > 0
           ? '<li><strong>Raw reconciliation batch decisions:</strong><ul>'
@@ -1119,8 +1127,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 + ' · document total ' + escapeHtml(documentAmountLabel)
                 + ' · bank matching total ' + escapeHtml(amountLabel)
                 + ' · matching source ' + escapeHtml(matchingSourceLabel)
+                + (decision.selectionMode ? ' · selection mode ' + escapeHtml(String(decision.selectionMode)) : '')
                 + ' · exact amount pre-date/evidence ' + escapeHtml(decision.exactAmountMatchExistsBeforeDateEvidence ? 'ano' : 'ne')
                 + (sameCurrencyAmountsLabel ? ' · same-currency bank amounts ' + escapeHtml(sameCurrencyAmountsLabel) : '')
+                + (typeof decision.nearestAmountDeltaMinor === 'number'
+                  ? ' · nearest amount delta ' + escapeHtml(buildAmountDisplay(decision.nearestAmountDeltaMinor, decision.expectedBankCurrency || decision.currency || 'CZK'))
+                  : '')
+                + ' · component rows ' + escapeHtml(String(decision.componentRowCount || 0))
+                + (Array.isArray(decision.componentRowAmountMinors) && decision.componentRowAmountMinors.length > 0
+                  ? ' · component row amounts '
+                    + escapeHtml(decision.componentRowAmountMinors.map((amountMinor) =>
+                      buildAmountDisplay(amountMinor, decision.expectedBankCurrency || decision.currency || 'CZK')
+                    ).join(', '))
+                  : '')
                 + ' · payout date ' + escapeHtml(String(decision.payoutDate || 'n/a'))
                 + ' · candidates ' + escapeHtml(String(decision.bankCandidateCountBeforeFiltering || 0))
                 + ' -> amount/currency ' + escapeHtml(String(decision.bankCandidateCountAfterAmountCurrency || 0))
@@ -1159,6 +1178,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Reconciliation object path:</strong> <code>' + escapeHtml(String(reconciliationSnapshot.objectPath || 'state.reconciliationSnapshot')) + '</code></li>',
           '<li><strong>Raw reconciliation matched:</strong> ' + escapeHtml(String(reconciliationSnapshot.matchedCount || 0)) + '</li>',
           '<li><strong>Raw reconciliation unmatched:</strong> ' + escapeHtml(String(reconciliationSnapshot.unmatchedCount || 0)) + '</li>',
+          '<li><strong>Airbnb unmatched histogram:</strong> noExactAmount=' + escapeHtml(String(airbnbHistogram.noExactAmount || 0))
+            + ' · dateRejected=' + escapeHtml(String(airbnbHistogram.dateRejected || 0))
+            + ' · evidenceRejected=' + escapeHtml(String(airbnbHistogram.evidenceRejected || 0))
+            + ' · ambiguous=' + escapeHtml(String(airbnbHistogram.ambiguous || 0))
+            + ' · other=' + escapeHtml(String(airbnbHistogram.other || 0))
+            + '</li>',
           '<li><strong>Projection source:</strong> <code>' + escapeHtml(String(payoutProjection.sourceFunction || 'collectVisiblePayoutProjection')) + '</code></li>',
           '<li><strong>Projection object path:</strong> <code>' + escapeHtml(String(payoutProjection.objectPath || 'state.finalPayoutProjection')) + '</code></li>',
           '<li><strong>Matched payout count:</strong> ' + escapeHtml(String(payoutProjection.matchedCount || 0)) + '</li>',
