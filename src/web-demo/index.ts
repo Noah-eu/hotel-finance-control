@@ -1204,6 +1204,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
               + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.totalAmountMinor, file.documentExtractionSummary.totalCurrency))
               + '</span>'
             : '',
+          file.documentExtractionSummary
+            && typeof file.documentExtractionSummary.totalAmountMinor === 'number'
+            ? '<br /><span class="hint">Final totalAmountMinor: ' + escapeHtml(String(file.documentExtractionSummary.totalAmountMinor)) + '</span>'
+            : '',
+          file.documentExtractionSummary && file.documentExtractionSummary.totalCurrency
+            ? '<br /><span class="hint">Final totalCurrency: ' + escapeHtml(String(file.documentExtractionSummary.totalCurrency)) + '</span>'
+            : '',
           file.documentExtractionSummary && file.documentExtractionSummary.paymentMethod
             ? '<br /><span class="hint">Document paymentMethod: ' + escapeHtml(String(file.documentExtractionSummary.paymentMethod)) + '</span>'
             : '',

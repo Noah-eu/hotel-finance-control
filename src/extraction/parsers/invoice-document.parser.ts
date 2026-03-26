@@ -257,6 +257,7 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   const lines = splitDocumentLines(content)
   const debugStates = buildInvoiceFieldDebugStates()
   let groupedHeaderBlock = collectStructuredGroupedInvoiceHeaderBlockCandidates(lines, debugStates)
+    ?? collectVerticalGroupedInvoiceHeaderBlockCandidates(lines, debugStates)
   let groupedTotalsBlock: StructuredGroupedInvoiceTotalsBlock | undefined
 
   groupedHeaderBlock = groupedHeaderBlock ?? collectHorizontalGroupedInvoiceHeaderCandidates(content, debugStates)
@@ -264,6 +265,7 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   groupedHeaderBlock = groupedHeaderBlock ?? sequentialBlocks.headerBlock
   collectLineWindowInvoiceCandidates(lines, debugStates)
   groupedTotalsBlock = collectStructuredGroupedInvoiceTotalsBlockCandidates(lines, debugStates)
+    ?? collectVerticalGroupedInvoiceTotalsBlockCandidates(lines, debugStates)
     ?? collectHorizontalGroupedInvoiceAmountCandidates(lines, debugStates)
     ?? sequentialBlocks.totalsBlock
   collectFallbackInvoiceCandidates(fields, content, debugStates)
@@ -561,6 +563,88 @@ function collectStructuredGroupedInvoiceTotalsBlockCandidates(
   return undefined
 }
 
+function collectVerticalGroupedInvoiceHeaderBlockCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): StructuredGroupedInvoiceHeaderBlock | undefined {
+  for (let index = 0; index < lines.length; index += 1) {
+    const orderedKeys = collectConsecutiveGroupedFieldKeys(lines, index, ['referenceNumber', 'paymentMethod', 'issueDate', 'taxableDate', 'dueDate'])
+
+    if (orderedKeys.length < 4) {
+      continue
+    }
+
+    const block = buildVerticalGroupedInvoiceHeaderBlock(lines, index + orderedKeys.length, orderedKeys)
+
+    if (!block) {
+      continue
+    }
+
+    const trace = `${block.labels.join(' | ')} => ${block.values.join(' | ')}`
+
+    block.labels.forEach((_, position) => {
+      const fieldKey = orderedKeys[position]
+      const candidateValue = block.values[position]
+
+      if (fieldKey && candidateValue) {
+        recordInvoiceFieldAttempt(
+          debugStates[fieldKey],
+          'grouped',
+          candidateValue,
+          'vertical-structured-header-block',
+          trace,
+          isValidInvoiceFieldValue(fieldKey, candidateValue)
+        )
+      }
+    })
+
+    return block
+  }
+
+  return undefined
+}
+
+function collectVerticalGroupedInvoiceTotalsBlockCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): StructuredGroupedInvoiceTotalsBlock | undefined {
+  for (let index = 0; index < lines.length; index += 1) {
+    const orderedKeys = collectConsecutiveGroupedFieldKeys(lines, index, ['vatBaseAmount', 'vatAmount', 'totalAmount'])
+
+    if (orderedKeys.length < 3) {
+      continue
+    }
+
+    const block = buildVerticalGroupedInvoiceTotalsBlock(lines, index + orderedKeys.length, orderedKeys)
+
+    if (!block) {
+      continue
+    }
+
+    const trace = `${block.labels.join(' | ')} => ${block.values.join(' | ')}`
+
+    block.labels.forEach((_, position) => {
+      const fieldKey = orderedKeys[position]
+      const candidateValue = block.values[position]
+
+      if (fieldKey && candidateValue) {
+        recordInvoiceFieldAttempt(
+          debugStates[fieldKey],
+          'grouped',
+          candidateValue,
+          'vertical-structured-totals-block',
+          trace,
+          isValidInvoiceFieldValue(fieldKey, candidateValue)
+        )
+      }
+    })
+
+    return block
+  }
+
+  return undefined
+}
+
 function collectHorizontalGroupedInvoiceHeaderCandidates(
   content: string,
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
@@ -823,6 +907,43 @@ function buildStructuredGroupedInvoiceHeaderBlock(
     : undefined
 }
 
+function buildVerticalGroupedInvoiceHeaderBlock(
+  lines: string[],
+  valuesStartIndex: number,
+  orderedKeys: InvoiceSummaryFieldKey[]
+): StructuredGroupedInvoiceHeaderBlock | undefined {
+  const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
+  const upcomingLines = collectInvoiceValueLines(lines, valuesStartIndex, 6)
+  const joinedValues = upcomingLines.join(' ')
+  const referenceCandidate = extractFirstInvoiceReferenceCandidate(joinedValues)
+  const paymentMethodCandidate = extractGroupedPaymentMethodCandidate(joinedValues, referenceCandidate)
+  const dateCandidates = extractDateTokens(joinedValues)
+
+  const values = orderedKeys.map((fieldKey) => {
+    switch (fieldKey) {
+      case 'referenceNumber':
+        return referenceCandidate
+      case 'paymentMethod':
+        return paymentMethodCandidate
+      case 'issueDate':
+        return dateCandidates[0]
+      case 'taxableDate':
+        return dateCandidates[1]
+      case 'dueDate':
+        return dateCandidates[2]
+      default:
+        return undefined
+    }
+  })
+
+  return values.some((value) => Boolean(value))
+    ? {
+        labels,
+        values: values.map((value) => value ?? 'n/a')
+      }
+    : undefined
+}
+
 function buildStructuredGroupedInvoiceTotalsBlock(
   lines: string[],
   headerIndex: number,
@@ -843,6 +964,33 @@ function buildStructuredGroupedInvoiceTotalsBlock(
       }
     }
   }
+
+  if (moneyCandidates.length < 3) {
+    return undefined
+  }
+
+  const values = orderedKeys.map((fieldKey, index) => {
+    if (fieldKey === 'totalAmount') {
+      return moneyCandidates[moneyCandidates.length - 1]
+    }
+
+    return moneyCandidates[index]
+  })
+
+  return {
+    labels,
+    values: values.map((value) => value ?? 'n/a')
+  }
+}
+
+function buildVerticalGroupedInvoiceTotalsBlock(
+  lines: string[],
+  valuesStartIndex: number,
+  orderedKeys: InvoiceSummaryFieldKey[]
+): StructuredGroupedInvoiceTotalsBlock | undefined {
+  const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
+  const upcomingLines = collectInvoiceValueLines(lines, valuesStartIndex, 5)
+  const moneyCandidates = upcomingLines.flatMap((line) => extractLooseMoneyTokens(line, true))
 
   if (moneyCandidates.length < 3) {
     return undefined
@@ -883,6 +1031,46 @@ function groupedInvoiceFieldLabel(fieldKey: InvoiceSummaryFieldKey): string {
     default:
       return fieldKey
   }
+}
+
+function collectConsecutiveGroupedFieldKeys(
+  lines: string[],
+  startIndex: number,
+  allowedKeys: InvoiceSummaryFieldKey[]
+): InvoiceSummaryFieldKey[] {
+  const orderedKeys: InvoiceSummaryFieldKey[] = []
+
+  for (let index = startIndex; index < lines.length; index += 1) {
+    const fieldKey = detectInvoiceSummaryFieldKey(lines[index]!)
+
+    if (!fieldKey || !allowedKeys.includes(fieldKey) || orderedKeys.includes(fieldKey)) {
+      break
+    }
+
+    orderedKeys.push(fieldKey)
+  }
+
+  return orderedKeys
+}
+
+function collectInvoiceValueLines(
+  lines: string[],
+  startIndex: number,
+  lookaheadLimit: number
+): string[] {
+  const values: string[] = []
+
+  for (let index = startIndex; index < lines.length && values.length < lookaheadLimit; index += 1) {
+    const line = lines[index]!
+
+    if (isInvoiceSectionBoundary(line)) {
+      break
+    }
+
+    values.push(stripTrailingNoise(line))
+  }
+
+  return values
 }
 
 function isInvoiceSectionBoundary(line: string): boolean {
