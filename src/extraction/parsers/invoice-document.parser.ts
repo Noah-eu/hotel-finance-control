@@ -469,10 +469,46 @@ function collectHorizontalGroupedInvoiceHeaderCandidates(
     const hasTaxable = header.includes('datum zdanitelneho plneni')
     const hasDue = header.includes('datum splatnosti')
     const hasPaymentMethod = header.includes('forma uhrady')
+    const hasReference = header.includes('faktura cislo')
+      || header.includes('cislo faktury')
+      || header.includes('doklad cislo')
+
+    if (hasReference && hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)}`
+      const referenceNumber = extractFirstInvoiceReferenceCandidate(values)
+      const paymentMethod = extractGroupedPaymentMethodCandidate(values, referenceNumber)
+
+      if (referenceNumber) {
+        recordInvoiceFieldAttempt(debugStates.referenceNumber, 'grouped', referenceNumber, 'horizontal-combined-header', trace, isValidInvoiceFieldValue('referenceNumber', referenceNumber))
+      }
+      if (paymentMethod) {
+        recordInvoiceFieldAttempt(debugStates.paymentMethod, 'grouped', paymentMethod, 'horizontal-combined-header', trace, isValidInvoiceFieldValue('paymentMethod', paymentMethod))
+      }
+      recordInvoiceFieldAttempt(debugStates.issueDate, 'grouped', dateTokens[0], 'horizontal-combined-header', trace, isValidInvoiceFieldValue('issueDate', dateTokens[0]))
+      recordInvoiceFieldAttempt(debugStates.taxableDate, 'grouped', dateTokens[1], 'horizontal-combined-header', trace, isValidInvoiceFieldValue('taxableDate', dateTokens[1]))
+      recordInvoiceFieldAttempt(debugStates.dueDate, 'grouped', dateTokens[2], 'horizontal-combined-header', trace, isValidInvoiceFieldValue('dueDate', dateTokens[2]))
+      continue
+    }
+
+    if (hasReference && hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokensAfter.length >= 3) {
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)} | ${stripTrailingNoise(valuesAfter)}`
+      const referenceNumber = extractFirstInvoiceReferenceCandidate(values)
+      const paymentMethod = extractGroupedPaymentMethodCandidate(values, referenceNumber)
+
+      if (referenceNumber) {
+        recordInvoiceFieldAttempt(debugStates.referenceNumber, 'grouped', referenceNumber, 'horizontal-combined-header-two-line', trace, isValidInvoiceFieldValue('referenceNumber', referenceNumber))
+      }
+      if (paymentMethod) {
+        recordInvoiceFieldAttempt(debugStates.paymentMethod, 'grouped', paymentMethod, 'horizontal-combined-header-two-line', trace, isValidInvoiceFieldValue('paymentMethod', paymentMethod))
+      }
+      recordInvoiceFieldAttempt(debugStates.issueDate, 'grouped', dateTokensAfter[0], 'horizontal-combined-header-two-line', trace, isValidInvoiceFieldValue('issueDate', dateTokensAfter[0]))
+      recordInvoiceFieldAttempt(debugStates.taxableDate, 'grouped', dateTokensAfter[1], 'horizontal-combined-header-two-line', trace, isValidInvoiceFieldValue('taxableDate', dateTokensAfter[1]))
+      recordInvoiceFieldAttempt(debugStates.dueDate, 'grouped', dateTokensAfter[2], 'horizontal-combined-header-two-line', trace, isValidInvoiceFieldValue('dueDate', dateTokensAfter[2]))
+      continue
+    }
 
     if (hasPaymentMethod && hasIssue && hasTaxable && hasDue && dateTokens.length >= 3) {
-      const firstDateIndex = values.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
-      const paymentMethod = firstDateIndex > 0 ? values.slice(0, firstDateIndex).trim() : undefined
+      const paymentMethod = extractGroupedPaymentMethodCandidate(values)
       const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)}`
 
       if (paymentMethod) {
@@ -501,6 +537,47 @@ function collectHorizontalGroupedInvoiceHeaderCandidates(
       recordInvoiceFieldAttempt(debugStates.dueDate, 'grouped', dateTokens[2], 'horizontal-date-header', trace, isValidInvoiceFieldValue('dueDate', dateTokens[2]))
     }
   }
+
+  collectHorizontalGroupedInvoiceAmountCandidates(lines, debugStates)
+}
+
+function collectHorizontalGroupedInvoiceAmountCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = normalizeLabelSearch(lines[index]!)
+    const values = lines[index + 1] ?? ''
+    const moneyTokens = extractLooseMoneyTokens(values)
+
+    if (
+      header.includes('zaklad dph')
+      && header.includes('dph')
+      && header.includes('celkem po zaokrouhleni')
+      && moneyTokens.length >= 3
+    ) {
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${stripTrailingNoise(values)}`
+      recordInvoiceFieldAttempt(debugStates.vatBaseAmount, 'grouped', moneyTokens[0], 'horizontal-grouped-amounts', trace, isValidInvoiceFieldValue('vatBaseAmount', moneyTokens[0]))
+      recordInvoiceFieldAttempt(debugStates.vatAmount, 'grouped', moneyTokens[1], 'horizontal-grouped-amounts', trace, isValidInvoiceFieldValue('vatAmount', moneyTokens[1]))
+      recordInvoiceFieldAttempt(debugStates.totalAmount, 'grouped', moneyTokens[moneyTokens.length - 1], 'horizontal-grouped-amounts', trace, isValidInvoiceFieldValue('totalAmount', moneyTokens[moneyTokens.length - 1]))
+    }
+  }
+}
+
+function extractFirstInvoiceReferenceCandidate(value: string): string | undefined {
+  const match = value.match(/\b([A-Z]*\d[A-Z0-9/-]*)\b/i)
+  return match?.[1]
+}
+
+function extractGroupedPaymentMethodCandidate(value: string, referenceNumber?: string): string | undefined {
+  const normalizedValue = stripTrailingNoise(value)
+  const firstDateIndex = normalizedValue.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
+  const prefix = firstDateIndex >= 0 ? normalizedValue.slice(0, firstDateIndex).trim() : normalizedValue
+  const withoutReference = referenceNumber
+    ? prefix.replace(referenceNumber, '').trim()
+    : prefix
+
+  return withoutReference.length > 0 ? withoutReference : undefined
 }
 
 function collectSequentialInvoiceBlockCandidates(
@@ -837,6 +914,12 @@ function normalizeLabelSearch(value: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
+}
+
+function extractLooseMoneyTokens(value: string): string[] {
+  return Array.from(value.matchAll(/\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu))
+    .map((match) => normalizeDetectedMoneyValue(stripTrailingNoise(match[0] ?? '')))
+    .filter((token): token is string => Boolean(token))
 }
 
 function extractDateTokens(value: string): string[] {

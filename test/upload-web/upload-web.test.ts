@@ -427,11 +427,11 @@ describe('buildUploadWebFlow', () => {
           missingRequiredFields: [],
           fieldExtractionDebug: expect.objectContaining({
             referenceNumber: expect.objectContaining({
-              winnerRule: 'vertical-grouped-block',
+              winnerRule: 'horizontal-combined-header',
               winnerValue: '141260183'
             }),
             paymentMethod: expect.objectContaining({
-              winnerRule: 'vertical-grouped-block',
+              winnerRule: 'horizontal-combined-header',
               winnerValue: 'Přev. příkaz'
             }),
             totalAmount: expect.objectContaining({

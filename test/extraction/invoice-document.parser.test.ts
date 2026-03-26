@@ -266,26 +266,26 @@ describe('parseInvoiceDocument', () => {
       missingRequiredFields: [],
       fieldExtractionDebug: {
         referenceNumber: expect.objectContaining({
-          winnerRule: 'vertical-grouped-block',
+          winnerRule: 'horizontal-combined-header',
           winnerValue: '141260183'
         }),
         issueDate: expect.objectContaining({
-          winnerRule: 'vertical-grouped-block',
+          winnerRule: 'horizontal-combined-header',
           winnerValue: '11.03.2026'
         }),
         dueDate: expect.objectContaining({
-          winnerRule: 'vertical-grouped-block',
+          winnerRule: 'horizontal-combined-header',
           winnerValue: '25.03.2026'
         }),
         paymentMethod: expect.objectContaining({
-          winnerRule: 'vertical-grouped-block',
+          winnerRule: 'horizontal-combined-header',
           winnerValue: 'Přev. příkaz',
-          candidateValues: expect.arrayContaining(['Datum vystavení', 'Přev.příkaz'])
+          candidateValues: expect.arrayContaining(['Přev.příkaz'])
         }),
         totalAmount: expect.objectContaining({
           winnerRule: 'line-window',
           winnerValue: '12 629,52 Kč',
-          candidateValues: expect.arrayContaining(['12 629,52 Kč', 'K úhradě'])
+          candidateValues: expect.arrayContaining(['12 629,52 Kč', '12 629,52'])
         })
       }
     })
