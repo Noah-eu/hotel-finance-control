@@ -264,23 +264,13 @@ describe('parseInvoiceDocument', () => {
       ibanHint: 'CZ4903000000000274621920',
       confidence: 'strong',
       missingRequiredFields: [],
-      groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
-      groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
-      groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
-      groupedTotalsValues: ['10 437,62 CZK', '2 191,90 CZK', '12 629,52 CZK'],
       groupedHeaderBlockDebug: expect.arrayContaining([
         expect.objectContaining({
-          blockTypeCandidate: 'vertical-grouped-block',
+          blockTypeCandidate: 'vertical-structured-header-block',
           labels: ['Datum zdanitelného plnění', 'Forma úhrady', 'Datum vystavení'],
-          values: ['25.03.2026', 'Strana 1/1'],
+          values: ['n/a', 'n/a', '25.03.2026'],
           accepted: false,
           rejectionReason: 'missing reference label'
-        }),
-        expect.objectContaining({
-          blockTypeCandidate: 'vertical-structured-header-block',
-          labels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
-          values: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
-          accepted: true
         })
       ]),
       groupedTotalsBlockDebug: expect.arrayContaining([
@@ -290,38 +280,46 @@ describe('parseInvoiceDocument', () => {
           values: ['21 919,90 Kč', 'Záloh celkem'],
           accepted: false,
           rejectionReason: 'totals block is VAT/subtotal-only'
+        })
+      ]),
+      rawBlockDiscoveryDebug: expect.arrayContaining([
+        expect.objectContaining({
+          rawLines: ['Faktura číslo', '141260183', 'Forma úhrady', 'Přev.příkaz'],
+          blockTypeGuess: 'header-reference'
         }),
         expect.objectContaining({
-          blockTypeCandidate: 'vertical-structured-totals-block',
-          labels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
-          values: ['10 437,62 CZK', '2 191,90 CZK', '12 629,52 CZK'],
-          accepted: true
+          rawLines: ['Celkem Kč k úhradě', '12 629,52', 'K úhradě', '12 629,52'],
+          blockTypeGuess: 'totals-payable'
         })
       ]),
       fieldExtractionDebug: {
         referenceNumber: expect.objectContaining({
-          winnerRule: 'vertical-structured-header-block',
+          winnerRule: 'field-specific-reference-window',
           winnerValue: '141260183',
-          rejectedCandidates: expect.arrayContaining(['Forma úhrady [label-text]'])
+          candidateValues: ['141260183']
         }),
         issueDate: expect.objectContaining({
-          winnerRule: 'vertical-structured-header-block',
+          winnerRule: 'field-specific-labeled-window',
           winnerValue: '11.03.2026'
         }),
         dueDate: expect.objectContaining({
-          winnerRule: 'vertical-structured-header-block',
+          winnerRule: 'field-specific-labeled-window',
           winnerValue: '25.03.2026'
         }),
+        taxableDate: expect.objectContaining({
+          winnerRule: 'field-specific-labeled-window',
+          winnerValue: '11.03.2026'
+        }),
         paymentMethod: expect.objectContaining({
-          winnerRule: 'vertical-structured-header-block',
+          winnerRule: 'field-specific-labeled-window',
           winnerValue: 'Přev. příkaz',
           candidateValues: expect.arrayContaining(['Přev.příkaz']),
-          rejectedCandidates: expect.arrayContaining(['Datum zdanitelného plnění [label-text]'])
+          rejectedCandidates: expect.arrayContaining(['Datum vystavení [label-text]'])
         }),
         totalAmount: expect.objectContaining({
-          winnerRule: 'line-window',
+          winnerRule: 'field-specific-payable-total',
           winnerValue: '12 629,52 CZK',
-          candidateValues: expect.arrayContaining(['12 629,52', '12 629,52 CZK'])
+          candidateValues: expect.arrayContaining(['12 629,52', '12 629,52 CZK', '21 919,90 Kč'])
         })
       }
     })
@@ -404,6 +402,66 @@ describe('parseInvoiceDocument', () => {
       groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
       groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
       groupedTotalsValues: ['10 437,62 CZK', '2 191,90 CZK', '12 629,52 CZK']
+    })
+  })
+
+  it('extracts Lenner invoice number and payable total even when only the bad grouped blocks are promotable for debug', () => {
+    const content = [
+      'Faktura - daňový doklad',
+      'Dodavatel',
+      'Lenner Motors s.r.o.',
+      'Odběratel',
+      'JOKELAND s.r.o.',
+      'Datum zdanitelného plnění',
+      'Forma úhrady',
+      'Datum vystavení',
+      '25.03.2026',
+      'Strana 1/1',
+      'Faktura číslo',
+      '141260183',
+      'Forma úhrady',
+      'Přev.příkaz',
+      'Datum vystavení',
+      '11.03.2026',
+      'Datum zdanitelného plnění',
+      '11.03.2026',
+      'Datum splatnosti',
+      '25.03.2026',
+      'DPH',
+      'Celkem po zaokrouhlení',
+      '21 919,90 Kč',
+      'Záloh celkem',
+      'Celkem Kč k úhradě',
+      '12 629,52'
+    ].join('\n')
+
+    expect(inspectInvoiceDocumentExtractionSummary(content)).toMatchObject({
+      referenceNumber: '141260183',
+      issueDate: '2026-03-11',
+      dueDate: '2026-03-25',
+      taxableDate: '2026-03-11',
+      totalAmountMinor: 1262952,
+      totalCurrency: 'CZK',
+      paymentMethod: 'Přev. příkaz',
+      missingRequiredFields: [],
+      fieldExtractionDebug: expect.objectContaining({
+        referenceNumber: expect.objectContaining({
+          winnerRule: 'field-specific-reference-window',
+          candidateValues: ['141260183']
+        }),
+        totalAmount: expect.objectContaining({
+          winnerRule: 'field-specific-payable-total',
+          candidateValues: expect.arrayContaining(['12 629,52', '21 919,90 Kč'])
+        })
+      }),
+      groupedTotalsBlockDebug: expect.arrayContaining([
+        expect.objectContaining({
+          labels: ['DPH', 'Celkem po zaokrouhlení'],
+          values: ['21 919,90 Kč', 'Záloh celkem'],
+          accepted: false,
+          rejectionReason: 'totals block is VAT/subtotal-only'
+        })
+      ])
     })
   })
 })

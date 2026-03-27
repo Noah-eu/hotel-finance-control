@@ -1135,6 +1135,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return [
+          buildInvoiceRawBlockDebugMarkup(file),
           buildGroupedBlockDebugMarkup(file, 'groupedHeaderBlockDebug', 'Grouped header block'),
           buildGroupedBlockDebugMarkup(file, 'groupedTotalsBlockDebug', 'Grouped totals block'),
           buildDocumentFieldExtractionDebugLine(file, 'referenceNumber', 'referenceNumber'),
@@ -1144,6 +1145,31 @@ ${showRuntimePayoutDiagnostics ? '' : `
           buildDocumentFieldExtractionDebugLine(file, 'paymentMethod', 'paymentMethod'),
           buildDocumentFieldExtractionDebugLine(file, 'totalAmount', 'totalAmount')
         ].join('');
+      }
+
+      function buildInvoiceRawBlockDebugMarkup(file) {
+        const summary = file && file.documentExtractionSummary;
+        const rawBlocks = summary && Array.isArray(summary.rawBlockDiscoveryDebug) ? summary.rawBlockDiscoveryDebug : [];
+
+        if (!rawBlocks || rawBlocks.length === 0) {
+          return '';
+        }
+
+        return rawBlocks.map(function (block) {
+          return [
+            '<br /><span class="hint">Raw block #' + escapeHtml(String(block.blockIndex)) + ': '
+              + escapeHtml(String(block.blockTypeGuess || 'other'))
+              + ' / ' + escapeHtml(String(block.promotionDecision || 'not-promoted'))
+              + (block.promotedTo ? ' / ' + escapeHtml(String(block.promotedTo)) : '')
+              + '</span>',
+            '<br /><span class="hint">Raw block lines: '
+              + escapeHtml(Array.isArray(block.rawLines) && block.rawLines.length > 0 ? block.rawLines.join(' | ') : 'žádné')
+              + '</span>',
+            '<br /><span class="hint">Raw block normalized: '
+              + escapeHtml(Array.isArray(block.normalizedLines) && block.normalizedLines.length > 0 ? block.normalizedLines.join(' | ') : 'žádné')
+              + '</span>'
+          ].join('');
+        }).join('');
       }
 
       function buildRuntimeFileIntakeDiagnosticsMarkup(state) {

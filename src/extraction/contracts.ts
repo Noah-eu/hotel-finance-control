@@ -45,6 +45,7 @@ export interface DeterministicDocumentExtractionSummary {
   groupedTotalsValues?: string[]
   groupedHeaderBlockDebug?: DeterministicDocumentGroupedBlockDebug[]
   groupedTotalsBlockDebug?: DeterministicDocumentGroupedBlockDebug[]
+  rawBlockDiscoveryDebug?: DeterministicDocumentRawBlockDebug[]
   fieldExtractionDebug?: Record<string, DeterministicDocumentFieldExtractionDebug>
 }
 
@@ -65,6 +66,15 @@ export interface DeterministicDocumentGroupedBlockDebug {
   score: number
   accepted: boolean
   rejectionReason?: string
+}
+
+export interface DeterministicDocumentRawBlockDebug {
+  blockIndex: number
+  rawLines: string[]
+  normalizedLines: string[]
+  blockTypeGuess: string
+  promotedTo?: string
+  promotionDecision: string
 }
 
 export interface DocumentIngestionCapabilities {

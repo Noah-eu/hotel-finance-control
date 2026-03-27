@@ -2,6 +2,7 @@ import type { ExtractedRecord } from '../../domain'
 import type {
   DeterministicDocumentFieldExtractionDebug,
   DeterministicDocumentGroupedBlockDebug,
+  DeterministicDocumentRawBlockDebug,
   DeterministicDocumentExtractionSummary,
   DeterministicDocumentParserInput
 } from '../contracts'
@@ -95,6 +96,7 @@ interface InvoiceDocumentExtractionDetails {
   groupedTotalsValues: string[]
   groupedHeaderBlockDebug: DeterministicDocumentGroupedBlockDebug[]
   groupedTotalsBlockDebug: DeterministicDocumentGroupedBlockDebug[]
+  rawBlockDiscoveryDebug: DeterministicDocumentRawBlockDebug[]
   fieldDebug: Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
 }
 
@@ -260,6 +262,7 @@ export function inspectInvoiceDocumentExtractionSummary(content: string): Determ
     ...(extraction.groupedTotalsValues.length > 0 ? { groupedTotalsValues: extraction.groupedTotalsValues } : {}),
     ...(extraction.groupedHeaderBlockDebug.length > 0 ? { groupedHeaderBlockDebug: extraction.groupedHeaderBlockDebug } : {}),
     ...(extraction.groupedTotalsBlockDebug.length > 0 ? { groupedTotalsBlockDebug: extraction.groupedTotalsBlockDebug } : {}),
+    ...(extraction.rawBlockDiscoveryDebug.length > 0 ? { rawBlockDiscoveryDebug: extraction.rawBlockDiscoveryDebug } : {}),
     fieldExtractionDebug: extraction.fieldDebug
   }
 }
@@ -278,7 +281,12 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   const groupedTotalsSelection = selectBestInvoiceTotalsBlock(lines, debugStates)
   const groupedHeaderBlock = groupedHeaderSelection.block
   const groupedTotalsBlock = groupedTotalsSelection.block
+  const rawBlockDiscoveryDebug = collectInvoiceRawBlockDiscovery(lines, groupedHeaderSelection.debug, groupedTotalsSelection.debug)
 
+  collectFieldSpecificInvoiceHeaderCandidates(lines, debugStates)
+  collectFieldSpecificInvoiceReferenceCandidates(lines, debugStates)
+  collectFieldSpecificPayableTotalCandidates(lines, debugStates)
+  collectFieldSpecificVatCandidates(lines, debugStates)
   collectLineWindowInvoiceCandidates(lines, debugStates)
   collectFallbackInvoiceCandidates(fields, content, debugStates)
 
@@ -305,6 +313,7 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
     groupedTotalsValues: groupedTotalsBlock?.values ?? [],
     groupedHeaderBlockDebug: groupedHeaderSelection.debug,
     groupedTotalsBlockDebug: groupedTotalsSelection.debug,
+    rawBlockDiscoveryDebug,
     fieldDebug: Object.fromEntries(
       Object.entries(debugStates).map(([key, state]) => [key, {
         winnerRule: state.winnerRule,
@@ -497,6 +506,98 @@ function createInvoiceFieldDebugState(): InvoiceFieldDebugState {
   }
 }
 
+function collectInvoiceRawBlockDiscovery(
+  lines: string[],
+  headerCandidates: DeterministicDocumentGroupedBlockDebug[],
+  totalsCandidates: DeterministicDocumentGroupedBlockDebug[]
+): DeterministicDocumentRawBlockDebug[] {
+  const blocks: DeterministicDocumentRawBlockDebug[] = []
+  const labelTargets = [
+    'faktura cislo',
+    'cislo faktury',
+    'doklad cislo',
+    'forma uhrady',
+    'datum vystaveni',
+    'datum zdanitelneho plneni',
+    'datum splatnosti',
+    'celkem kc k uhrade',
+    'celkem k uhrade',
+    'k uhrade',
+    'celkem po zaokrouhleni',
+    'zaklad dph',
+    'dph'
+  ]
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = normalizeLabelSearch(lines[index]!)
+
+    if (!labelTargets.some((target) => normalized.includes(target))) {
+      continue
+    }
+
+    const rawLines = lines.slice(index, Math.min(lines.length, index + 4)).map((line) => stripTrailingNoise(line))
+    const normalizedLines = rawLines.map((line) => normalizeLabelSearch(line))
+    const blockTypeGuess = guessInvoiceRawBlockType(normalizedLines)
+    const promotedCandidate = [...headerCandidates, ...totalsCandidates].find((candidate) => {
+      const candidateLabels = candidate.labels.map((label) => normalizeLabelSearch(label))
+      return candidateLabels.some((label) => normalizedLines.includes(label))
+    })
+
+    blocks.push({
+      blockIndex: index,
+      rawLines,
+      normalizedLines,
+      blockTypeGuess,
+      ...(promotedCandidate ? { promotedTo: promotedCandidate.accepted ? promotedCandidate.blockTypeCandidate : undefined } : {}),
+      promotionDecision: promotedCandidate
+        ? promotedCandidate.accepted
+          ? `promoted:${promotedCandidate.blockTypeCandidate}`
+          : `rejected:${promotedCandidate.rejectionReason ?? 'no-match'}`
+        : 'not-promoted'
+    })
+  }
+
+  return dedupeInvoiceRawBlocks(blocks)
+}
+
+function dedupeInvoiceRawBlocks(blocks: DeterministicDocumentRawBlockDebug[]): DeterministicDocumentRawBlockDebug[] {
+  const seen = new Set<string>()
+  const deduped: DeterministicDocumentRawBlockDebug[] = []
+
+  for (const block of blocks) {
+    const key = `${block.blockIndex}:${block.normalizedLines.join('|')}`
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    deduped.push(block)
+  }
+
+  return deduped
+}
+
+function guessInvoiceRawBlockType(normalizedLines: string[]): string {
+  const joined = normalizedLines.join(' | ')
+
+  if (joined.includes('faktura cislo') || joined.includes('cislo faktury') || joined.includes('doklad cislo')) {
+    return 'header-reference'
+  }
+
+  if (joined.includes('forma uhrady') || joined.includes('datum vystaveni') || joined.includes('datum zdanitelneho plneni') || joined.includes('datum splatnosti')) {
+    return 'dates-payment'
+  }
+
+  if (joined.includes('celkem kc k uhrade') || joined.includes('celkem k uhrade') || joined.includes('k uhrade') || joined.includes('celkem po zaokrouhleni')) {
+    return 'totals-payable'
+  }
+
+  if (joined.includes('zaklad dph') || joined.includes('dph')) {
+    return 'totals-vat'
+  }
+
+  return 'other'
+}
+
 function selectBestInvoiceHeaderBlock(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
@@ -542,6 +643,236 @@ function selectBestInvoiceTotalsBlock(
   return {
     block: winner ? { labels: winner.labels, values: winner.values } : undefined,
     debug: candidates.map(toGroupedBlockDebug)
+  }
+}
+
+function collectFieldSpecificInvoiceHeaderCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  const fieldKeys: InvoiceSummaryFieldKey[] = ['paymentMethod', 'issueDate', 'taxableDate', 'dueDate']
+
+  for (const fieldKey of fieldKeys) {
+    const rankedCandidates = rankFieldSpecificLabelCandidates(lines, fieldKey)
+
+    for (const candidate of rankedCandidates) {
+      recordInvoiceFieldAttempt(
+        debugStates[fieldKey],
+        'grouped',
+        candidate.value,
+        'field-specific-labeled-window',
+        candidate.trace,
+        isValidInvoiceFieldValue(fieldKey, candidate.value)
+      )
+    }
+  }
+}
+
+function collectFieldSpecificInvoiceReferenceCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = normalizeLabelSearch(lines[index]!)
+
+    if (!isInvoiceReferenceLabel(normalized)) {
+      continue
+    }
+
+    const sameLineCandidate = extractReferenceCandidateAfterLabel(lines[index]!)
+    const sameLineTrace = `${stripTrailingNoise(lines[index]!)} => ${sameLineCandidate ?? 'n/a'}`
+    recordInvoiceFieldAttempt(
+      debugStates.referenceNumber,
+      'lineWindow',
+      sameLineCandidate,
+      'field-specific-reference-label',
+      sameLineTrace,
+      isValidInvoiceFieldValue('referenceNumber', sameLineCandidate)
+    )
+
+    for (let lookahead = 1; lookahead <= 12 && index + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[index + lookahead]!)
+
+      if (containsInvoicePageArtifactValue(candidateLine)) {
+        continue
+      }
+
+      if (lookahead > 1 && isInvoiceSectionBoundary(candidateLine)) {
+        break
+      }
+
+      const candidate = extractFirstInvoiceReferenceCandidate(candidateLine)
+      const trace = `${stripTrailingNoise(lines[index]!)} -> ${candidateLine}`
+
+      recordInvoiceFieldAttempt(
+        debugStates.referenceNumber,
+        'lineWindow',
+        candidate,
+        'field-specific-reference-window',
+        trace,
+        isValidInvoiceFieldValue('referenceNumber', candidate)
+      )
+
+      if (candidate) {
+        break
+      }
+    }
+  }
+}
+
+function collectFieldSpecificPayableTotalCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = normalizeLabelSearch(lines[index]!)
+    const previousNormalized = index > 0
+      ? normalizeLabelSearch(lines[index - 1]!)
+      : ''
+
+    if (!isPreferredPayableTotalLabel(normalized) && normalized !== 'celkem po zaokrouhleni') {
+      continue
+    }
+
+    const sameLineMoney = extractPayableMoneyCandidateFromLine(lines[index]!)
+    const sameLineTrace = `${stripTrailingNoise(lines[index]!)} => ${sameLineMoney ?? 'n/a'}`
+    recordInvoiceFieldAttempt(
+      debugStates.totalAmount,
+      'lineWindow',
+      sameLineMoney,
+      'field-specific-payable-total',
+      sameLineTrace,
+      isValidInvoiceFieldValue('totalAmount', sameLineMoney)
+    )
+
+    for (let lookahead = 1; lookahead <= 4 && index + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[index + lookahead]!)
+      const nextLine = index + lookahead + 1 < lines.length
+        ? stripTrailingNoise(lines[index + lookahead + 1]!)
+        : ''
+      const trace = `${stripTrailingNoise(lines[index]!)} -> ${candidateLine}`
+
+      if (containsInvoicePageArtifactValue(candidateLine) || /záloh?\s+celkem/iu.test(candidateLine)) {
+        recordInvoiceFieldAttempt(
+          debugStates.totalAmount,
+          'lineWindow',
+          candidateLine,
+          'field-specific-payable-total',
+          trace,
+          false
+        )
+        continue
+      }
+
+      if (
+        normalized === 'celkem po zaokrouhleni'
+        && (
+          previousNormalized === 'dph'
+          || previousNormalized === 'zaklad dph'
+          || /záloh?\s+celkem/iu.test(nextLine)
+        )
+      ) {
+        recordInvoiceFieldAttempt(
+          debugStates.totalAmount,
+          'lineWindow',
+          candidateLine,
+          'field-specific-payable-total',
+          trace,
+          false
+        )
+        break
+      }
+
+      if (lookahead > 1 && isInvoiceSectionBoundary(candidateLine)) {
+        break
+      }
+
+      const candidate = extractPayableMoneyCandidateFromLine(candidateLine)
+      recordInvoiceFieldAttempt(
+        debugStates.totalAmount,
+        'lineWindow',
+        candidate,
+        'field-specific-payable-total',
+        trace,
+        isValidInvoiceFieldValue('totalAmount', candidate)
+      )
+
+      if (candidate) {
+        break
+      }
+    }
+  }
+}
+
+function collectFieldSpecificVatCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = normalizeLabelSearch(lines[index]!)
+
+    if (normalized !== 'dph' && normalized !== 'vat') {
+      continue
+    }
+
+    const sameLineMoney = extractGenericMoneyCandidateFromLine(lines[index]!)
+    const sameLineTrace = `${stripTrailingNoise(lines[index]!)} => ${sameLineMoney ?? 'n/a'}`
+    recordInvoiceFieldAttempt(
+      debugStates.vatAmount,
+      'lineWindow',
+      sameLineMoney,
+      'field-specific-vat-window',
+      sameLineTrace,
+      isValidInvoiceFieldValue('vatAmount', sameLineMoney)
+    )
+
+    for (let lookahead = 1; lookahead <= 2 && index + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[index + lookahead]!)
+      const detectedField = detectInvoiceSummaryFieldKey(candidateLine)
+      const trace = `${stripTrailingNoise(lines[index]!)} -> ${candidateLine}`
+
+      if (containsInvoicePageArtifactValue(candidateLine) || /záloh?\s+celkem/iu.test(candidateLine)) {
+        recordInvoiceFieldAttempt(
+          debugStates.vatAmount,
+          'lineWindow',
+          candidateLine,
+          'field-specific-vat-window',
+          trace,
+          false
+        )
+        continue
+      }
+
+      if (detectedField && detectedField !== 'vatAmount') {
+        recordInvoiceFieldAttempt(
+          debugStates.vatAmount,
+          'lineWindow',
+          candidateLine,
+          'field-specific-vat-window',
+          trace,
+          false
+        )
+        break
+      }
+
+      if (lookahead > 1 && isInvoiceSectionBoundary(candidateLine)) {
+        break
+      }
+
+      const candidate = extractGenericMoneyCandidateFromLine(candidateLine)
+      recordInvoiceFieldAttempt(
+        debugStates.vatAmount,
+        'lineWindow',
+        candidate,
+        'field-specific-vat-window',
+        trace,
+        isValidInvoiceFieldValue('vatAmount', candidate)
+      )
+
+      if (candidate) {
+        break
+      }
+    }
   }
 }
 
@@ -1062,6 +1393,95 @@ function collectSequentialInvoiceBlockValues(
   return values
 }
 
+function rankFieldSpecificLabelCandidates(
+  lines: string[],
+  fieldKey: InvoiceSummaryFieldKey
+): Array<{ value: string; trace: string; score: number }> {
+  const rankedCandidates: Array<{ value: string; trace: string; score: number }> = []
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const currentFieldKey = detectInvoiceSummaryFieldKey(lines[index]!)
+
+    if (currentFieldKey !== fieldKey) {
+      continue
+    }
+
+    for (let lookahead = 1; lookahead <= 6 && index + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[index + lookahead]!)
+
+      if (containsInvoicePageArtifactValue(candidateLine)) {
+        continue
+      }
+
+      const candidateValue = extractFieldSpecificLabelValue(fieldKey, candidateLine)
+
+      if (!candidateValue) {
+        continue
+      }
+
+      rankedCandidates.push({
+        value: candidateValue,
+        trace: `${stripTrailingNoise(lines[index]!)} -> ${candidateLine}`,
+        score: scoreFieldSpecificLabelCandidate(lines, index, lookahead, fieldKey, candidateValue)
+      })
+    }
+  }
+
+  return rankedCandidates
+    .sort((left, right) => right.score - left.score)
+    .filter((candidate, index, all) => all.findIndex((other) => other.value === candidate.value && other.trace === candidate.trace) === index)
+}
+
+function extractFieldSpecificLabelValue(
+  fieldKey: InvoiceSummaryFieldKey,
+  line: string
+): string | undefined {
+  if (isInvoiceLabelText(line)) {
+    return undefined
+  }
+
+  switch (fieldKey) {
+    case 'paymentMethod':
+      return isValidInvoiceFieldValue('paymentMethod', line) ? line : undefined
+    case 'issueDate':
+    case 'taxableDate':
+    case 'dueDate': {
+      const dateTokens = extractDateTokens(line)
+      return dateTokens[0]
+    }
+    default:
+      return undefined
+  }
+}
+
+function scoreFieldSpecificLabelCandidate(
+  lines: string[],
+  labelIndex: number,
+  lookahead: number,
+  fieldKey: InvoiceSummaryFieldKey,
+  candidateValue: string
+): number {
+  const contextWindow = lines.slice(Math.max(0, labelIndex - 4), Math.min(lines.length, labelIndex + 7))
+  const hasReferenceNearby = contextWindow.some((line) => isInvoiceReferenceLabel(normalizeLabelSearch(line)))
+  const hasPageArtifactNearby = contextWindow.some((line) => containsInvoicePageArtifactValue(line))
+  const nearbyHeaderLabels = contextWindow.filter((line) => {
+    const detected = detectInvoiceSummaryFieldKey(line)
+    return detected === 'paymentMethod' || detected === 'issueDate' || detected === 'taxableDate' || detected === 'dueDate'
+  }).length
+  const interleavingHeaderLabels = lines
+    .slice(labelIndex + 1, Math.min(lines.length, labelIndex + lookahead))
+    .filter((line) => Boolean(detectInvoiceSummaryFieldKey(line))).length
+
+  return (
+    (isValidInvoiceFieldValue(fieldKey, candidateValue) ? 100 : 0)
+    + (hasReferenceNearby ? 80 : 0)
+    + (nearbyHeaderLabels * 10)
+    + (lookahead === 1 ? 20 : Math.max(0, 20 - lookahead * 3))
+    - (hasPageArtifactNearby ? 40 : 0)
+    - (interleavingHeaderLabels * 50)
+  )
+}
+
 function collectLineWindowInvoiceCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
@@ -1097,8 +1517,49 @@ function collectLineWindowInvoiceCandidates(
 function isPreferredPayableTotalLabel(normalizedLabel: string): boolean {
   return normalizedLabel === 'celkem kc k uhrade'
     || normalizedLabel === 'k uhrade'
+    || normalizedLabel === 'celkem k uhrade'
     || normalizedLabel === 'total due'
     || normalizedLabel === 'amount due'
+}
+
+function isInvoiceReferenceLabel(normalizedLabel: string): boolean {
+  return normalizedLabel.includes('faktura cislo')
+    || normalizedLabel.includes('cislo faktury')
+    || normalizedLabel.includes('doklad cislo')
+    || normalizedLabel.includes('cislo dokladu')
+}
+
+function extractReferenceCandidateAfterLabel(line: string): string | undefined {
+  const patterns = [
+    /(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
+  ]
+
+  for (const pattern of patterns) {
+    const match = pattern.exec(line)
+    const candidate = normalizeInvoiceReferenceValue(match?.[1])
+    if (candidate) {
+      return candidate
+    }
+  }
+
+  return undefined
+}
+
+function extractPayableMoneyCandidateFromLine(line: string): string | undefined {
+  const normalized = stripTrailingNoise(line)
+
+  if (/záloh?\s+celkem/iu.test(normalized)) {
+    return undefined
+  }
+
+  const tokens = extractLooseMoneyTokens(normalized, true)
+  return tokens.length > 0 ? tokens[tokens.length - 1] : undefined
+}
+
+function extractGenericMoneyCandidateFromLine(line: string): string | undefined {
+  const normalized = stripTrailingNoise(line)
+  const tokens = extractLooseMoneyTokens(normalized, true)
+  return tokens.length > 0 ? tokens[tokens.length - 1] : undefined
 }
 
 function collectFallbackInvoiceCandidates(
