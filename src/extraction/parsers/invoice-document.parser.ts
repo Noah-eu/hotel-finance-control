@@ -283,6 +283,8 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   const groupedTotalsBlock = groupedTotalsSelection.block
   const rawBlockDiscoveryDebug = collectInvoiceRawBlockDiscovery(lines, groupedHeaderSelection.debug, groupedTotalsSelection.debug)
 
+  collectFieldSpecificStructuredHeaderCandidates(lines, debugStates)
+  collectFieldSpecificStructuredTotalsCandidates(lines, debugStates)
   collectFieldSpecificInvoiceHeaderCandidates(lines, debugStates)
   collectFieldSpecificInvoiceReferenceCandidates(lines, debugStates)
   collectFieldSpecificPayableTotalCandidates(lines, debugStates)
@@ -668,6 +670,106 @@ function collectFieldSpecificInvoiceHeaderCandidates(
   }
 }
 
+function collectFieldSpecificStructuredHeaderCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const orderedKeys = extractOrderedGroupedInvoiceHeaderFieldKeys(lines[index]!)
+
+    if (orderedKeys.length < 3) {
+      continue
+    }
+
+    for (let lookahead = 1; lookahead <= 3 && index + lookahead < lines.length; lookahead += 1) {
+      const valueLine = stripTrailingNoise(lines[index + lookahead]!)
+
+      if (containsInvoicePageArtifactValue(valueLine)) {
+        continue
+      }
+
+      if (lookahead > 1 && isInvoiceSectionBoundary(valueLine)) {
+        break
+      }
+
+      const mappedValues = mapStructuredHeaderValuesFromLine(valueLine, orderedKeys)
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${valueLine}`
+
+      orderedKeys.forEach((fieldKey) => {
+        const candidateValue = mappedValues[fieldKey]
+
+        if (!candidateValue) {
+          return
+        }
+
+        recordInvoiceFieldAttempt(
+          debugStates[fieldKey],
+          'grouped',
+          candidateValue,
+          'field-specific-structured-header-row',
+          trace,
+          isValidInvoiceFieldValue(fieldKey, candidateValue)
+        )
+      })
+    }
+  }
+}
+
+function collectFieldSpecificStructuredTotalsCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const orderedKeys = extractOrderedGroupedInvoiceTotalsFieldKeys(lines[index]!)
+
+    if (orderedKeys.length < 2) {
+      continue
+    }
+
+    for (let lookahead = 1; lookahead <= 3 && index + lookahead < lines.length; lookahead += 1) {
+      const valueLine = stripTrailingNoise(lines[index + lookahead]!)
+      const trace = `${stripTrailingNoise(lines[index]!)} => ${valueLine}`
+
+      if (containsInvoicePageArtifactValue(valueLine) || /záloh?\s+celkem/iu.test(valueLine)) {
+        orderedKeys.forEach((fieldKey) => {
+          recordInvoiceFieldAttempt(
+            debugStates[fieldKey],
+            'grouped',
+            valueLine,
+            'field-specific-structured-totals-row',
+            trace,
+            false
+          )
+        })
+        continue
+      }
+
+      if (lookahead > 1 && isInvoiceSectionBoundary(valueLine)) {
+        break
+      }
+
+      const mappedValues = mapStructuredTotalsValuesFromLine(valueLine, orderedKeys)
+
+      orderedKeys.forEach((fieldKey) => {
+        const candidateValue = mappedValues[fieldKey]
+
+        if (!candidateValue) {
+          return
+        }
+
+        recordInvoiceFieldAttempt(
+          debugStates[fieldKey],
+          'grouped',
+          candidateValue,
+          'field-specific-structured-totals-row',
+          trace,
+          isValidInvoiceFieldValue(fieldKey, candidateValue)
+        )
+      })
+    }
+  }
+}
+
 function collectFieldSpecificInvoiceReferenceCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
@@ -713,7 +815,7 @@ function collectFieldSpecificInvoiceReferenceCandidates(
         isValidInvoiceFieldValue('referenceNumber', candidate)
       )
 
-      if (candidate) {
+      if (candidate && isValidInvoiceFieldValue('referenceNumber', candidate)) {
         break
       }
     }
@@ -797,7 +899,7 @@ function collectFieldSpecificPayableTotalCandidates(
         isValidInvoiceFieldValue('totalAmount', candidate)
       )
 
-      if (candidate) {
+      if (candidate && isValidInvoiceFieldValue('totalAmount', candidate)) {
         break
       }
     }
@@ -869,7 +971,7 @@ function collectFieldSpecificVatCandidates(
         isValidInvoiceFieldValue('vatAmount', candidate)
       )
 
-      if (candidate) {
+      if (candidate && isValidInvoiceFieldValue('vatAmount', candidate)) {
         break
       }
     }
@@ -1304,7 +1406,7 @@ function extractGroupedPaymentMethodCandidate(value: string, referenceNumber?: s
     ? prefix.replace(referenceNumber, '').trim()
     : prefix
 
-  return withoutReference.length > 0 ? withoutReference : undefined
+  return withoutReference.length > 0 && !isInvoiceLabelText(withoutReference) ? withoutReference : undefined
 }
 
 function collectSequentialInvoiceBlockCandidates(
@@ -1548,7 +1650,7 @@ function extractReferenceCandidateAfterLabel(line: string): string | undefined {
 function extractPayableMoneyCandidateFromLine(line: string): string | undefined {
   const normalized = stripTrailingNoise(line)
 
-  if (/záloh?\s+celkem/iu.test(normalized)) {
+  if (/záloh?\s+celkem/iu.test(normalized) || /%/.test(normalized)) {
     return undefined
   }
 
@@ -1558,6 +1660,9 @@ function extractPayableMoneyCandidateFromLine(line: string): string | undefined 
 
 function extractGenericMoneyCandidateFromLine(line: string): string | undefined {
   const normalized = stripTrailingNoise(line)
+  if (/%/.test(normalized)) {
+    return undefined
+  }
   const tokens = extractLooseMoneyTokens(normalized, true)
   return tokens.length > 0 ? tokens[tokens.length - 1] : undefined
 }
@@ -1834,6 +1939,7 @@ function isInvoiceLabelText(value: string): boolean {
 
   return (
     Boolean(detectInvoiceSummaryFieldKey(normalized))
+    || containsInvoiceLabelAlias(normalized)
     || normalized === 'faktura'
     || normalized === 'faktura danovy doklad'
     || normalized === 'danovy doklad'
@@ -2037,12 +2143,86 @@ function containsInvoicePageArtifactValue(value: string | undefined): boolean {
 
 function extractLooseMoneyTokens(value: string, allowMissingCurrency = false): string[] {
   const pattern = allowMissingCurrency
-    ? /\d[\d\s]*(?:[.,]\d{2})(?:\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$))?/gu
-    : /\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
+    ? /\d[\d\s]*(?:[.,]\d{2})(?!\s*%)(?:\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$))?/gu
+    : /\d[\d\s]*(?:[.,]\d{2})(?!\s*%)\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
 
   return Array.from(value.matchAll(pattern))
     .map((match) => normalizeDetectedMoneyValue(stripTrailingNoise(match[0] ?? '')))
     .filter((token): token is string => Boolean(token))
+}
+
+function containsInvoiceLabelAlias(value: string): boolean {
+  const normalized = normalizeLabelSearch(value)
+
+  return (Object.values(SUMMARY_FIELD_ALIASES) as string[][])
+    .flat()
+    .some((alias) => normalized.includes(normalizeLabelSearch(alias)))
+}
+
+function mapStructuredHeaderValuesFromLine(
+  valueLine: string,
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const referenceCandidate = extractFirstInvoiceReferenceCandidate(valueLine)
+  const paymentMethodCandidate = extractGroupedPaymentMethodCandidate(valueLine, referenceCandidate)
+  const dateCandidates = extractDateTokens(valueLine)
+  let dateIndex = 0
+  const result: Partial<Record<InvoiceSummaryFieldKey, string>> = {}
+
+  for (const fieldKey of orderedKeys) {
+    switch (fieldKey) {
+      case 'referenceNumber':
+        if (referenceCandidate) {
+          result.referenceNumber = referenceCandidate
+        }
+        break
+      case 'paymentMethod':
+        if (paymentMethodCandidate) {
+          result.paymentMethod = paymentMethodCandidate
+        }
+        break
+      case 'issueDate':
+      case 'taxableDate':
+      case 'dueDate': {
+        const dateCandidate = dateCandidates[dateIndex]
+        if (dateCandidate) {
+          result[fieldKey] = dateCandidate
+        }
+        dateIndex += 1
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  return result
+}
+
+function mapStructuredTotalsValuesFromLine(
+  valueLine: string,
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const moneyCandidates = extractLooseMoneyTokens(valueLine, true)
+  const result: Partial<Record<InvoiceSummaryFieldKey, string>> = {}
+
+  if (moneyCandidates.length === 0) {
+    return result
+  }
+
+  if (orderedKeys.includes('vatBaseAmount') && moneyCandidates[0]) {
+    result.vatBaseAmount = moneyCandidates[0]
+  }
+
+  if (orderedKeys.includes('vatAmount') && moneyCandidates.length >= 3) {
+    result.vatAmount = moneyCandidates[1]
+  }
+
+  if (orderedKeys.includes('totalAmount') && moneyCandidates[moneyCandidates.length - 1]) {
+    result.totalAmount = moneyCandidates[moneyCandidates.length - 1]
+  }
+
+  return result
 }
 
 function normalizeInvoiceReferenceValue(value: string | undefined): string | undefined {
