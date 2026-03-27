@@ -268,10 +268,41 @@ describe('parseInvoiceDocument', () => {
       groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
       groupedTotalsLabels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
       groupedTotalsValues: ['10 437,62 CZK', '2 191,90 CZK', '12 629,52 CZK'],
+      groupedHeaderBlockDebug: expect.arrayContaining([
+        expect.objectContaining({
+          blockTypeCandidate: 'vertical-grouped-block',
+          labels: ['Datum zdanitelného plnění', 'Forma úhrady', 'Datum vystavení'],
+          values: ['25.03.2026', 'Strana 1/1'],
+          accepted: false,
+          rejectionReason: 'missing reference label'
+        }),
+        expect.objectContaining({
+          blockTypeCandidate: 'vertical-structured-header-block',
+          labels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
+          values: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
+          accepted: true
+        })
+      ]),
+      groupedTotalsBlockDebug: expect.arrayContaining([
+        expect.objectContaining({
+          blockTypeCandidate: 'vertical-grouped-block',
+          labels: ['DPH', 'Celkem po zaokrouhlení'],
+          values: ['21 919,90 Kč', 'Záloh celkem'],
+          accepted: false,
+          rejectionReason: 'totals block is VAT/subtotal-only'
+        }),
+        expect.objectContaining({
+          blockTypeCandidate: 'vertical-structured-totals-block',
+          labels: ['Základ DPH', 'DPH', 'Celkem po zaokrouhlení'],
+          values: ['10 437,62 CZK', '2 191,90 CZK', '12 629,52 CZK'],
+          accepted: true
+        })
+      ]),
       fieldExtractionDebug: {
         referenceNumber: expect.objectContaining({
           winnerRule: 'vertical-structured-header-block',
-          winnerValue: '141260183'
+          winnerValue: '141260183',
+          rejectedCandidates: expect.arrayContaining(['Forma úhrady [label-text]'])
         }),
         issueDate: expect.objectContaining({
           winnerRule: 'vertical-structured-header-block',
@@ -284,7 +315,8 @@ describe('parseInvoiceDocument', () => {
         paymentMethod: expect.objectContaining({
           winnerRule: 'vertical-structured-header-block',
           winnerValue: 'Přev. příkaz',
-          candidateValues: expect.arrayContaining(['Přev.příkaz'])
+          candidateValues: expect.arrayContaining(['Přev.příkaz']),
+          rejectedCandidates: expect.arrayContaining(['Datum zdanitelného plnění [label-text]'])
         }),
         totalAmount: expect.objectContaining({
           winnerRule: 'line-window',

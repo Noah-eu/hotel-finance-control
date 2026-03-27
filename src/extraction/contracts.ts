@@ -43,6 +43,8 @@ export interface DeterministicDocumentExtractionSummary {
   groupedHeaderValues?: string[]
   groupedTotalsLabels?: string[]
   groupedTotalsValues?: string[]
+  groupedHeaderBlockDebug?: DeterministicDocumentGroupedBlockDebug[]
+  groupedTotalsBlockDebug?: DeterministicDocumentGroupedBlockDebug[]
   fieldExtractionDebug?: Record<string, DeterministicDocumentFieldExtractionDebug>
 }
 
@@ -50,9 +52,19 @@ export interface DeterministicDocumentFieldExtractionDebug {
   winnerRule?: string
   winnerValue?: string
   candidateValues: string[]
+  rejectedCandidates?: string[]
   groupedRowMatches: string[]
   lineWindowMatches: string[]
   fullDocumentFallbackMatches: string[]
+}
+
+export interface DeterministicDocumentGroupedBlockDebug {
+  blockTypeCandidate: string
+  labels: string[]
+  values: string[]
+  score: number
+  accepted: boolean
+  rejectionReason?: string
 }
 
 export interface DocumentIngestionCapabilities {

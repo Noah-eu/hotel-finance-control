@@ -1085,6 +1085,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const fallbackMatches = Array.isArray(fieldDebug.fullDocumentFallbackMatches) && fieldDebug.fullDocumentFallbackMatches.length > 0
           ? fieldDebug.fullDocumentFallbackMatches.join(' || ')
           : 'žádné';
+        const rejectedCandidates = Array.isArray(fieldDebug.rejectedCandidates) && fieldDebug.rejectedCandidates.length > 0
+          ? fieldDebug.rejectedCandidates.join(' || ')
+          : 'žádné';
 
         return [
           '<br /><span class="hint">Field ' + escapeHtml(label) + ': winner '
@@ -1093,10 +1096,37 @@ ${showRuntimePayoutDiagnostics ? '' : `
             + escapeHtml(String(fieldDebug.winnerValue || 'n/a'))
             + '</span>',
           '<br /><span class="hint">Field ' + escapeHtml(label) + ' candidates: ' + escapeHtml(candidateValues) + '</span>',
+          '<br /><span class="hint">Field ' + escapeHtml(label) + ' rejected: ' + escapeHtml(rejectedCandidates) + '</span>',
           '<br /><span class="hint">Field ' + escapeHtml(label) + ' grouped: ' + escapeHtml(groupedMatches) + '</span>',
           '<br /><span class="hint">Field ' + escapeHtml(label) + ' line-window: ' + escapeHtml(lineWindowMatches) + '</span>',
           '<br /><span class="hint">Field ' + escapeHtml(label) + ' fallback: ' + escapeHtml(fallbackMatches) + '</span>'
         ].join('');
+      }
+
+      function buildGroupedBlockDebugMarkup(file, summaryKey, label) {
+        const summary = file && file.documentExtractionSummary;
+        const groupedBlocks = summary && Array.isArray(summary[summaryKey]) ? summary[summaryKey] : [];
+
+        if (!groupedBlocks || groupedBlocks.length === 0) {
+          return '';
+        }
+
+        return groupedBlocks.map(function (block, index) {
+          return [
+            '<br /><span class="hint">' + escapeHtml(label) + ' candidate #' + escapeHtml(String(index + 1)) + ': '
+              + escapeHtml(String(block.blockTypeCandidate || 'unknown'))
+              + ' / score=' + escapeHtml(String(block.score || 0))
+              + ' / ' + escapeHtml(block.accepted ? 'accepted' : 'rejected')
+              + (block.rejectionReason ? ' / ' + escapeHtml(String(block.rejectionReason)) : '')
+              + '</span>',
+            '<br /><span class="hint">' + escapeHtml(label) + ' labels: '
+              + escapeHtml(Array.isArray(block.labels) && block.labels.length > 0 ? block.labels.join(' | ') : 'žádné')
+              + '</span>',
+            '<br /><span class="hint">' + escapeHtml(label) + ' values: '
+              + escapeHtml(Array.isArray(block.values) && block.values.length > 0 ? block.values.join(' | ') : 'žádné')
+              + '</span>'
+          ].join('');
+        }).join('');
       }
 
       function buildInvoiceFieldExtractionDebugMarkup(file) {
@@ -1105,6 +1135,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return [
+          buildGroupedBlockDebugMarkup(file, 'groupedHeaderBlockDebug', 'Grouped header block'),
+          buildGroupedBlockDebugMarkup(file, 'groupedTotalsBlockDebug', 'Grouped totals block'),
           buildDocumentFieldExtractionDebugLine(file, 'referenceNumber', 'referenceNumber'),
           buildDocumentFieldExtractionDebugLine(file, 'issueDate', 'issueDate'),
           buildDocumentFieldExtractionDebugLine(file, 'dueDate', 'dueDate'),
