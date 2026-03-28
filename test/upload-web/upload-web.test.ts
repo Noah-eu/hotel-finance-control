@@ -444,7 +444,7 @@ describe('buildUploadWebFlow', () => {
               blockTypeGuess: 'totals-payable'
             }),
             expect.objectContaining({
-              rawLines: ['S DPH 10 437,62 Kč 12 629,52 Kč Razítko a podpis', 'Předmět plnění', 'Servis vozidla'],
+              rawLines: ['S DPH', '10 437,62 Kč', '12 629,52 Kč', 'Razítko a podpis'],
               blockTypeGuess: 'totals-vat'
             })
           ]),

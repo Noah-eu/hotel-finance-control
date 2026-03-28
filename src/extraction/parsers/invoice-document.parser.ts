@@ -1773,17 +1773,88 @@ function resolveInvoiceField(
   state: InvoiceFieldDebugState,
   stageOrder: Array<keyof Pick<InvoiceFieldDebugState, 'groupedCandidates' | 'lineWindowCandidates' | 'fallbackCandidates'>> = ['groupedCandidates', 'lineWindowCandidates', 'fallbackCandidates']
 ): string | undefined {
-  for (const stage of stageOrder) {
-    for (const candidate of state[stage]) {
-      const normalizedValue = normalizeInvoiceFieldWinnerValue(fieldKey, candidate.value)
+  const orderedCandidates = stageOrder.flatMap((stage, stageIndex) => state[stage].map((candidate, candidateIndex) => ({
+    ...candidate,
+    stage,
+    stageIndex,
+    candidateIndex
+  })))
 
-      state.winnerRule = candidate.rule
-      state.winnerValue = normalizedValue
-      return normalizedValue
-    }
+  const selectedCandidate = selectPreferredInvoiceFieldCandidate(fieldKey, orderedCandidates)
+
+  if (selectedCandidate) {
+    const normalizedValue = normalizeInvoiceFieldWinnerValue(fieldKey, selectedCandidate.value)
+
+    state.winnerRule = selectedCandidate.rule
+    state.winnerValue = normalizedValue
+    return normalizedValue
   }
 
   return undefined
+}
+
+function selectPreferredInvoiceFieldCandidate(
+  fieldKey: InvoiceSummaryFieldKey,
+  candidates: Array<InvoiceFieldCandidate & {
+    stage: keyof Pick<InvoiceFieldDebugState, 'groupedCandidates' | 'lineWindowCandidates' | 'fallbackCandidates'>
+    stageIndex: number
+    candidateIndex: number
+  }>
+): (InvoiceFieldCandidate & {
+  stage: keyof Pick<InvoiceFieldDebugState, 'groupedCandidates' | 'lineWindowCandidates' | 'fallbackCandidates'>
+  stageIndex: number
+  candidateIndex: number
+}) | undefined {
+  if (candidates.length === 0) {
+    return undefined
+  }
+
+  if (fieldKey !== 'totalAmount') {
+    return candidates[0]
+  }
+
+  return [...candidates].sort((left, right) => {
+    const priorityDelta = invoiceFieldCandidatePriority(fieldKey, right) - invoiceFieldCandidatePriority(fieldKey, left)
+    if (priorityDelta !== 0) {
+      return priorityDelta
+    }
+
+    if (left.stageIndex !== right.stageIndex) {
+      return left.stageIndex - right.stageIndex
+    }
+
+    return left.candidateIndex - right.candidateIndex
+  })[0]
+}
+
+function invoiceFieldCandidatePriority(
+  fieldKey: InvoiceSummaryFieldKey,
+  candidate: InvoiceFieldCandidate
+): number {
+  if (fieldKey !== 'totalAmount') {
+    return 0
+  }
+
+  switch (candidate.rule) {
+    case 'field-specific-summary-total':
+      return 500
+    case 'structured-grouped-totals-block':
+      return 450
+    case 'vertical-structured-totals-block':
+      return 425
+    case 'vertical-grouped-block':
+      return 400
+    case 'field-specific-payable-total':
+      return 350
+    case 'direct-labeled-field':
+      return 250
+    case 'regex-total':
+      return 200
+    case 'line-window':
+      return 150
+    default:
+      return 100
+  }
 }
 
 function normalizeInvoiceFieldWinnerValue(fieldKey: InvoiceSummaryFieldKey, value: string): string {
