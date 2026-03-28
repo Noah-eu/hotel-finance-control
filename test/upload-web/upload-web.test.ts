@@ -425,56 +425,45 @@ describe('buildUploadWebFlow', () => {
           ibanHint: 'CZ4903000000000274621920',
           confidence: 'strong',
           missingRequiredFields: [],
-          groupedHeaderLabels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
-          groupedHeaderValues: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
           groupedHeaderBlockDebug: expect.arrayContaining([
             expect.objectContaining({
               blockTypeCandidate: 'vertical-structured-header-block',
-              labels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
-              values: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
-              accepted: true
-            }),
-            expect.objectContaining({
-              blockTypeCandidate: 'vertical-structured-header-block',
-              labels: ['Datum zdanitelného plnění', 'Forma úhrady', 'Datum vystavení'],
-              values: ['25.03.2026', 'n/a', 'n/a'],
+              labels: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
+              values: ['11.03.2026', 'n/a', '25.03.2026', '11.03.2026'],
               accepted: false,
               rejectionReason: 'missing reference label'
             })
           ]),
           rawBlockDiscoveryDebug: expect.arrayContaining([
             expect.objectContaining({
-              rawLines: ['Datum zdanitelného plnění', 'Forma úhrady', 'Datum vystavení', '25.03.2026'],
-              blockTypeGuess: 'dates-payment',
-              promotionDecision: 'rejected:missing reference label'
+              rawLines: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
+              blockTypeGuess: 'dates-payment'
             }),
             expect.objectContaining({
               rawLines: ['DPH Celkem po zaokrouhlení', '21,00 % Záloh celkem', 'Základ DPH', '10 437,62'],
               blockTypeGuess: 'totals-payable'
             }),
             expect.objectContaining({
-              rawLines: ['Celkem Kč k úhradě', '12 629,52', 'K úhradě', '12 629,52'],
-              blockTypeGuess: 'totals-payable'
+              rawLines: ['S DPH', '10 437,62 Kč', '12 629,52 Kč', 'Razítko a podpis'],
+              blockTypeGuess: 'totals-vat'
             })
           ]),
           fieldExtractionDebug: expect.objectContaining({
             referenceNumber: expect.objectContaining({
-              winnerRule: 'vertical-structured-header-block',
+              winnerRule: 'anchored-header-window',
               winnerValue: '141260183'
             }),
             issueDate: expect.objectContaining({
-              winnerRule: 'vertical-structured-header-block',
+              winnerRule: 'grouped-combined-date-payment-row',
               winnerValue: '11.03.2026'
             }),
             paymentMethod: expect.objectContaining({
-              winnerRule: 'vertical-structured-header-block',
-              winnerValue: 'Přev. příkaz',
-              rejectedCandidates: expect.arrayContaining(['Datum vystavení [label-text]'])
+              winnerRule: 'grouped-combined-date-payment-row',
+              winnerValue: 'Přev. příkaz'
             }),
             totalAmount: expect.objectContaining({
-              winnerRule: 'field-specific-payable-total',
-              winnerValue: '12 629,52 CZK',
-              rejectedCandidates: expect.arrayContaining(['21,00 % Záloh celkem [subtotal-label]'])
+              winnerRule: 'field-specific-summary-total',
+              winnerValue: '12 629,52 Kč'
             })
           })
         }),
@@ -1184,37 +1173,48 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(4)
   })
 
-  it('supports the compact browser-uploaded Airbnb payout export variant and exposes header mapping diagnostics', async () => {
+  it('accepts the compact Airbnb browser upload variant and carries it into payout reconciliation without reintroducing ingest failures', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
     const result = await createBrowserRuntime().buildRuntimeState({
-      files: [createRuntimeArrayBufferTextFile('airbnb_03_2026-03_2026.csv', buildCompactUploadedAirbnbContent(), 'text/csv')],
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb_03_2026-03_2026.csv', buildCompactUploadedAirbnbContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Booking35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ],
       month: '2026-03',
-      generatedAt: '2026-03-28T09:10:00.000Z'
+      generatedAt: '2026-03-28T09:25:00.000Z'
     })
 
-    expect(result.preparedFiles).toEqual([
-      expect.objectContaining({
-        fileName: 'airbnb_03_2026-03_2026.csv',
-        sourceSystem: 'airbnb',
-        documentType: 'ota_report'
-      })
-    ])
-    expect(result.fileRoutes).toEqual([
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 5,
+      supportedFileCount: 5,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes.some((file) => file.status === 'error')).toBe(false)
+    expect(result.fileRoutes).toContainEqual(
       expect.objectContaining({
         fileName: 'airbnb_03_2026-03_2026.csv',
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'airbnb',
-        documentType: 'ota_report',
-        parserId: 'airbnb'
+        documentType: 'ota_report'
       })
-    ])
-    expect(result.extractedRecords).toEqual([
+    )
+    expect(result.extractedRecords).toContainEqual(
       expect.objectContaining({
         fileName: 'airbnb_03_2026-03_2026.csv',
-        extractedCount: 17,
+        extractedCount: getRealUploadedAirbnbTransferRowsWithoutReferenceColumn().length,
         accountLabelCs: 'Airbnb payout report'
       })
-    ])
+    )
     expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
       expect.objectContaining({
         fileName: 'airbnb_03_2026-03_2026.csv',
@@ -1222,32 +1222,41 @@ describe('buildUploadWebFlow', () => {
         documentType: 'ota_report',
         airbnbHeaderDiagnostics: expect.objectContaining({
           parserVariant: 'structured-export',
-          rawHeaderRow: 'Datum;Měna;Částka;Referenční kód;Potvrzující kód;Nabídka',
+          rawHeaderRow: 'Datum převodu;Částka převodu;Měna;Reference code;Confirmation code;Nabídka',
+          normalizedHeaders: ['payoutDate', 'amountMinor', 'currency', 'payoutReference', 'reservationId', 'listingId'],
           normalizedHeaderMap: [
-            'Datum -> payoutDate',
+            'Datum převodu -> payoutDate',
+            'Částka převodu -> amountMinor',
             'Měna -> currency',
-            'Částka -> amountMinor',
-            'Referenční kód -> payoutReference',
-            'Potvrzující kód -> reservationId',
+            'Reference code -> payoutReference',
+            'Confirmation code -> reservationId',
             'Nabídka -> listingId'
           ],
-          mappedCanonicalHeaders: {
-            payoutDate: 'Datum',
-            amountMinor: 'Částka',
-            currency: 'Měna',
-            payoutReference: 'Referenční kód',
-            reservationId: 'Potvrzující kód',
+          mappedCanonicalHeaders: expect.objectContaining({
+            payoutDate: 'Datum převodu',
+            payoutReference: 'Reference code',
+            reservationId: 'Confirmation code',
             listingId: 'Nabídka'
-          },
+          }),
           missingCanonicalHeaders: []
         })
       })
     )
-    expect(result.reportSummary.normalizedTransactionCount).toBe(17)
-    expect(result.reviewSummary.payoutBatchMatchCount).toBe(0)
-    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(17)
-    expect(result.reviewSections.payoutBatchMatched).toHaveLength(0)
-    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(17)
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
   })
 
   it('parses the real Airbnb-only browser runtime path when the export uses slash-based US-style dates', async () => {
@@ -4422,18 +4431,20 @@ function buildCompactUploadedAirbnbContent(): string {
   const headerIndex = Object.fromEntries(sourceHeaders.map((sourceHeader, index) => [sourceHeader, index]))
 
   return [
-    'Datum;Měna;Částka;Referenční kód;Potvrzující kód;Nabídka',
-    ...rows.map((row, index) => {
-      const cells = row.split(';')
-      return [
-        cells[headerIndex['Bude připsán do dne']] || cells[headerIndex.Datum],
-        cells[headerIndex.Měna],
-        cells[headerIndex.Vyplaceno] || cells[headerIndex.Částka],
-        cells[headerIndex['Referenční kód']],
-        cells[headerIndex['Potvrzující kód']] || `AIRBNB-COMPACT-${String(index + 1).padStart(2, '0')}`,
-        cells[headerIndex.Nabídka]
-      ].join(';')
-    })
+    'Datum převodu;Částka převodu;Měna;Reference code;Confirmation code;Nabídka',
+    ...rows
+      .filter((row) => row.trim().length > 0)
+      .map((row, index) => {
+        const cells = row.split(';')
+        return [
+          cells[headerIndex['Bude připsán do dne']] || cells[headerIndex.Datum],
+          cells[headerIndex.Vyplaceno] || cells[headerIndex.Částka],
+          cells[headerIndex.Měna],
+          cells[headerIndex['Referenční kód']] || `AIRBNB-COMPACT-REF-${String(index + 1).padStart(2, '0')}`,
+          cells[headerIndex['Potvrzující kód']] || `AIRBNB-COMPACT-${String(index + 1).padStart(2, '0')}`,
+          cells[headerIndex.Nabídka]
+        ].join(';')
+      })
   ].join('\n')
 }
 

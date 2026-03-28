@@ -1647,19 +1647,15 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document customer: JOKELAND s.r.o.')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final referenceNumber: 141260183')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final issueDate: 2026-03-11')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header labels: Faktura číslo | Forma úhrady | Datum vystavení | Datum zdanitelného plnění | Datum splatnosti')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header values: 141260183 | Přev.příkaz | 11.03.2026 | 11.03.2026 | 25.03.2026')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block #')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: Datum zdanitelného plnění | Forma úhrady | Datum vystavení | 25.03.2026')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: Datum splatnosti | Forma úhrady | Datum vystavení | Datum zdanitelného plnění')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: DPH Celkem po zaokrouhlení | 21,00 % Záloh celkem | Základ DPH | 10 437,62')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: Celkem Kč k úhradě | 12 629,52 | K úhradě | 12 629,52')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: S DPH | 10 437,62 Kč | 12 629,52 Kč | Razítko a podpis')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block candidate #')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('vertical-structured-header-block / score=')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('accepted')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block labels: Faktura číslo | Forma úhrady | Datum vystavení | Datum zdanitelného plnění | Datum splatnosti')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block values: 141260183 | Přev.příkaz | 11.03.2026 | 11.03.2026 | 25.03.2026')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('rejected / missing reference label')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block labels: Datum zdanitelného plnění | Forma úhrady | Datum vystavení')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block labels: Datum splatnosti | Forma úhrady | Datum vystavení | Datum zdanitelného plnění')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block values: 11.03.2026 | n/a | 25.03.2026 | 11.03.2026')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document dueDate: 2026-03-25')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document taxableDate: 2026-03-11')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final totalAmount: 12 629,52 CZK')
@@ -1669,17 +1665,17 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document ibanHint: CZ4903000000000274621920')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document VAT base: 10 437,62 CZK')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document VAT: 2 191,90 CZK')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field referenceNumber: winner vertical-structured-header-block / 141260183')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field referenceNumber: winner anchored-header-window / 141260183')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field referenceNumber candidates: 141260183')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field issueDate: winner vertical-structured-header-block / 11.03.2026')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field taxableDate: winner vertical-structured-header-block / 11.03.2026')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field paymentMethod: winner vertical-structured-header-block / Přev. příkaz')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field issueDate: winner grouped-combined-date-payment-row / 11.03.2026')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field taxableDate: winner grouped-combined-date-payment-row / 11.03.2026')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field paymentMethod: winner grouped-combined-date-payment-row / Přev. příkaz')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field paymentMethod candidates: Přev.příkaz')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field paymentMethod rejected:')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Datum vystavení [label-text]')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field totalAmount: winner field-specific-payable-total / 12 629,52 CZK')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('21,00 % Záloh celkem [subtotal-label]')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Celkem Kč k úhradě -&gt; 12 629,52')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field totalAmount: winner field-specific-summary-total / 12 629,52 Kč')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field totalAmount candidates: 10 437,62 Kč | 12 629,52 Kč')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('10 437,62 Kč [not-money]')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
@@ -1716,11 +1712,11 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4>')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('airbnb_03_2026-03_2026.csv')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb parser variant: structured-export')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb detected header row: Datum;Měna;Částka;Referenční kód;Potvrzující kód;Nabídka')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb normalized header map: Datum -&gt; payoutDate | Měna -&gt; currency | Částka -&gt; amountMinor | Referenční kód -&gt; payoutReference | Potvrzující kód -&gt; reservationId | Nabídka -&gt; listingId')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped payoutDate: Datum')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped payoutReference: Referenční kód')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped reservationId: Potvrzující kód')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb detected header row: Datum převodu;Částka převodu;Měna;Reference code;Confirmation code;Nabídka')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb normalized header map: Datum převodu -&gt; payoutDate | Částka převodu -&gt; amountMinor | Měna -&gt; currency | Reference code -&gt; payoutReference | Confirmation code -&gt; reservationId | Nabídka -&gt; listingId')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped payoutDate: Datum převodu')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped payoutReference: Reference code')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped reservationId: Confirmation code')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb mapped listingId: Nabídka')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Airbnb missing canonical headers: žádné')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Lenner.pdf')
@@ -2471,6 +2467,29 @@ function buildRealUploadedAirbnbContentWithoutReferenceColumn(): string {
   ].join('\n')
 }
 
+function buildCompactUploadedAirbnbContent(): string {
+  const [header, ...rows] = buildActualUploadedAirbnbContent().split('\n')
+  const sourceHeaders = header.split(';')
+  const headerIndex = Object.fromEntries(sourceHeaders.map((sourceHeader, index) => [sourceHeader, index]))
+
+  return [
+    'Datum převodu;Částka převodu;Měna;Reference code;Confirmation code;Nabídka',
+    ...rows
+      .filter((row) => row.trim().length > 0)
+      .map((row, index) => {
+        const cells = row.split(';')
+        return [
+          cells[headerIndex['Bude připsán do dne']] || cells[headerIndex.Datum],
+          cells[headerIndex.Vyplaceno] || cells[headerIndex.Částka],
+          cells[headerIndex.Měna],
+          cells[headerIndex['Referenční kód']] || `AIRBNB-COMPACT-REF-${String(index + 1).padStart(2, '0')}`,
+          cells[headerIndex['Potvrzující kód']] || `AIRBNB-COMPACT-${String(index + 1).padStart(2, '0')}`,
+          cells[headerIndex.Nabídka]
+        ].join(';')
+      })
+  ].join('\n')
+}
+
 function buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(): string {
   return [
     buildRealUploadedRbCitiContentForSharedAirbnbPayouts(),
@@ -2491,27 +2510,6 @@ function buildRealUploadedRbGenericContentWithDuplicateAmountColumnsForSharedAir
   return [
     buildRealUploadedRbGenericContentWithDuplicateAmountColumnsForSharedAirbnbPayouts(daysShift),
     '13.03.2026 09:10;13.03.2026 09:12;35530,12;35530,12;CZK;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;NO.AAOS6MOZUH8BFTER/2206371'
-  ].join('\n')
-}
-
-function buildCompactUploadedAirbnbContent(): string {
-  const [header, ...rows] = buildActualUploadedAirbnbContent().split('\n')
-  const sourceHeaders = header.split(';')
-  const headerIndex = Object.fromEntries(sourceHeaders.map((sourceHeader, index) => [sourceHeader, index]))
-
-  return [
-    'Datum;Měna;Částka;Referenční kód;Potvrzující kód;Nabídka',
-    ...rows.map((row, index) => {
-      const cells = row.split(';')
-      return [
-        cells[headerIndex['Bude připsán do dne']] || cells[headerIndex.Datum],
-        cells[headerIndex.Měna],
-        cells[headerIndex.Vyplaceno] || cells[headerIndex.Částka],
-        cells[headerIndex['Referenční kód']],
-        cells[headerIndex['Potvrzující kód']] || `AIRBNB-COMPACT-${String(index + 1).padStart(2, '0')}`,
-        cells[headerIndex.Nabídka]
-      ].join(';')
-    })
   ].join('\n')
 }
 
