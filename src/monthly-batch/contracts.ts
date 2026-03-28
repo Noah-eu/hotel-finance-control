@@ -1,5 +1,8 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
-import type { DeterministicDocumentExtractionSummary } from '../extraction'
+import type {
+  AirbnbPayoutHeaderDiagnostics,
+  DeterministicDocumentExtractionSummary
+} from '../extraction'
 import type { ReconciliationContext, ReconciliationResult } from '../reconciliation'
 import type { ReconciliationReport } from '../reporting'
 
@@ -126,6 +129,7 @@ export interface UploadedMonthlyFileRoute {
   errorMessage?: string
   parseDiagnostics?: {
     documentExtractionSummary?: DeterministicDocumentExtractionSummary
+    airbnbHeaderDiagnostics?: AirbnbPayoutHeaderDiagnostics
     parserExtractedPaymentId?: string
     parserExtractedPayoutDate?: string
     parserExtractedPayoutTotal?: string

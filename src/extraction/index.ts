@@ -34,8 +34,8 @@ export {
   inspectBookingPayoutStatementFieldCheck,
   parseBookingPayoutStatementPdf
 } from './parsers/booking-payout-statement.parser'
-export type { ParseAirbnbPayoutExportInput } from './parsers/airbnb.parser'
-export { AirbnbPayoutParser, parseAirbnbPayoutExport } from './parsers/airbnb.parser'
+export type { AirbnbPayoutHeaderDiagnostics, ParseAirbnbPayoutExportInput } from './parsers/airbnb.parser'
+export { AirbnbPayoutParser, inspectAirbnbPayoutHeaderDiagnostics, parseAirbnbPayoutExport } from './parsers/airbnb.parser'
 export type { ParseExpediaPayoutExportInput } from './parsers/expedia.parser'
 export { ExpediaPayoutParser, parseExpediaPayoutExport } from './parsers/expedia.parser'
 export type { ParsePrevioReservationExportInput } from './parsers/previo.parser'

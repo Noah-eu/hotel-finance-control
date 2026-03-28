@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAirbnbPayoutExport } from '../../src/extraction'
+import { inspectAirbnbPayoutHeaderDiagnostics, parseAirbnbPayoutExport } from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 describe('parseAirbnbPayoutExport', () => {
@@ -79,6 +79,58 @@ describe('parseAirbnbPayoutExport', () => {
         extractedAt: '2026-03-19T10:30:00.000Z'
       })
     ).toThrow('Airbnb payout export is missing required columns')
+  })
+
+  it('maps the compact browser-uploaded Airbnb export variant into the canonical payout fields', () => {
+    const content = [
+      'Datum;Měna;Částka;Referenční kód;Potvrzující kód;Nabídka',
+      '2026-03-20;CZK;3 961,05;G-OC3WJE3SIXRO5;AIRBNB-COMPACT-01;Jokeland apartment'
+    ].join('\n')
+
+    expect(inspectAirbnbPayoutHeaderDiagnostics(content)).toEqual({
+      parserVariant: 'structured-export',
+      rawHeaderRow: 'Datum;Měna;Částka;Referenční kód;Potvrzující kód;Nabídka',
+      normalizedHeaders: ['payoutDate', 'currency', 'amountMinor', 'payoutReference', 'reservationId', 'listingId'],
+      normalizedHeaderMap: [
+        'Datum -> payoutDate',
+        'Měna -> currency',
+        'Částka -> amountMinor',
+        'Referenční kód -> payoutReference',
+        'Potvrzující kód -> reservationId',
+        'Nabídka -> listingId'
+      ],
+      requiredCanonicalHeaders: ['payoutDate', 'amountMinor', 'currency', 'payoutReference', 'reservationId', 'listingId'],
+      mappedCanonicalHeaders: {
+        payoutDate: 'Datum',
+        amountMinor: 'Částka',
+        currency: 'Měna',
+        payoutReference: 'Referenční kód',
+        reservationId: 'Potvrzující kód',
+        listingId: 'Nabídka'
+      },
+      candidateSourceHeaders: ['Datum', 'Měna', 'Částka', 'Referenční kód', 'Potvrzující kód', 'Nabídka'],
+      missingCanonicalHeaders: []
+    })
+
+    expect(parseAirbnbPayoutExport({
+      sourceDocument: {
+        id: 'doc-airbnb-compact' as never,
+        sourceSystem: 'airbnb',
+        documentType: 'ota_report',
+        fileName: 'airbnb_03_2026-03_2026.csv',
+        uploadedAt: '2026-03-28T09:10:00.000Z'
+      },
+      content,
+      extractedAt: '2026-03-28T09:10:00.000Z'
+    })[0]).toMatchObject({
+      rawReference: 'G-OC3WJE3SIXRO5',
+      amountMinor: 396105,
+      occurredAt: '2026-03-20',
+      data: {
+        reservationId: 'AIRBNB-COMPACT-01',
+        listingId: 'Jokeland apartment'
+      }
+    })
   })
 
   it('supports the grounded real Airbnb mixed export shape with separate reservation and transfer rows', () => {

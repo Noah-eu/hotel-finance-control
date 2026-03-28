@@ -1147,6 +1147,30 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
+      function buildAirbnbHeaderDiagnosticsMarkup(file) {
+        const diagnostics = file && file.airbnbHeaderDiagnostics;
+
+        if (!diagnostics) {
+          return '';
+        }
+
+        const mappedHeaders = diagnostics.mappedCanonicalHeaders || {};
+
+        return [
+          '<br /><span class="hint">Airbnb parser variant: ' + escapeHtml(String(diagnostics.parserVariant || 'unknown')) + '</span>',
+          '<br /><span class="hint">Airbnb detected header row: ' + escapeHtml(String(diagnostics.rawHeaderRow || 'n/a')) + '</span>',
+          '<br /><span class="hint">Airbnb normalized headers: ' + escapeHtml(Array.isArray(diagnostics.normalizedHeaders) && diagnostics.normalizedHeaders.length > 0 ? diagnostics.normalizedHeaders.join(' | ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Airbnb normalized header map: ' + escapeHtml(Array.isArray(diagnostics.normalizedHeaderMap) && diagnostics.normalizedHeaderMap.length > 0 ? diagnostics.normalizedHeaderMap.join(' | ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Airbnb required canonical headers: ' + escapeHtml(Array.isArray(diagnostics.requiredCanonicalHeaders) && diagnostics.requiredCanonicalHeaders.length > 0 ? diagnostics.requiredCanonicalHeaders.join(', ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Airbnb mapped payoutDate: ' + escapeHtml(String(mappedHeaders.payoutDate || 'n/a')) + '</span>',
+          '<br /><span class="hint">Airbnb mapped payoutReference: ' + escapeHtml(String(mappedHeaders.payoutReference || 'n/a')) + '</span>',
+          '<br /><span class="hint">Airbnb mapped reservationId: ' + escapeHtml(String(mappedHeaders.reservationId || 'n/a')) + '</span>',
+          '<br /><span class="hint">Airbnb mapped listingId: ' + escapeHtml(String(mappedHeaders.listingId || 'n/a')) + '</span>',
+          '<br /><span class="hint">Airbnb candidate source headers: ' + escapeHtml(Array.isArray(diagnostics.candidateSourceHeaders) && diagnostics.candidateSourceHeaders.length > 0 ? diagnostics.candidateSourceHeaders.join(' | ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Airbnb missing canonical headers: ' + escapeHtml(Array.isArray(diagnostics.missingCanonicalHeaders) && diagnostics.missingCanonicalHeaders.length > 0 ? diagnostics.missingCanonicalHeaders.join(', ') : 'žádné') + '</span>'
+        ].join('');
+      }
+
       function buildInvoiceRawBlockDebugMarkup(file) {
         const summary = file && file.documentExtractionSummary;
         const rawBlocks = summary && Array.isArray(summary.rawBlockDiscoveryDebug) ? summary.rawBlockDiscoveryDebug : [];
@@ -1289,6 +1313,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.vatAmountMinor, file.documentExtractionSummary.vatCurrency))
               + '</span>'
             : '',
+          buildAirbnbHeaderDiagnosticsMarkup(file),
           buildInvoiceFieldExtractionDebugMarkup(file),
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',
           file.parserExtractedPayoutDate ? '<br /><span class="hint">parserExtracted.payoutDate: ' + escapeHtml(file.parserExtractedPayoutDate) + '</span>' : '',

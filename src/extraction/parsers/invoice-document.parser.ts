@@ -1150,53 +1150,11 @@ function buildStructuredGroupedInvoiceHeaderBlock(
   orderedKeys: InvoiceSummaryFieldKey[]
 ): StructuredGroupedInvoiceHeaderBlock | undefined {
   const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
-  const upcomingLines = lines.slice(headerIndex + 1, headerIndex + 7)
-  const referenceCandidates: string[] = []
-  const paymentMethodCandidates: string[] = []
-  const dateCandidates: string[] = []
-
-  for (const line of upcomingLines) {
-    if (isInvoiceSectionBoundary(line)) {
-      break
-    }
-
-    const stripped = stripTrailingNoise(line)
-    const referenceCandidate = extractFirstInvoiceReferenceCandidate(stripped)
-
-    if (referenceCandidate && !referenceCandidates.includes(referenceCandidate)) {
-      referenceCandidates.push(referenceCandidate)
-    }
-
-    const paymentMethodCandidate = extractGroupedPaymentMethodCandidate(stripped, referenceCandidate)
-    if (
-      paymentMethodCandidate
-      && isValidInvoiceFieldValue('paymentMethod', paymentMethodCandidate)
-      && !paymentMethodCandidates.includes(paymentMethodCandidate)
-    ) {
-      paymentMethodCandidates.push(paymentMethodCandidate)
-    }
-
-    for (const dateCandidate of extractDateTokens(stripped)) {
-      dateCandidates.push(dateCandidate)
-    }
-  }
-
-  const values = orderedKeys.map((fieldKey) => {
-    switch (fieldKey) {
-      case 'referenceNumber':
-        return referenceCandidates[0]
-      case 'paymentMethod':
-        return paymentMethodCandidates[0]
-      case 'issueDate':
-        return dateCandidates[0]
-      case 'taxableDate':
-        return dateCandidates[1]
-      case 'dueDate':
-        return dateCandidates[2]
-      default:
-        return undefined
-    }
-  })
+  const mappedValues = selectBestStructuredHeaderValues(
+    collectStructuredCandidateLines(lines, headerIndex + 1, 8),
+    orderedKeys
+  )
+  const values = orderedKeys.map((fieldKey) => mappedValues[fieldKey])
 
   return values.some((value) => Boolean(value))
     ? {
@@ -1212,28 +1170,11 @@ function buildVerticalGroupedInvoiceHeaderBlock(
   orderedKeys: InvoiceSummaryFieldKey[]
 ): StructuredGroupedInvoiceHeaderBlock | undefined {
   const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
-  const upcomingLines = collectInvoiceValueLines(lines, valuesStartIndex, 6)
-  const joinedValues = upcomingLines.join(' ')
-  const referenceCandidate = extractFirstInvoiceReferenceCandidate(joinedValues)
-  const paymentMethodCandidate = extractGroupedPaymentMethodCandidate(joinedValues, referenceCandidate)
-  const dateCandidates = extractDateTokens(joinedValues)
-
-  const values = orderedKeys.map((fieldKey) => {
-    switch (fieldKey) {
-      case 'referenceNumber':
-        return referenceCandidate
-      case 'paymentMethod':
-        return paymentMethodCandidate
-      case 'issueDate':
-        return dateCandidates[0]
-      case 'taxableDate':
-        return dateCandidates[1]
-      case 'dueDate':
-        return dateCandidates[2]
-      default:
-        return undefined
-    }
-  })
+  const mappedValues = selectBestStructuredHeaderValues(
+    collectStructuredCandidateLines(lines, valuesStartIndex, 8),
+    orderedKeys
+  )
+  const values = orderedKeys.map((fieldKey) => mappedValues[fieldKey])
 
   return values.some((value) => Boolean(value))
     ? {
@@ -1249,37 +1190,18 @@ function buildStructuredGroupedInvoiceTotalsBlock(
   orderedKeys: InvoiceSummaryFieldKey[]
 ): StructuredGroupedInvoiceTotalsBlock | undefined {
   const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
-  const upcomingLines = lines.slice(headerIndex + 1, headerIndex + 5)
-  const moneyCandidates: string[] = []
+  const mappedValues = selectBestStructuredTotalsValues(
+    collectStructuredCandidateLines(lines, headerIndex + 1, 6),
+    orderedKeys
+  )
+  const values = orderedKeys.map((fieldKey) => mappedValues[fieldKey])
 
-  for (const line of upcomingLines) {
-    if (isInvoiceSectionBoundary(line)) {
-      break
-    }
-
-    for (const token of extractLooseMoneyTokens(line, true)) {
-      if (!moneyCandidates.includes(token)) {
-        moneyCandidates.push(token)
+  return values.some((value) => Boolean(value))
+    ? {
+        labels,
+        values: values.map((value) => value ?? 'n/a')
       }
-    }
-  }
-
-  if (moneyCandidates.length < 3) {
-    return undefined
-  }
-
-  const values = orderedKeys.map((fieldKey, index) => {
-    if (fieldKey === 'totalAmount') {
-      return moneyCandidates[moneyCandidates.length - 1]
-    }
-
-    return moneyCandidates[index]
-  })
-
-  return {
-    labels,
-    values: values.map((value) => value ?? 'n/a')
-  }
+    : undefined
 }
 
 function buildVerticalGroupedInvoiceTotalsBlock(
@@ -1288,25 +1210,18 @@ function buildVerticalGroupedInvoiceTotalsBlock(
   orderedKeys: InvoiceSummaryFieldKey[]
 ): StructuredGroupedInvoiceTotalsBlock | undefined {
   const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
-  const upcomingLines = collectInvoiceValueLines(lines, valuesStartIndex, 5)
-  const moneyCandidates = upcomingLines.flatMap((line) => extractLooseMoneyTokens(line, true))
+  const mappedValues = selectBestStructuredTotalsValues(
+    collectStructuredCandidateLines(lines, valuesStartIndex, 6),
+    orderedKeys
+  )
+  const values = orderedKeys.map((fieldKey) => mappedValues[fieldKey])
 
-  if (moneyCandidates.length < 3) {
-    return undefined
-  }
-
-  const values = orderedKeys.map((fieldKey, index) => {
-    if (fieldKey === 'totalAmount') {
-      return moneyCandidates[moneyCandidates.length - 1]
-    }
-
-    return moneyCandidates[index]
-  })
-
-  return {
-    labels,
-    values: values.map((value) => value ?? 'n/a')
-  }
+  return values.some((value) => Boolean(value))
+    ? {
+        labels,
+        values: values.map((value) => value ?? 'n/a')
+      }
+    : undefined
 }
 
 function groupedInvoiceFieldLabel(fieldKey: InvoiceSummaryFieldKey): string {
@@ -1376,6 +1291,30 @@ function collectInvoiceValueLines(
   return values
 }
 
+function collectStructuredCandidateLines(
+  lines: string[],
+  startIndex: number,
+  lookaheadLimit: number
+): string[] {
+  const values: string[] = []
+
+  for (let index = startIndex; index < lines.length && values.length < lookaheadLimit; index += 1) {
+    const line = stripTrailingNoise(lines[index]!)
+
+    if (!line) {
+      continue
+    }
+
+    if (values.length > 0 && isInvoiceSectionBoundary(line)) {
+      break
+    }
+
+    values.push(line)
+  }
+
+  return values
+}
+
 function isInvoiceSectionBoundary(line: string): boolean {
   const normalized = normalizeLabelSearch(line)
 
@@ -1407,6 +1346,185 @@ function extractGroupedPaymentMethodCandidate(value: string, referenceNumber?: s
     : prefix
 
   return withoutReference.length > 0 && !isInvoiceLabelText(withoutReference) ? withoutReference : undefined
+}
+
+function selectBestStructuredHeaderValues(
+  candidateLines: string[],
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const cleanLines = candidateLines
+    .map((line) => stripTrailingNoise(line))
+    .filter((line) => line.length > 0)
+  const mappings: Array<{
+    values: Partial<Record<InvoiceSummaryFieldKey, string>>
+    score: number
+  }> = []
+
+  for (const line of cleanLines) {
+    if (containsInvoicePageArtifactValue(line)) {
+      continue
+    }
+
+    const mappedValues = mapStructuredHeaderValuesFromLine(line, orderedKeys)
+    const score = scoreStructuredHeaderValues(mappedValues, orderedKeys)
+
+    if (score > 0) {
+      mappings.push({ values: mappedValues, score })
+    }
+  }
+
+  const sequentialValues = mapSequentialStructuredHeaderValues(cleanLines, orderedKeys)
+  const sequentialScore = scoreStructuredHeaderValues(sequentialValues, orderedKeys)
+  if (sequentialScore > 0) {
+    mappings.push({ values: sequentialValues, score: sequentialScore + 25 })
+  }
+
+  const winner = mappings.sort((left, right) => right.score - left.score)[0]
+  return winner?.values ?? {}
+}
+
+function mapSequentialStructuredHeaderValues(
+  candidateLines: string[],
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const cleanLines = candidateLines.filter((line) => !containsInvoicePageArtifactValue(line))
+  const result: Partial<Record<InvoiceSummaryFieldKey, string>> = {}
+  let cursor = 0
+
+  if (orderedKeys.includes('referenceNumber')) {
+    for (let index = cursor; index < cleanLines.length; index += 1) {
+      const candidate = extractFirstInvoiceReferenceCandidate(cleanLines[index]!)
+      if (isValidInvoiceFieldValue('referenceNumber', candidate)) {
+        result.referenceNumber = candidate
+        cursor = index + 1
+        break
+      }
+    }
+  }
+
+  if (orderedKeys.includes('paymentMethod')) {
+    for (let index = cursor; index < cleanLines.length; index += 1) {
+      const candidate = extractGroupedPaymentMethodCandidate(cleanLines[index]!, result.referenceNumber)
+      if (isValidInvoiceFieldValue('paymentMethod', candidate)) {
+        result.paymentMethod = candidate
+        cursor = index + 1
+        break
+      }
+    }
+  }
+
+  const dateFields = orderedKeys.filter((fieldKey) =>
+    fieldKey === 'issueDate' || fieldKey === 'taxableDate' || fieldKey === 'dueDate'
+  )
+  const dateTokens = cleanLines
+    .slice(cursor)
+    .flatMap((line) => extractDateTokens(line))
+
+  dateFields.forEach((fieldKey, index) => {
+    const candidate = dateTokens[index]
+    if (candidate) {
+      result[fieldKey] = candidate
+    }
+  })
+
+  return result
+}
+
+function scoreStructuredHeaderValues(
+  values: Partial<Record<InvoiceSummaryFieldKey, string>>,
+  orderedKeys: InvoiceSummaryFieldKey[]
+): number {
+  const referenceValid = orderedKeys.includes('referenceNumber') && isValidInvoiceFieldValue('referenceNumber', values.referenceNumber)
+  const paymentValid = orderedKeys.includes('paymentMethod') && isValidInvoiceFieldValue('paymentMethod', values.paymentMethod)
+  const issueValid = orderedKeys.includes('issueDate') && isValidInvoiceFieldValue('issueDate', values.issueDate)
+  const taxableValid = orderedKeys.includes('taxableDate') && isValidInvoiceFieldValue('taxableDate', values.taxableDate)
+  const dueValid = orderedKeys.includes('dueDate') && isValidInvoiceFieldValue('dueDate', values.dueDate)
+  const validCount = [referenceValid, paymentValid, issueValid, taxableValid, dueValid].filter(Boolean).length
+
+  return validCount * 100
+    + (referenceValid ? 80 : 0)
+    + (paymentValid ? 40 : 0)
+    + (issueValid ? 30 : 0)
+    + (taxableValid ? 30 : 0)
+    + (dueValid ? 30 : 0)
+}
+
+function selectBestStructuredTotalsValues(
+  candidateLines: string[],
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const cleanLines = candidateLines
+    .map((line) => stripTrailingNoise(line))
+    .filter((line) => line.length > 0)
+  const mappings: Array<{
+    values: Partial<Record<InvoiceSummaryFieldKey, string>>
+    score: number
+  }> = []
+
+  for (const line of cleanLines) {
+    if (containsInvoicePageArtifactValue(line) || /záloh?\s+celkem/iu.test(line)) {
+      continue
+    }
+
+    const mappedValues = mapStructuredTotalsValuesFromLine(line, orderedKeys)
+    const score = scoreStructuredTotalsValues(mappedValues, orderedKeys)
+
+    if (score > 0) {
+      mappings.push({ values: mappedValues, score })
+    }
+  }
+
+  const sequentialValues = mapSequentialStructuredTotalsValues(cleanLines, orderedKeys)
+  const sequentialScore = scoreStructuredTotalsValues(sequentialValues, orderedKeys)
+  if (sequentialScore > 0) {
+    mappings.push({ values: sequentialValues, score: sequentialScore + 25 })
+  }
+
+  const winner = mappings.sort((left, right) => right.score - left.score)[0]
+  return winner?.values ?? {}
+}
+
+function mapSequentialStructuredTotalsValues(
+  candidateLines: string[],
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const moneyCandidates: string[] = []
+
+  for (const line of candidateLines) {
+    if (containsInvoicePageArtifactValue(line) || /záloh?\s+celkem/iu.test(line)) {
+      continue
+    }
+
+    if (isInvoiceLabelText(line)) {
+      if (moneyCandidates.length > 0) {
+        break
+      }
+      continue
+    }
+
+    moneyCandidates.push(...extractLooseMoneyTokens(line, true))
+
+    if (moneyCandidates.length >= orderedKeys.length) {
+      break
+    }
+  }
+
+  return mapStructuredTotalsTokens(moneyCandidates, orderedKeys)
+}
+
+function scoreStructuredTotalsValues(
+  values: Partial<Record<InvoiceSummaryFieldKey, string>>,
+  orderedKeys: InvoiceSummaryFieldKey[]
+): number {
+  const vatBaseValid = orderedKeys.includes('vatBaseAmount') && isValidInvoiceFieldValue('vatBaseAmount', values.vatBaseAmount)
+  const vatValid = orderedKeys.includes('vatAmount') && isValidInvoiceFieldValue('vatAmount', values.vatAmount)
+  const totalValid = orderedKeys.includes('totalAmount') && isValidInvoiceFieldValue('totalAmount', values.totalAmount)
+  const validCount = [vatBaseValid, vatValid, totalValid].filter(Boolean).length
+
+  return validCount * 100
+    + (vatBaseValid ? 30 : 0)
+    + (vatValid ? 30 : 0)
+    + (totalValid ? 80 : 0)
 }
 
 function collectSequentialInvoiceBlockCandidates(
@@ -1864,29 +1982,33 @@ function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: strin
     return false
   }
 
-    switch (fieldKey) {
-      case 'referenceNumber':
+  if (/^(?:n\/a|na|none|žádné)$/iu.test(normalizedValue)) {
+    return false
+  }
+
+  switch (fieldKey) {
+    case 'referenceNumber':
       return Boolean(normalizeInvoiceReferenceValue(normalizedValue))
         && !isInvoiceLabelText(normalizedValue)
-      case 'issuerOrCounterparty':
-      case 'customer':
-      case 'description':
-        return /[^\d].+/u.test(normalizedValue)
-          && !isInvoiceLabelText(normalizedValue)
-      case 'issueDate':
-      case 'dueDate':
-      case 'taxableDate':
-        return Boolean(safeNormalizeDocumentDate(normalizedValue, 'Invoice date'))
-      case 'paymentMethod':
-        return !isInvoiceLabelText(normalizedValue)
-          && extractDateTokens(normalizedValue).length === 0
-          && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice payment method')
-      case 'totalAmount':
-      case 'vatBaseAmount':
-      case 'vatAmount':
-        return Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
-      case 'ibanHint':
-        return Boolean(normalizeIbanValue(normalizedValue))
+    case 'issuerOrCounterparty':
+    case 'customer':
+    case 'description':
+      return /[^\d].+/u.test(normalizedValue)
+        && !isInvoiceLabelText(normalizedValue)
+    case 'issueDate':
+    case 'dueDate':
+    case 'taxableDate':
+      return Boolean(safeNormalizeDocumentDate(normalizedValue, 'Invoice date'))
+    case 'paymentMethod':
+      return !isInvoiceLabelText(normalizedValue)
+        && extractDateTokens(normalizedValue).length === 0
+        && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice payment method')
+    case 'totalAmount':
+    case 'vatBaseAmount':
+    case 'vatAmount':
+      return Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
+    case 'ibanHint':
+      return Boolean(normalizeIbanValue(normalizedValue))
     default:
       return false
   }
@@ -2204,23 +2326,37 @@ function mapStructuredTotalsValuesFromLine(
   orderedKeys: InvoiceSummaryFieldKey[]
 ): Partial<Record<InvoiceSummaryFieldKey, string>> {
   const moneyCandidates = extractLooseMoneyTokens(valueLine, true)
+  return mapStructuredTotalsTokens(moneyCandidates, orderedKeys)
+}
+
+function mapStructuredTotalsTokens(
+  moneyCandidates: string[],
+  orderedKeys: InvoiceSummaryFieldKey[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
   const result: Partial<Record<InvoiceSummaryFieldKey, string>> = {}
 
   if (moneyCandidates.length === 0) {
     return result
   }
 
-  if (orderedKeys.includes('vatBaseAmount') && moneyCandidates[0]) {
-    result.vatBaseAmount = moneyCandidates[0]
+  const requiredMoneyCount = orderedKeys.length === 1 ? 1 : orderedKeys.length
+  if (moneyCandidates.length < requiredMoneyCount) {
+    return result
   }
 
-  if (orderedKeys.includes('vatAmount') && moneyCandidates.length >= 3) {
-    result.vatAmount = moneyCandidates[1]
-  }
+  let sequentialIndex = 0
+  orderedKeys.forEach((fieldKey) => {
+    if (fieldKey === 'totalAmount') {
+      result.totalAmount = moneyCandidates[moneyCandidates.length - 1]
+      return
+    }
 
-  if (orderedKeys.includes('totalAmount') && moneyCandidates[moneyCandidates.length - 1]) {
-    result.totalAmount = moneyCandidates[moneyCandidates.length - 1]
-  }
+    const candidate = moneyCandidates[sequentialIndex]
+    if (candidate) {
+      result[fieldKey] = candidate
+    }
+    sequentialIndex += 1
+  })
 
   return result
 }
@@ -2232,6 +2368,7 @@ function normalizeInvoiceReferenceValue(value: string | undefined): string | und
 
   const normalized = stripTrailingNoise(value)
     .replace(/\s+/g, '')
+    .replace(/^\d+\/\d+(?=\d{6,}$)/, '')
     .replace(/^[^A-Z0-9]+/i, '')
     .replace(/[^A-Z0-9/-]+$/i, '')
 

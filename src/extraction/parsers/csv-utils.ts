@@ -7,6 +7,10 @@ interface ParseDelimitedRowsOptions {
 export interface ParsedDelimitedContent {
   rawHeaderRow: string
   headers: string[]
+  headerColumns: Array<{
+    rawHeader: string
+    normalizedHeader: string
+  }>
   rows: Array<Record<string, string>>
 }
 
@@ -41,11 +45,12 @@ export function parseDelimitedContent(
     .filter((line) => line.trim().length > 0)
 
   if (lines.length === 0) {
-    return { rawHeaderRow: '', headers: [], rows: [] }
+    return { rawHeaderRow: '', headers: [], headerColumns: [], rows: [] }
   }
 
   const delimiter = detectDelimiter(lines[0])
-  const headers = mapHeaders(splitDelimitedLine(lines[0], delimiter), options.canonicalHeaders)
+  const headerColumns = mapHeaders(splitDelimitedLine(lines[0], delimiter), options.canonicalHeaders)
+  const headers = headerColumns.map((column) => column.normalizedHeader)
 
   const rows = lines.slice(1).map((line) => {
     const values = splitDelimitedLine(line, delimiter)
@@ -55,7 +60,7 @@ export function parseDelimitedContent(
     }, {})
   })
 
-  return { rawHeaderRow: lines[0], headers, rows }
+  return { rawHeaderRow: lines[0], headers, headerColumns, rows }
 }
 
 export function findMissingHeaders(
@@ -124,21 +129,34 @@ export function normalizeHeaderCell(value: string): string {
   return normalizeCell(value).replace(/^"|"$/g, '')
 }
 
-function mapHeaders(rawHeaders: string[], canonicalHeaders?: CanonicalHeaderMap): string[] {
+function mapHeaders(
+  rawHeaders: string[],
+  canonicalHeaders?: CanonicalHeaderMap
+): Array<{ rawHeader: string; normalizedHeader: string }> {
   if (!canonicalHeaders) {
-    return rawHeaders.map((header) => normalizeHeaderCell(header))
+    return rawHeaders.map((header) => ({
+      rawHeader: normalizeHeaderCell(header),
+      normalizedHeader: normalizeHeaderCell(header)
+    }))
   }
 
   return rawHeaders.map((header) => {
+    const rawHeader = normalizeHeaderCell(header)
     const normalizedHeader = normalizeHeaderKey(header)
 
     for (const [canonicalHeader, aliases] of Object.entries(canonicalHeaders)) {
       if (aliases.some((alias) => normalizeHeaderKey(alias) === normalizedHeader)) {
-        return canonicalHeader
+        return {
+          rawHeader,
+          normalizedHeader: canonicalHeader
+        }
       }
     }
 
-    return normalizeHeaderCell(header)
+    return {
+      rawHeader,
+      normalizedHeader: rawHeader
+    }
   })
 }
 

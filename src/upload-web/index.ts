@@ -150,6 +150,16 @@ export interface BrowserRuntimeUploadState {
       parserSupported: boolean
       decisionConfidence: 'none' | 'hint' | 'strong'
       documentExtractionSummary?: DeterministicDocumentExtractionSummary
+      airbnbHeaderDiagnostics?: {
+        parserVariant: 'structured-export' | 'real-mixed-export'
+        rawHeaderRow: string
+        normalizedHeaders: string[]
+        normalizedHeaderMap: string[]
+        requiredCanonicalHeaders: string[]
+        mappedCanonicalHeaders: Partial<Record<'payoutDate' | 'amountMinor' | 'currency' | 'payoutReference' | 'reservationId' | 'listingId', string>>
+        candidateSourceHeaders: string[]
+        missingCanonicalHeaders: string[]
+      }
       parserExtractedPaymentId?: string
       parserExtractedPayoutDate?: string
       parserExtractedPayoutTotal?: string
