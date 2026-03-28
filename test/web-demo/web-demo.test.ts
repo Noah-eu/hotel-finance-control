@@ -1650,7 +1650,7 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block #')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: Datum splatnosti | Forma úhrady | Datum vystavení | Datum zdanitelného plnění')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: DPH Celkem po zaokrouhlení | 21,00 % Záloh celkem | Základ DPH | 10 437,62')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: S DPH | 10 437,62 Kč | 12 629,52 Kč | Razítko a podpis')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Raw block lines: S DPH 10 437,62 Kč 12 629,52 Kč Razítko a podpis | Předmět plnění | Servis vozidla')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Grouped header block candidate #')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('vertical-structured-header-block / score=')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('rejected / missing reference label')

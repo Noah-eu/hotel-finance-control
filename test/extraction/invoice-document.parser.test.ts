@@ -270,13 +270,6 @@ describe('parseInvoiceDocument', () => {
           values: ['11.03.2026', 'n/a', '25.03.2026', '11.03.2026'],
           accepted: false,
           rejectionReason: 'missing reference label'
-        }),
-        expect.objectContaining({
-          blockTypeCandidate: 'vertical-grouped-block',
-          labels: ['Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
-          values: ['25.03.2026 Přev.příkaz 11.03.2026 11.03.2026 141260183', 'Strana 1/1'],
-          accepted: false,
-          rejectionReason: 'missing reference label'
         })
       ]),
       rawBlockDiscoveryDebug: expect.arrayContaining([
@@ -295,7 +288,7 @@ describe('parseInvoiceDocument', () => {
           blockTypeGuess: 'totals-payable'
         }),
         expect.objectContaining({
-          rawLines: ['S DPH', '10 437,62 Kč', '12 629,52 Kč', 'Razítko a podpis'],
+          rawLines: ['S DPH 10 437,62 Kč 12 629,52 Kč Razítko a podpis', 'Předmět plnění', 'Servis vozidla'],
           blockTypeGuess: 'totals-vat'
         })
       ]),

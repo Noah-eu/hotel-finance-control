@@ -907,12 +907,14 @@ function collectSummaryTotalCandidates(
   for (let index = 0; index < lines.length; index += 1) {
     const normalized = normalizeLabelSearch(lines[index]!)
 
-    if (normalized !== 's dph') {
+    if (normalized !== 's dph' && !normalized.startsWith('s dph ')) {
       continue
     }
 
-    const valueLines = collectInvoiceValueLines(lines, index + 1, 4)
-      .filter((line) => !containsInvoicePageArtifactValue(line))
+    const valueLines = [
+      stripTrailingNoise(lines[index]!),
+      ...collectInvoiceValueLines(lines, index + 1, 4)
+    ].filter((line) => !containsInvoicePageArtifactValue(line))
 
     if (valueLines.length === 0) {
       continue
@@ -1421,7 +1423,13 @@ function isInvoiceSectionBoundary(line: string): boolean {
 
 function extractFirstInvoiceReferenceCandidate(value: string): string | undefined {
   const compactValue = stripTrailingNoise(value)
-  const candidates = Array.from(compactValue.matchAll(/\b(?:[A-Z]{0,6}[-/]?)?\d[A-Z0-9/-]{5,}\b/gi))
+    .replace(DATE_TOKEN_PATTERN, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const candidates = [
+    ...Array.from(compactValue.matchAll(/\b(?:[A-Z]{0,6}[-/]?)?\d[A-Z0-9/-]{5,}\b/gi)),
+    ...Array.from(compactValue.matchAll(/\b\d{3,}(?:\s+\d{3,})+\b/gu))
+  ]
     .map((match) => normalizeInvoiceReferenceValue(match[0]))
     .filter((candidate): candidate is string => Boolean(candidate))
 
@@ -1900,6 +1908,7 @@ function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: strin
     switch (fieldKey) {
       case 'referenceNumber':
       return Boolean(normalizeInvoiceReferenceValue(normalizedValue))
+        && !looksLikeInvoiceIban(normalizedValue)
         && !isInvoiceLabelText(normalizedValue)
       case 'issuerOrCounterparty':
       case 'customer':
@@ -2240,6 +2249,10 @@ function findAnchoredReferenceMatch(
       continue
     }
 
+    if (lineIndex > labelEndIndex && isInvoiceSectionBoundary(candidateLine)) {
+      break
+    }
+
     const candidate = extractFirstInvoiceReferenceCandidate(candidateLine)
     if (isValidInvoiceFieldValue('referenceNumber', candidate)) {
       return { value: candidate!, lineIndex }
@@ -2405,6 +2418,9 @@ function extractCompositeGroupedPaymentMethodCandidate(
     candidate = candidate.replace(dateToken, ' ').trim()
   }
 
+  candidate = candidate
+    .replace(/\b(?:[A-Z]{2}\d{10,}|\d(?:[\d\s/-]{5,}\d))\b/gu, ' ')
+    .trim()
   candidate = stripTrailingNoise(candidate.replace(/\s+/g, ' '))
 
   if (!candidate || containsInvoicePageArtifactValue(candidate) || isInvoiceLabelText(candidate) || isInvoiceLabelFragmentText(candidate)) {
@@ -2416,6 +2432,11 @@ function extractCompositeGroupedPaymentMethodCandidate(
 
 function extractDateTokens(value: string): string[] {
   return value.match(DATE_TOKEN_PATTERN) ?? []
+}
+
+function looksLikeInvoiceIban(value: string): boolean {
+  const iban = normalizeIbanValue(value)
+  return Boolean(iban && /^[A-Z]{2}\d{10,}$/.test(iban))
 }
 
 function safeNormalizeDocumentDate(value: string | undefined, fieldName: string): string | undefined {

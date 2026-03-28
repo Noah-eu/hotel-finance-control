@@ -1069,7 +1069,7 @@ export const realInputFixtures: RealInputFixture[] = [
         'Forma úhrady',
         'Datum vystavení',
         'Datum zdanitelného plnění',
-        '25.03.2026 Přev.příkaz 11.03.2026 11.03.2026 141260183',
+        '25.03.2026 Přev.příkaz 11.03.2026 11.03.2026 141 260 183',
         'Strana 1/1',
         'Iban:',
         'CZ4903000000000274621920',
@@ -1080,10 +1080,7 @@ export const realInputFixtures: RealInputFixture[] = [
         '10 437,62',
         'DPH',
         '2 191,90',
-        'S DPH',
-        '10 437,62 Kč',
-        '12 629,52 Kč',
-        'Razítko a podpis',
+        'S DPH 10 437,62 Kč 12 629,52 Kč Razítko a podpis',
         'Předmět plnění:',
         'Servis vozidla'
       ].join('\n')
