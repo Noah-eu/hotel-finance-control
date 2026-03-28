@@ -16,6 +16,7 @@ describe('realInputFixtures', () => {
       'comgate-export',
       'invoice-document',
       'invoice-document-czech-pdf',
+      'invoice-document-czech-pdf-with-spd-qr',
       'receipt-document'
     ])
 
@@ -36,6 +37,7 @@ describe('realInputFixtures', () => {
     const previo = getRealInputFixture('previo-reservation-export')
     const invoice = getRealInputFixture('invoice-document')
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
+    const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
     const receipt = getRealInputFixture('receipt-document')
 
     expect(raiffeisen.expectedExtractedRecords[0]).toMatchObject({
@@ -117,6 +119,15 @@ describe('realInputFixtures', () => {
         paymentMethod: 'Přev. příkaz'
       }
     })
+    expect(czechInvoicePdfWithQr.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'invoice-document',
+      amountMinor: 1850000,
+      data: {
+        invoiceNumber: '141260183',
+        supplier: 'QR Hotel Supply s.r.o.',
+        customer: 'JOKELAND s.r.o.'
+      }
+    })
     expect(receipt.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'receipt-document',
       amountMinor: 249000,
@@ -169,6 +180,7 @@ describe('realInputFixtures', () => {
 
     const invoice = getRealInputFixture('invoice-document')
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
+    const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
     const receipt = getRealInputFixture('receipt-document')
     expect(invoice.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'invoice',
@@ -180,6 +192,13 @@ describe('realInputFixtures', () => {
       amountMinor: 1262952,
       accountId: 'document-expenses',
       counterparty: 'Lenner Motors s.r.o.',
+      reference: '141260183'
+    })
+    expect(czechInvoicePdfWithQr.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'invoice',
+      amountMinor: 1850000,
+      accountId: 'document-expenses',
+      counterparty: 'QR Hotel Supply s.r.o.',
       reference: '141260183'
     })
     expect(receipt.expectedNormalizedTransactions?.[0]).toMatchObject({

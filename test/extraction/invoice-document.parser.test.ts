@@ -434,6 +434,7 @@ describe('parseInvoiceDocument', () => {
       totalAmountMinor: 1262952,
       totalCurrency: 'CZK',
       paymentMethod: 'Přev. příkaz',
+      qrDetected: false,
       missingRequiredFields: [],
       fieldExtractionDebug: expect.objectContaining({
         referenceNumber: expect.objectContaining({
@@ -463,6 +464,59 @@ describe('parseInvoiceDocument', () => {
           rejectedCandidates: expect.arrayContaining(['10 437,62 Kč [not-money]'])
         })
       })
+    })
+  })
+
+  it('recovers Czech invoice payment fields from an embedded SPD / QR Platba payload when text fields are missing', () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64,
+      extractedAt: '2026-03-28T10:05:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-28T10:05:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary({
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64
+    })).toMatchObject({
+      referenceNumber: '141260183',
+      issueDate: '2026-03-11',
+      dueDate: '2026-03-25',
+      totalAmountMinor: 1850000,
+      totalCurrency: 'CZK',
+      ibanHint: 'CZ4903000000000274621920',
+      qrDetected: true,
+      qrRawPayload: 'SPD*1.0*ACC:CZ4903000000000274621920*AM:18500.00*CC:CZK*X-VS:141260183*X-KS:0308*X-SS:1007*RN:QR%20Hotel%20Supply%20s.r.o.*MSG:Faktura%20141260183*DT:20260325',
+      qrParsedFields: {
+        account: 'CZ4903000000000274621920',
+        ibanHint: 'CZ4903000000000274621920',
+        amountMinor: 1850000,
+        currency: 'CZK',
+        variableSymbol: '141260183',
+        constantSymbol: '0308',
+        specificSymbol: '1007',
+        recipientName: 'QR Hotel Supply s.r.o.',
+        message: 'Faktura 141260183',
+        dueDate: '2026-03-25',
+        referenceNumber: '141260183'
+      },
+      fieldProvenance: expect.objectContaining({
+        referenceNumber: 'qr',
+        issuerOrCounterparty: 'text+qr-confirmed',
+        dueDate: 'qr',
+        totalAmount: 'qr',
+        ibanHint: 'qr'
+      }),
+      qrRecoveredFields: expect.arrayContaining(['referenceNumber', 'dueDate', 'totalAmount', 'ibanHint']),
+      qrConfirmedFields: expect.arrayContaining(['issuerOrCounterparty']),
+      missingRequiredFields: []
     })
   })
 })

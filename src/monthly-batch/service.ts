@@ -216,7 +216,10 @@ function inspectUploadedFileParseDiagnostics(
   }
 
   if (file.sourceDocument.sourceSystem === 'invoice') {
-    const summary = inspectInvoiceDocumentExtractionSummary(file.content)
+    const summary = inspectInvoiceDocumentExtractionSummary({
+      content: file.content,
+      binaryContentBase64: file.binaryContentBase64
+    })
 
     return {
       documentExtractionSummary: summary,

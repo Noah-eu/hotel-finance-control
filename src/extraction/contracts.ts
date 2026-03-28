@@ -4,6 +4,7 @@ export interface DeterministicDocumentParserInput {
   sourceDocument: SourceDocument
   content: string
   extractedAt: string
+  binaryContentBase64?: string
 }
 
 export interface DeterministicDocumentParser {
@@ -39,6 +40,12 @@ export interface DeterministicDocumentExtractionSummary {
   ibanHint?: string
   confidence: 'none' | 'hint' | 'strong'
   missingRequiredFields: string[]
+  qrDetected?: boolean
+  qrRawPayload?: string
+  qrParsedFields?: DeterministicDocumentQrParsedFields
+  fieldProvenance?: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  qrRecoveredFields?: DeterministicDocumentSummaryFieldKey[]
+  qrConfirmedFields?: DeterministicDocumentSummaryFieldKey[]
   groupedHeaderLabels?: string[]
   groupedHeaderValues?: string[]
   groupedTotalsLabels?: string[]
@@ -57,6 +64,35 @@ export interface DeterministicDocumentFieldExtractionDebug {
   groupedRowMatches: string[]
   lineWindowMatches: string[]
   fullDocumentFallbackMatches: string[]
+}
+
+export type DeterministicDocumentFieldProvenance = 'text' | 'qr' | 'text+qr-confirmed'
+
+export type DeterministicDocumentSummaryFieldKey =
+  | 'referenceNumber'
+  | 'issuerOrCounterparty'
+  | 'customer'
+  | 'issueDate'
+  | 'dueDate'
+  | 'taxableDate'
+  | 'paymentMethod'
+  | 'totalAmount'
+  | 'vatBaseAmount'
+  | 'vatAmount'
+  | 'ibanHint'
+
+export interface DeterministicDocumentQrParsedFields {
+  account?: string
+  ibanHint?: string
+  amountMinor?: number
+  currency?: string
+  variableSymbol?: string
+  constantSymbol?: string
+  specificSymbol?: string
+  recipientName?: string
+  message?: string
+  dueDate?: string
+  referenceNumber?: string
 }
 
 export interface DeterministicDocumentGroupedBlockDebug {

@@ -1665,6 +1665,7 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document ibanHint: CZ4903000000000274621920')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document VAT base: 10 437,62 CZK')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Document VAT: 2 191,90 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('QR detected: no')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field referenceNumber: winner anchored-header-window / 141260183')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field referenceNumber candidates: 141260183')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Field issueDate: winner structured-combined-date-payment-row / 11.03.2026')
@@ -1682,6 +1683,46 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
+  })
+
+  it('shows SPD QR fallback payload and provenance for invoice-like PDFs without changing the stable 16 / 2 payout result', async () => {
+    const qrInvoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-28T10:35:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-invoice-qr-spd',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFile(qrInvoice.sourceDocument.fileName, qrInvoice.rawInput.binaryContentBase64!)
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>invoice-with-qr.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('invoice-with-qr.pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('QR detected: yes')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('QR raw payload: SPD*1.0*ACC:CZ4903000000000274621920*AM:18500.00*CC:CZK*X-VS:141260183*X-KS:0308*X-SS:1007*RN:QR%20Hotel%20Supply%20s.r.o.*MSG:Faktura%20141260183*DT:20260325')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('QR parsed fields: account=CZ4903000000000274621920 | ibanHint=CZ4903000000000274621920 | amountMinor=1850000 | currency=CZK | variableSymbol=141260183 | constantSymbol=0308 | specificSymbol=1007 | recipientName=QR Hotel Supply s.r.o. | message=Faktura 141260183 | dueDate=2026-03-25 | referenceNumber=141260183')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('QR recovered fields: referenceNumber, dueDate, totalAmount, ibanHint')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('QR confirmed fields: issuerOrCounterparty')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final field provenance:')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('referenceNumber=qr')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('dueDate=qr')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('totalAmount=qr')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('ibanHint=qr')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('issuerOrCounterparty=text+qr-confirmed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation matched:</strong> 16')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
   })
 
   it('shows the compact Airbnb browser export variant as a supported structured upload and keeps the 5-file result free of ingest failures', async () => {

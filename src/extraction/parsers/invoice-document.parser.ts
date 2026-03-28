@@ -1,8 +1,11 @@
 import type { ExtractedRecord } from '../../domain'
 import type {
+  DeterministicDocumentFieldProvenance,
   DeterministicDocumentFieldExtractionDebug,
+  DeterministicDocumentQrParsedFields,
   DeterministicDocumentGroupedBlockDebug,
   DeterministicDocumentRawBlockDebug,
+  DeterministicDocumentSummaryFieldKey,
   DeterministicDocumentExtractionSummary,
   DeterministicDocumentParserInput
 } from '../contracts'
@@ -23,6 +26,13 @@ const REQUIRED_FIELDS = [
 ] as const
 
 export interface ParseInvoiceDocumentInput extends DeterministicDocumentParserInput {}
+
+export type InspectInvoiceDocumentExtractionSummaryInput =
+  | string
+  | {
+    content: string
+    binaryContentBase64?: string
+  }
 
 type InvoiceSummaryFieldKey =
   | 'referenceNumber'
@@ -98,9 +108,21 @@ interface InvoiceDocumentExtractionDetails {
   groupedTotalsBlockDebug: DeterministicDocumentGroupedBlockDebug[]
   rawBlockDiscoveryDebug: DeterministicDocumentRawBlockDebug[]
   fieldDebug: Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
+  fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  qrDetected: boolean
+  qrRawPayload?: string
+  qrParsedFields?: DeterministicDocumentQrParsedFields
+  qrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  qrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
 }
 
 type InvoiceExtractedFields = InvoiceDocumentExtractionDetails['fields']
+
+interface InvoiceQrExtractionResult {
+  detected: boolean
+  rawPayload?: string
+  parsedFields?: DeterministicDocumentQrParsedFields
+}
 
 const FIELD_ALIASES = {
   invoiceNumber: ['Invoice No', 'Invoice number', 'Číslo faktury', 'Faktura číslo', 'Faktura č.', 'Doklad číslo', 'Číslo dokladu'],
@@ -158,7 +180,10 @@ const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
 
 export class InvoiceDocumentParser {
   parse(input: ParseInvoiceDocumentInput): ExtractedRecord[] {
-    const extracted = extractInvoiceDocumentDetails(input.content).fields
+    const extracted = extractInvoiceDocumentDetails({
+      content: input.content,
+      binaryContentBase64: input.binaryContentBase64
+    }).fields
     const missing = collectMissingInvoiceFields(extracted)
 
     if (missing.length > 0) {
@@ -211,8 +236,10 @@ export function parseInvoiceDocument(input: ParseInvoiceDocumentInput): Extracte
   return defaultInvoiceDocumentParser.parse(input)
 }
 
-export function inspectInvoiceDocumentExtractionSummary(content: string): DeterministicDocumentExtractionSummary {
-  const extraction = extractInvoiceDocumentDetails(content)
+export function inspectInvoiceDocumentExtractionSummary(
+  input: InspectInvoiceDocumentExtractionSummaryInput
+): DeterministicDocumentExtractionSummary {
+  const extraction = extractInvoiceDocumentDetails(normalizeInvoiceInspectionInput(input))
   const extracted = extraction.fields
   const missingRequiredFields = collectMissingInvoiceSummaryFields(extracted)
   const issueDate = safeNormalizeDocumentDate(extracted.issueDateRaw, 'Invoice issue date')
@@ -258,6 +285,12 @@ export function inspectInvoiceDocumentExtractionSummary(content: string): Determ
         ? 'hint'
         : 'none',
     missingRequiredFields,
+    qrDetected: extraction.qrDetected,
+    ...(extraction.qrRawPayload ? { qrRawPayload: extraction.qrRawPayload } : {}),
+    ...(extraction.qrParsedFields ? { qrParsedFields: extraction.qrParsedFields } : {}),
+    ...(Object.keys(extraction.fieldProvenance).length > 0 ? { fieldProvenance: extraction.fieldProvenance } : {}),
+    ...(extraction.qrRecoveredFields.length > 0 ? { qrRecoveredFields: extraction.qrRecoveredFields } : {}),
+    ...(extraction.qrConfirmedFields.length > 0 ? { qrConfirmedFields: extraction.qrConfirmedFields } : {}),
     ...(extraction.groupedHeaderLabels.length > 0 ? { groupedHeaderLabels: extraction.groupedHeaderLabels } : {}),
     ...(extraction.groupedHeaderValues.length > 0 ? { groupedHeaderValues: extraction.groupedHeaderValues } : {}),
     ...(extraction.groupedTotalsLabels.length > 0 ? { groupedTotalsLabels: extraction.groupedTotalsLabels } : {}),
@@ -275,7 +308,19 @@ export function detectInvoiceDocumentKeywordHits(content: string): string[] {
     .map(({ label }) => label)
 }
 
-function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtractionDetails {
+function normalizeInvoiceInspectionInput(
+  input: InspectInvoiceDocumentExtractionSummaryInput
+): { content: string; binaryContentBase64?: string } {
+  return typeof input === 'string'
+    ? { content: input }
+    : input
+}
+
+function extractInvoiceDocumentDetails(input: {
+  content: string
+  binaryContentBase64?: string
+}): InvoiceDocumentExtractionDetails {
+  const content = input.content
   const fields = parseLabeledDocumentText(content)
   const lines = splitDocumentLines(content)
   const debugStates = buildInvoiceFieldDebugStates()
@@ -293,7 +338,7 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   collectLineWindowInvoiceCandidates(lines, debugStates)
   collectFallbackInvoiceCandidates(fields, content, debugStates)
 
-  const extracted = {
+  const textExtracted = {
     invoiceNumber: resolveInvoiceField('referenceNumber', debugStates.referenceNumber),
     supplier: resolveInvoiceField('issuerOrCounterparty', debugStates.issuerOrCounterparty),
     customer: resolveInvoiceField('customer', debugStates.customer),
@@ -307,9 +352,11 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
     vatRaw: resolveInvoiceField('vatAmount', debugStates.vatAmount),
     ibanValue: normalizeIbanValue(resolveInvoiceField('ibanHint', debugStates.ibanHint))
   }
+  const qrExtraction = extractInvoiceQrExtraction(content, input.binaryContentBase64)
+  const mergedFields = mergeInvoiceTextAndQrFields(textExtracted, qrExtraction)
 
   return {
-    fields: extracted,
+    fields: mergedFields.fields,
     groupedHeaderLabels: groupedHeaderBlock?.labels ?? [],
     groupedHeaderValues: groupedHeaderBlock?.values ?? [],
     groupedTotalsLabels: groupedTotalsBlock?.labels ?? [],
@@ -317,6 +364,12 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
     groupedHeaderBlockDebug: groupedHeaderSelection.debug,
     groupedTotalsBlockDebug: groupedTotalsSelection.debug,
     rawBlockDiscoveryDebug,
+    fieldProvenance: mergedFields.fieldProvenance,
+    qrDetected: qrExtraction.detected,
+    qrRawPayload: qrExtraction.rawPayload,
+    qrParsedFields: qrExtraction.parsedFields,
+    qrRecoveredFields: mergedFields.qrRecoveredFields,
+    qrConfirmedFields: mergedFields.qrConfirmedFields,
     fieldDebug: Object.fromEntries(
       Object.entries(debugStates).map(([key, state]) => [key, {
         winnerRule: state.winnerRule,
@@ -354,6 +407,449 @@ function pickDocumentField(
   }
 
   return fallbackValue ? stripTrailingNoise(fallbackValue) : undefined
+}
+
+function mergeInvoiceTextAndQrFields(
+  textFields: InvoiceExtractedFields,
+  qrExtraction: InvoiceQrExtractionResult
+): {
+  fields: InvoiceExtractedFields
+  fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  qrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  qrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+} {
+  const mergedFields: InvoiceExtractedFields = { ...textFields }
+  const fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>> = {}
+  const qrRecoveredFields: DeterministicDocumentSummaryFieldKey[] = []
+  const qrConfirmedFields: DeterministicDocumentSummaryFieldKey[] = []
+  const qrFields = qrExtraction.parsedFields
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'referenceNumber',
+    textValue: textFields.invoiceNumber,
+    qrValue: qrFields?.referenceNumber,
+    normalizeText: normalizeInvoiceReferenceValue,
+    normalizeQr: normalizeInvoiceReferenceValue,
+    assign(value) {
+      mergedFields.invoiceNumber = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'issuerOrCounterparty',
+    textValue: textFields.supplier,
+    qrValue: qrFields?.recipientName,
+    normalizeText: normalizeComparableTextValue,
+    normalizeQr: normalizeComparableTextValue,
+    assign(value) {
+      mergedFields.supplier = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'issueDate',
+    textValue: textFields.issueDateRaw,
+    normalizeText: normalizeComparableInvoiceDate,
+    assign(value) {
+      mergedFields.issueDateRaw = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'dueDate',
+    textValue: textFields.dueDateRaw,
+    qrValue: qrFields?.dueDate,
+    normalizeText: normalizeComparableInvoiceDate,
+    normalizeQr: normalizeComparableInvoiceDate,
+    assign(value) {
+      mergedFields.dueDateRaw = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'taxableDate',
+    textValue: textFields.taxableDateRaw,
+    normalizeText: normalizeComparableInvoiceDate,
+    assign(value) {
+      mergedFields.taxableDateRaw = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'paymentMethod',
+    textValue: textFields.paymentMethod,
+    normalizeText: normalizeComparableTextValue,
+    assign(value) {
+      mergedFields.paymentMethod = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'totalAmount',
+    textValue: textFields.totalRaw,
+    qrValue: buildQrMoneyLabel(qrFields?.amountMinor, qrFields?.currency),
+    normalizeText: normalizeComparableMoneyValue,
+    normalizeQr: normalizeComparableMoneyValue,
+    assign(value) {
+      mergedFields.totalRaw = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'vatBaseAmount',
+    textValue: textFields.vatBaseRaw,
+    normalizeText: normalizeComparableMoneyValue,
+    assign(value) {
+      mergedFields.vatBaseRaw = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'vatAmount',
+    textValue: textFields.vatRaw,
+    normalizeText: normalizeComparableMoneyValue,
+    assign(value) {
+      mergedFields.vatRaw = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  mergeInvoiceSummaryField({
+    fieldKey: 'ibanHint',
+    textValue: textFields.ibanValue,
+    qrValue: qrFields?.ibanHint,
+    normalizeText: normalizeIbanValue,
+    normalizeQr: normalizeIbanValue,
+    assign(value) {
+      mergedFields.ibanValue = value
+    },
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  })
+
+  if (textFields.customer?.trim()) {
+    fieldProvenance.customer = 'text'
+  }
+
+  return {
+    fields: mergedFields,
+    fieldProvenance,
+    qrRecoveredFields,
+    qrConfirmedFields
+  }
+}
+
+function mergeInvoiceSummaryField(input: {
+  fieldKey: DeterministicDocumentSummaryFieldKey
+  textValue?: string
+  qrValue?: string
+  normalizeText: (value: string | undefined) => string | undefined
+  normalizeQr?: (value: string | undefined) => string | undefined
+  assign: (value: string | undefined) => void
+  fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  qrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  qrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+}): void {
+  const normalizedTextValue = input.normalizeText(input.textValue)
+  const normalizedQrValue = (input.normalizeQr ?? input.normalizeText)(input.qrValue)
+
+  if (normalizedTextValue && normalizedQrValue && normalizedTextValue === normalizedQrValue) {
+    input.assign(input.textValue)
+    input.fieldProvenance[input.fieldKey] = 'text+qr-confirmed'
+    if (!input.qrConfirmedFields.includes(input.fieldKey)) {
+      input.qrConfirmedFields.push(input.fieldKey)
+    }
+    return
+  }
+
+  if (normalizedTextValue) {
+    input.assign(input.textValue)
+    input.fieldProvenance[input.fieldKey] = 'text'
+    return
+  }
+
+  if (normalizedQrValue) {
+    input.assign(input.qrValue)
+    input.fieldProvenance[input.fieldKey] = 'qr'
+    if (!input.qrRecoveredFields.includes(input.fieldKey)) {
+      input.qrRecoveredFields.push(input.fieldKey)
+    }
+  }
+}
+
+function normalizeComparableTextValue(value: string | undefined): string | undefined {
+  if (!value?.trim()) {
+    return undefined
+  }
+
+  return stripTrailingNoise(value).replace(/\s+/g, ' ').toLowerCase()
+}
+
+function normalizeComparableInvoiceDate(value: string | undefined): string | undefined {
+  return safeNormalizeDocumentDate(value, 'Invoice comparable date')
+}
+
+function normalizeComparableMoneyValue(value: string | undefined): string | undefined {
+  const money = safeParseDocumentMoney(value, 'Invoice comparable amount')
+
+  return money ? `${money.amountMinor}:${money.currency}` : undefined
+}
+
+function buildQrMoneyLabel(amountMinor: number | undefined, currency: string | undefined): string | undefined {
+  if (typeof amountMinor !== 'number' || !currency) {
+    return undefined
+  }
+
+  const sign = amountMinor < 0 ? '-' : ''
+  const absoluteMinor = Math.abs(amountMinor)
+  const amount = `${Math.trunc(absoluteMinor / 100)}.${String(absoluteMinor % 100).padStart(2, '0')}`
+  return `${sign}${amount} ${currency}`
+}
+
+function extractInvoiceQrExtraction(content: string, binaryContentBase64?: string): InvoiceQrExtractionResult {
+  const rawPayload = detectInvoiceQrPayload(content, binaryContentBase64)
+
+  if (!rawPayload) {
+    return {
+      detected: false
+    }
+  }
+
+  return {
+    detected: true,
+    rawPayload,
+    parsedFields: parseCzechSpdQrPayload(rawPayload)
+  }
+}
+
+function detectInvoiceQrPayload(content: string, binaryContentBase64?: string): string | undefined {
+  const textPayload = extractSpdPayloadCandidate(content)
+  if (textPayload) {
+    return textPayload
+  }
+
+  if (!binaryContentBase64) {
+    return undefined
+  }
+
+  const decodedBinary = decodeBase64ToLatin1(binaryContentBase64)
+  if (!decodedBinary) {
+    return undefined
+  }
+
+  return extractSpdPayloadCandidate(decodedBinary)
+}
+
+function extractSpdPayloadCandidate(source: string): string | undefined {
+  const normalizedSource = source.replace(/\u0000/g, '')
+  const markerIndex = normalizedSource.indexOf('SPD*1.0*')
+
+  if (markerIndex === -1) {
+    return undefined
+  }
+
+  const tail = normalizedSource.slice(markerIndex)
+  const terminatorMatch = /[\r\n<>\u0000]/u.exec(tail)
+  const candidate = stripTrailingNoise(
+    (terminatorMatch ? tail.slice(0, terminatorMatch.index) : tail)
+      .replace(/^%\s*/, '')
+  )
+
+  return candidate.startsWith('SPD*1.0*') ? candidate : undefined
+}
+
+function decodeBase64ToLatin1(value: string): string | undefined {
+  try {
+    if (typeof atob === 'function') {
+      return atob(value)
+    }
+  } catch {
+    // Fall through to Buffer for Node-based tests.
+  }
+
+  try {
+    if (typeof Buffer !== 'undefined') {
+      return Buffer.from(value, 'base64').toString('latin1')
+    }
+  } catch {
+    return undefined
+  }
+
+  return undefined
+}
+
+function parseCzechSpdQrPayload(payload: string): DeterministicDocumentQrParsedFields {
+  const parsedFields: DeterministicDocumentQrParsedFields = {}
+  const parts = payload.split('*').slice(2)
+  const fieldMap = new Map<string, string>()
+
+  for (const part of parts) {
+    const separatorIndex = part.indexOf(':')
+    if (separatorIndex === -1) {
+      continue
+    }
+
+    const key = part.slice(0, separatorIndex).trim().toUpperCase()
+    const value = decodeQrValue(part.slice(separatorIndex + 1).trim())
+    if (key.length > 0 && value.length > 0) {
+      fieldMap.set(key, value)
+    }
+  }
+
+  const account = fieldMap.get('ACC')
+  const ibanHint = normalizeIbanValue(account)
+  const amount = parseQrAmountMinor(fieldMap.get('AM'))
+  const currency = fieldMap.get('CC')?.toUpperCase() ?? (amount ? 'CZK' : undefined)
+  const dueDate = normalizeQrDueDate(fieldMap.get('DT'))
+  const message = fieldMap.get('MSG')
+  const variableSymbol = fieldMap.get('X-VS')
+  const derivedReferenceNumber = deriveReferenceNumberFromQr({
+    message,
+    variableSymbol
+  })
+
+  if (account) {
+    parsedFields.account = account
+  }
+  if (ibanHint) {
+    parsedFields.ibanHint = ibanHint
+  }
+  if (typeof amount === 'number') {
+    parsedFields.amountMinor = amount
+  }
+  if (currency) {
+    parsedFields.currency = currency
+  }
+  if (variableSymbol) {
+    parsedFields.variableSymbol = variableSymbol
+  }
+  if (fieldMap.get('X-KS')) {
+    parsedFields.constantSymbol = fieldMap.get('X-KS')
+  }
+  if (fieldMap.get('X-SS')) {
+    parsedFields.specificSymbol = fieldMap.get('X-SS')
+  }
+  if (fieldMap.get('RN')) {
+    parsedFields.recipientName = fieldMap.get('RN')
+  }
+  if (message) {
+    parsedFields.message = message
+  }
+  if (dueDate) {
+    parsedFields.dueDate = dueDate
+  }
+  if (derivedReferenceNumber) {
+    parsedFields.referenceNumber = derivedReferenceNumber
+  }
+
+  return parsedFields
+}
+
+function decodeQrValue(value: string): string {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, '%20'))
+  } catch {
+    return value
+  }
+}
+
+function parseQrAmountMinor(value: string | undefined): number | undefined {
+  if (!value?.trim()) {
+    return undefined
+  }
+
+  try {
+    return parseDocumentMoney(`${value.trim()} CZK`, 'SPD QR amount').amountMinor
+  } catch {
+    const normalized = value.trim().replace(',', '.')
+    if (!/^-?\d+(?:\.\d{1,2})?$/.test(normalized)) {
+      return undefined
+    }
+
+    return Math.round(Number.parseFloat(normalized) * 100)
+  }
+}
+
+function normalizeQrDueDate(value: string | undefined): string | undefined {
+  if (!value?.trim()) {
+    return undefined
+  }
+
+  const normalized = value.trim()
+
+  if (/^\d{8}$/.test(normalized)) {
+    return `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}`
+  }
+
+  return safeNormalizeDocumentDate(normalized, 'SPD QR due date')
+}
+
+function deriveReferenceNumberFromQr(input: {
+  message?: string
+  variableSymbol?: string
+}): string | undefined {
+  const anchoredMessageReference = extractStrictInvoiceReferenceFromQrMessage(input.message)
+  if (anchoredMessageReference) {
+    return anchoredMessageReference
+  }
+
+  const normalizedVariableSymbol = normalizeInvoiceReferenceValue(input.variableSymbol)
+  if (!normalizedVariableSymbol) {
+    return undefined
+  }
+
+  if (looksLikeInvoiceIban(normalizedVariableSymbol) || /%/.test(normalizedVariableSymbol)) {
+    return undefined
+  }
+
+  return undefined
+}
+
+function extractStrictInvoiceReferenceFromQrMessage(message: string | undefined): string | undefined {
+  if (!message?.trim()) {
+    return undefined
+  }
+
+  const anchoredPatterns = [
+    /(?:faktura(?:\s+[čc]íslo|\s*[/-]\s*[čc]íslo)?|číslo\s+faktury|doklad(?:\s+[čc]íslo)?)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu,
+    /\bfaktura\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
+  ]
+
+  for (const pattern of anchoredPatterns) {
+    const candidate = normalizeInvoiceReferenceValue(pattern.exec(message)?.[1])
+    if (candidate && !looksLikeInvoiceIban(candidate)) {
+      return candidate
+    }
+  }
+
+  return undefined
 }
 
 function pickMoneyDocumentField(

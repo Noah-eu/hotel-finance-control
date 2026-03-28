@@ -424,6 +424,7 @@ describe('buildUploadWebFlow', () => {
           vatAmountMinor: 219190,
           ibanHint: 'CZ4903000000000274621920',
           confidence: 'strong',
+          qrDetected: false,
           missingRequiredFields: [],
           groupedHeaderBlockDebug: expect.arrayContaining([
             expect.objectContaining({
@@ -487,6 +488,63 @@ describe('buildUploadWebFlow', () => {
     expect(
       result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
     ).toBe(2)
+  })
+
+  it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFile(invoice.sourceDocument.fileName, invoice.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-28T10:20:00.000Z'
+    })
+
+    expect(result.fileRoutes.some((file) => file.fileName === 'invoice-with-qr.pdf' && file.status === 'error')).toBe(false)
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'invoice-with-qr.pdf',
+        requiredFieldsCheck: 'passed',
+        missingFields: [],
+        documentExtractionSummary: expect.objectContaining({
+          referenceNumber: '141260183',
+          issueDate: '2026-03-11',
+          dueDate: '2026-03-25',
+          totalAmountMinor: 1850000,
+          totalCurrency: 'CZK',
+          ibanHint: 'CZ4903000000000274621920',
+          qrDetected: true,
+          qrRawPayload: 'SPD*1.0*ACC:CZ4903000000000274621920*AM:18500.00*CC:CZK*X-VS:141260183*X-KS:0308*X-SS:1007*RN:QR%20Hotel%20Supply%20s.r.o.*MSG:Faktura%20141260183*DT:20260325',
+          qrParsedFields: expect.objectContaining({
+            variableSymbol: '141260183',
+            message: 'Faktura 141260183',
+            referenceNumber: '141260183'
+          }),
+          fieldProvenance: expect.objectContaining({
+            referenceNumber: 'qr',
+            dueDate: 'qr',
+            totalAmount: 'qr',
+            ibanHint: 'qr'
+          }),
+          qrRecoveredFields: expect.arrayContaining(['referenceNumber', 'dueDate', 'totalAmount', 'ibanHint'])
+        })
+      })
+    )
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
   })
 
   it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {

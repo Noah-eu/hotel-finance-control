@@ -1138,12 +1138,61 @@ ${showRuntimePayoutDiagnostics ? '' : `
           buildInvoiceRawBlockDebugMarkup(file),
           buildGroupedBlockDebugMarkup(file, 'groupedHeaderBlockDebug', 'Grouped header block'),
           buildGroupedBlockDebugMarkup(file, 'groupedTotalsBlockDebug', 'Grouped totals block'),
+          buildInvoiceQrDebugMarkup(file),
           buildDocumentFieldExtractionDebugLine(file, 'referenceNumber', 'referenceNumber'),
           buildDocumentFieldExtractionDebugLine(file, 'issueDate', 'issueDate'),
           buildDocumentFieldExtractionDebugLine(file, 'dueDate', 'dueDate'),
           buildDocumentFieldExtractionDebugLine(file, 'taxableDate', 'taxableDate'),
           buildDocumentFieldExtractionDebugLine(file, 'paymentMethod', 'paymentMethod'),
           buildDocumentFieldExtractionDebugLine(file, 'totalAmount', 'totalAmount')
+        ].join('');
+      }
+
+      function buildInvoiceQrDebugMarkup(file) {
+        const summary = file && file.documentExtractionSummary;
+
+        if (!summary || summary.documentKind !== 'invoice') {
+          return '';
+        }
+
+        const parsedQrFields = summary.qrParsedFields || {};
+        const parsedQrEntries = [
+          parsedQrFields.account ? 'account=' + parsedQrFields.account : '',
+          parsedQrFields.ibanHint ? 'ibanHint=' + parsedQrFields.ibanHint : '',
+          typeof parsedQrFields.amountMinor === 'number' ? 'amountMinor=' + String(parsedQrFields.amountMinor) : '',
+          parsedQrFields.currency ? 'currency=' + parsedQrFields.currency : '',
+          parsedQrFields.variableSymbol ? 'variableSymbol=' + parsedQrFields.variableSymbol : '',
+          parsedQrFields.constantSymbol ? 'constantSymbol=' + parsedQrFields.constantSymbol : '',
+          parsedQrFields.specificSymbol ? 'specificSymbol=' + parsedQrFields.specificSymbol : '',
+          parsedQrFields.recipientName ? 'recipientName=' + parsedQrFields.recipientName : '',
+          parsedQrFields.message ? 'message=' + parsedQrFields.message : '',
+          parsedQrFields.dueDate ? 'dueDate=' + parsedQrFields.dueDate : '',
+          parsedQrFields.referenceNumber ? 'referenceNumber=' + parsedQrFields.referenceNumber : ''
+        ].filter(Boolean);
+        const fieldProvenance = summary.fieldProvenance || {};
+        const provenanceEntries = Object.keys(fieldProvenance)
+          .sort()
+          .map(function (fieldKey) {
+            return fieldKey + '=' + String(fieldProvenance[fieldKey]);
+          });
+
+        return [
+          '<br /><span class="hint">QR detected: ' + escapeHtml(summary.qrDetected ? 'yes' : 'no') + '</span>',
+          summary.qrRawPayload
+            ? '<br /><span class="hint">QR raw payload: ' + escapeHtml(String(summary.qrRawPayload)) + '</span>'
+            : '',
+          '<br /><span class="hint">QR parsed fields: '
+            + escapeHtml(parsedQrEntries.length > 0 ? parsedQrEntries.join(' | ') : 'žádné')
+            + '</span>',
+          '<br /><span class="hint">QR recovered fields: '
+            + escapeHtml(Array.isArray(summary.qrRecoveredFields) && summary.qrRecoveredFields.length > 0 ? summary.qrRecoveredFields.join(', ') : 'žádné')
+            + '</span>',
+          '<br /><span class="hint">QR confirmed fields: '
+            + escapeHtml(Array.isArray(summary.qrConfirmedFields) && summary.qrConfirmedFields.length > 0 ? summary.qrConfirmedFields.join(', ') : 'žádné')
+            + '</span>',
+          '<br /><span class="hint">Final field provenance: '
+            + escapeHtml(provenanceEntries.length > 0 ? provenanceEntries.join(' | ') : 'žádné')
+            + '</span>'
         ].join('');
       }
 

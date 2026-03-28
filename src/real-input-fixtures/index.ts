@@ -15,6 +15,7 @@ export interface RealInputFixture {
   | 'comgate-export'
   | 'invoice-document'
   | 'invoice-document-czech-pdf'
+  | 'invoice-document-czech-pdf-with-spd-qr'
   | 'receipt-document'
   description: string
   sourceDocument: SourceDocument
@@ -74,7 +75,12 @@ function workbookBase64(sheets: Array<{ name: string, rows: Array<Record<string,
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }
 
-function pdfBase64FromTextLines(lines: string[]): string {
+function pdfBase64FromTextLines(
+  lines: string[],
+  options: {
+    hiddenPayloadComments?: string[]
+  } = {}
+): string {
   const stream = [
     'BT',
     '/F1 12 Tf',
@@ -110,6 +116,10 @@ function pdfBase64FromTextLines(lines: string[]): string {
   }
 
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  for (const payload of options.hiddenPayloadComments ?? []) {
+    pdf += `\n% ${payload}`
+  }
 
   return Buffer.from(pdf, 'latin1').toString('base64')
 }
@@ -1125,6 +1135,87 @@ export const realInputFixtures: RealInputFixture[] = [
         invoiceNumber: '141260183',
         extractedRecordIds: ['invoice-record-1'],
         sourceDocumentIds: ['doc-invoice-lenner-141260183' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-czech-pdf-with-spd-qr',
+    description: 'Representative Czech invoice PDF fixture with hidden SPD / QR Platba payload for browser QR fallback recovery.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-qr-141260183' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'invoice-with-qr.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Faktura - daňový doklad',
+        'Dodavatel',
+        'QR Hotel Supply s.r.o.',
+        'Odběratel',
+        'JOKELAND s.r.o.',
+        'Datum vystavení',
+        '11.03.2026',
+        'Předmět plnění:',
+        'Softwarová licence'
+      ].join('\n'),
+      binaryContentBase64: pdfBase64FromTextLines(
+        [
+          'Faktura - daňový doklad',
+          'Dodavatel',
+          'QR Hotel Supply s.r.o.',
+          'Odběratel',
+          'JOKELAND s.r.o.',
+          'Datum vystavení',
+          '11.03.2026',
+          'Předmět plnění:',
+          'Softwarová licence'
+        ],
+        {
+          hiddenPayloadComments: [
+            'SPD*1.0*ACC:CZ4903000000000274621920*AM:18500.00*CC:CZK*X-VS:141260183*X-KS:0308*X-SS:1007*RN:QR%20Hotel%20Supply%20s.r.o.*MSG:Faktura%20141260183*DT:20260325'
+          ]
+        }
+      )
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record-1',
+        sourceDocumentId: 'doc-invoice-qr-141260183' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: '141260183',
+        amountMinor: 1850000,
+        currency: 'CZK',
+        occurredAt: '2026-03-11',
+        data: {
+          sourceSystem: 'invoice',
+          invoiceNumber: '141260183',
+          supplier: 'QR Hotel Supply s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          issueDate: '2026-03-11',
+          dueDate: '2026-03-25',
+          amountMinor: 1850000,
+          currency: 'CZK',
+          description: 'Softwarová licence',
+          ibanHint: 'CZ4903000000000274621920'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 1850000,
+        currency: 'CZK',
+        bookedAt: '2026-03-11',
+        accountId: 'document-expenses',
+        counterparty: 'QR Hotel Supply s.r.o.',
+        reference: '141260183',
+        invoiceNumber: '141260183',
+        extractedRecordIds: ['invoice-record-1'],
+        sourceDocumentIds: ['doc-invoice-qr-141260183' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },
