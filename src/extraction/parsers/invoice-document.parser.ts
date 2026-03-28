@@ -1712,31 +1712,12 @@ function isPreferredPayableTotalLabel(normalizedLabel: string): boolean {
 }
 
 function isInvoiceReferenceLabel(normalizedLabel: string): boolean {
-  if (
-    normalizedLabel.includes('faktura cislo')
-    || normalizedLabel.includes('cislo faktury')
-    || normalizedLabel.includes('doklad cislo')
-    || normalizedLabel.includes('cislo dokladu')
-  ) {
-    return true
-  }
-
-  const tokens = normalizedLabel.split(/\s+/).filter((token) => token.length > 0)
-  const hasFaktura = tokens.includes('faktura')
-  const hasDoklad = tokens.includes('doklad')
-  const hasCislo = tokens.includes('cislo')
-  const hasFaktury = tokens.includes('faktury')
-  const hasDokladu = tokens.includes('dokladu')
-
-  return (hasFaktura && hasCislo)
-    || (hasDoklad && hasCislo)
-    || (hasCislo && hasFaktury)
-    || (hasCislo && hasDokladu)
+  return matchesStrictInvoiceReferenceAnchor(normalizedLabel)
 }
 
 function extractReferenceCandidateAfterLabel(line: string): string | undefined {
   const patterns = [
-    /(?:faktura(?:\s*[|¦│┃]\s*|\s+)+číslo|číslo(?:\s*[|¦│┃]\s*|\s+)+faktury|doklad(?:\s*[|¦│┃]\s*|\s+)+číslo|číslo(?:\s*[|¦│┃]\s*|\s+)+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
+    /(?:faktura(?:\s*[|¦│┃]\s*|\s+)+(?:číslo|čí\s*lo)|(?:číslo|čí\s*lo)(?:\s*[|¦│┃]\s*|\s+)+faktury|doklad(?:\s*[|¦│┃]\s*|\s+)+(?:číslo|čí\s*lo)|(?:číslo|čí\s*lo)(?:\s*[|¦│┃]\s*|\s+)+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
   ]
 
   for (const pattern of patterns) {
@@ -1748,6 +1729,13 @@ function extractReferenceCandidateAfterLabel(line: string): string | undefined {
   }
 
   return undefined
+}
+
+function matchesStrictInvoiceReferenceAnchor(normalizedLabel: string): boolean {
+  return /\bfaktura\s+c(?:islo|i\s*lo)\b/u.test(normalizedLabel)
+    || /\bc(?:islo|i\s*lo)\s+faktury\b/u.test(normalizedLabel)
+    || /\bdoklad\s+c(?:islo|i\s*lo)\b/u.test(normalizedLabel)
+    || /\bc(?:islo|i\s*lo)\s+dokladu\b/u.test(normalizedLabel)
 }
 
 function extractPayableMoneyCandidateFromLine(line: string): string | undefined {
@@ -2384,12 +2372,7 @@ function detectStrictReferenceAnchorSpan(
       continue
     }
 
-    if (
-      normalizedLabel === 'faktura cislo'
-      || normalizedLabel === 'cislo faktury'
-      || normalizedLabel === 'doklad cislo'
-      || normalizedLabel === 'cislo dokladu'
-    ) {
+    if (matchesStrictInvoiceReferenceAnchor(normalizedLabel)) {
       return {
         startIndex,
         endIndex: startIndex + width - 1,

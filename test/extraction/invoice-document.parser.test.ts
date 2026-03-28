@@ -402,14 +402,14 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
-  it('extracts Lenner invoice number and payable total from a live-like split Czech browser invoice shape', () => {
+  it('extracts Lenner invoice number and payable total from a live-like Czech browser invoice shape with broken invoice-number label text', () => {
     const content = [
       'Faktura - daňový doklad',
       'Dodavatel',
       'Lenner Motors s.r.o.',
       'Odběratel',
       'JOKELAND s.r.o.',
-      'Faktura │ číslo',
+      'Faktura čí lo',
       'Datum splatnosti │ Forma úhrady │ Datum vystavení │ Datum zdanitelného plnění',
       '25.03.2026 │ Přev.příkaz │ 11.03.2026 │ 11.03.2026',
       '141260183',
