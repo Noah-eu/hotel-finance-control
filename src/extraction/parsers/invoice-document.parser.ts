@@ -771,7 +771,7 @@ function collectAnchoredInvoiceHeaderWindowCandidates(
       isValidInvoiceFieldValue('referenceNumber', referenceMatch.value)
     )
 
-    const headerWindowLines = collectAnchoredHeaderWindowLines(lines, referenceMatch.lineIndex)
+    const headerWindowLines = collectAnchoredHeaderWindowLines(lines, labelSpan.startIndex, referenceMatch.lineIndex)
     const paymentMethodCandidate = extractAnchoredPaymentMethodCandidate(headerWindowLines, referenceMatch.value)
     recordInvoiceFieldAttempt(
       debugStates.paymentMethod,
@@ -1660,15 +1660,31 @@ function isPreferredPayableTotalLabel(normalizedLabel: string): boolean {
 }
 
 function isInvoiceReferenceLabel(normalizedLabel: string): boolean {
-  return normalizedLabel.includes('faktura cislo')
+  if (
+    normalizedLabel.includes('faktura cislo')
     || normalizedLabel.includes('cislo faktury')
     || normalizedLabel.includes('doklad cislo')
     || normalizedLabel.includes('cislo dokladu')
+  ) {
+    return true
+  }
+
+  const tokens = normalizedLabel.split(/\s+/).filter((token) => token.length > 0)
+  const hasFaktura = tokens.includes('faktura')
+  const hasDoklad = tokens.includes('doklad')
+  const hasCislo = tokens.includes('cislo')
+  const hasFaktury = tokens.includes('faktury')
+  const hasDokladu = tokens.includes('dokladu')
+
+  return (hasFaktura && hasCislo)
+    || (hasDoklad && hasCislo)
+    || (hasCislo && hasFaktury)
+    || (hasCislo && hasDokladu)
 }
 
 function extractReferenceCandidateAfterLabel(line: string): string | undefined {
   const patterns = [
-    /(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
+    /(?:faktura(?:\s*[|¦│┃]\s*|\s+)+číslo|číslo(?:\s*[|¦│┃]\s*|\s+)+faktury|doklad(?:\s*[|¦│┃]\s*|\s+)+číslo|číslo(?:\s*[|¦│┃]\s*|\s+)+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
   ]
 
   for (const pattern of patterns) {
@@ -2287,7 +2303,7 @@ function detectCompositeReferenceLabelSpan(
   lines: string[],
   startIndex: number
 ): { startIndex: number; endIndex: number; rawLabel: string } | undefined {
-  for (let width = 1; width <= 3 && startIndex + width <= lines.length; width += 1) {
+  for (let width = 1; width <= 4 && startIndex + width <= lines.length; width += 1) {
     const rawLabel = lines.slice(startIndex, startIndex + width).map((line) => stripTrailingNoise(line)).join(' ')
     if (containsInvoicePageArtifactValue(rawLabel)) {
       continue
@@ -2328,15 +2344,16 @@ function findAnchoredReferenceMatch(
   return undefined
 }
 
-function collectAnchoredHeaderWindowLines(lines: string[], referenceLineIndex: number): string[] {
+function collectAnchoredHeaderWindowLines(lines: string[], labelStartIndex: number, referenceLineIndex: number): string[] {
   const windowLines: string[] = []
+  const startIndex = Math.max(labelStartIndex, referenceLineIndex - 4)
 
-  for (let index = referenceLineIndex; index < lines.length && windowLines.length < 6; index += 1) {
+  for (let index = startIndex; index < lines.length && windowLines.length < 8; index += 1) {
     const line = stripTrailingNoise(lines[index]!)
     if (containsInvoicePageArtifactValue(line)) {
       continue
     }
-    if (windowLines.length > 0 && isInvoiceSectionBoundary(line)) {
+    if (windowLines.length > 0 && index > referenceLineIndex && isInvoiceSectionBoundary(line)) {
       break
     }
     windowLines.push(line)

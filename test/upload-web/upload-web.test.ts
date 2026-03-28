@@ -436,11 +436,11 @@ describe('buildUploadWebFlow', () => {
           ]),
           rawBlockDiscoveryDebug: expect.arrayContaining([
             expect.objectContaining({
-              rawLines: ['Faktura │ číslo', 'Datum splatnosti │ Forma úhrady │ Datum vystavení │ Datum zdanitelného plnění', '25.03.2026 │ Přev.příkaz │ 11.03.2026 │ 11.03.2026', '141260183'],
-              blockTypeGuess: 'header-reference'
+              rawLines: ['Datum splatnosti │ Forma úhrady │ Datum vystavení │ Datum zdanitelného plnění', '25.03.2026 │ Přev.příkaz │ 11.03.2026 │ 11.03.2026', '141260183', 'Strana 1/1'],
+              blockTypeGuess: 'dates-payment'
             }),
             expect.objectContaining({
-              rawLines: ['DPH │ Celkem po zaokrouhlení', '21 919,90 Kč │ Záloh celkem', 'Základ DPH', '10 437,62 Kč'],
+              rawLines: ['Rozpis DPH', 'DPH │ Celkem po zaokrouhlení', '21 919,90 Kč │ Záloh celkem', 'Základ DPH'],
               blockTypeGuess: 'totals-payable'
             }),
             expect.objectContaining({
