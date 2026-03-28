@@ -133,6 +133,8 @@ const SUMMARY_FIELD_ALIASES: Record<InvoiceSummaryFieldKey, string[]> = {
 }
 
 const DATE_TOKEN_PATTERN = /\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/g
+const STRUCTURED_VALUE_SEPARATOR_PATTERN = /[|¦│┃]/
+const STRUCTURED_VALUE_SEPARATOR_GLOBAL_PATTERN = /[|¦│┃]/g
 const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Faktura', pattern: /\bfaktura\b/i },
   { label: 'Faktura - daňový doklad', pattern: /\bfaktura\s*-\s*daňový\s+doklad\b/i },
@@ -2084,7 +2086,7 @@ function normalizeLabelSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .replace(/[|]/g, ' ')
+    .replace(STRUCTURED_VALUE_SEPARATOR_GLOBAL_PATTERN, ' ')
     .replace(/[：:]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -2535,12 +2537,12 @@ function extractCompositeGroupedPaymentMethodCandidate(
 }
 
 function splitStructuredInvoiceValueCells(value: string): string[] {
-  if (!value.includes('|')) {
+  if (!STRUCTURED_VALUE_SEPARATOR_PATTERN.test(value)) {
     return []
   }
 
   return value
-    .split('|')
+    .split(STRUCTURED_VALUE_SEPARATOR_GLOBAL_PATTERN)
     .map((cell) => stripTrailingNoise(cell))
     .filter((cell) => cell.length > 0)
 }

@@ -275,19 +275,19 @@ describe('parseInvoiceDocument', () => {
       rawBlockDiscoveryDebug: expect.arrayContaining([
         expect.objectContaining({
           rawLines: [
-            'Faktura | číslo',
-            'Datum splatnosti | Forma úhrady | Datum vystavení | Datum zdanitelného plnění',
-            '25.03.2026 | Přev.příkaz | 11.03.2026 | 11.03.2026',
+            'Faktura │ číslo',
+            'Datum splatnosti │ Forma úhrady │ Datum vystavení │ Datum zdanitelného plnění',
+            '25.03.2026 │ Přev.příkaz │ 11.03.2026 │ 11.03.2026',
             '141260183'
           ],
           blockTypeGuess: 'header-reference'
         }),
         expect.objectContaining({
-          rawLines: ['DPH | Celkem po zaokrouhlení', '21 919,90 Kč | Záloh celkem', 'Základ DPH', '10 437,62 Kč'],
+          rawLines: ['DPH │ Celkem po zaokrouhlení', '21 919,90 Kč │ Záloh celkem', 'Základ DPH', '10 437,62 Kč'],
           blockTypeGuess: 'totals-payable'
         }),
         expect.objectContaining({
-          rawLines: ['S DPH | 10 437,62 Kč | 12 629,52 Kč | Razítko a podpis', 'Předmět plnění', 'Servis vozidla'],
+          rawLines: ['S DPH │ 10 437,62 Kč │ 12 629,52 Kč │ Razítko a podpis', 'Předmět plnění', 'Servis vozidla'],
           blockTypeGuess: 'totals-vat'
         })
       ]),
@@ -409,21 +409,21 @@ describe('parseInvoiceDocument', () => {
       'Lenner Motors s.r.o.',
       'Odběratel',
       'JOKELAND s.r.o.',
-      'Faktura | číslo',
-      'Datum splatnosti | Forma úhrady | Datum vystavení | Datum zdanitelného plnění',
-      '25.03.2026 | Přev.příkaz | 11.03.2026 | 11.03.2026',
+      'Faktura │ číslo',
+      'Datum splatnosti │ Forma úhrady │ Datum vystavení │ Datum zdanitelného plnění',
+      '25.03.2026 │ Přev.příkaz │ 11.03.2026 │ 11.03.2026',
       '141260183',
       'Strana 1/1',
       'Iban:',
       'CZ4903000000000274621920',
       'Rozpis DPH',
-      'DPH | Celkem po zaokrouhlení',
-      '21 919,90 Kč | Záloh celkem',
+      'DPH │ Celkem po zaokrouhlení',
+      '21 919,90 Kč │ Záloh celkem',
       'Základ DPH',
       '10 437,62 Kč',
       'DPH',
       '2 191,90 Kč',
-      'S DPH | 10 437,62 Kč | 12 629,52 Kč | Razítko a podpis'
+      'S DPH │ 10 437,62 Kč │ 12 629,52 Kč │ Razítko a podpis'
     ].join('\n')
 
     expect(inspectInvoiceDocumentExtractionSummary(content)).toMatchObject({
