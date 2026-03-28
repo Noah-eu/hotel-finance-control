@@ -650,6 +650,7 @@ function collectFieldSpecificInvoiceHeaderCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
 ): void {
+  collectStructuredDatePaymentCandidates(lines, debugStates)
   collectCompositeGroupedDatePaymentCandidates(lines, debugStates)
   collectAnchoredInvoiceHeaderWindowCandidates(lines, debugStates)
 
@@ -666,6 +667,41 @@ function collectFieldSpecificInvoiceHeaderCandidates(
         'field-specific-labeled-window',
         candidate.trace,
         isValidInvoiceFieldValue(fieldKey, candidate.value)
+      )
+    }
+  }
+}
+
+function collectStructuredDatePaymentCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const orderedKeys = extractOrderedGroupedInvoiceHeaderFieldKeys(lines[index]!)
+
+    if (orderedKeys.length < 3 || !orderedKeys.includes('paymentMethod')) {
+      continue
+    }
+
+    const valueLines = collectInvoiceValueLines(lines, index + 1, 4)
+      .filter((line) => !containsInvoicePageArtifactValue(line))
+
+    if (valueLines.length === 0) {
+      continue
+    }
+
+    const trace = `${orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey)).join(' | ')} => ${valueLines.join(' | ')}`
+    const valueMap = buildStructuredDatePaymentValueMap(orderedKeys, valueLines)
+
+    for (const fieldKey of orderedKeys) {
+      const candidate = valueMap[fieldKey]
+      recordInvoiceFieldAttempt(
+        debugStates[fieldKey],
+        'grouped',
+        candidate,
+        'structured-combined-date-payment-row',
+        `${trace} | ${fieldKey} => ${candidate ?? 'n/a'}`,
+        isValidInvoiceFieldValue(fieldKey, candidate)
       )
     }
   }
@@ -1184,53 +1220,9 @@ function buildStructuredGroupedInvoiceHeaderBlock(
   orderedKeys: InvoiceSummaryFieldKey[]
 ): StructuredGroupedInvoiceHeaderBlock | undefined {
   const labels = orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey))
-  const upcomingLines = lines.slice(headerIndex + 1, headerIndex + 7)
-  const referenceCandidates: string[] = []
-  const paymentMethodCandidates: string[] = []
-  const dateCandidates: string[] = []
-
-  for (const line of upcomingLines) {
-    if (isInvoiceSectionBoundary(line)) {
-      break
-    }
-
-    const stripped = stripTrailingNoise(line)
-    const referenceCandidate = extractFirstInvoiceReferenceCandidate(stripped)
-
-    if (referenceCandidate && !referenceCandidates.includes(referenceCandidate)) {
-      referenceCandidates.push(referenceCandidate)
-    }
-
-    const paymentMethodCandidate = extractGroupedPaymentMethodCandidate(stripped, referenceCandidate)
-    if (
-      paymentMethodCandidate
-      && isValidInvoiceFieldValue('paymentMethod', paymentMethodCandidate)
-      && !paymentMethodCandidates.includes(paymentMethodCandidate)
-    ) {
-      paymentMethodCandidates.push(paymentMethodCandidate)
-    }
-
-    for (const dateCandidate of extractDateTokens(stripped)) {
-      dateCandidates.push(dateCandidate)
-    }
-  }
-
-  const values = orderedKeys.map((fieldKey) => {
-    switch (fieldKey) {
-      case 'referenceNumber':
-        return referenceCandidates[0]
-      case 'paymentMethod':
-        return paymentMethodCandidates[0]
-      case 'issueDate':
-        return dateCandidates[0]
-      case 'taxableDate':
-        return dateCandidates[1]
-      case 'dueDate':
-        return dateCandidates[2]
-      default:
-        return undefined
-    }
-  })
+  const upcomingLines = collectInvoiceValueLines(lines, headerIndex + 1, 6)
+  const valueMap = buildStructuredDatePaymentValueMap(orderedKeys, upcomingLines)
+  const values = orderedKeys.map((fieldKey) => valueMap[fieldKey])
 
   return values.some((value) => Boolean(value))
     ? {
@@ -2092,6 +2084,7 @@ function normalizeLabelSearch(value: string): string {
   return value
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
+    .replace(/[|]/g, ' ')
     .replace(/[：:]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -2409,6 +2402,46 @@ function buildCompositeGroupedDatePaymentValueMap(
   return valueMap
 }
 
+function buildStructuredDatePaymentValueMap(
+  orderedKeys: InvoiceSummaryFieldKey[],
+  valueLines: string[]
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const cleanedValueLines = valueLines
+    .map((line) => stripTrailingNoise(line))
+    .filter((line) => line.length > 0 && !containsInvoicePageArtifactValue(line))
+
+  if (cleanedValueLines.length === 0) {
+    return {}
+  }
+
+  const expectedStructuredCells = orderedKeys.filter((fieldKey) => fieldKey !== 'referenceNumber').length
+  const structuredValueLine = cleanedValueLines.find((line) => splitStructuredInvoiceValueCells(line).length >= expectedStructuredCells)
+  const joinedValues = cleanedValueLines.join(' ')
+
+  if (!structuredValueLine) {
+    return buildCompositeGroupedDatePaymentValueMap(orderedKeys, joinedValues)
+  }
+
+  const structuredCells = splitStructuredInvoiceValueCells(structuredValueLine)
+  const valueMap: Partial<Record<InvoiceSummaryFieldKey, string>> = {}
+  let cellIndex = 0
+
+  for (const fieldKey of orderedKeys) {
+    if (fieldKey === 'referenceNumber') {
+      continue
+    }
+
+    valueMap[fieldKey] = structuredCells[cellIndex]
+    cellIndex += 1
+  }
+
+  if (orderedKeys.includes('referenceNumber')) {
+    valueMap.referenceNumber = extractFirstInvoiceReferenceCandidate(joinedValues)
+  }
+
+  return valueMap
+}
+
 function collectCompositePayableLabelSpans(
   lines: string[]
 ): Array<{ startIndex: number; endIndex: number; rawLabel: string; normalizedLabel: string; priority: number }> {
@@ -2499,6 +2532,17 @@ function extractCompositeGroupedPaymentMethodCandidate(
   }
 
   return candidate
+}
+
+function splitStructuredInvoiceValueCells(value: string): string[] {
+  if (!value.includes('|')) {
+    return []
+  }
+
+  return value
+    .split('|')
+    .map((cell) => stripTrailingNoise(cell))
+    .filter((cell) => cell.length > 0)
 }
 
 function extractDateTokens(value: string): string[] {

@@ -427,24 +427,24 @@ describe('buildUploadWebFlow', () => {
           missingRequiredFields: [],
           groupedHeaderBlockDebug: expect.arrayContaining([
             expect.objectContaining({
-              blockTypeCandidate: 'vertical-structured-header-block',
+              blockTypeCandidate: 'structured-grouped-header-block',
               labels: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
-              values: ['11.03.2026', 'n/a', '25.03.2026', '11.03.2026'],
+              values: ['25.03.2026', 'Přev.příkaz', '11.03.2026', '11.03.2026'],
               accepted: false,
               rejectionReason: 'missing reference label'
             })
           ]),
           rawBlockDiscoveryDebug: expect.arrayContaining([
             expect.objectContaining({
-              rawLines: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
-              blockTypeGuess: 'dates-payment'
+              rawLines: ['Faktura | číslo', 'Datum splatnosti | Forma úhrady | Datum vystavení | Datum zdanitelného plnění', '25.03.2026 | Přev.příkaz | 11.03.2026 | 11.03.2026', '141260183'],
+              blockTypeGuess: 'header-reference'
             }),
             expect.objectContaining({
-              rawLines: ['DPH Celkem po zaokrouhlení', '21,00 % Záloh celkem', 'Základ DPH', '10 437,62'],
+              rawLines: ['DPH | Celkem po zaokrouhlení', '21 919,90 Kč | Záloh celkem', 'Základ DPH', '10 437,62 Kč'],
               blockTypeGuess: 'totals-payable'
             }),
             expect.objectContaining({
-              rawLines: ['S DPH', '10 437,62 Kč', '12 629,52 Kč', 'Razítko a podpis'],
+              rawLines: ['S DPH | 10 437,62 Kč | 12 629,52 Kč | Razítko a podpis', 'Předmět plnění', 'Servis vozidla'],
               blockTypeGuess: 'totals-vat'
             })
           ]),
@@ -454,11 +454,11 @@ describe('buildUploadWebFlow', () => {
               winnerValue: '141260183'
             }),
             issueDate: expect.objectContaining({
-              winnerRule: 'grouped-combined-date-payment-row',
+              winnerRule: 'structured-combined-date-payment-row',
               winnerValue: '11.03.2026'
             }),
             paymentMethod: expect.objectContaining({
-              winnerRule: 'grouped-combined-date-payment-row',
+              winnerRule: 'structured-combined-date-payment-row',
               winnerValue: 'Přev. příkaz'
             }),
             totalAmount: expect.objectContaining({
