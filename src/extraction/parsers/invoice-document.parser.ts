@@ -285,6 +285,7 @@ function extractInvoiceDocumentDetails(content: string): InvoiceDocumentExtracti
   const groupedTotalsBlock = groupedTotalsSelection.block
   const rawBlockDiscoveryDebug = collectInvoiceRawBlockDiscovery(lines, groupedHeaderSelection.debug, groupedTotalsSelection.debug)
 
+  collectStrictAnchoredInvoiceReferenceCandidates(lines, debugStates)
   collectFieldSpecificInvoiceHeaderCandidates(lines, debugStates)
   collectFieldSpecificInvoiceReferenceCandidates(lines, debugStates)
   collectFieldSpecificPayableTotalCandidates(lines, debugStates)
@@ -670,6 +671,57 @@ function collectFieldSpecificInvoiceHeaderCandidates(
         candidate.trace,
         isValidInvoiceFieldValue(fieldKey, candidate.value)
       )
+    }
+  }
+}
+
+function collectStrictAnchoredInvoiceReferenceCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const labelSpan = detectStrictReferenceAnchorSpan(lines, index)
+
+    if (!labelSpan) {
+      continue
+    }
+
+    const sameBlockCandidate = extractReferenceCandidateAfterLabel(labelSpan.rawLabel)
+    recordInvoiceFieldAttempt(
+      debugStates.referenceNumber,
+      'grouped',
+      sameBlockCandidate,
+      'anchored-header-window',
+      `${labelSpan.rawLabel} => ${sameBlockCandidate ?? 'n/a'}`,
+      isValidInvoiceFieldValue('referenceNumber', sameBlockCandidate)
+    )
+
+    const anchoredWindowLines = collectStrictReferenceAnchorWindowLines(lines, labelSpan.endIndex)
+    const joinedWindow = anchoredWindowLines.join(' ')
+    const joinedWindowCandidate = extractFirstInvoiceReferenceCandidate(joinedWindow)
+    recordInvoiceFieldAttempt(
+      debugStates.referenceNumber,
+      'grouped',
+      joinedWindowCandidate,
+      'anchored-header-window',
+      `${labelSpan.rawLabel} => ${joinedWindow || 'n/a'}`,
+      isValidInvoiceFieldValue('referenceNumber', joinedWindowCandidate)
+    )
+
+    for (const candidateLine of anchoredWindowLines) {
+      const candidate = extractFirstInvoiceReferenceCandidate(candidateLine)
+      recordInvoiceFieldAttempt(
+        debugStates.referenceNumber,
+        'grouped',
+        candidate,
+        'anchored-header-window',
+        `${labelSpan.rawLabel} -> ${candidateLine}`,
+        isValidInvoiceFieldValue('referenceNumber', candidate)
+      )
+
+      if (candidate) {
+        break
+      }
     }
   }
 }
@@ -2320,6 +2372,35 @@ function detectCompositeReferenceLabelSpan(
   return undefined
 }
 
+function detectStrictReferenceAnchorSpan(
+  lines: string[],
+  startIndex: number
+): { startIndex: number; endIndex: number; rawLabel: string } | undefined {
+  for (let width = 1; width <= 4 && startIndex + width <= lines.length; width += 1) {
+    const rawLabel = lines.slice(startIndex, startIndex + width).map((line) => stripTrailingNoise(line)).join(' ')
+    const normalizedLabel = normalizeLabelSearch(rawLabel)
+
+    if (containsInvoicePageArtifactValue(rawLabel)) {
+      continue
+    }
+
+    if (
+      normalizedLabel === 'faktura cislo'
+      || normalizedLabel === 'cislo faktury'
+      || normalizedLabel === 'doklad cislo'
+      || normalizedLabel === 'cislo dokladu'
+    ) {
+      return {
+        startIndex,
+        endIndex: startIndex + width - 1,
+        rawLabel
+      }
+    }
+  }
+
+  return undefined
+}
+
 function findAnchoredReferenceMatch(
   lines: string[],
   labelEndIndex: number
@@ -2342,6 +2423,26 @@ function findAnchoredReferenceMatch(
   }
 
   return undefined
+}
+
+function collectStrictReferenceAnchorWindowLines(lines: string[], labelEndIndex: number): string[] {
+  const windowLines: string[] = []
+
+  for (let index = labelEndIndex + 1; index < lines.length && windowLines.length < 6; index += 1) {
+    const line = stripTrailingNoise(lines[index]!)
+
+    if (!line || containsInvoicePageArtifactValue(line)) {
+      continue
+    }
+
+    if (windowLines.length > 0 && isInvoiceSectionBoundary(line)) {
+      break
+    }
+
+    windowLines.push(line)
+  }
+
+  return windowLines
 }
 
 function collectAnchoredHeaderWindowLines(lines: string[], labelStartIndex: number, referenceLineIndex: number): string[] {
