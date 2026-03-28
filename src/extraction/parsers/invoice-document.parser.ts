@@ -2907,7 +2907,7 @@ function findAnchoredReferenceMatch(
 function collectStrictReferenceAnchorWindowLines(lines: string[], labelEndIndex: number): string[] {
   const windowLines: string[] = []
 
-  for (let index = labelEndIndex + 1; index < lines.length && windowLines.length < 6; index += 1) {
+  for (let index = labelEndIndex + 1; index < lines.length && windowLines.length < 12; index += 1) {
     const line = stripTrailingNoise(lines[index]!)
 
     if (!line || containsInvoicePageArtifactValue(line)) {

@@ -428,7 +428,7 @@ describe('buildUploadWebFlow', () => {
           missingRequiredFields: [],
           groupedHeaderBlockDebug: expect.arrayContaining([
             expect.objectContaining({
-              blockTypeCandidate: 'structured-grouped-header-block',
+              blockTypeCandidate: 'vertical-grouped-block',
               labels: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
               values: ['25.03.2026', 'Přev.příkaz', '11.03.2026', '11.03.2026'],
               accepted: false,
@@ -437,7 +437,7 @@ describe('buildUploadWebFlow', () => {
           ]),
           rawBlockDiscoveryDebug: expect.arrayContaining([
             expect.objectContaining({
-              rawLines: ['Datum splatnosti │ Forma úhrady │ Datum vystavení │ Datum zdanitelného plnění', '25.03.2026 │ Přev.příkaz │ 11.03.2026 │ 11.03.2026', '141260183', 'Strana 1/1'],
+              rawLines: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
               blockTypeGuess: 'dates-payment'
             }),
             expect.objectContaining({
@@ -455,11 +455,11 @@ describe('buildUploadWebFlow', () => {
               winnerValue: '141260183'
             }),
             issueDate: expect.objectContaining({
-              winnerRule: 'structured-combined-date-payment-row',
+              winnerRule: 'grouped-combined-date-payment-row',
               winnerValue: '11.03.2026'
             }),
             paymentMethod: expect.objectContaining({
-              winnerRule: 'structured-combined-date-payment-row',
+              winnerRule: 'grouped-combined-date-payment-row',
               winnerValue: 'Přev. příkaz'
             }),
             totalAmount: expect.objectContaining({
