@@ -1,5 +1,6 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
+  inspectAirbnbPayoutHeaderDiagnostics,
   detectInvoiceDocumentKeywordHits,
   detectBookingPayoutStatementSignals,
   inspectBookingPayoutStatementExtractionSummary,
@@ -221,6 +222,12 @@ function inspectUploadedFileParseDiagnostics(
       documentExtractionSummary: summary,
       requiredFieldsCheck: summary.missingRequiredFields.length === 0 ? 'passed' : 'failed',
       missingFields: [...summary.missingRequiredFields]
+    }
+  }
+
+  if (file.sourceDocument.sourceSystem === 'airbnb') {
+    return {
+      airbnbHeaderDiagnostics: inspectAirbnbPayoutHeaderDiagnostics(file.content)
     }
   }
 

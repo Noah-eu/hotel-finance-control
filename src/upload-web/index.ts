@@ -13,7 +13,7 @@ import type { ReconciliationReport } from '../reporting'
 import { formatAmountMinorCs } from '../shared/money'
 import { emitBrowserRuntimeBundle } from './browser-bundle'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state'
-import type { DeterministicDocumentExtractionSummary } from '../extraction'
+import type { AirbnbPayoutHeaderDiagnostics, DeterministicDocumentExtractionSummary } from '../extraction'
 export {
   buildBrowserRuntimeStateFromSelectedFiles,
   createBrowserRuntime,
@@ -150,6 +150,7 @@ export interface BrowserRuntimeUploadState {
       parserSupported: boolean
       decisionConfidence: 'none' | 'hint' | 'strong'
       documentExtractionSummary?: DeterministicDocumentExtractionSummary
+      airbnbHeaderDiagnostics?: AirbnbPayoutHeaderDiagnostics
       parserExtractedPaymentId?: string
       parserExtractedPayoutDate?: string
       parserExtractedPayoutTotal?: string

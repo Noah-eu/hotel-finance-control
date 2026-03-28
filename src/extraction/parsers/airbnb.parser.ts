@@ -14,6 +14,17 @@ export interface ParseAirbnbPayoutExportInput {
   extractedAt: string
 }
 
+export interface AirbnbPayoutHeaderDiagnostics {
+  parserVariant: 'structured-export' | 'real-mixed-export'
+  rawHeaderRow: string
+  normalizedHeaders: string[]
+  normalizedHeaderMap: string[]
+  requiredCanonicalHeaders: string[]
+  mappedCanonicalHeaders: Partial<Record<'payoutDate' | 'amountMinor' | 'currency' | 'payoutReference' | 'reservationId' | 'listingId', string>>
+  candidateSourceHeaders: string[]
+  missingCanonicalHeaders: string[]
+}
+
 const REQUIRED_HEADERS = [
   'payoutDate',
   'amountMinor',
@@ -24,12 +35,68 @@ const REQUIRED_HEADERS = [
 ]
 
 const HEADER_ALIASES = {
-  payoutDate: ['payoutDate', 'payout_date', 'arrivalDate', 'datumVyplaty', 'date', 'datum převodu', 'datum transferu'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'netPayout', 'castka', 'částka', 'částka převodu', 'transfer amount', 'payout amount'],
+  payoutDate: [
+    'payoutDate',
+    'payout_date',
+    'arrivalDate',
+    'datumVyplaty',
+    'date',
+    'datum',
+    'datum převodu',
+    'datum prevodu',
+    'datum transferu',
+    'payout date',
+    'transfer date'
+  ],
+  amountMinor: [
+    'amountMinor',
+    'amount_minor',
+    'amount',
+    'netPayout',
+    'castka',
+    'částka',
+    'částka převodu',
+    'castka prevodu',
+    'transfer amount',
+    'payout amount',
+    'vyplaceno',
+    'paid out'
+  ],
   currency: ['currency', 'mena', 'měna'],
-  payoutReference: ['payoutReference', 'payout_reference', 'reference', 'transactionId', 'transferId', 'transfer id', 'payout id'],
-  reservationId: ['reservationId', 'reservation_id', 'confirmationCode', 'reservationCode', 'confirmation code', 'rezervace', 'reservation'],
-  listingId: ['listingId', 'listing_id', 'propertyId', 'listing', 'listing name', 'název nabídky']
+  payoutReference: [
+    'payoutReference',
+    'payout_reference',
+    'reference',
+    'referenční kód',
+    'referencni kod',
+    'reference code',
+    'transactionId',
+    'transferId',
+    'transfer id',
+    'payout id'
+  ],
+  reservationId: [
+    'reservationId',
+    'reservation_id',
+    'confirmationCode',
+    'reservationCode',
+    'confirmation code',
+    'potvrzující kód',
+    'potvrzujici kod',
+    'rezervace',
+    'reservation'
+  ],
+  listingId: [
+    'listingId',
+    'listing_id',
+    'propertyId',
+    'listing',
+    'listing name',
+    'property name',
+    'název nabídky',
+    'nabídka',
+    'nabidka'
+  ]
 } satisfies Record<string, string[]>
 
 const REAL_AIRBNB_REQUIRED_HEADERS = [
@@ -118,10 +185,85 @@ export function parseAirbnbPayoutExport(input: ParseAirbnbPayoutExportInput): Ex
   return defaultAirbnbPayoutParser.parse(input)
 }
 
+export function inspectAirbnbPayoutHeaderDiagnostics(content: string): AirbnbPayoutHeaderDiagnostics {
+  const structuredParsed = parseDelimitedContent(content, { canonicalHeaders: HEADER_ALIASES })
+  const structuredMissing = findMissingHeaders(structuredParsed.rows, REQUIRED_HEADERS)
+
+  if (structuredParsed.rows.length > 0 && structuredMissing.length === 0) {
+    return buildAirbnbHeaderDiagnostics(
+      'structured-export',
+      structuredParsed,
+      REQUIRED_HEADERS
+    )
+  }
+
+  const realParsed = parseDelimitedContent(content, { canonicalHeaders: REAL_AIRBNB_HEADER_ALIASES })
+  const realMissing = findMissingHeaders(realParsed.rows, REAL_AIRBNB_REQUIRED_HEADERS)
+
+  if (realParsed.rows.length > 0 && realMissing.length === 0) {
+    return {
+      parserVariant: 'real-mixed-export',
+      rawHeaderRow: realParsed.rawHeaderRow,
+      normalizedHeaders: realParsed.headers,
+      normalizedHeaderMap: realParsed.headerColumns.map((column) => `${column.rawHeader} -> ${column.normalizedHeader}`),
+      requiredCanonicalHeaders: ['payoutDate', 'amountMinor', 'currency', 'payoutReference', 'reservationId', 'listingId'],
+      mappedCanonicalHeaders: {
+        payoutDate: findMappedRawHeader(realParsed.headerColumns, 'availableUntilDate') ?? findMappedRawHeader(realParsed.headerColumns, 'date'),
+        amountMinor: findMappedRawHeader(realParsed.headerColumns, 'paidOutAmountMinor') ?? findMappedRawHeader(realParsed.headerColumns, 'amountMinor'),
+        currency: findMappedRawHeader(realParsed.headerColumns, 'currency'),
+        payoutReference: findMappedRawHeader(realParsed.headerColumns, 'referenceCode'),
+        reservationId: findMappedRawHeader(realParsed.headerColumns, 'confirmationCode'),
+        listingId: findMappedRawHeader(realParsed.headerColumns, 'listingName')
+      },
+      candidateSourceHeaders: realParsed.headerColumns.map((column) => column.rawHeader),
+      missingCanonicalHeaders: []
+    }
+  }
+
+  return buildAirbnbHeaderDiagnostics(
+    'structured-export',
+    structuredParsed,
+    REQUIRED_HEADERS,
+    structuredMissing
+  )
+}
+
 function isRealAirbnbMixedExport(content: string): boolean {
   const parsed = parseDelimitedContent(content, { canonicalHeaders: REAL_AIRBNB_HEADER_ALIASES })
 
   return REAL_AIRBNB_REQUIRED_HEADERS.every((header) => parsed.headers.includes(header))
+}
+
+function buildAirbnbHeaderDiagnostics(
+  parserVariant: AirbnbPayoutHeaderDiagnostics['parserVariant'],
+  parsed: ReturnType<typeof parseDelimitedContent>,
+  requiredCanonicalHeaders: string[],
+  missingCanonicalHeaders = findMissingHeaders(parsed.rows, requiredCanonicalHeaders)
+): AirbnbPayoutHeaderDiagnostics {
+  return {
+    parserVariant,
+    rawHeaderRow: parsed.rawHeaderRow,
+    normalizedHeaders: parsed.headers,
+    normalizedHeaderMap: parsed.headerColumns.map((column) => `${column.rawHeader} -> ${column.normalizedHeader}`),
+    requiredCanonicalHeaders,
+    mappedCanonicalHeaders: {
+      payoutDate: findMappedRawHeader(parsed.headerColumns, 'payoutDate'),
+      amountMinor: findMappedRawHeader(parsed.headerColumns, 'amountMinor'),
+      currency: findMappedRawHeader(parsed.headerColumns, 'currency'),
+      payoutReference: findMappedRawHeader(parsed.headerColumns, 'payoutReference'),
+      reservationId: findMappedRawHeader(parsed.headerColumns, 'reservationId'),
+      listingId: findMappedRawHeader(parsed.headerColumns, 'listingId')
+    },
+    candidateSourceHeaders: parsed.headerColumns.map((column) => column.rawHeader),
+    missingCanonicalHeaders
+  }
+}
+
+function findMappedRawHeader(
+  headerColumns: ReturnType<typeof parseDelimitedContent>['headerColumns'],
+  canonicalHeader: string
+): string | undefined {
+  return headerColumns.find((column) => column.normalizedHeader === canonicalHeader)?.rawHeader
 }
 
 function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): ExtractedRecord[] {
