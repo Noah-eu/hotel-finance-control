@@ -650,6 +650,7 @@ function collectFieldSpecificInvoiceHeaderCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
 ): void {
+  collectCompositeGroupedDatePaymentCandidates(lines, debugStates)
   collectAnchoredInvoiceHeaderWindowCandidates(lines, debugStates)
 
   const fieldKeys: InvoiceSummaryFieldKey[] = ['paymentMethod', 'issueDate', 'taxableDate', 'dueDate']
@@ -665,6 +666,41 @@ function collectFieldSpecificInvoiceHeaderCandidates(
         'field-specific-labeled-window',
         candidate.trace,
         isValidInvoiceFieldValue(fieldKey, candidate.value)
+      )
+    }
+  }
+}
+
+function collectCompositeGroupedDatePaymentCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const orderedKeys = collectConsecutiveGroupedFieldKeys(lines, index, ['dueDate', 'paymentMethod', 'issueDate', 'taxableDate'])
+
+    if (orderedKeys.length < 3 || !orderedKeys.includes('paymentMethod')) {
+      continue
+    }
+
+    const valueLines = collectInvoiceValueLines(lines, index + orderedKeys.length, 3)
+      .filter((line) => !containsInvoicePageArtifactValue(line))
+
+    if (valueLines.length === 0) {
+      continue
+    }
+
+    const trace = `${orderedKeys.map((fieldKey) => groupedInvoiceFieldLabel(fieldKey)).join(' | ')} => ${valueLines.join(' | ')}`
+    const valueMap = buildCompositeGroupedDatePaymentValueMap(orderedKeys, valueLines.join(' '))
+
+    for (const fieldKey of orderedKeys) {
+      const candidate = valueMap[fieldKey]
+      recordInvoiceFieldAttempt(
+        debugStates[fieldKey],
+        'grouped',
+        candidate,
+        'grouped-combined-date-payment-row',
+        `${trace} | ${fieldKey} => ${candidate ?? 'n/a'}`,
+        isValidInvoiceFieldValue(fieldKey, candidate)
       )
     }
   }
@@ -859,6 +895,46 @@ function collectFieldSpecificPayableTotalCandidates(
         break
       }
     }
+  }
+
+  collectSummaryTotalCandidates(lines, debugStates)
+}
+
+function collectSummaryTotalCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const normalized = normalizeLabelSearch(lines[index]!)
+
+    if (normalized !== 's dph') {
+      continue
+    }
+
+    const valueLines = collectInvoiceValueLines(lines, index + 1, 4)
+      .filter((line) => !containsInvoicePageArtifactValue(line))
+
+    if (valueLines.length === 0) {
+      continue
+    }
+
+    const moneyTokens = valueLines.flatMap((line) => extractLooseMoneyTokens(line, true))
+
+    if (moneyTokens.length === 0) {
+      continue
+    }
+
+    const winnerIndex = moneyTokens.length - 1
+    moneyTokens.forEach((token, tokenIndex) => {
+      recordInvoiceFieldAttempt(
+        debugStates.totalAmount,
+        'lineWindow',
+        token,
+        'field-specific-summary-total',
+        `${stripTrailingNoise(lines[index]!)} => ${valueLines.join(' | ')} | ${token}`,
+        tokenIndex === winnerIndex && isValidInvoiceFieldValue('totalAmount', token)
+      )
+    })
   }
 }
 
@@ -1345,9 +1421,7 @@ function isInvoiceSectionBoundary(line: string): boolean {
 
 function extractFirstInvoiceReferenceCandidate(value: string): string | undefined {
   const compactValue = stripTrailingNoise(value)
-  const candidates = Array.from(
-    compactValue.matchAll(/\b(?:[A-Z]{0,6}[-/]?)?\d(?:[\dA-Z/-]|\s(?![A-Za-z])){4,}\b/gi)
-  )
+  const candidates = Array.from(compactValue.matchAll(/\b(?:[A-Z]{0,6}[-/]?)?\d[A-Z0-9/-]{5,}\b/gi))
     .map((match) => normalizeInvoiceReferenceValue(match[0]))
     .filter((candidate): candidate is string => Boolean(candidate))
 
@@ -2221,6 +2295,36 @@ function extractAnchoredHeaderDateCandidates(lines: string[]): string[] {
   return lines.flatMap((line) => extractDateTokens(line)).slice(0, 3)
 }
 
+function buildCompositeGroupedDatePaymentValueMap(
+  orderedKeys: InvoiceSummaryFieldKey[],
+  combinedValueLine: string
+): Partial<Record<InvoiceSummaryFieldKey, string>> {
+  const cleanedCombinedValueLine = stripTrailingNoise(combinedValueLine)
+  const referenceCandidate = extractFirstInvoiceReferenceCandidate(cleanedCombinedValueLine)
+  const normalizedDateTokens = extractDateTokens(cleanedCombinedValueLine)
+  const paymentMethodCandidate = extractCompositeGroupedPaymentMethodCandidate(
+    cleanedCombinedValueLine,
+    referenceCandidate,
+    normalizedDateTokens
+  )
+  const valueMap: Partial<Record<InvoiceSummaryFieldKey, string>> = {}
+  let dateIndex = 0
+
+  for (const fieldKey of orderedKeys) {
+    if (fieldKey === 'paymentMethod') {
+      valueMap[fieldKey] = paymentMethodCandidate
+      continue
+    }
+
+    if (fieldKey === 'issueDate' || fieldKey === 'taxableDate' || fieldKey === 'dueDate') {
+      valueMap[fieldKey] = normalizedDateTokens[dateIndex]
+      dateIndex += 1
+    }
+  }
+
+  return valueMap
+}
+
 function collectCompositePayableLabelSpans(
   lines: string[]
 ): Array<{ startIndex: number; endIndex: number; rawLabel: string; normalizedLabel: string; priority: number }> {
@@ -2284,6 +2388,30 @@ function normalizeInvoiceReferenceValue(value: string | undefined): string | und
   }
 
   return normalized.length >= 6 ? normalized : undefined
+}
+
+function extractCompositeGroupedPaymentMethodCandidate(
+  combinedValueLine: string,
+  referenceCandidate: string | undefined,
+  dateTokens: string[]
+): string | undefined {
+  let candidate = stripTrailingNoise(combinedValueLine)
+
+  if (referenceCandidate) {
+    candidate = candidate.replace(referenceCandidate, ' ').trim()
+  }
+
+  for (const dateToken of dateTokens) {
+    candidate = candidate.replace(dateToken, ' ').trim()
+  }
+
+  candidate = stripTrailingNoise(candidate.replace(/\s+/g, ' '))
+
+  if (!candidate || containsInvoicePageArtifactValue(candidate) || isInvoiceLabelText(candidate) || isInvoiceLabelFragmentText(candidate)) {
+    return undefined
+  }
+
+  return candidate
 }
 
 function extractDateTokens(value: string): string[] {

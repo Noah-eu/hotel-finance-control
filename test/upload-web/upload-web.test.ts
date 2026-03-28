@@ -409,70 +409,64 @@ describe('buildUploadWebFlow', () => {
         capabilityDocumentHints: ['invoice_like'],
         sourceSystem: 'invoice',
         documentType: 'invoice',
-          documentExtractionSummary: expect.objectContaining({
-            documentKind: 'invoice',
-            issuerOrCounterparty: 'Lenner Motors s.r.o.',
-            customer: 'JOKELAND s.r.o.',
-            referenceNumber: '141260183',
-            issueDate: '2026-03-11',
-            dueDate: '2026-03-25',
-            taxableDate: '2026-03-11',
-            paymentMethod: 'Přev. příkaz',
-            totalAmountMinor: 1262952,
-            totalCurrency: 'CZK',
-            vatBaseAmountMinor: 1043762,
-            vatAmountMinor: 219190,
-            ibanHint: 'CZ4903000000000274621920',
-            confidence: 'strong',
-            missingRequiredFields: [],
-            groupedHeaderBlockDebug: expect.arrayContaining([
-              expect.objectContaining({
-                blockTypeCandidate: 'vertical-structured-header-block',
-                labels: ['Faktura číslo', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění', 'Datum splatnosti'],
-                values: ['141260183', 'Přev.příkaz', '11.03.2026', '11.03.2026', '25.03.2026'],
-                accepted: true
-              }),
-              expect.objectContaining({
-                blockTypeCandidate: 'vertical-structured-header-block',
-                labels: ['Datum zdanitelného plnění', 'Forma úhrady', 'Datum vystavení'],
-                values: ['n/a', 'n/a', '25.03.2026'],
-                accepted: false,
-                rejectionReason: 'missing reference label'
-              })
-            ]),
-            rawBlockDiscoveryDebug: expect.arrayContaining([
-              expect.objectContaining({
-                rawLines: ['Datum zdanitelného plnění', 'Forma úhrady', 'Datum vystavení', '25.03.2026'],
-                blockTypeGuess: 'dates-payment'
-              }),
-              expect.objectContaining({
-                rawLines: ['DPH Celkem po zaokrouhlení', '21,00 % Záloh celkem', 'Základ DPH', '10 437,62'],
-                blockTypeGuess: 'totals-payable'
-              }),
-              expect.objectContaining({
-                rawLines: ['Celkem Kč k úhradě', '12 629,52', 'K úhradě', '12 629,52'],
-                blockTypeGuess: 'totals-payable'
-              })
-            ]),
-            fieldExtractionDebug: expect.objectContaining({
-              referenceNumber: expect.objectContaining({
-                winnerRule: 'vertical-structured-header-block',
-                winnerValue: '141260183'
-              }),
-              issueDate: expect.objectContaining({
-                winnerRule: 'vertical-structured-header-block',
-                winnerValue: '11.03.2026'
-              }),
-              paymentMethod: expect.objectContaining({
-                winnerRule: 'vertical-structured-header-block',
-                winnerValue: 'Přev. příkaz'
-              }),
-              totalAmount: expect.objectContaining({
-                winnerRule: 'field-specific-payable-total',
-                winnerValue: '12 629,52 CZK'
-              })
+        documentExtractionSummary: expect.objectContaining({
+          documentKind: 'invoice',
+          issuerOrCounterparty: 'Lenner Motors s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          referenceNumber: '141260183',
+          issueDate: '2026-03-11',
+          dueDate: '2026-03-25',
+          taxableDate: '2026-03-11',
+          paymentMethod: 'Přev. příkaz',
+          totalAmountMinor: 1262952,
+          totalCurrency: 'CZK',
+          vatBaseAmountMinor: 1043762,
+          vatAmountMinor: 219190,
+          ibanHint: 'CZ4903000000000274621920',
+          confidence: 'strong',
+          missingRequiredFields: [],
+          groupedHeaderBlockDebug: expect.arrayContaining([
+            expect.objectContaining({
+              blockTypeCandidate: 'vertical-structured-header-block',
+              labels: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
+              values: ['11.03.2026', 'n/a', '25.03.2026', '11.03.2026'],
+              accepted: false,
+              rejectionReason: 'missing reference label'
             })
-          }),
+          ]),
+          rawBlockDiscoveryDebug: expect.arrayContaining([
+            expect.objectContaining({
+              rawLines: ['Datum splatnosti', 'Forma úhrady', 'Datum vystavení', 'Datum zdanitelného plnění'],
+              blockTypeGuess: 'dates-payment'
+            }),
+            expect.objectContaining({
+              rawLines: ['DPH Celkem po zaokrouhlení', '21,00 % Záloh celkem', 'Základ DPH', '10 437,62'],
+              blockTypeGuess: 'totals-payable'
+            }),
+            expect.objectContaining({
+              rawLines: ['S DPH', '10 437,62 Kč', '12 629,52 Kč', 'Razítko a podpis'],
+              blockTypeGuess: 'totals-vat'
+            })
+          ]),
+          fieldExtractionDebug: expect.objectContaining({
+            referenceNumber: expect.objectContaining({
+              winnerRule: 'anchored-header-window',
+              winnerValue: '141260183'
+            }),
+            issueDate: expect.objectContaining({
+              winnerRule: 'grouped-combined-date-payment-row',
+              winnerValue: '11.03.2026'
+            }),
+            paymentMethod: expect.objectContaining({
+              winnerRule: 'grouped-combined-date-payment-row',
+              winnerValue: 'Přev. příkaz'
+            }),
+            totalAmount: expect.objectContaining({
+              winnerRule: 'field-specific-summary-total',
+              winnerValue: '12 629,52 Kč'
+            })
+          })
+        }),
         requiredFieldsCheck: 'passed',
         missingFields: []
       })
