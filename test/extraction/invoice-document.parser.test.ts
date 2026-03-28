@@ -284,37 +284,42 @@ describe('parseInvoiceDocument', () => {
       ]),
       rawBlockDiscoveryDebug: expect.arrayContaining([
         expect.objectContaining({
-          rawLines: ['Faktura číslo', '141260183', 'Forma úhrady', 'Přev.příkaz'],
-          blockTypeGuess: 'header-reference'
+          rawLines: ['Forma úhrady', 'Datum vystavení', '25.03.2026', 'Strana 1/1'],
+          blockTypeGuess: 'dates-payment'
         }),
         expect.objectContaining({
-          rawLines: ['Celkem Kč k úhradě', '12 629,52', 'K úhradě', '12 629,52'],
-          blockTypeGuess: 'totals-payable'
+          rawLines: ['DPH', 'Celkem po zaokrouhlení', '21 919,90 Kč', 'Záloh celkem'],
+          blockTypeGuess: 'totals-payable',
+          promotionDecision: 'rejected:totals block is VAT/subtotal-only'
         })
       ]),
       fieldExtractionDebug: {
         referenceNumber: expect.objectContaining({
-          winnerRule: 'field-specific-reference-window',
+          winnerRule: 'anchored-header-window',
           winnerValue: '141260183',
           candidateValues: ['141260183']
         }),
         issueDate: expect.objectContaining({
-          winnerRule: 'field-specific-labeled-window',
+          winnerRule: 'anchored-header-window',
           winnerValue: '11.03.2026'
         }),
         dueDate: expect.objectContaining({
-          winnerRule: 'field-specific-labeled-window',
+          winnerRule: 'anchored-header-window',
           winnerValue: '25.03.2026'
         }),
         taxableDate: expect.objectContaining({
-          winnerRule: 'field-specific-labeled-window',
+          winnerRule: 'anchored-header-window',
           winnerValue: '11.03.2026'
         }),
         paymentMethod: expect.objectContaining({
-          winnerRule: 'field-specific-labeled-window',
+          winnerRule: 'anchored-header-window',
           winnerValue: 'Přev. příkaz',
           candidateValues: expect.arrayContaining(['Přev.příkaz']),
-          rejectedCandidates: expect.arrayContaining(['Datum vystavení [label-text]'])
+          rejectedCandidates: expect.arrayContaining([
+            'Datum vystavení [label-text]',
+            'Strana 1/1 [page-artifact]',
+            'číslo [invalid]'
+          ])
         }),
         totalAmount: expect.objectContaining({
           winnerRule: 'field-specific-payable-total',
@@ -405,7 +410,7 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
-  it('extracts Lenner invoice number and payable total even when only the bad grouped blocks are promotable for debug', () => {
+  it('extracts Lenner invoice number and payable total from a live-like split Czech browser invoice shape', () => {
     const content = [
       'Faktura - daňový doklad',
       'Dodavatel',
@@ -417,21 +422,24 @@ describe('parseInvoiceDocument', () => {
       'Datum vystavení',
       '25.03.2026',
       'Strana 1/1',
-      'Faktura číslo',
-      '141260183',
+      'Faktura',
+      'číslo',
       'Forma úhrady',
-      'Přev.příkaz',
       'Datum vystavení',
-      '11.03.2026',
       'Datum zdanitelného plnění',
-      '11.03.2026',
       'Datum splatnosti',
+      '141260183',
+      'Přev.příkaz',
+      '11.03.2026',
+      '11.03.2026',
       '25.03.2026',
       'DPH',
       'Celkem po zaokrouhlení',
       '21 919,90 Kč',
       'Záloh celkem',
-      'Celkem Kč k úhradě',
+      'Celkem Kč',
+      'k',
+      'úhradě',
       '12 629,52'
     ].join('\n')
 
@@ -446,8 +454,16 @@ describe('parseInvoiceDocument', () => {
       missingRequiredFields: [],
       fieldExtractionDebug: expect.objectContaining({
         referenceNumber: expect.objectContaining({
-          winnerRule: 'field-specific-reference-window',
+          winnerRule: 'anchored-header-window',
           candidateValues: ['141260183']
+        }),
+        issueDate: expect.objectContaining({
+          winnerRule: 'anchored-header-window',
+          winnerValue: '11.03.2026'
+        }),
+        paymentMethod: expect.objectContaining({
+          winnerRule: 'anchored-header-window',
+          winnerValue: 'Přev. příkaz'
         }),
         totalAmount: expect.objectContaining({
           winnerRule: 'field-specific-payable-total',

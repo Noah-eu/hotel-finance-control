@@ -445,25 +445,25 @@ describe('buildUploadWebFlow', () => {
             ]),
             rawBlockDiscoveryDebug: expect.arrayContaining([
               expect.objectContaining({
-                rawLines: ['Faktura číslo', '141260183', 'Forma úhrady', 'Přev.příkaz'],
-                blockTypeGuess: 'header-reference'
+                rawLines: ['Forma úhrady', 'Datum vystavení', '25.03.2026', 'Strana 1/1'],
+                blockTypeGuess: 'dates-payment'
               }),
               expect.objectContaining({
-                rawLines: ['Celkem Kč k úhradě', '12 629,52', 'K úhradě', '12 629,52'],
+                rawLines: ['DPH', 'Celkem po zaokrouhlení', '21 919,90 Kč', 'Záloh celkem'],
                 blockTypeGuess: 'totals-payable'
               })
             ]),
             fieldExtractionDebug: expect.objectContaining({
               referenceNumber: expect.objectContaining({
-                winnerRule: 'field-specific-reference-window',
+                winnerRule: 'anchored-header-window',
                 winnerValue: '141260183'
               }),
               issueDate: expect.objectContaining({
-                winnerRule: 'field-specific-labeled-window',
+                winnerRule: 'anchored-header-window',
                 winnerValue: '11.03.2026'
               }),
               paymentMethod: expect.objectContaining({
-                winnerRule: 'field-specific-labeled-window',
+                winnerRule: 'anchored-header-window',
                 winnerValue: 'Přev. příkaz'
               }),
               totalAmount: expect.objectContaining({

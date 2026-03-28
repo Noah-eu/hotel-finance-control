@@ -650,6 +650,8 @@ function collectFieldSpecificInvoiceHeaderCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
 ): void {
+  collectAnchoredInvoiceHeaderWindowCandidates(lines, debugStates)
+
   const fieldKeys: InvoiceSummaryFieldKey[] = ['paymentMethod', 'issueDate', 'taxableDate', 'dueDate']
 
   for (const fieldKey of fieldKeys) {
@@ -665,6 +667,61 @@ function collectFieldSpecificInvoiceHeaderCandidates(
         isValidInvoiceFieldValue(fieldKey, candidate.value)
       )
     }
+  }
+}
+
+function collectAnchoredInvoiceHeaderWindowCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  for (let index = 0; index < lines.length; index += 1) {
+    const labelSpan = detectCompositeReferenceLabelSpan(lines, index)
+
+    if (!labelSpan) {
+      continue
+    }
+
+    const referenceMatch = findAnchoredReferenceMatch(lines, labelSpan.endIndex)
+
+    if (!referenceMatch) {
+      continue
+    }
+
+    const tracePrefix = `${labelSpan.rawLabel} => ${referenceMatch.value}`
+    recordInvoiceFieldAttempt(
+      debugStates.referenceNumber,
+      'grouped',
+      referenceMatch.value,
+      'anchored-header-window',
+      tracePrefix,
+      isValidInvoiceFieldValue('referenceNumber', referenceMatch.value)
+    )
+
+    const headerWindowLines = collectAnchoredHeaderWindowLines(lines, referenceMatch.lineIndex)
+    const paymentMethodCandidate = extractAnchoredPaymentMethodCandidate(headerWindowLines, referenceMatch.value)
+    recordInvoiceFieldAttempt(
+      debugStates.paymentMethod,
+      'grouped',
+      paymentMethodCandidate,
+      'anchored-header-window',
+      `${tracePrefix} | payment => ${paymentMethodCandidate ?? 'n/a'}`,
+      isValidInvoiceFieldValue('paymentMethod', paymentMethodCandidate)
+    )
+
+    const dateCandidates = extractAnchoredHeaderDateCandidates(headerWindowLines)
+    const dateFieldKeys: InvoiceSummaryFieldKey[] = ['issueDate', 'taxableDate', 'dueDate']
+
+    dateFieldKeys.forEach((fieldKey, position) => {
+      const candidate = dateCandidates[position]
+      recordInvoiceFieldAttempt(
+        debugStates[fieldKey],
+        'grouped',
+        candidate,
+        'anchored-header-window',
+        `${tracePrefix} | ${fieldKey} => ${candidate ?? 'n/a'}`,
+        isValidInvoiceFieldValue(fieldKey, candidate)
+      )
+    })
   }
 }
 
@@ -724,18 +781,19 @@ function collectFieldSpecificPayableTotalCandidates(
   lines: string[],
   debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
 ): void {
-  for (let index = 0; index < lines.length; index += 1) {
-    const normalized = normalizeLabelSearch(lines[index]!)
-    const previousNormalized = index > 0
-      ? normalizeLabelSearch(lines[index - 1]!)
+  const payableLabelSpans = collectCompositePayableLabelSpans(lines)
+  const explicitPayableLabelSpans = payableLabelSpans.filter((span) => span.priority > 1)
+  const candidateSpans = explicitPayableLabelSpans.length > 0
+    ? explicitPayableLabelSpans
+    : payableLabelSpans
+
+  for (const span of candidateSpans) {
+    const normalized = span.normalizedLabel
+    const previousNormalized = span.startIndex > 0
+      ? normalizeLabelSearch(lines[span.startIndex - 1]!)
       : ''
-
-    if (!isPreferredPayableTotalLabel(normalized) && normalized !== 'celkem po zaokrouhleni') {
-      continue
-    }
-
-    const sameLineMoney = extractPayableMoneyCandidateFromLine(lines[index]!)
-    const sameLineTrace = `${stripTrailingNoise(lines[index]!)} => ${sameLineMoney ?? 'n/a'}`
+    const sameLineMoney = extractPayableMoneyCandidateFromLine(span.rawLabel)
+    const sameLineTrace = `${span.rawLabel} => ${sameLineMoney ?? 'n/a'}`
     recordInvoiceFieldAttempt(
       debugStates.totalAmount,
       'lineWindow',
@@ -745,12 +803,12 @@ function collectFieldSpecificPayableTotalCandidates(
       isValidInvoiceFieldValue('totalAmount', sameLineMoney)
     )
 
-    for (let lookahead = 1; lookahead <= 4 && index + lookahead < lines.length; lookahead += 1) {
-      const candidateLine = stripTrailingNoise(lines[index + lookahead]!)
-      const nextLine = index + lookahead + 1 < lines.length
-        ? stripTrailingNoise(lines[index + lookahead + 1]!)
+    for (let lookahead = 1; lookahead <= 4 && span.endIndex + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[span.endIndex + lookahead]!)
+      const nextLine = span.endIndex + lookahead + 1 < lines.length
+        ? stripTrailingNoise(lines[span.endIndex + lookahead + 1]!)
         : ''
-      const trace = `${stripTrailingNoise(lines[index]!)} -> ${candidateLine}`
+      const trace = `${span.rawLabel} -> ${candidateLine}`
 
       if (containsInvoicePageArtifactValue(candidateLine) || /záloh?\s+celkem/iu.test(candidateLine)) {
         recordInvoiceFieldAttempt(
@@ -1409,7 +1467,10 @@ function rankFieldSpecificLabelCandidates(
     for (let lookahead = 1; lookahead <= 6 && index + lookahead < lines.length; lookahead += 1) {
       const candidateLine = stripTrailingNoise(lines[index + lookahead]!)
 
-      if (containsInvoicePageArtifactValue(candidateLine)) {
+      if (
+        containsInvoicePageArtifactValue(candidateLine)
+        || isInvoiceLabelFragmentText(candidateLine)
+      ) {
         continue
       }
 
@@ -1548,7 +1609,10 @@ function extractReferenceCandidateAfterLabel(line: string): string | undefined {
 function extractPayableMoneyCandidateFromLine(line: string): string | undefined {
   const normalized = stripTrailingNoise(line)
 
-  if (/záloh?\s+celkem/iu.test(normalized)) {
+  if (
+    /záloh?\s+celkem/iu.test(normalized)
+    || /%/.test(normalized)
+  ) {
     return undefined
   }
 
@@ -1774,12 +1838,15 @@ function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: strin
         return Boolean(safeNormalizeDocumentDate(normalizedValue, 'Invoice date'))
       case 'paymentMethod':
         return !isInvoiceLabelText(normalizedValue)
+          && !isInvoiceLabelFragmentText(normalizedValue)
+          && !containsInvoicePageArtifactValue(normalizedValue)
           && extractDateTokens(normalizedValue).length === 0
           && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice payment method')
       case 'totalAmount':
       case 'vatBaseAmount':
       case 'vatAmount':
-        return Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
+        return !/%/.test(normalizedValue)
+          && Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
       case 'ibanHint':
         return Boolean(normalizeIbanValue(normalizedValue))
     default:
@@ -1839,6 +1906,24 @@ function isInvoiceLabelText(value: string): boolean {
     || normalized === 'danovy doklad'
     || normalized === 'rozpis dph'
   )
+}
+
+function isInvoiceLabelFragmentText(value: string): boolean {
+  const normalized = normalizeLabelSearch(value)
+
+  return normalized === 'faktura'
+    || normalized === 'cislo'
+    || normalized === 'datum'
+    || normalized === 'vystaveni'
+    || normalized === 'zdanitelneho plneni'
+    || normalized === 'datum zdanitelneho plneni'
+    || normalized === 'splatnosti'
+    || normalized === 'datum splatnosti'
+    || normalized === 'forma'
+    || normalized === 'uhrady'
+    || normalized === 'forma uhrady'
+    || normalized === 'dodavatel'
+    || normalized === 'odberatel'
 }
 
 function splitDocumentLines(content: string): string[] {
@@ -2041,8 +2126,147 @@ function extractLooseMoneyTokens(value: string, allowMissingCurrency = false): s
     : /\d[\d\s]*(?:[.,]\d{2})\s*(?:CZK|EUR|USD|Kč|KČ|Kc|KC|€|\$)/gu
 
   return Array.from(value.matchAll(pattern))
+    .filter((match) => {
+      const nextCharacter = value[(match.index ?? 0) + (match[0]?.length ?? 0)] ?? ''
+      return nextCharacter !== '%'
+    })
     .map((match) => normalizeDetectedMoneyValue(stripTrailingNoise(match[0] ?? '')))
     .filter((token): token is string => Boolean(token))
+}
+
+function detectCompositeReferenceLabelSpan(
+  lines: string[],
+  startIndex: number
+): { startIndex: number; endIndex: number; rawLabel: string } | undefined {
+  for (let width = 1; width <= 3 && startIndex + width <= lines.length; width += 1) {
+    const rawLabel = lines.slice(startIndex, startIndex + width).map((line) => stripTrailingNoise(line)).join(' ')
+    if (containsInvoicePageArtifactValue(rawLabel)) {
+      continue
+    }
+    if (isInvoiceReferenceLabel(normalizeLabelSearch(rawLabel))) {
+      return {
+        startIndex,
+        endIndex: startIndex + width - 1,
+        rawLabel
+      }
+    }
+  }
+
+  return undefined
+}
+
+function findAnchoredReferenceMatch(
+  lines: string[],
+  labelEndIndex: number
+): { value: string; lineIndex: number } | undefined {
+  for (let lineIndex = labelEndIndex; lineIndex < lines.length && lineIndex <= labelEndIndex + 8; lineIndex += 1) {
+    const candidateLine = stripTrailingNoise(lines[lineIndex]!)
+
+    if (containsInvoicePageArtifactValue(candidateLine)) {
+      continue
+    }
+
+    const candidate = extractFirstInvoiceReferenceCandidate(candidateLine)
+    if (isValidInvoiceFieldValue('referenceNumber', candidate)) {
+      return { value: candidate!, lineIndex }
+    }
+  }
+
+  return undefined
+}
+
+function collectAnchoredHeaderWindowLines(lines: string[], referenceLineIndex: number): string[] {
+  const windowLines: string[] = []
+
+  for (let index = referenceLineIndex; index < lines.length && windowLines.length < 6; index += 1) {
+    const line = stripTrailingNoise(lines[index]!)
+    if (containsInvoicePageArtifactValue(line)) {
+      continue
+    }
+    if (windowLines.length > 0 && isInvoiceSectionBoundary(line)) {
+      break
+    }
+    windowLines.push(line)
+  }
+
+  return windowLines
+}
+
+function extractAnchoredPaymentMethodCandidate(
+  lines: string[],
+  referenceNumber: string
+): string | undefined {
+  for (const line of lines) {
+    const withoutReference = stripTrailingNoise(line).replace(referenceNumber, '').trim()
+    if (!withoutReference) {
+      continue
+    }
+
+    const firstDateIndex = withoutReference.search(/\d{1,2}[./]\d{1,2}[./]\d{4}/)
+    const prefix = firstDateIndex >= 0 ? withoutReference.slice(0, firstDateIndex).trim() : withoutReference
+
+    if (isValidInvoiceFieldValue('paymentMethod', prefix)) {
+      return prefix
+    }
+
+    if (isValidInvoiceFieldValue('paymentMethod', withoutReference)) {
+      return withoutReference
+    }
+  }
+
+  return undefined
+}
+
+function extractAnchoredHeaderDateCandidates(lines: string[]): string[] {
+  return lines.flatMap((line) => extractDateTokens(line)).slice(0, 3)
+}
+
+function collectCompositePayableLabelSpans(
+  lines: string[]
+): Array<{ startIndex: number; endIndex: number; rawLabel: string; normalizedLabel: string; priority: number }> {
+  const spans: Array<{ startIndex: number; endIndex: number; rawLabel: string; normalizedLabel: string; priority: number }> = []
+
+  for (let index = 0; index < lines.length; index += 1) {
+    for (let width = 1; width <= 3 && index + width <= lines.length; width += 1) {
+      const rawLabel = lines.slice(index, index + width).map((line) => stripTrailingNoise(line)).join(' ')
+      const normalizedLabel = normalizeLabelSearch(rawLabel)
+      const priority = payableLabelPriority(normalizedLabel)
+
+      if (priority === 0) {
+        continue
+      }
+
+      spans.push({
+        startIndex: index,
+        endIndex: index + width - 1,
+        rawLabel,
+        normalizedLabel,
+        priority
+      })
+    }
+  }
+
+  return spans.filter((span, index, all) => all.findIndex((other) => (
+    other.startIndex === span.startIndex
+    && other.endIndex === span.endIndex
+    && other.normalizedLabel === span.normalizedLabel
+  )) === index)
+}
+
+function payableLabelPriority(normalizedLabel: string): number {
+  if (
+    normalizedLabel === 'celkem kc k uhrade'
+    || normalizedLabel === 'celkem k uhrade'
+    || normalizedLabel === 'k uhrade'
+  ) {
+    return 2
+  }
+
+  if (normalizedLabel === 'celkem po zaokrouhleni') {
+    return 1
+  }
+
+  return 0
 }
 
 function normalizeInvoiceReferenceValue(value: string | undefined): string | undefined {
