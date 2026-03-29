@@ -349,29 +349,71 @@ function renderOperatorWebDemoHtml(input: {
         border: 1px solid #e4ebf6;
         border-radius: 12px;
         background: #fbfdff;
-        padding: 12px;
-        margin-bottom: 10px;
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .expense-item-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .expense-item-title {
+        font-size: 17px;
+        line-height: 1.45;
+        font-weight: 700;
       }
       .expense-comparison {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);
-        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        align-items: start;
       }
-      .expense-side,
-      .expense-status {
-        border-radius: 10px;
+      .expense-zone {
+        border-radius: 12px;
         background: #f7f9fc;
-        padding: 10px 12px;
+        border: 1px solid #dce6f5;
+        padding: 14px 16px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
-      .expense-side h6,
-      .expense-status h6 {
+      .expense-zone h6 {
         margin: 0 0 8px;
-        font-size: 13px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
       }
-      .expense-side ul,
-      .expense-status ul {
+      .expense-zone ul {
         margin: 0;
         padding-left: 18px;
+      }
+      .expense-zone li {
+        margin-bottom: 6px;
+      }
+      .expense-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .expense-summary-tile {
+        background: #ffffff;
+        border: 1px solid #dce6f5;
+        border-radius: 12px;
+        padding: 14px 16px;
+      }
+      .expense-summary-tile strong {
+        display: block;
+        font-size: 26px;
+        line-height: 1.1;
+        margin-bottom: 6px;
+      }
+      .expense-summary-tile span {
+        display: block;
+        color: #52627a;
       }
       .status-badge {
         display: inline-block;
@@ -1829,15 +1871,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildExpenseReviewItemMarkup(item) {
         const comparison = item && item.expenseComparison ? item.expenseComparison : {};
+        const matchStrength = String((item && item.matchStrength) || 'neuvedeno');
+        const badgeClass = mapMatchStrengthToBadgeClass(item && item.matchStrength);
 
         return [
           '<article class="expense-item">',
-          '<strong>' + escapeHtml(String((item && item.title) || 'Výdaj')) + '</strong>',
+          '<div class="expense-item-header">',
+          '<div class="expense-item-title">' + escapeHtml(String((item && item.title) || 'Výdaj')) + '</div>',
+          '<span class="status-badge ' + escapeHtml(badgeClass) + '">' + escapeHtml(matchStrength) + '</span>',
+          '</div>',
           '<div class="expense-comparison">',
           buildExpenseReviewSideMarkup('Doklad', comparison.document, true),
-          '<div class="expense-status">',
+          '<div class="expense-zone expense-status">',
           '<h6>Stav a důkazy</h6>',
-          '<span class="status-badge ' + escapeHtml(mapMatchStrengthToBadgeClass(item && item.matchStrength)) + '">' + escapeHtml(String((item && item.matchStrength) || 'neuvedeno')) + '</span>',
           item && item.operatorExplanation
             ? '<div class="hint"><strong>Vyhodnocení:</strong> ' + escapeHtml(String(item.operatorExplanation)) + '</div>'
             : '',
@@ -1876,7 +1922,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ];
         const visibleFields = fields.filter((entry) => Boolean(entry[1]));
 
-        return '<div class="expense-side"><h6>' + escapeHtml(title) + '</h6>'
+        return '<div class="expense-zone"><h6>' + escapeHtml(title) + '</h6>'
           + (visibleFields.length === 0
             ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
             : '<ul>' + visibleFields.map((entry) =>
@@ -1928,44 +1974,49 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ];
       }
 
-      function buildExpenseReviewSummaryMarkup(state, phase) {
-        const buckets = buildExpenseReviewBuckets(state && state.reviewSections);
+      function buildExpenseSummaryTilesMarkup(buckets) {
+        return '<div class="expense-summary-grid">' + buckets.map((bucket) =>
+          '<article class="expense-summary-tile" data-expense-bucket-key="' + escapeHtml(bucket.key) + '" data-expense-count="' + escapeHtml(String(bucket.items.length)) + '">'
+          + '<strong>' + escapeHtml(String(bucket.items.length)) + '</strong>'
+          + '<span>' + escapeHtml(bucket.title) + '</span>'
+          + '</article>'
+        ).join('') + '</div>';
+      }
+
+      function buildExpenseReviewSummaryMarkup(buckets, phase) {
+        const normalizedBuckets = Array.isArray(buckets) ? buckets : [];
 
         if (phase === 'running') {
           return '<p class="hint">Přehled bucketů pro výdaje se právě načítá ze stejného runtime běhu…</p>'
-            + '<p class="hint">Detailní kontrola dokladů a banky se otevře do samostatného tabu, jakmile bude běh hotový.</p>';
+            + '<p class="hint">Detailní kontrola dokladů a banky se otevře v interním detailu, jakmile bude běh hotový.</p>';
         }
 
         if (phase === 'failed') {
           return '<p class="hint">Kontrola výdajů a dokladů není k dispozici, protože runtime běh selhal.</p>';
         }
 
-        const totalCount = buckets.reduce((sum, bucket) => sum + bucket.items.length, 0);
+        const totalCount = normalizedBuckets.reduce((sum, bucket) => sum + bucket.items.length, 0);
 
         if (phase === 'placeholder' || totalCount === 0) {
           return '<p class="hint">Po spuštění se zde ukáže přehled bucketů pro doklady a odchozí bankovní platby.</p>'
-            + '<p class="hint">Samotná detailní kontrola se otevírá do nového tabu, aby hlavní stránka zůstala přehledná.</p>';
+            + '<p class="hint">Samotná detailní kontrola se otevírá v interním detailu, aby hlavní stránka zůstala přehledná.</p>';
         }
 
         return [
-          '<p class="hint">Doklady a odchozí platby mají vlastní interní detail. Hlavní přehled zůstává kompaktní a zobrazuje jen souhrn bucketů.</p>',
-          '<ul>',
-          buckets.map((bucket) => '<li><strong>' + escapeHtml(bucket.title) + ':</strong> ' + escapeHtml(String(bucket.items.length)) + '</li>').join(''),
-          '</ul>'
+          '<p class="hint">Počty v kartě níže vycházejí ze stejných bucketů, které jsou vykreslené v detailu Kontrola výdajů a dokladů.</p>',
+          buildExpenseSummaryTilesMarkup(normalizedBuckets)
         ].join('');
       }
 
-      function buildExpenseDetailSummaryMarkup(state) {
+      function buildExpenseDetailSummaryMarkup(state, buckets) {
         const normalizedState = state || initialRuntimeState;
-        const buckets = buildExpenseReviewBuckets(normalizedState.reviewSections);
+        const normalizedBuckets = Array.isArray(buckets) ? buckets : [];
 
         return [
           '<p><strong>Měsíc:</strong> ' + escapeHtml(normalizedState.monthLabel || 'neuvedeno') + '</p>',
           '<p><strong>Run ID:</strong> <code>' + escapeHtml(normalizedState.runId || 'bez runtime běhu') + '</code></p>',
           '<p class="hint">Souhrnné počty musí odpovídat přesně viditelným bucketům níže.</p>',
-          '<ul>',
-          buckets.map((bucket) => '<li><strong>' + escapeHtml(bucket.title) + ':</strong> ' + escapeHtml(String(bucket.items.length)) + '</li>').join(''),
-          '</ul>'
+          buildExpenseSummaryTilesMarkup(normalizedBuckets)
         ].join('');
       }
 
@@ -2121,6 +2172,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
             finalPayoutProjection: collectVisiblePayoutProjection(state)
           };
         const payoutProjection = getVisiblePayoutProjection(visibleState);
+        const expenseReviewBuckets = buildExpenseReviewBuckets(visibleState.reviewSections);
+        const expenseBucketMap = expenseReviewBuckets.reduce((map, bucket) => {
+          map[bucket.key] = bucket;
+          return map;
+        }, {});
 
         preparedFilesSection.setAttribute('data-runtime-phase', phase);
         reviewSummarySection.setAttribute('data-runtime-phase', phase);
@@ -2166,12 +2222,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
-        expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(visibleState, phase);
-        expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState);
-        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseMatched) || [], 'Žádné spárované výdaje.');
-        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseNeedsReview) || [], 'Žádné výdaje ke kontrole.');
-        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedDocuments) || [], 'Žádné nespárované doklady.');
-        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedOutflows) || [], 'Žádné nespárované odchozí platby.');
+        expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(expenseReviewBuckets, phase);
+        expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
+        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.items) || [], 'Žádné spárované výdaje.');
+        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || [], 'Žádné výdaje ke kontrole.');
+        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || [], 'Žádné nespárované doklady.');
+        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || [], 'Žádné nespárované odchozí platby.');
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         renderCompletedRuntimePayoutDiagnostics(visibleState);

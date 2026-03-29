@@ -47,6 +47,10 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Kompaktní přehled měsíčního běhu')
     expect(result.html).toContain('id="open-expense-review-button"')
     expect(result.html).toContain('id="open-control-detail-button"')
+    expect(result.html).toContain('expense-summary-grid')
+    expect(result.html).toContain('expense-summary-tile')
+    expect(result.html).toContain('grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));')
+    expect(result.html).not.toContain('grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);')
     expect(result.html).not.toContain('window.open(')
     expect(result.html).not.toContain('about:blank')
     expect(result.html).toContain('Exportní handoff')
@@ -1742,19 +1746,33 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Výdaje ke kontrole')
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Nespárované doklady')
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Nespárované odchozí platby')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseMatched"')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseNeedsReview"')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseUnmatchedDocuments"')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseUnmatchedOutflows"')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Lenner Motors s.r.o.')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('141260183')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Doklad ↔ banka:')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Částka:')
-    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<h6>Doklad</h6>')
-    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<h6>Stav a důkazy</h6>')
-    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<h6>Banka</h6>')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-item-header">')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-zone"><h6>Doklad</h6>')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-zone expense-status"><h6>Stav a důkazy</h6>')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-zone"><h6>Banka</h6>')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).not.toContain('Airbnb payout dávka')
 
-    const expenseMatchedSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Spárované výdaje')
-    const expenseReviewSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Výdaje ke kontrole')
-    const expenseUnmatchedDocumentsSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Nespárované doklady')
-    const expenseUnmatchedOutflowsSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Nespárované odchozí platby')
+    const expenseMatchedSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseMatched')
+    const expenseReviewSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
+    const expenseUnmatchedDocumentsSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedDocuments')
+    const expenseUnmatchedOutflowsSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')
+    const expenseMatchedLauncherCount = extractExpenseBucketCount(rendered.expenseReviewSummaryContent.innerHTML, 'expenseMatched')
+    const expenseReviewLauncherCount = extractExpenseBucketCount(rendered.expenseReviewSummaryContent.innerHTML, 'expenseNeedsReview')
+    const expenseUnmatchedDocumentsLauncherCount = extractExpenseBucketCount(rendered.expenseReviewSummaryContent.innerHTML, 'expenseUnmatchedDocuments')
+    const expenseUnmatchedOutflowsLauncherCount = extractExpenseBucketCount(rendered.expenseReviewSummaryContent.innerHTML, 'expenseUnmatchedOutflows')
+
+    expect(expenseMatchedLauncherCount).toBe(expenseMatchedSummaryCount)
+    expect(expenseReviewLauncherCount).toBe(expenseReviewSummaryCount)
+    expect(expenseUnmatchedDocumentsLauncherCount).toBe(expenseUnmatchedDocumentsSummaryCount)
+    expect(expenseUnmatchedOutflowsLauncherCount).toBe(expenseUnmatchedOutflowsSummaryCount)
 
     expect(expenseMatchedSummaryCount).toBe(rendered.expenseMatchedContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(expenseReviewSummaryCount).toBe(rendered.expenseReviewContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
@@ -2338,6 +2356,17 @@ function extractSummaryCount(markup: string, label: string): number {
 
   if (!match?.[1]) {
     throw new Error(`Summary count for ${label} not found in markup.`)
+  }
+
+  return Number(match[1])
+}
+
+function extractExpenseBucketCount(markup: string, key: string): number {
+  const pattern = new RegExp(`data-expense-bucket-key="${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*data-expense-count="(\\d+)"`)
+  const match = markup.match(pattern)
+
+  if (!match?.[1]) {
+    throw new Error(`Expense bucket count for ${key} not found in markup.`)
   }
 
   return Number(match[1])
