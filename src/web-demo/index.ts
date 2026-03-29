@@ -2427,6 +2427,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildExpenseReviewItemMarkup(item, bucketKey) {
         const comparison = item && item.expenseComparison ? item.expenseComparison : {};
+        const comparisonVariant = comparison && comparison.variant === 'bank-bank' ? 'bank-bank' : 'document-bank';
+        const leftLabel = comparison && comparison.leftLabel ? comparison.leftLabel : (comparisonVariant === 'bank-bank' ? 'Odchozí účet' : 'Doklad');
+        const rightLabel = comparison && comparison.rightLabel ? comparison.rightLabel : (comparisonVariant === 'bank-bank' ? 'Příchozí účet' : 'Banka');
         const matchStrength = String((item && item.matchStrength) || 'neuvedeno');
         const badgeClass = mapMatchStrengthToBadgeClass(item && item.matchStrength);
         const manualAuditMarkup = item && item.manualDecisionLabel
@@ -2456,7 +2459,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<span class="status-badge ' + escapeHtml(badgeClass) + '">' + escapeHtml(matchStrength) + '</span>',
           '</div>',
           '<div class="expense-comparison">',
-          buildExpenseReviewSideMarkup('Doklad', comparison.document, true),
+          buildExpenseReviewSideMarkup(leftLabel, comparison.document, comparisonVariant === 'document-bank' ? 'document' : 'bank'),
           '<div class="expense-zone expense-status">',
           '<h6>Stav a důkazy</h6>',
           manualAuditMarkup,
@@ -2472,13 +2475,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : '',
           actionsMarkup,
           '</div>',
-          buildExpenseReviewSideMarkup('Banka', comparison.bank, false),
+          buildExpenseReviewSideMarkup(rightLabel, comparison.bank, 'bank'),
           '</div>',
           '</article>'
         ].join('');
       }
 
-      function buildExpenseReviewSideMarkup(title, side, isDocument) {
+      function buildExpenseReviewSideMarkup(title, side, sideMode) {
+        const isDocument = sideMode === 'document';
         const fields = isDocument
           ? [
               ['Dodavatel', side && side.supplierOrCounterparty],
@@ -2711,6 +2715,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : [],
           expenseComparison: item && item.expenseComparison
             ? {
+                variant: item.expenseComparison.variant,
+                leftLabel: item.expenseComparison.leftLabel,
+                rightLabel: item.expenseComparison.rightLabel,
                 document: { ...((item.expenseComparison && item.expenseComparison.document) || {}) },
                 ...(
                   item.expenseComparison && item.expenseComparison.bank

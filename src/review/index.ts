@@ -1,4 +1,4 @@
-import type { ExceptionCase } from '../domain'
+import type { ExceptionCase, NormalizedTransaction } from '../domain'
 import type { MonthlyBatchResult, UploadedMonthlyFileRoute } from '../monthly-batch'
 import { formatAmountMinorCs } from '../shared/money'
 
@@ -37,6 +37,9 @@ export interface ReviewExpenseComparisonSide {
 }
 
 export interface ReviewExpenseComparison {
+  variant?: 'document-bank' | 'bank-bank'
+  leftLabel?: string
+  rightLabel?: string
   document: ReviewExpenseComparisonSide
   bank?: ReviewExpenseComparisonSide
 }
@@ -238,6 +241,7 @@ const EXPENSE_REVIEW_CONFIRMED_MAX_DAY_DISTANCE = 7
 const EXPENSE_REVIEW_STRONG_MAX_DAY_DISTANCE = 14
 const EXPENSE_REVIEW_CANDIDATE_MAX_DAY_DISTANCE = 21
 const EXPENSE_REVIEW_WEAK_AMOUNT_DELTA_MINOR = 1000
+const INTERNAL_TRANSFER_MAX_DAY_DISTANCE = 2
 const DOCUMENT_RECORD_TYPE_SET = new Set(['invoice-document', 'receipt-document'])
 
 interface ExpenseDocumentReviewEntry {
@@ -268,6 +272,19 @@ interface ExpenseBankCandidateSelection {
 interface ExpenseCandidatePlan {
   documentEntry: ExpenseDocumentReviewEntry
   evaluations: ExpenseBankCandidateEvaluation[]
+}
+
+interface InternalTransferCandidateEvaluation {
+  incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  dateDistance: number
+  outgoingMentionsIncomingAccount: boolean
+  incomingMentionsOutgoingAccount: boolean
+  score: number
+}
+
+interface InternalTransferPairSelection {
+  outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
 }
 
 function cloneReviewSectionItems(items: ReviewSectionItem[]): ReviewSectionItem[] {
@@ -438,11 +455,20 @@ function buildExpenseReviewSections(
       .filter((exceptionCase) => exceptionCase.ruleCode === 'missing_supporting_document')
       .flatMap((exceptionCase) => exceptionCase.relatedTransactionIds)
   )
+  const internalTransferPairs = buildInternalTransferPairSelections(
+    batch.reconciliation.normalizedTransactions,
+    missingSupportingOutflowIds,
+    linkedExpenseTransactionIds
+  )
+  const internalTransferOutflowKeys = new Set(
+    internalTransferPairs.map((pair) => buildReviewBankTransactionKey(pair.outgoingTransaction))
+  )
   const candidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
     transaction.source === 'bank'
     && transaction.direction === 'out'
     && missingSupportingOutflowIds.has(transaction.id)
     && !linkedExpenseTransactionIds.has(transaction.id)
+    && !internalTransferOutflowKeys.has(buildReviewBankTransactionKey(transaction))
   )
   const usedCandidateBankIds = new Set<string>()
 
@@ -461,6 +487,11 @@ function buildExpenseReviewSections(
 
     return [toExpenseMatchedReviewItem(batch, documentEntry, bankTransaction, link.reasons, link.matchScore, fileRoutes)]
   })
+  expenseMatched.push(
+    ...internalTransferPairs.map((pair) =>
+      toInternalTransferMatchedReviewItem(pair.outgoingTransaction, pair.incomingTransaction)
+    )
+  )
 
   const expenseNeedsReview: ReviewSectionItem[] = []
   const expenseUnmatchedDocuments: ReviewSectionItem[] = []
@@ -522,6 +553,10 @@ function buildExpenseReviewSections(
         return []
       }
 
+      if (internalTransferOutflowKeys.has(buildReviewBankTransactionKey(transaction))) {
+        return []
+      }
+
       return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes)]
     })
 
@@ -568,6 +603,29 @@ function toExpenseMatchedReviewItem(
       : 'Zkontrolujte ručně reference dokladu, protistranu a datum platby.',
     documentBankRelation: 'Potvrzená pravděpodobná vazba mezi dokladem a odchozí bankovní platbou.',
     expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
+  }
+}
+
+function toInternalTransferMatchedReviewItem(
+  outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ReviewSectionItem {
+  const dateDistance = calculateDayDistance(outgoingTransaction.bookedAt, incomingTransaction.bookedAt)
+
+  return {
+    id: `expense-matched:internal-transfer:${buildReviewBankTransactionKey(outgoingTransaction)}:${buildReviewBankTransactionKey(incomingTransaction)}`,
+    domain: 'expense',
+    kind: 'expense-matched',
+    title: `Vnitřní převod ${formatAmountMinorCs(outgoingTransaction.amountMinor, outgoingTransaction.currency)}`,
+    detail: 'Odchozí a příchozí bankovní pohyb tvoří interní převod mezi vlastními účty hotelu.',
+    transactionIds: [outgoingTransaction.id, incomingTransaction.id],
+    sourceDocumentIds: uniqueTextValues([...outgoingTransaction.sourceDocumentIds, ...incomingTransaction.sourceDocumentIds]),
+    matchStrength: 'potvrzená shoda',
+    evidenceSummary: buildInternalTransferEvidenceSummary(outgoingTransaction, incomingTransaction, dateDistance),
+    operatorExplanation: 'Systém rozpoznal odpovídající příchozí a odchozí pohyb mezi vlastními účty hotelu. Nejde o výdaj vyžadující doklad.',
+    operatorCheckHint: 'Ruční kontrolu dělejte jen pokud částka nebo čísla účtů neodpovídají internímu převodu mezi vlastními účty.',
+    documentBankRelation: 'Pohyby tvoří interní převod mezi vlastními účty hotelu; nejde o nespárovaný výdaj.',
+    expenseComparison: buildInternalTransferComparison(outgoingTransaction, incomingTransaction)
   }
 }
 
@@ -867,6 +925,9 @@ function buildExpenseComparison(
   const documentData = documentEntry.extractedRecord.data as Record<string, unknown>
 
   return {
+    variant: 'document-bank',
+    leftLabel: 'Doklad',
+    rightLabel: 'Banka',
     document: {
       supplierOrCounterparty: readString(documentData.supplier) ?? readString(documentData.merchant) ?? documentEntry.normalizedTransaction?.counterparty,
       reference: getExpenseDocumentReference(documentEntry),
@@ -897,6 +958,9 @@ function buildExpenseOutflowComparison(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
 ): ReviewExpenseComparison {
   return {
+    variant: 'document-bank',
+    leftLabel: 'Doklad',
+    rightLabel: 'Banka',
     document: {},
     bank: {
       supplierOrCounterparty: bankTransaction.counterparty,
@@ -906,6 +970,32 @@ function buildExpenseOutflowComparison(
       currency: bankTransaction.currency,
       bankAccount: bankTransaction.accountId
     }
+  }
+}
+
+function buildInternalTransferComparison(
+  outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ReviewExpenseComparison {
+  return {
+    variant: 'bank-bank',
+    leftLabel: 'Odchozí účet',
+    rightLabel: 'Příchozí účet',
+    document: buildBankReviewComparisonSide(outgoingTransaction),
+    bank: buildBankReviewComparisonSide(incomingTransaction)
+  }
+}
+
+function buildBankReviewComparisonSide(
+  transaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ReviewExpenseComparisonSide {
+  return {
+    supplierOrCounterparty: transaction.counterparty,
+    reference: transaction.reference,
+    bookedAt: transaction.bookedAt,
+    amount: formatAmountMinorCs(transaction.amountMinor, transaction.currency),
+    currency: transaction.currency,
+    bankAccount: transaction.accountId
   }
 }
 
@@ -1008,6 +1098,216 @@ function buildExpenseOutflowEvidenceSummary(
     maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankTransaction.counterparty, bankTransaction.accountId]).join(' · ')),
     { label: 'dokument', value: 'chybí' }
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildInternalTransferEvidenceSummary(
+  outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  dateDistance: number
+): ReviewEvidenceEntry[] {
+  return [
+    { label: 'částka', value: 'sedí' },
+    { label: 'rozdíl částky', value: formatAmountMinorCs(0, outgoingTransaction.currency) },
+    { label: 'datum', value: dateDistance === 0 ? 'sedí' : 'v toleranci' },
+    { label: 'rozdíl dnů', value: `${dateDistance} dní` },
+    maybeEvidenceEntry(
+      'reference',
+      uniqueTextValues([outgoingTransaction.reference, incomingTransaction.reference]).join(' ↔ ') || 'nelze ověřit'
+    ),
+    maybeEvidenceEntry(
+      'protistrana / účet',
+      uniqueTextValues([
+        `${outgoingTransaction.accountId} → ${incomingTransaction.accountId}`,
+        outgoingTransaction.counterparty,
+        incomingTransaction.counterparty
+      ]).join(' · ')
+    ),
+    maybeEvidenceEntry(
+      'zpráva banky',
+      uniqueTextValues([outgoingTransaction.reference, incomingTransaction.reference]).join(' ↔ ')
+    ),
+    { label: 'dokument', value: 'nejde o výdajový doklad' }
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildInternalTransferPairSelections(
+  transactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
+  missingSupportingOutflowIds: Set<NormalizedTransaction['id']>,
+  linkedExpenseTransactionIds: Set<NormalizedTransaction['id']>
+): InternalTransferPairSelection[] {
+  const bankTransactions = transactions.filter((transaction) =>
+    transaction.source === 'bank'
+    && transaction.currency
+    && transaction.accountId
+  )
+  const knownOwnAccountIds = uniqueTextValues(bankTransactions.map((transaction) => transaction.accountId))
+  const incomingTransactions = bankTransactions.filter((transaction) => transaction.direction === 'in')
+  const outgoingTransactions = bankTransactions.filter((transaction) =>
+    transaction.direction === 'out'
+    && missingSupportingOutflowIds.has(transaction.id)
+    && !linkedExpenseTransactionIds.has(transaction.id)
+  )
+  const usedIncomingKeys = new Set<string>()
+  const pairs: InternalTransferPairSelection[] = []
+
+  for (const outgoingTransaction of outgoingTransactions) {
+    const evaluations = incomingTransactions
+      .filter((incomingTransaction) => !usedIncomingKeys.has(buildReviewBankTransactionKey(incomingTransaction)))
+      .map((incomingTransaction) =>
+        evaluateInternalTransferCandidate(outgoingTransaction, incomingTransaction, knownOwnAccountIds)
+      )
+      .filter((evaluation): evaluation is InternalTransferCandidateEvaluation => Boolean(evaluation))
+      .sort((left, right) =>
+        right.score - left.score
+        || left.dateDistance - right.dateDistance
+        || left.incomingTransaction.bookedAt.localeCompare(right.incomingTransaction.bookedAt)
+        || buildReviewBankTransactionKey(left.incomingTransaction).localeCompare(buildReviewBankTransactionKey(right.incomingTransaction))
+      )
+
+    const winner = evaluations[0]
+    if (!winner) {
+      continue
+    }
+
+    const ambiguousCount = evaluations.filter((evaluation) =>
+      evaluation.score === winner.score
+      && evaluation.dateDistance === winner.dateDistance
+    ).length
+
+    if (ambiguousCount > 1) {
+      continue
+    }
+
+    const incomingKey = buildReviewBankTransactionKey(winner.incomingTransaction)
+    usedIncomingKeys.add(incomingKey)
+    pairs.push({
+      outgoingTransaction,
+      incomingTransaction: winner.incomingTransaction
+    })
+  }
+
+  return pairs
+}
+
+function evaluateInternalTransferCandidate(
+  outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  knownOwnAccountIds: string[]
+): InternalTransferCandidateEvaluation | null {
+  if (incomingTransaction.direction !== 'in') {
+    return null
+  }
+
+  if (outgoingTransaction.currency !== incomingTransaction.currency) {
+    return null
+  }
+
+  if (outgoingTransaction.amountMinor !== incomingTransaction.amountMinor) {
+    return null
+  }
+
+  if (!outgoingTransaction.accountId || !incomingTransaction.accountId) {
+    return null
+  }
+
+  if (outgoingTransaction.accountId === incomingTransaction.accountId) {
+    return null
+  }
+
+  if (
+    !knownOwnAccountIds.includes(outgoingTransaction.accountId)
+    || !knownOwnAccountIds.includes(incomingTransaction.accountId)
+  ) {
+    return null
+  }
+
+  const dateDistance = calculateDayDistance(outgoingTransaction.bookedAt, incomingTransaction.bookedAt)
+  if (!Number.isFinite(dateDistance) || dateDistance > INTERNAL_TRANSFER_MAX_DAY_DISTANCE) {
+    return null
+  }
+
+  const outgoingMentionsIncomingAccount = bankTransactionMentionsAccount(outgoingTransaction, incomingTransaction.accountId)
+  const incomingMentionsOutgoingAccount = bankTransactionMentionsAccount(incomingTransaction, outgoingTransaction.accountId)
+
+  if (!outgoingMentionsIncomingAccount && !incomingMentionsOutgoingAccount) {
+    return null
+  }
+
+  let score = 0
+
+  if (dateDistance === 0) {
+    score += 2
+  } else {
+    score += 1
+  }
+
+  if (outgoingMentionsIncomingAccount) {
+    score += 2
+  }
+
+  if (incomingMentionsOutgoingAccount) {
+    score += 2
+  }
+
+  return {
+    incomingTransaction,
+    dateDistance,
+    outgoingMentionsIncomingAccount,
+    incomingMentionsOutgoingAccount,
+    score
+  }
+}
+
+function bankTransactionMentionsAccount(
+  transaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  accountId: string
+): boolean {
+  const comparableTexts = [transaction.counterparty, transaction.reference, transaction.accountId]
+
+  return comparableTexts.some((value) => textContainsAccountHint(value, accountId))
+}
+
+function textContainsAccountHint(value: string | undefined, accountId: string): boolean {
+  const normalizedValue = normalizeComparableValue(value)
+  const normalizedValueDigits = String(value ?? '').replace(/\D+/g, '')
+
+  return buildComparableAccountHints(accountId).some((hint) =>
+    hint.length >= 6
+    && (
+      normalizedValue.includes(hint)
+      || normalizedValueDigits.includes(hint.replace(/\D+/g, ''))
+    )
+  )
+}
+
+function buildComparableAccountHints(accountId: string): string[] {
+  const normalized = accountId.trim().toLowerCase()
+  const digits = normalized.replace(/\D+/g, '')
+  const [accountNumberPart, bankCodePart] = normalized.split('/')
+  const accountNumberDigits = (accountNumberPart ?? '').replace(/\D+/g, '')
+  const bankCodeDigits = (bankCodePart ?? '').replace(/\D+/g, '')
+
+  return uniqueTextValues([
+    normalizeComparableValue(normalized),
+    digits,
+    accountNumberDigits,
+    bankCodeDigits ? `${accountNumberDigits}${bankCodeDigits}` : undefined
+  ])
+}
+
+function buildReviewBankTransactionKey(
+  transaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): string {
+  return [
+    transaction.id,
+    transaction.accountId,
+    transaction.direction,
+    transaction.bookedAt,
+    transaction.amountMinor,
+    transaction.currency,
+    transaction.reference,
+    transaction.counterparty
+  ].map((value) => String(value ?? '')).join('|')
 }
 
 function getExpenseDocumentReference(documentEntry: ExpenseDocumentReviewEntry): string | undefined {

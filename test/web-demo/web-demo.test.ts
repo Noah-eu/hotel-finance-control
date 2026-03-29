@@ -2551,6 +2551,61 @@ describe('buildWebDemo', () => {
     expect(expenseRows.some((row) => row.Částka === '31,20 Kč')).toBe(false)
   })
 
+  it('renders and exports an own-account RB to Fio transfer as an internal matched transfer instead of an unmatched expense outflow', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T19:25:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-internal-transfer-pair',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndInternalTransferOutflow(),
+          'text/csv'
+        ),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithInternalTransferInflow(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Vnitřní převod 5 000,00 Kč')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Odchozí účet')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Příchozí účet')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('5599955956/5500')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('8888997777/2010')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+
+    rendered.setWorkspaceExportPreset('complete')
+    rendered.downloadWorkspaceExcelExport()
+
+    const workbook = readWorkbookFromBrowserExportBase64(
+      (rendered.getLastExcelExport() as { base64Content: string }).base64Content
+    )
+    const expenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Výdaje a doklady'])
+
+    expect(expenseRows.some((row) =>
+      row.Sekce === 'Spárované výdaje'
+      && row.Titulek === 'Vnitřní převod 5 000,00 Kč'
+      && row['Účet / IBAN hint'] === '5599955956/5500 ↔ 8888997777/2010'
+    )).toBe(true)
+    expect(expenseRows.some((row) =>
+      row.Sekce === 'Nespárované odchozí platby'
+      && row.Titulek.includes('5 000,00 Kč')
+    )).toBe(false)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({
@@ -3716,6 +3771,21 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
     '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-3120;CZK;Platba bez dokladu'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndInternalTransferOutflow(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '27.03.2026 09:00;27.03.2026 09:01;5599955956/5500;8888997777/2010;Převod na vlastní Fio účet;-5000,00;CZK;Převod na Fio účet 8888997777/2010'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithInternalTransferInflow(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:02;5000,00;CZK;8888997777/2010;5599955956/5500;Převod z vlastního RB účtu;Převod z RB 5599955956/5500'
   ].join('\n')
 }
 

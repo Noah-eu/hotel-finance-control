@@ -644,6 +644,47 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
   })
 
+  it('pairs an own-account RB to Fio transfer as an internal matched transfer instead of an unmatched expense outflow', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndInternalTransferOutflow(),
+          'text/csv'
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithInternalTransferInflow(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T19:20:00.000Z'
+    })
+
+    expect(result.reviewSections.expenseMatched.some((item) =>
+      item.title === 'Vnitřní převod 5 000,00 Kč'
+      && item.expenseComparison?.variant === 'bank-bank'
+      && item.expenseComparison?.document.bankAccount === '5599955956/5500'
+      && item.expenseComparison?.bank?.bankAccount === '8888997777/2010'
+    )).toBe(true)
+    expect(result.reviewSections.expenseUnmatchedOutflows.some((item) =>
+      item.title.includes('5 000,00 Kč')
+    )).toBe(false)
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+  })
+
   it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
 
@@ -4791,6 +4832,21 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
     '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-3120;CZK;Platba bez dokladu'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndInternalTransferOutflow(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '27.03.2026 09:00;27.03.2026 09:01;5599955956/5500;8888997777/2010;Převod na vlastní Fio účet;-5000,00;CZK;Převod na Fio účet 8888997777/2010'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithInternalTransferInflow(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:02;5000,00;CZK;8888997777/2010;5599955956/5500;Převod z vlastního RB účtu;Převod z RB 5599955956/5500'
   ].join('\n')
 }
 

@@ -299,6 +299,14 @@ function buildGenericReviewRow(sectionLabel: string, item: ReviewSectionItem): R
 function buildExpenseReviewRow(sectionLabel: string, item: ReviewSectionItem): Record<string, string> {
   const documentSide = item.expenseComparison?.document || {}
   const bankSide = item.expenseComparison?.bank || {}
+  const comparisonVariant = item.expenseComparison?.variant === 'bank-bank' ? 'bank-bank' : 'document-bank'
+  const mergedBankDate = comparisonVariant === 'bank-bank'
+    ? firstNonEmpty([
+        joinNonEmpty([documentSide.bookedAt, bankSide.bookedAt], ' ↔ '),
+        bankSide.bookedAt,
+        documentSide.bookedAt
+      ])
+    : bankSide.bookedAt ?? ''
 
   return {
     Sekce: sectionLabel,
@@ -316,9 +324,9 @@ function buildExpenseReviewRow(sectionLabel: string, item: ReviewSectionItem): R
       bankSide.reference,
       findEvidenceValue(item.evidenceSummary, 'reference')
     ]),
-    'Datum vystavení': documentSide.issueDate ?? '',
-    'Datum splatnosti': documentSide.dueDate ?? '',
-    'Datum banky': bankSide.bookedAt ?? '',
+    'Datum vystavení': comparisonVariant === 'bank-bank' ? '' : (documentSide.issueDate ?? ''),
+    'Datum splatnosti': comparisonVariant === 'bank-bank' ? '' : (documentSide.dueDate ?? ''),
+    'Datum banky': mergedBankDate,
     'Částka': firstNonEmpty([
       documentSide.amount,
       bankSide.amount,
@@ -330,11 +338,20 @@ function buildExpenseReviewRow(sectionLabel: string, item: ReviewSectionItem): R
       inferCurrency(item)
     ]),
     'Účet / IBAN hint': firstNonEmpty([
+      comparisonVariant === 'bank-bank'
+        ? joinNonEmpty([documentSide.bankAccount, bankSide.bankAccount], ' ↔ ')
+        : undefined,
       documentSide.ibanHint,
       bankSide.bankAccount,
       findEvidenceValue(item.evidenceSummary, 'IBAN')
     ]),
-    'Zpráva banky': bankSide.reference ?? findEvidenceValue(item.evidenceSummary, 'zpráva banky'),
+    'Zpráva banky': firstNonEmpty([
+      comparisonVariant === 'bank-bank'
+        ? joinNonEmpty([documentSide.reference, bankSide.reference], ' ↔ ')
+        : undefined,
+      bankSide.reference,
+      findEvidenceValue(item.evidenceSummary, 'zpráva banky')
+    ]),
     'Zdroj / typ položky': item.kind,
     'Stručné důkazy': joinEvidenceSummary(item.evidenceSummary),
     'Poznámka ke kontrole': item.operatorCheckHint ?? item.operatorExplanation,
@@ -397,6 +414,11 @@ function inferCurrency(item: ReviewSectionItem): string {
 
 function firstNonEmpty(values: Array<string | undefined>): string {
   return values.find((value) => Boolean(value && String(value).trim())) ?? ''
+}
+
+function joinNonEmpty(values: Array<string | undefined>, separator: string): string | undefined {
+  const present = values.filter((value): value is string => Boolean(value && String(value).trim()))
+  return present.length > 0 ? present.join(separator) : undefined
 }
 
 function emptySections(): BrowserWorkspaceExportReviewSections {

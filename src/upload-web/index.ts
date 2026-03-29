@@ -1886,12 +1886,15 @@ function renderExpenseReviewSectionHtml(review: Pick<ReviewScreenData, 'expenseM
 
 function renderExpenseReviewItemHtml(item: ReviewSectionItem): string {
   const comparison = item.expenseComparison ?? { document: {} }
+  const comparisonVariant = comparison.variant === 'bank-bank' ? 'bank-bank' : 'document-bank'
+  const leftLabel = comparison.leftLabel ?? (comparisonVariant === 'bank-bank' ? 'Odchozí účet' : 'Doklad')
+  const rightLabel = comparison.rightLabel ?? (comparisonVariant === 'bank-bank' ? 'Příchozí účet' : 'Banka')
 
   return [
     '<article class="expense-item">',
     `<strong>${escapeHtml(item.title)}</strong>`,
     '<div class="expense-comparison">',
-    renderExpenseComparisonSideHtml('Doklad', comparison.document, true),
+    renderExpenseComparisonSideHtml(leftLabel, comparison.document, comparisonVariant === 'document-bank' ? 'document' : 'bank'),
     '<div class="expense-status">',
     '<h6>Stav a důkazy</h6>',
     `<span class="status-badge ${escapeHtml(mapMatchStrengthToStatusClass(item.matchStrength))}">${escapeHtml(item.matchStrength)}</span>`,
@@ -1900,7 +1903,7 @@ function renderExpenseReviewItemHtml(item: ReviewSectionItem): string {
     item.documentBankRelation ? `<div class="empty"><strong>Doklad ↔ banka:</strong> ${escapeHtml(item.documentBankRelation)}</div>` : '',
     item.operatorCheckHint ? `<div class="empty"><strong>Ruční kontrola:</strong> ${escapeHtml(item.operatorCheckHint)}</div>` : '',
     '</div>',
-    renderExpenseComparisonSideHtml('Banka', comparison.bank, false),
+    renderExpenseComparisonSideHtml(rightLabel, comparison.bank, 'bank'),
     '</div>',
     '</article>'
   ].join('')
@@ -1909,8 +1912,9 @@ function renderExpenseReviewItemHtml(item: ReviewSectionItem): string {
 function renderExpenseComparisonSideHtml(
   title: string,
   side: ReviewExpenseComparisonSide | undefined,
-  isDocument: boolean
+  sideMode: 'document' | 'bank'
 ): string {
+  const isDocument = sideMode === 'document'
   const fields = isDocument
     ? [
         ['Dodavatel', side?.supplierOrCounterparty],

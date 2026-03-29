@@ -1114,6 +1114,118 @@ describe('buildReviewScreen', () => {
     ).toBe(3)
   })
 
+  it('pairs own-account RB ↔ Fio transfers as internal matched transfers instead of unmatched expense outflows', () => {
+    const missingTransferDoc = buildExceptionCase({
+      id: toExceptionCaseId('exc:txn:bank:rb-own-transfer-out'),
+      ruleCode: 'missing_supporting_document',
+      explanation: 'Outgoing expense-like transaction has no structured supporting invoice or receipt match in the current monthly batch.',
+      severity: 'high',
+      relatedTransactionIds: [toTransactionId('txn:bank:rb-own-transfer-out')]
+    })
+
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-29T19:00:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [
+            buildTransaction({
+              id: toTransactionId('txn:bank:rb-own-transfer-out'),
+              direction: 'out',
+              source: 'bank',
+              amountMinor: 500000,
+              currency: 'CZK',
+              bookedAt: '2026-03-27T09:01:00.000Z',
+              accountId: '5599955956/5500',
+              counterparty: '8888997777/2010',
+              reference: 'Převod na Fio účet 8888997777/2010'
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:bank:fio-own-transfer-in'),
+              direction: 'in',
+              source: 'bank',
+              amountMinor: 500000,
+              currency: 'CZK',
+              bookedAt: '2026-03-27T09:02:00.000Z',
+              accountId: '8888997777/2010',
+              counterparty: '5599955956/5500',
+              reference: 'Převod z RB 5599955956/5500'
+            })
+          ],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [missingTransferDoc],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [missingTransferDoc],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 2,
+            matchedGroupCount: 0,
+            exceptionCount: 1,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-29T19:00:00.000Z',
+          summary: {
+            normalizedTransactionCount: 2,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 1,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.expenseMatched).toHaveLength(1)
+    expect(review.expenseNeedsReview).toHaveLength(0)
+    expect(review.expenseUnmatchedDocuments).toHaveLength(0)
+    expect(review.expenseUnmatchedOutflows).toHaveLength(0)
+    expect(review.expenseMatched[0]).toMatchObject({
+      title: 'Vnitřní převod 5 000,00 Kč',
+      matchStrength: 'potvrzená shoda',
+      documentBankRelation: 'Pohyby tvoří interní převod mezi vlastními účty hotelu; nejde o nespárovaný výdaj.',
+      expenseComparison: {
+        variant: 'bank-bank',
+        leftLabel: 'Odchozí účet',
+        rightLabel: 'Příchozí účet',
+        document: expect.objectContaining({
+          bankAccount: '5599955956/5500',
+          amount: '5 000,00 Kč'
+        }),
+        bank: expect.objectContaining({
+          bankAccount: '8888997777/2010',
+          amount: '5 000,00 Kč'
+        })
+      }
+    })
+    expect(review.expenseMatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: 'sedí' }),
+        expect.objectContaining({ label: 'dokument', value: 'nejde o výdajový doklad' }),
+        expect.objectContaining({ label: 'protistrana / účet', value: expect.stringContaining('5599955956/5500 → 8888997777/2010') })
+      ])
+    )
+  })
+
   it('applies manual expense review overrides as one shared bucket transformation', () => {
     const sections = {
       expenseMatched: [],
