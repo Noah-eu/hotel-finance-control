@@ -14,6 +14,10 @@ export interface ParsedDelimitedContent {
   rows: Array<Record<string, string>>
 }
 
+export interface ParseAmountMinorOptions {
+  integerIsMajorUnit?: boolean
+}
+
 export function getAccountIdFromFileName(fileName: string): string | undefined {
   const normalized = normalizeCell(fileName)
   const match = /(?:^|[^\d])(\d{6,10}\/\d{4}|\d{6,10})(?:[^\d]|$)/.exec(normalized)
@@ -75,7 +79,7 @@ export function findMissingHeaders(
   return requiredHeaders.filter((header) => !headers.includes(header))
 }
 
-export function parseAmountMinor(value: string, fieldName: string): number {
+export function parseAmountMinor(value: string, fieldName: string, options: ParseAmountMinorOptions = {}): number {
   const normalized = normalizeCell(value)
 
   if (normalized.length === 0) {
@@ -83,7 +87,8 @@ export function parseAmountMinor(value: string, fieldName: string): number {
   }
 
   if (/^-?\d+$/.test(normalized)) {
-    return Number.parseInt(normalized, 10)
+    const parsedInteger = Number.parseInt(normalized, 10)
+    return options.integerIsMajorUnit ? parsedInteger * 100 : parsedInteger
   }
 
   const decimalCandidate = normalized.replace(/\s+/g, '').replace(',', '.')
@@ -92,6 +97,11 @@ export function parseAmountMinor(value: string, fieldName: string): number {
   }
 
   return Math.round(Number.parseFloat(decimalCandidate) * 100)
+}
+
+export function isExplicitMinorAmountHeader(value: string): boolean {
+  const normalized = normalizeHeaderKey(value)
+  return normalized === 'amountminor'
 }
 
 export function parseIsoDate(value: string, fieldName: string): string {

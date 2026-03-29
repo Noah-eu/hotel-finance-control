@@ -193,4 +193,34 @@ describe('parseRaiffeisenbankStatement', () => {
       })
     ])
   })
+
+  it('treats bare integer values from human-readable amount headers as major CZK units, not already-scaled minor units', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-statement')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: {
+        ...fixture.sourceDocument,
+        fileName: 'Pohyby_5599955956_202603191023.csv'
+      },
+      content: [
+        '\uFEFF"Datum";"Objem";"Měna";"Protiúčet";"Kód banky";"Zpráva pro příjemce";"Poznámka";"Typ"',
+        '"26.03.2026 11:20";"-3120";"CZK";"0000001111111111";"0100";"Platba bez dokladu";"Dodavatel bez dokladu";"Odchozí platba"'
+      ].join('\n'),
+      extractedAt: '2026-03-29T20:00:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'raif-row-1',
+        amountMinor: -312000,
+        currency: 'CZK',
+        occurredAt: '2026-03-26T11:20:00',
+        data: expect.objectContaining({
+          counterparty: '0000001111111111/0100',
+          reference: 'Platba bez dokladu',
+          transactionType: 'Odchozí platba'
+        })
+      })
+    ])
+  })
 })

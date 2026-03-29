@@ -2,6 +2,7 @@ import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
   findMissingHeaders,
   getAccountIdFromFileName,
+  isExplicitMinorAmountHeader,
   parseAmountMinor,
   parseDelimitedRows,
   parseIsoDate
@@ -11,6 +12,10 @@ export interface ParseRaiffeisenbankStatementInput {
   sourceDocument: SourceDocument
   content: string
   extractedAt: string
+}
+
+interface ParsedRaiffeisenbankRow extends Record<string, string> {
+  amountMinorUsesMajorUnits: 'true' | 'false'
 }
 
 const REQUIRED_HEADERS = [
@@ -38,17 +43,19 @@ export class RaiffeisenbankParser {
   parse(input: ParseRaiffeisenbankStatementInput): ExtractedRecord[] {
     const rows = parseDelimitedRows(input.content).map((row) => {
       const fallbackAccountId = getAccountIdFromFileName(input.sourceDocument.fileName)
+      const amountField = firstPresentWithHeader(row, HEADER_ALIASES.amountMinor)
 
       return {
         bookedAt: firstPresent(row, HEADER_ALIASES.bookedAt),
-        amountMinor: firstPresent(row, HEADER_ALIASES.amountMinor),
+        amountMinor: amountField.value,
+        amountMinorUsesMajorUnits: amountField.matchedHeader && isExplicitMinorAmountHeader(amountField.matchedHeader) ? 'false' : 'true',
         currency: firstPresent(row, HEADER_ALIASES.currency),
         accountId: firstPresent(row, HEADER_ALIASES.accountId) || fallbackAccountId || '',
         counterparty: resolveCounterparty(row),
         reference: firstPresent(row, HEADER_ALIASES.reference),
         transactionType: firstPresent(row, HEADER_ALIASES.transactionType)
       }
-    }) as Array<Record<string, string>>
+    }) as ParsedRaiffeisenbankRow[]
 
     if (rows.length === 0) {
       return []
@@ -66,7 +73,9 @@ export class RaiffeisenbankParser {
     return rows.map((row, index) => {
       const recordId = `raif-row-${index + 1}`
       const bookedAt = parseIsoDate(row.bookedAt, 'Raiffeisenbank bookedAt')
-      const amountMinor = parseAmountMinor(row.amountMinor, 'Raiffeisenbank amountMinor')
+      const amountMinor = parseAmountMinor(row.amountMinor, 'Raiffeisenbank amountMinor', {
+        integerIsMajorUnit: row.amountMinorUsesMajorUnits === 'true'
+      })
       const currency = row.currency.trim().toUpperCase()
       const accountId = row.accountId.trim()
       const counterparty = row.counterparty.trim()
@@ -98,18 +107,27 @@ export class RaiffeisenbankParser {
   }
 }
 
-function firstPresent(row: Record<string, string>, aliases: string[]): string {
-  const normalizedEntries = Object.entries(row).map(([key, value]) => [normalizeHeaderKey(key), value] as const)
+function firstPresentWithHeader(row: Record<string, string>, aliases: string[]): { value: string, matchedHeader?: string } {
+  const normalizedEntries = Object.entries(row).map(([key, value]) => [normalizeHeaderKey(key), key, value] as const)
 
   for (const alias of aliases) {
     const normalizedAlias = normalizeHeaderKey(alias)
-    const value = normalizedEntries.find(([key]) => key === normalizedAlias)?.[1]
+    const entry = normalizedEntries.find(([key]) => key === normalizedAlias)
+    const value = entry?.[2]
+
     if (typeof value === 'string' && value.trim().length > 0) {
-      return value
+      return {
+        value,
+        matchedHeader: entry?.[1]
+      }
     }
   }
 
-  return ''
+  return { value: '' }
+}
+
+function firstPresent(row: Record<string, string>, aliases: string[]): string {
+  return firstPresentWithHeader(row, aliases).value
 }
 
 function resolveCounterparty(row: Record<string, string>): string {

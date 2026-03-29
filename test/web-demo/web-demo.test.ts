@@ -2507,6 +2507,50 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
+  it('renders and exports bare integer CZK outgoing bank values in correct major units on the browser workflow', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T17:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-czk-major-unit-outflow',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndIntegerExpenseOutflow(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('3 120,00 Kč')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain('31,20 Kč')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('12 629,52 Kč')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+
+    rendered.setWorkspaceExportPreset('complete')
+    rendered.downloadWorkspaceExcelExport()
+
+    const workbook = readWorkbookFromBrowserExportBase64(
+      (rendered.getLastExcelExport() as { base64Content: string }).base64Content
+    )
+    const expenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Výdaje a doklady'])
+
+    expect(expenseRows.some((row) =>
+      row.Sekce === 'Nespárované odchozí platby'
+      && row.Částka === '3 120,00 Kč'
+      && row['Číslo faktury / reference'] === 'Platba bez dokladu'
+    )).toBe(true)
+    expect(expenseRows.some((row) => row.Částka === '31,20 Kč')).toBe(false)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({
@@ -3664,6 +3708,14 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
     '08.04.2026 10:15;08.04.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndIntegerExpenseOutflow(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-3120;CZK;Platba bez dokladu'
   ].join('\n')
 }
 

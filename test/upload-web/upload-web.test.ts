@@ -601,6 +601,49 @@ describe('buildUploadWebFlow', () => {
     ).toBe(2)
   })
 
+  it('keeps bare integer CZK outgoing bank values in correct major-unit scaling on the browser upload expense path', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndIntegerExpenseOutflow(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T17:10:00.000Z'
+    })
+
+    const unmatchedOutflow = result.reviewSections.expenseUnmatchedOutflows.find((item) =>
+      item.expenseComparison?.bank?.reference === 'Platba bez dokladu'
+    )
+
+    expect(unmatchedOutflow).toBeDefined()
+    expect(unmatchedOutflow?.title).toBe('Nespárovaná odchozí platba 3 120,00 Kč')
+    expect(unmatchedOutflow?.expenseComparison?.bank).toMatchObject({
+      amount: '3 120,00 Kč',
+      reference: 'Platba bez dokladu'
+    })
+    expect(unmatchedOutflow?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: '3 120,00 Kč' })
+      ])
+    )
+    expect(unmatchedOutflow?.title).not.toContain('31,20 Kč')
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+  })
+
   it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
 
@@ -4740,6 +4783,14 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(daysShift),
     '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndIntegerExpenseOutflow(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-3120;CZK;Platba bez dokladu'
   ].join('\n')
 }
 
