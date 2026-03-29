@@ -271,6 +271,10 @@ function renderOperatorWebDemoHtml(input: {
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
         gap: 16px;
       }
+      .detail-view[hidden],
+      .main-dashboard-view[hidden] {
+        display: none;
+      }
       .metric, .flow-item {
         background: #f7f9fc;
         border-radius: 14px;
@@ -280,6 +284,25 @@ function renderOperatorWebDemoHtml(input: {
         background: #f7f9fc;
         border-radius: 14px;
         padding: 16px;
+      }
+      .detail-summary-block {
+        background: #f7f9fc;
+        border-radius: 14px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .detail-summary-block ul {
+        margin: 0;
+      }
+      .detail-page-table {
+        margin-bottom: 16px;
+      }
+      .detail-page-actions {
+        margin-bottom: 12px;
+      }
+      .detail-page-actions .secondary-button {
+        background: #eaf2ff;
+        color: #174ea6;
       }
       .flow-item strong {
         display: block;
@@ -463,40 +486,98 @@ ${input.debugMode ? `
         </div>
       </section>
 
-      <section class="card">
-        <h2>Příprava, kontrola a report v jednom pohledu</h2>
-        <div class="operator-grid">
-          <section id="prepared-files-section" class="metric" data-runtime-phase="placeholder">
-            <h3>Připravené soubory a trasování</h3>
-            <div id="prepared-files-content">
-              <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
-              <p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh.</p>
-            </div>
-          </section>
-          <section id="review-summary-section" class="metric" data-runtime-phase="placeholder">
-            <h3>Kontrolní přehled</h3>
-            <div id="review-summary-content">
-              <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
-              <p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>
-            </div>
-          </section>
-        </div>
-        <p class="hint">Částky jsou v hlavním vstupu zobrazené jako české koruny tam, kde se operátor rozhoduje nad výsledkem.</p>
-        <table>
-          <thead>
-            <tr>
-              <th>Transakce</th>
-              <th>Zdroj</th>
-              <th>Částka</th>
-              <th>Stav</th>
-            </tr>
-          </thead>
-          <tbody id="report-preview-body" data-runtime-phase="placeholder"><tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr></tbody>
-        </table>
+      <section id="main-dashboard-view" class="main-dashboard-view">
+        <section class="card">
+          <h2>Kompaktní přehled měsíčního běhu</h2>
+          <div class="operator-grid">
+            <section id="prepared-files-section" class="metric" data-runtime-phase="placeholder">
+              <h3>Připravené soubory a trasování</h3>
+              <div id="prepared-files-content">
+                <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
+                <p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh.</p>
+              </div>
+            </section>
+            <section id="review-summary-section" class="metric" data-runtime-phase="placeholder">
+              <h3>Kontrolní přehled</h3>
+              <div id="review-summary-content">
+                <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+                <p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>
+              </div>
+            </section>
+            <section id="control-detail-summary-section" class="metric" data-runtime-phase="placeholder">
+              <h3>Detail kontrolních sekcí</h3>
+              <div id="control-detail-launcher-summary-content">
+                <p class="hint">Po spuštění se zde ukážou souhrnné počty pro payout dávky, rezervace a kontrolní sekce.</p>
+              </div>
+              <p><button id="open-control-detail-button" type="button">Detail kontrolních sekcí</button></p>
+              <p class="hint">Otevře interní detail payout a kontrolních bucketů bez dlouhého scrollování na hlavní stránce.</p>
+            </section>
+            <section id="expense-review-summary-section" class="metric" data-runtime-phase="placeholder">
+              <h3>Kontrola výdajů a dokladů</h3>
+              <div id="expense-review-summary-content">
+                <p class="hint">Po spuštění se zde ukáže přehled bucketů pro doklady a odchozí bankovní platby.</p>
+              </div>
+              <p><button id="open-expense-review-button" type="button">Kontrola výdajů a dokladů</button></p>
+              <p class="hint">Otevře interní detail s porovnáním Doklad / Stav a důkazy / Banka.</p>
+            </section>
+          </div>
+        </section>
+
+        <section id="export-handoff-section" class="card" data-runtime-phase="placeholder">
+          <h2>Exportní handoff</h2>
+          <div id="export-handoff-content">
+            <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p>
+            <p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>
+          </div>
+          <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
+        </section>
+${showRuntimePayoutDiagnostics ? `
+        <section id="runtime-payout-diagnostics-section" class="card" data-runtime-phase="placeholder">
+          <h2>Diagnostika runtime payout dávek</h2>
+          <div id="runtime-payout-diagnostics-content">
+            <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+            <p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>
+          </div>
+        </section>
+` : ''}
+        <section id="runtime-file-intake-diagnostics-section" class="card" data-runtime-phase="placeholder" hidden>
+          <h2>Diagnostika intake souborů</h2>
+          <div id="runtime-file-intake-diagnostics-content">
+            <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+            <p class="hint">Po spuštění zde uvidíte skutečný browser intake handoff pro každý vybraný soubor.</p>
+          </div>
+        </section>
+        <section id="runtime-payout-projection-debug-section" class="card" data-runtime-phase="placeholder" hidden>
+          <h2>Diagnostika finální payout projekce</h2>
+          <div id="runtime-payout-projection-debug-content">
+            <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+            <p class="hint">Po spuštění zde uvidíte build/runtime marker a finální payout projekci ze stejného state objektu, který používá summary i detailní payout sekce.</p>
+          </div>
+        </section>
       </section>
 
-      <section class="card">
+      <section id="control-detail-view" class="card detail-view" hidden>
+        <div class="detail-page-actions">
+          <button id="back-from-control-detail-button" type="button" class="secondary-button">Zpět na hlavní přehled</button>
+        </div>
         <h2>Detail kontrolních sekcí</h2>
+        <div id="control-detail-page-summary-content" class="detail-summary-block">
+          <p class="hint">Po spuštění se zde zobrazí souhrn počtů pro payout dávky a kontrolní bucket sekce.</p>
+        </div>
+        <section class="detail-panel detail-page-table">
+          <h3>Náhled reportu</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Transakce</th>
+                <th>Zdroj</th>
+                <th>Částka</th>
+                <th>Stav</th>
+              </tr>
+            </thead>
+            <tbody id="report-preview-body" data-runtime-phase="placeholder"><tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr></tbody>
+          </table>
+        </section>
         <div class="detail-grid">
           <section id="matched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Spárované Airbnb / OTA payout dávky</h3>
@@ -532,50 +613,39 @@ ${input.debugMode ? `
         </div>
       </section>
 
-      <section class="card">
+      <section id="expense-detail-view" class="card detail-view" hidden>
+        <div class="detail-page-actions">
+          <button id="back-from-expense-detail-button" type="button" class="secondary-button">Zpět na hlavní přehled</button>
+        </div>
         <h2>Kontrola výdajů a dokladů</h2>
-        <div class="operator-grid">
-          <section id="expense-review-summary-section" class="metric" data-runtime-phase="placeholder">
-            <h3>Samostatná kontrolní stránka</h3>
-            <div id="expense-review-summary-content">
-              <p class="hint">Po spuštění se zde ukáže přehled bucketů pro doklady a odchozí bankovní platby.</p>
-              <p class="hint">Samotná detailní kontrola se otevírá do nového tabu, aby hlavní stránka zůstala přehledná.</p>
+        <div id="expense-detail-summary-content" class="detail-summary-block">
+          <p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a odchozí bankovní platby.</p>
+        </div>
+        <div class="detail-grid">
+          <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Spárované výdaje</h3>
+            <div id="expense-matched-content">
+              <p class="hint">Po spuštění se zde zobrazí spárované výdaje.</p>
             </div>
-            <p><button id="open-expense-review-button" type="button">Kontrola výdajů a dokladů</button></p>
-            <p class="hint">Otevře samostatnou stránku s porovnáním Doklad / Stav a důkazy / Banka.</p>
           </section>
-        </div>
-      </section>
-
-      <section id="export-handoff-section" class="card" data-runtime-phase="placeholder">
-        <h2>Exportní handoff</h2>
-        <div id="export-handoff-content">
-          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p>
-          <p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>
-        </div>
-        <p class="hint">Sdílený lokální upload workflow zůstává součástí této stránky přímo v hlavním vstupu, ne jako oddělený demo list.</p>
-      </section>
-${showRuntimePayoutDiagnostics ? `
-      <section id="runtime-payout-diagnostics-section" class="card" data-runtime-phase="placeholder">
-        <h2>Diagnostika runtime payout dávek</h2>
-        <div id="runtime-payout-diagnostics-content">
-          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
-          <p class="hint">Po spuštění zde uvidíte přesné payout reference a titulky z aktuálního runtime běhu.</p>
-        </div>
-      </section>
-` : ''}
-      <section id="runtime-file-intake-diagnostics-section" class="card" data-runtime-phase="placeholder" hidden>
-        <h2>Diagnostika intake souborů</h2>
-        <div id="runtime-file-intake-diagnostics-content">
-          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
-          <p class="hint">Po spuštění zde uvidíte skutečný browser intake handoff pro každý vybraný soubor.</p>
-        </div>
-      </section>
-      <section id="runtime-payout-projection-debug-section" class="card" data-runtime-phase="placeholder" hidden>
-        <h2>Diagnostika finální payout projekce</h2>
-        <div id="runtime-payout-projection-debug-content">
-          <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
-          <p class="hint">Po spuštění zde uvidíte build/runtime marker a finální payout projekci ze stejného state objektu, který používá summary i detailní payout sekce.</p>
+          <section id="expense-review-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Výdaje ke kontrole</h3>
+            <div id="expense-review-content">
+              <p class="hint">Po spuštění se zde zobrazí výdaje ke kontrole.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-documents-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované doklady</h3>
+            <div id="expense-unmatched-documents-content">
+              <p class="hint">Po spuštění se zde zobrazí nespárované doklady.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-outflows-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované odchozí platby</h3>
+            <div id="expense-unmatched-outflows-content">
+              <p class="hint">Po spuštění se zde zobrazí nespárované odchozí platby.</p>
+            </div>
+          </section>
         </div>
       </section>
     </main>
@@ -592,10 +662,17 @@ ${showRuntimePayoutDiagnostics ? `
   const runtimeSummaryNormalizedTransactions = document.getElementById('runtime-summary-normalized-transactions');
   const runtimeSummaryReviewItems = document.getElementById('runtime-summary-review-items');
   const runtimeSummaryExportFiles = document.getElementById('runtime-summary-export-files');
+  const mainDashboardView = document.getElementById('main-dashboard-view');
+  const controlDetailView = document.getElementById('control-detail-view');
+  const expenseDetailView = document.getElementById('expense-detail-view');
   const preparedFilesSection = document.getElementById('prepared-files-section');
   const preparedFilesContent = document.getElementById('prepared-files-content');
   const reviewSummarySection = document.getElementById('review-summary-section');
   const reviewSummaryContent = document.getElementById('review-summary-content');
+  const controlDetailSummarySection = document.getElementById('control-detail-summary-section');
+  const controlDetailLauncherSummaryContent = document.getElementById('control-detail-launcher-summary-content');
+  const controlDetailPageSummaryContent = document.getElementById('control-detail-page-summary-content');
+  const openControlDetailButton = document.getElementById('open-control-detail-button');
   const reportPreviewBody = document.getElementById('report-preview-body');
   const reservationSettlementOverviewSection = document.getElementById('reservation-settlement-overview-section');
   const reservationSettlementOverviewContent = document.getElementById('reservation-settlement-overview-content');
@@ -607,9 +684,20 @@ ${showRuntimePayoutDiagnostics ? `
   const unmatchedPayoutBatchesContent = document.getElementById('unmatched-payout-batches-content');
   const unmatchedReservationsSection = document.getElementById('unmatched-reservations-section');
   const unmatchedReservationsContent = document.getElementById('unmatched-reservations-content');
+  const expenseMatchedSection = document.getElementById('expense-matched-section');
+  const expenseMatchedContent = document.getElementById('expense-matched-content');
+  const expenseReviewSection = document.getElementById('expense-review-section');
+  const expenseReviewContent = document.getElementById('expense-review-content');
+  const expenseUnmatchedDocumentsSection = document.getElementById('expense-unmatched-documents-section');
+  const expenseUnmatchedDocumentsContent = document.getElementById('expense-unmatched-documents-content');
+  const expenseUnmatchedOutflowsSection = document.getElementById('expense-unmatched-outflows-section');
+  const expenseUnmatchedOutflowsContent = document.getElementById('expense-unmatched-outflows-content');
   const expenseReviewSummarySection = document.getElementById('expense-review-summary-section');
   const expenseReviewSummaryContent = document.getElementById('expense-review-summary-content');
+  const expenseDetailSummaryContent = document.getElementById('expense-detail-summary-content');
   const openExpenseReviewButton = document.getElementById('open-expense-review-button');
+  const backFromControlDetailButton = document.getElementById('back-from-control-detail-button');
+  const backFromExpenseDetailButton = document.getElementById('back-from-expense-detail-button');
   const exportHandoffSection = document.getElementById('export-handoff-section');
   const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}${runtimeFileIntakeDiagnosticsBindings}
   const runtimePayoutProjectionDebugSection = document.getElementById('runtime-payout-projection-debug-section');
@@ -1860,87 +1948,72 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return [
-          '<p class="hint">Detailní kontrola dokladů a odchozích plateb se otevírá do samostatného tabu. Hlavní stránka zůstává kompaktní.</p>',
+          '<p class="hint">Doklady a odchozí platby mají vlastní interní detail. Hlavní přehled zůstává kompaktní a zobrazuje jen souhrn bucketů.</p>',
           '<ul>',
           buckets.map((bucket) => '<li><strong>' + escapeHtml(bucket.title) + ':</strong> ' + escapeHtml(String(bucket.items.length)) + '</li>').join(''),
           '</ul>'
         ].join('');
       }
 
-      function buildExpenseReviewStandalonePageMarkup(state) {
+      function buildExpenseDetailSummaryMarkup(state) {
         const normalizedState = state || initialRuntimeState;
         const buckets = buildExpenseReviewBuckets(normalizedState.reviewSections);
-        const monthLabel = normalizedState.monthLabel || 'neuvedeno';
-        const runId = normalizedState.runId || 'bez runtime běhu';
-        const sectionsMarkup = buckets.map((bucket) => [
-          '<section class="expense-page-bucket">',
-          '<div class="expense-page-bucket-header">',
-          '<h2>' + escapeHtml(bucket.title) + '</h2>',
-          '<span class="expense-page-count">' + escapeHtml(String(bucket.items.length)) + '</span>',
-          '</div>',
-          buildExpenseReviewSectionMarkup(bucket.items, bucket.emptyLabel),
-          '</section>'
-        ].join('')).join('');
 
         return [
-          '<!doctype html>',
-          '<html lang="cs">',
-          '<head>',
-          '<meta charset="utf-8" />',
-          '<meta name="viewport" content="width=device-width, initial-scale=1" />',
-          '<title>Hotel Finance Control – Kontrola výdajů a dokladů</title>',
-          '<style>',
-          ':root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }',
-          'body { margin: 0; padding: 28px; background: #eef3f9; color: #142033; }',
-          'main { max-width: 1560px; margin: 0 auto; }',
-          '.expense-page-hero, .expense-page-bucket { background: #ffffff; border-radius: 20px; padding: 24px; box-shadow: 0 12px 36px rgba(20, 32, 51, 0.08); margin-bottom: 18px; }',
-          '.expense-page-hero p { margin: 0 0 10px; }',
-          '.expense-page-bucket-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }',
-          '.expense-page-bucket-header h2 { margin: 0; font-size: 22px; }',
-          '.expense-page-count { display: inline-block; min-width: 38px; text-align: center; border-radius: 999px; padding: 6px 12px; background: #eaf2ff; color: #174ea6; font-weight: 700; }',
-          '.expense-item { border: 1px solid #dce6f5; border-radius: 16px; background: #fbfdff; padding: 18px; margin-bottom: 14px; }',
-          '.expense-item strong { font-size: 17px; line-height: 1.4; display: block; margin-bottom: 12px; }',
-          '.expense-comparison { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(300px, 360px) minmax(280px, 1fr); gap: 18px; align-items: start; }',
-          '.expense-side, .expense-status { border-radius: 14px; background: #f6f9fc; padding: 16px; overflow-wrap: anywhere; word-break: break-word; }',
-          '.expense-side h6, .expense-status h6 { margin: 0 0 10px; font-size: 14px; letter-spacing: 0.01em; }',
-          '.expense-side ul, .expense-status ul { margin: 0; padding-left: 20px; }',
-          '.expense-side li, .expense-status li { margin-bottom: 6px; }',
-          '.hint { color: #52627a; line-height: 1.5; }',
-          '.status-badge { display: inline-block; border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 700; margin-bottom: 10px; }',
-          '.status-badge.confirmed { background: #e7f6ec; color: #0f7a32; }',
-          '.status-badge.weak { background: #fff4dd; color: #946200; }',
-          '.status-badge.review { background: #fff4dd; color: #946200; }',
-          '.status-badge.unmatched { background: #ffe3e8; color: #b42318; }',
-          '@media (max-width: 1080px) { .expense-comparison { grid-template-columns: 1fr; } body { padding: 18px; } }',
-          '</style>',
-          '</head>',
-          '<body>',
-          '<main>',
-          '<section class="expense-page-hero">',
-          '<h1>Kontrola výdajů a dokladů</h1>',
-          '<p><strong>Měsíc:</strong> ' + escapeHtml(monthLabel) + '</p>',
-          '<p><strong>Run ID:</strong> <code>' + escapeHtml(runId) + '</code></p>',
-          '<p class="hint">Tato stránka ukazuje pouze doklady, kandidátní odchozí bankovní platby a jejich důkazy. Payout matching zůstává na hlavní stránce beze změny.</p>',
-          '</section>',
-          sectionsMarkup,
-          '</main>',
-          '</body>',
-          '</html>'
+          '<p><strong>Měsíc:</strong> ' + escapeHtml(normalizedState.monthLabel || 'neuvedeno') + '</p>',
+          '<p><strong>Run ID:</strong> <code>' + escapeHtml(normalizedState.runId || 'bez runtime běhu') + '</code></p>',
+          '<p class="hint">Souhrnné počty musí odpovídat přesně viditelným bucketům níže.</p>',
+          '<ul>',
+          buckets.map((bucket) => '<li><strong>' + escapeHtml(bucket.title) + ':</strong> ' + escapeHtml(String(bucket.items.length)) + '</li>').join(''),
+          '</ul>'
         ].join('');
       }
 
-      function openExpenseReviewWindow() {
-        const popup = typeof window.open === 'function'
-          ? window.open('', '_blank', 'noopener,noreferrer')
-          : null;
+      function buildControlDetailSummaryMarkup(state, phase) {
+        const normalizedState = state || initialRuntimeState;
+        const payoutProjection = getVisiblePayoutProjection(normalizedState);
+        const sections = normalizedState.reviewSections || {};
 
-        if (!popup || !popup.document) {
-          return;
+        if (phase === 'running') {
+          return '<p class="hint">Detail kontrolních sekcí se právě připravuje ze stejného runtime běhu…</p>';
         }
 
-        popup.document.open();
-        popup.document.write(buildExpenseReviewStandalonePageMarkup(currentExpenseReviewState));
-        popup.document.close();
+        if (phase === 'failed') {
+          return '<p class="hint">Detail kontrolních sekcí není k dispozici, protože runtime běh selhal.</p>';
+        }
+
+        if (phase === 'placeholder') {
+          return '<p class="hint">Po spuštění se zde ukážou souhrnné počty pro payout dávky, rezervace a kontrolní bucket sekce.</p>';
+        }
+
+        return [
+          '<p class="hint">Souhrnné počty musí přesně sedět na detailní bucket sekce v interním přehledu.</p>',
+          '<ul>',
+          '<li><strong>Spárované payout dávky:</strong> ' + escapeHtml(String((payoutProjection.matchedItems || []).length)) + '</li>',
+          '<li><strong>Nespárované payout dávky:</strong> ' + escapeHtml(String((payoutProjection.unmatchedItems || []).length)) + '</li>',
+          '<li><strong>Hlavní ubytovací rezervace:</strong> ' + escapeHtml(String(((sections && sections.reservationSettlementOverview) || []).length)) + '</li>',
+          '<li><strong>Doplňkové položky:</strong> ' + escapeHtml(String(((sections && sections.ancillarySettlementOverview) || []).length)) + '</li>',
+          '<li><strong>Nespárované rezervace k úhradě:</strong> ' + escapeHtml(String(((sections && sections.unmatchedReservationSettlements) || []).length)) + '</li>',
+          '</ul>'
+        ].join('');
+      }
+
+      function showOperatorView(view) {
+        const normalizedView = view === 'control-detail' || view === 'expense-detail'
+          ? view
+          : 'main-overview';
+
+        mainDashboardView.hidden = normalizedView !== 'main-overview';
+        controlDetailView.hidden = normalizedView !== 'control-detail';
+        expenseDetailView.hidden = normalizedView !== 'expense-detail';
+
+        if (window && window.location) {
+          window.location.hash = normalizedView === 'main-overview'
+            ? ''
+            : normalizedView === 'control-detail'
+              ? '#detail-kontrolnich-sekci'
+              : '#kontrola-vydaju-a-dokladu';
+        }
       }
 
       function mapMatchStrengthToBadgeClass(matchStrength) {
@@ -2051,12 +2124,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesSection.setAttribute('data-runtime-phase', phase);
         reviewSummarySection.setAttribute('data-runtime-phase', phase);
+        controlDetailSummarySection.setAttribute('data-runtime-phase', phase);
         reportPreviewBody.setAttribute('data-runtime-phase', phase);
   matchedPayoutBatchesSection.setAttribute('data-runtime-phase', phase);
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', phase);
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', phase);
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', phase);
         expenseReviewSummarySection.setAttribute('data-runtime-phase', phase);
+  expenseMatchedSection.setAttribute('data-runtime-phase', phase);
+  expenseReviewSection.setAttribute('data-runtime-phase', phase);
+  expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', phase);
+  expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', phase);
         unmatchedReservationsSection.setAttribute('data-runtime-phase', phase);
         exportHandoffSection.setAttribute('data-runtime-phase', phase);
         syncRuntimePayoutDiagnosticsPhase(phase);
@@ -2081,12 +2159,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesContent.innerHTML = buildPreparedFilesMarkup(visibleState);
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(visibleState);
+        controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
+        controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
   matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || []);
   unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(visibleState, phase);
+        expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState);
+        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseMatched) || [], 'Žádné spárované výdaje.');
+        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseNeedsReview) || [], 'Žádné výdaje ke kontrole.');
+        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedDocuments) || [], 'Žádné nespárované doklady.');
+        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedOutflows) || [], 'Žádné nespárované odchozí platby.');
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         renderCompletedRuntimePayoutDiagnostics(visibleState);
@@ -2107,12 +2192,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesSection.setAttribute('data-runtime-phase', 'running');
         reviewSummarySection.setAttribute('data-runtime-phase', 'running');
+        controlDetailSummarySection.setAttribute('data-runtime-phase', 'running');
         reportPreviewBody.setAttribute('data-runtime-phase', 'running');
   matchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'running');
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'running');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
         expenseReviewSummarySection.setAttribute('data-runtime-phase', 'running');
+  expenseMatchedSection.setAttribute('data-runtime-phase', 'running');
+  expenseReviewSection.setAttribute('data-runtime-phase', 'running');
+  expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', 'running');
+  expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', 'running');
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'running');
         exportHandoffSection.setAttribute('data-runtime-phase', 'running');
         syncRuntimePayoutDiagnosticsPhase('running');
@@ -2128,12 +2218,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesContent.innerHTML = '<p class="hint">Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.</p><ul>' + fileNames + '</ul>';
         reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
+        controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
+        controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Report preview se právě nahrazuje runtime výsledkem…</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'running');
+        expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů se právě připravuje ze stejného runtime běhu…</p>';
+        expenseMatchedContent.innerHTML = '<p class="hint">Spárované výdaje se právě načítají ze sdíleného runtime běhu…</p>';
+        expenseReviewContent.innerHTML = '<p class="hint">Výdaje ke kontrole se právě načítají ze sdíleného runtime běhu…</p>';
+        expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Nespárované doklady se právě načítají ze sdíleného runtime běhu…</p>';
+        expenseUnmatchedOutflowsContent.innerHTML = '<p class="hint">Nespárované odchozí platby se právě načítají ze sdíleného runtime běhu…</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff se právě připravuje ze stejného runtime výsledku…</p>';
         renderRunningRuntimePayoutDiagnostics();
@@ -2146,12 +2243,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesSection.setAttribute('data-runtime-phase', 'failed');
         reviewSummarySection.setAttribute('data-runtime-phase', 'failed');
+        controlDetailSummarySection.setAttribute('data-runtime-phase', 'failed');
         reportPreviewBody.setAttribute('data-runtime-phase', 'failed');
   matchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'failed');
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'failed');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
         expenseReviewSummarySection.setAttribute('data-runtime-phase', 'failed');
+  expenseMatchedSection.setAttribute('data-runtime-phase', 'failed');
+  expenseReviewSection.setAttribute('data-runtime-phase', 'failed');
+  expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', 'failed');
+  expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', 'failed');
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'failed');
         exportHandoffSection.setAttribute('data-runtime-phase', 'failed');
         syncRuntimePayoutDiagnosticsPhase('failed');
@@ -2160,12 +2262,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
+        controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
+        controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Runtime běh selhal: ' + message + '</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací není k dispozici, protože runtime běh selhal.</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'failed');
+        expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů není k dispozici, protože runtime běh selhal.</p>';
+        expenseMatchedContent.innerHTML = '<p class="hint">Spárované výdaje nejsou k dispozici, protože runtime běh selhal.</p>';
+        expenseReviewContent.innerHTML = '<p class="hint">Výdaje ke kontrole nejsou k dispozici, protože runtime běh selhal.</p>';
+        expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Nespárované doklady nejsou k dispozici, protože runtime běh selhal.</p>';
+        expenseUnmatchedOutflowsContent.innerHTML = '<p class="hint">Nespárované odchozí platby nejsou k dispozici, protože runtime běh selhal.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací není k dispozici, protože runtime běh selhal.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
         renderFailedRuntimePayoutDiagnostics();
@@ -2179,12 +2288,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
       function renderInitialVisibleState() {
         preparedFilesSection.setAttribute('data-runtime-phase', 'placeholder');
         reviewSummarySection.setAttribute('data-runtime-phase', 'placeholder');
+        controlDetailSummarySection.setAttribute('data-runtime-phase', 'placeholder');
         reportPreviewBody.setAttribute('data-runtime-phase', 'placeholder');
         matchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'placeholder');
         unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'placeholder');
         reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'placeholder');
         ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'placeholder');
         expenseReviewSummarySection.setAttribute('data-runtime-phase', 'placeholder');
+        expenseMatchedSection.setAttribute('data-runtime-phase', 'placeholder');
+        expenseReviewSection.setAttribute('data-runtime-phase', 'placeholder');
+        expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', 'placeholder');
+        expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', 'placeholder');
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'placeholder');
         exportHandoffSection.setAttribute('data-runtime-phase', 'placeholder');
         syncRuntimePayoutDiagnosticsPhase('placeholder');
@@ -2202,12 +2316,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         preparedFilesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>';
+        controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
+        controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr>';
         matchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.</p>';
         unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované payout dávky.</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro hlavní rezervace.</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro doplňkové položky.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'placeholder');
+        expenseDetailSummaryContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a odchozí bankovní platby.</p>';
+        expenseMatchedContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí spárované výdaje.</p>';
+        expenseReviewContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí výdaje ke kontrole.</p>';
+        expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí nespárované doklady.</p>';
+        expenseUnmatchedOutflowsContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí nespárované odchozí platby.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované rezervace.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro exportní handoff.</p><p class="hint">Exporty vzniknou až ze skutečně spuštěného běhu nad vybranými soubory.</p>';
         renderInitialRuntimePayoutDiagnostics();
@@ -2259,14 +2380,38 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
       }
 
+      function resolveOperatorViewFromHash() {
+        const hash = String((window && window.location && window.location.hash) || '');
+
+        if (hash === '#detail-kontrolnich-sekci') {
+          return 'control-detail';
+        }
+
+        if (hash === '#kontrola-vydaju-a-dokladu') {
+          return 'expense-detail';
+        }
+
+        return 'main-overview';
+      }
+
       button.addEventListener('click', () => {
         void startMainWorkflow();
       });
+      openControlDetailButton.addEventListener('click', () => {
+        showOperatorView('control-detail');
+      });
       openExpenseReviewButton.addEventListener('click', () => {
-        openExpenseReviewWindow();
+        showOperatorView('expense-detail');
+      });
+      backFromControlDetailButton.addEventListener('click', () => {
+        showOperatorView('main-overview');
+      });
+      backFromExpenseDetailButton.addEventListener('click', () => {
+        showOperatorView('main-overview');
       });
 
       renderInitialVisibleState();
+      showOperatorView(resolveOperatorViewFromHash());
     </script>
   </body>
 </html>

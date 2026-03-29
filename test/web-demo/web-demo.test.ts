@@ -44,8 +44,11 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain("button.addEventListener('click'")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
     expect(result.html).toContain('Sekvence měsíčního běhu')
-    expect(result.html).toContain('Příprava, kontrola a report v jednom pohledu')
+    expect(result.html).toContain('Kompaktní přehled měsíčního běhu')
     expect(result.html).toContain('id="open-expense-review-button"')
+    expect(result.html).toContain('id="open-control-detail-button"')
+    expect(result.html).not.toContain('window.open(')
+    expect(result.html).not.toContain('about:blank')
     expect(result.html).toContain('Exportní handoff')
     expect(result.html).toContain('Airbnb payout')
     expect(result.html).not.toContain('<iframe')
@@ -1690,26 +1693,77 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).not.toContain('Lenner')
+    expect(rendered.mainDashboardView.hidden).toBe(false)
     expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Spárované výdaje')
     expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Výdaje ke kontrole')
     expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Nespárované doklady')
     expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Nespárované odchozí platby')
+    expect(rendered.controlDetailLauncherSummaryContent.innerHTML).toContain('Spárované payout dávky')
+    expect(rendered.controlDetailLauncherSummaryContent.innerHTML).toContain('Nespárované payout dávky')
 
-    const expenseReviewPageHtml = rendered.openExpenseReviewPage()
+    const controlDetailView = rendered.openControlDetailPage()
 
-    expect(expenseReviewPageHtml).toContain('Kontrola výdajů a dokladů')
-    expect(expenseReviewPageHtml).toContain('Spárované výdaje')
-    expect(expenseReviewPageHtml).toContain('Výdaje ke kontrole')
-    expect(expenseReviewPageHtml).toContain('Nespárované doklady')
-    expect(expenseReviewPageHtml).toContain('Nespárované odchozí platby')
-    expect(expenseReviewPageHtml).toContain('<h6>Doklad</h6>')
-    expect(expenseReviewPageHtml).toContain('<h6>Stav a důkazy</h6>')
-    expect(expenseReviewPageHtml).toContain('<h6>Banka</h6>')
-    expect(expenseReviewPageHtml).toContain('Lenner Motors s.r.o.')
-    expect(expenseReviewPageHtml).toContain('141260183')
-    expect(expenseReviewPageHtml).toContain('Doklad ↔ banka:')
-    expect(expenseReviewPageHtml).toContain('Částka:')
-    expect(expenseReviewPageHtml).not.toContain('Airbnb payout dávka')
+    expect(rendered.mainDashboardView.hidden).toBe(true)
+    expect(controlDetailView.hidden).toBe(false)
+    expect(rendered.expenseDetailView.hidden).toBe(true)
+    expect(rendered.controlDetailPageSummaryContent.innerHTML).toContain('Hlavní ubytovací rezervace')
+    expect(rendered.controlDetailPageSummaryContent.innerHTML).toContain('Doplňkové položky')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
+
+    const matchedPayoutSummaryCount = extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Spárované payout dávky')
+    const unmatchedPayoutSummaryCount = extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Nespárované payout dávky')
+    const reservationSummaryCount = extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Hlavní ubytovací rezervace')
+    const ancillarySummaryCount = extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Doplňkové položky')
+    const unmatchedReservationsSummaryCount = extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Nespárované rezervace k úhradě')
+
+    expect(extractSummaryCount(rendered.controlDetailLauncherSummaryContent.innerHTML, 'Spárované payout dávky')).toBe(matchedPayoutSummaryCount)
+    expect(extractSummaryCount(rendered.controlDetailLauncherSummaryContent.innerHTML, 'Nespárované payout dávky')).toBe(unmatchedPayoutSummaryCount)
+    expect(extractSummaryCount(rendered.controlDetailLauncherSummaryContent.innerHTML, 'Hlavní ubytovací rezervace')).toBe(reservationSummaryCount)
+    expect(extractSummaryCount(rendered.controlDetailLauncherSummaryContent.innerHTML, 'Doplňkové položky')).toBe(ancillarySummaryCount)
+    expect(extractSummaryCount(rendered.controlDetailLauncherSummaryContent.innerHTML, 'Nespárované rezervace k úhradě')).toBe(unmatchedReservationsSummaryCount)
+
+    expect(matchedPayoutSummaryCount).toBe(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1)
+    expect(unmatchedPayoutSummaryCount).toBe(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1)
+    expect(reservationSummaryCount).toBe(rendered.reservationSettlementOverviewContent.innerHTML.split('<li><strong>').length - 1)
+    expect(ancillarySummaryCount).toBe(rendered.ancillarySettlementOverviewContent.innerHTML.split('<li><strong>').length - 1)
+    expect(unmatchedReservationsSummaryCount).toBe(rendered.unmatchedReservationsContent.innerHTML.split('<li><strong>').length - 1)
+
+    rendered.backToMainOverviewFromControl()
+    expect(rendered.mainDashboardView.hidden).toBe(false)
+    expect(rendered.controlDetailView.hidden).toBe(true)
+
+    const expenseDetailView = rendered.openExpenseReviewPage()
+
+    expect(rendered.mainDashboardView.hidden).toBe(true)
+    expect(rendered.controlDetailView.hidden).toBe(true)
+    expect(expenseDetailView.hidden).toBe(false)
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Spárované výdaje')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Výdaje ke kontrole')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Nespárované doklady')
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Nespárované odchozí platby')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Lenner Motors s.r.o.')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('141260183')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Doklad ↔ banka:')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Částka:')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<h6>Doklad</h6>')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<h6>Stav a důkazy</h6>')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<h6>Banka</h6>')
+    expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).not.toContain('Airbnb payout dávka')
+
+    const expenseMatchedSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Spárované výdaje')
+    const expenseReviewSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Výdaje ke kontrole')
+    const expenseUnmatchedDocumentsSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Nespárované doklady')
+    const expenseUnmatchedOutflowsSummaryCount = extractSummaryCount(rendered.expenseDetailSummaryContent.innerHTML, 'Nespárované odchozí platby')
+
+    expect(expenseMatchedSummaryCount).toBe(rendered.expenseMatchedContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseReviewSummaryCount).toBe(rendered.expenseReviewContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseUnmatchedDocumentsSummaryCount).toBe(rendered.expenseUnmatchedDocumentsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseUnmatchedOutflowsSummaryCount).toBe(rendered.expenseUnmatchedOutflowsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+
+    rendered.backToMainOverviewFromExpense()
+    expect(rendered.mainDashboardView.hidden).toBe(false)
+    expect(rendered.expenseDetailView.hidden).toBe(true)
   })
 
   it('shows SPD QR fallback payload and provenance for invoice-like PDFs without changing the stable 16 / 2 payout result', async () => {
@@ -2013,15 +2067,32 @@ async function executeWebDemoMainWorkflow(input: {
   buildFingerprint: StubDomElement
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
+  mainDashboardView: StubDomElement
+  controlDetailView: StubDomElement
+  expenseDetailView: StubDomElement
+  controlDetailLauncherSummaryContent: StubDomElement
+  controlDetailPageSummaryContent: StubDomElement
   expenseReviewSummaryContent: StubDomElement
-  openExpenseReviewButton: StubDomElement
+  expenseDetailSummaryContent: StubDomElement
+  matchedPayoutBatchesSection: StubDomElement
   matchedPayoutBatchesContent: StubDomElement
+  unmatchedPayoutBatchesSection: StubDomElement
   unmatchedPayoutBatchesContent: StubDomElement
+  reservationSettlementOverviewContent: StubDomElement
+  ancillarySettlementOverviewContent: StubDomElement
+  unmatchedReservationsContent: StubDomElement
+  expenseMatchedContent: StubDomElement
+  expenseReviewContent: StubDomElement
+  expenseUnmatchedDocumentsContent: StubDomElement
+  expenseUnmatchedOutflowsContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
   runtimePayoutProjectionDebugSection: StubDomElement
   runtimePayoutProjectionDebugContent: StubDomElement
-  openExpenseReviewPage: () => string
+  openExpenseReviewPage: () => StubDomElement
+  openControlDetailPage: () => StubDomElement
+  backToMainOverviewFromExpense: () => void
+  backToMainOverviewFromControl: () => void
   lastVisibleRuntimeState?: unknown
   lastVisiblePayoutProjection?: unknown
 }> {
@@ -2040,16 +2111,8 @@ async function executeWebDemoMainWorkflow(input: {
   const html = readFileSync(outputPath, 'utf8')
   const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
-  let openedExpenseReviewHtml = ''
   const windowObject: {
     location: { search: string; hash: string }
-    open?: () => {
-      document: {
-        open: () => void
-        write: (value: string) => void
-        close: () => void
-      }
-    }
     __hotelFinanceCreateBrowserRuntime?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
@@ -2057,21 +2120,6 @@ async function executeWebDemoMainWorkflow(input: {
     location: {
       search: input.locationSearch ?? '',
       hash: input.locationHash ?? ''
-    },
-    open() {
-      openedExpenseReviewHtml = ''
-
-      return {
-        document: {
-          open() {
-            openedExpenseReviewHtml = ''
-          },
-          write(value: string) {
-            openedExpenseReviewHtml += value
-          },
-          close() {}
-        }
-      }
     }
   }
 
@@ -2109,17 +2157,41 @@ async function executeWebDemoMainWorkflow(input: {
     buildFingerprint: elements['build-fingerprint'],
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
+    mainDashboardView: elements['main-dashboard-view'],
+    controlDetailView: elements['control-detail-view'],
+    expenseDetailView: elements['expense-detail-view'],
+    controlDetailLauncherSummaryContent: elements['control-detail-launcher-summary-content'],
+    controlDetailPageSummaryContent: elements['control-detail-page-summary-content'],
     expenseReviewSummaryContent: elements['expense-review-summary-content'],
-    openExpenseReviewButton: elements['open-expense-review-button'],
+    expenseDetailSummaryContent: elements['expense-detail-summary-content'],
+    matchedPayoutBatchesSection: elements['matched-payout-batches-section'],
     matchedPayoutBatchesContent: elements['matched-payout-batches-content'],
+    unmatchedPayoutBatchesSection: elements['unmatched-payout-batches-section'],
     unmatchedPayoutBatchesContent: elements['unmatched-payout-batches-content'],
+    reservationSettlementOverviewContent: elements['reservation-settlement-overview-content'],
+    ancillarySettlementOverviewContent: elements['ancillary-settlement-overview-content'],
+    unmatchedReservationsContent: elements['unmatched-reservations-content'],
+    expenseMatchedContent: elements['expense-matched-content'],
+    expenseReviewContent: elements['expense-review-content'],
+    expenseUnmatchedDocumentsContent: elements['expense-unmatched-documents-content'],
+    expenseUnmatchedOutflowsContent: elements['expense-unmatched-outflows-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
     runtimePayoutProjectionDebugSection: elements['runtime-payout-projection-debug-section'],
     runtimePayoutProjectionDebugContent: elements['runtime-payout-projection-debug-content'],
     openExpenseReviewPage() {
       elements['open-expense-review-button'].listeners.click()
-      return openedExpenseReviewHtml
+      return elements['expense-detail-view']
+    },
+    openControlDetailPage() {
+      elements['open-control-detail-button'].listeners.click()
+      return elements['control-detail-view']
+    },
+    backToMainOverviewFromExpense() {
+      elements['back-from-expense-detail-button'].listeners.click()
+    },
+    backToMainOverviewFromControl() {
+      elements['back-from-control-detail-button'].listeners.click()
     },
     lastVisibleRuntimeState: windowObject.__hotelFinanceLastVisibleRuntimeState,
     lastVisiblePayoutProjection: windowObject.__hotelFinanceLastVisiblePayoutProjection
@@ -2184,10 +2256,18 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'runtime-summary-normalized-transactions',
     'runtime-summary-review-items',
     'runtime-summary-export-files',
+    'main-dashboard-view',
+    'control-detail-view',
+    'expense-detail-view',
     'prepared-files-section',
     'prepared-files-content',
     'review-summary-section',
     'review-summary-content',
+    'control-detail-summary-section',
+    'control-detail-launcher-summary-content',
+    'control-detail-page-summary-content',
+    'open-control-detail-button',
+    'back-from-control-detail-button',
     'report-preview-body',
     'reservation-settlement-overview-section',
     'reservation-settlement-overview-content',
@@ -2197,9 +2277,19 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'matched-payout-batches-content',
     'unmatched-payout-batches-section',
     'unmatched-payout-batches-content',
+    'expense-detail-summary-content',
+    'expense-matched-section',
+    'expense-matched-content',
+    'expense-review-section',
+    'expense-review-content',
+    'expense-unmatched-documents-section',
+    'expense-unmatched-documents-content',
+    'expense-unmatched-outflows-section',
+    'expense-unmatched-outflows-content',
     'expense-review-summary-section',
     'expense-review-summary-content',
     'open-expense-review-button',
+    'back-from-expense-detail-button',
     'unmatched-reservations-section',
     'unmatched-reservations-content',
     'export-handoff-section',
@@ -2240,6 +2330,17 @@ function createStubDomElement(
 
   elements[id] = element
   return element
+}
+
+function extractSummaryCount(markup: string, label: string): number {
+  const pattern = new RegExp(`<strong>${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:</strong>\\s*(\\d+)`)
+  const match = markup.match(pattern)
+
+  if (!match?.[1]) {
+    throw new Error(`Summary count for ${label} not found in markup.`)
+  }
+
+  return Number(match[1])
 }
 
 function resolveCurrentGitCommitHash(): string {
