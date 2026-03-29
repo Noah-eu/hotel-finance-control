@@ -50,6 +50,9 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Kompaktní přehled měsíčního běhu')
     expect(result.html).toContain('id="open-expense-review-button"')
     expect(result.html).toContain('id="open-control-detail-button"')
+    expect(result.html).toContain('id="expense-detail-search"')
+    expect(result.html).toContain('id="expense-detail-sort"')
+    expect(result.html).toContain('id="expense-filter-expenseUnmatchedOutflows"')
     expect(result.html).toContain('expense-summary-grid')
     expect(result.html).toContain('expense-summary-tile')
     expect(result.html).toContain('grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));')
@@ -1942,6 +1945,98 @@ describe('buildWebDemo', () => {
     expect(reloaded.expenseReviewContent.innerHTML).toContain('Potvrdit shodu')
   })
 
+  it('filters, searches, sorts, and keeps full totals stable on the expense detail page', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T15:50:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-expense-filters-and-sorting',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseNeedsReview"')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 2')
+
+    const fullReviewCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
+    const fullOutflowCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')
+
+    expect(fullReviewCount).toBe(1)
+    expect(fullOutflowCount).toBe(1)
+
+    rendered.setExpenseDetailSearch('lenner')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 1')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Lenner Motors s.r.o.')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Žádné nespárované odchozí platby.')
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')).toBe(fullReviewCount)
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')).toBe(fullOutflowCount)
+
+    const reviewState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = reviewState.reviewSections.expenseNeedsReview[0]?.id
+    expect(reviewItemId).toBeTruthy()
+
+    rendered.confirmExpenseReviewItem(String(reviewItemId))
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Ručně potvrzená shoda')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Žádné výdaje ke kontrole.')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 1')
+
+    rendered.setExpenseDetailSearch('')
+    rendered.setExpenseDetailFilter('manualConfirmed')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 1')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Ručně potvrzená shoda')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Žádné výdaje ke kontrole.')
+
+    const confirmedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseMatched: Array<{ id: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const confirmedItemId = confirmedState.reviewSections.expenseMatched.find((item) => item.manualSourceReviewItemId === reviewItemId)?.id
+    expect(confirmedItemId).toBeTruthy()
+
+    rendered.undoConfirmedExpenseReviewItem(String(confirmedItemId))
+    rendered.setExpenseDetailFilter('expenseNeedsReview')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 1')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Lenner Motors s.r.o.')
+
+    rendered.setExpenseDetailSearch('VS 141260183')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 1')
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+    rendered.setExpenseDetailSearch('')
+    rendered.setExpenseDetailFilter('expenseUnmatchedOutflows')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Ručně zamítnuto')
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 2')
+
+    rendered.setExpenseDetailSort('newest')
+    const outflowTitlesNewest = extractExpenseItemTitles(rendered.expenseUnmatchedOutflowsContent.innerHTML)
+    rendered.setExpenseDetailSort('oldest')
+    const outflowTitlesOldest = extractExpenseItemTitles(rendered.expenseUnmatchedOutflowsContent.innerHTML)
+
+    expect(outflowTitlesNewest).toHaveLength(2)
+    expect(outflowTitlesOldest).toHaveLength(2)
+    expect(outflowTitlesNewest).not.toEqual(outflowTitlesOldest)
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')).toBe(0)
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')).toBe(fullOutflowCount + 1)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('lets the operator reject a review-worthy expense pair and does not immediately re-suggest the same pair', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
@@ -2686,6 +2781,9 @@ async function executeWebDemoMainWorkflow(input: {
   controlDetailPageSummaryContent: StubDomElement
   expenseReviewSummaryContent: StubDomElement
   expenseDetailSummaryContent: StubDomElement
+  expenseDetailSearchInput: StubDomElement
+  expenseDetailSortSelect: StubDomElement
+  expenseDetailVisibleCount: StubDomElement
   matchedPayoutBatchesSection: StubDomElement
   matchedPayoutBatchesContent: StubDomElement
   unmatchedPayoutBatchesSection: StubDomElement
@@ -2710,6 +2808,18 @@ async function executeWebDemoMainWorkflow(input: {
   clearCurrentMonthWorkspace: () => void
   confirmExpenseReviewItem: (reviewItemId: string) => void
   rejectExpenseReviewItem: (reviewItemId: string) => void
+  setExpenseDetailFilter: (
+    filter:
+      | 'all'
+      | 'expenseMatched'
+      | 'expenseNeedsReview'
+      | 'expenseUnmatchedDocuments'
+      | 'expenseUnmatchedOutflows'
+      | 'manualConfirmed'
+      | 'manualRejected'
+  ) => void
+  setExpenseDetailSearch: (value: string) => void
+  setExpenseDetailSort: (value: 'newest' | 'oldest' | 'amount-desc' | 'amount-asc') => void
   undoConfirmedExpenseReviewItem: (itemId: string) => void
   undoRejectedExpenseReviewItem: (itemId: string) => void
   setWorkspaceExportPreset: (preset: 'complete' | 'review-needed' | 'matched-only') => void
@@ -2841,6 +2951,9 @@ async function executeWebDemoMainWorkflow(input: {
     controlDetailPageSummaryContent: elements['control-detail-page-summary-content'],
     expenseReviewSummaryContent: elements['expense-review-summary-content'],
     expenseDetailSummaryContent: elements['expense-detail-summary-content'],
+    expenseDetailSearchInput: elements['expense-detail-search'],
+    expenseDetailSortSelect: elements['expense-detail-sort'],
+    expenseDetailVisibleCount: elements['expense-detail-visible-count'],
     matchedPayoutBatchesSection: elements['matched-payout-batches-section'],
     matchedPayoutBatchesContent: elements['matched-payout-batches-content'],
     unmatchedPayoutBatchesSection: elements['unmatched-payout-batches-section'],
@@ -2883,6 +2996,36 @@ async function executeWebDemoMainWorkflow(input: {
     },
     rejectExpenseReviewItem(reviewItemId: string) {
       elements[buildExpenseReviewActionElementId('reject', reviewItemId)].listeners.click()
+    },
+    setExpenseDetailFilter(
+      filter:
+        | 'all'
+        | 'expenseMatched'
+        | 'expenseNeedsReview'
+        | 'expenseUnmatchedDocuments'
+        | 'expenseUnmatchedOutflows'
+        | 'manualConfirmed'
+        | 'manualRejected'
+    ) {
+      const elementIdByFilter = {
+        all: 'expense-filter-all',
+        expenseMatched: 'expense-filter-expenseMatched',
+        expenseNeedsReview: 'expense-filter-expenseNeedsReview',
+        expenseUnmatchedDocuments: 'expense-filter-expenseUnmatchedDocuments',
+        expenseUnmatchedOutflows: 'expense-filter-expenseUnmatchedOutflows',
+        manualConfirmed: 'expense-filter-manualConfirmed',
+        manualRejected: 'expense-filter-manualRejected'
+      } as const
+
+      elements[elementIdByFilter[filter]].listeners.click()
+    },
+    setExpenseDetailSearch(value: string) {
+      elements['expense-detail-search'].value = value
+      elements['expense-detail-search'].listeners.input()
+    },
+    setExpenseDetailSort(value: 'newest' | 'oldest' | 'amount-desc' | 'amount-asc') {
+      elements['expense-detail-sort'].value = value
+      elements['expense-detail-sort'].listeners.change()
     },
     undoConfirmedExpenseReviewItem(itemId: string) {
       elements[buildExpenseReviewActionElementId('undo-confirm', itemId)].listeners.click()
@@ -3007,6 +3150,17 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'expense-unmatched-outflows-content',
     'expense-review-summary-section',
     'expense-review-summary-content',
+    'expense-detail-filter-buttons',
+    'expense-filter-all',
+    'expense-filter-expenseMatched',
+    'expense-filter-expenseNeedsReview',
+    'expense-filter-expenseUnmatchedDocuments',
+    'expense-filter-expenseUnmatchedOutflows',
+    'expense-filter-manualConfirmed',
+    'expense-filter-manualRejected',
+    'expense-detail-search',
+    'expense-detail-sort',
+    'expense-detail-visible-count',
     'open-expense-review-button',
     'back-from-expense-detail-button',
     'unmatched-reservations-section',
@@ -3074,6 +3228,10 @@ function extractExpenseBucketCount(markup: string, key: string): number {
   }
 
   return Number(match[1])
+}
+
+function extractExpenseItemTitles(markup: string): string[] {
+  return Array.from(markup.matchAll(/<div class="expense-item-title">([^<]+)<\/div>/g)).map((match) => match[1] || '')
 }
 
 function readWorkbookFromBrowserExportBase64(base64Content: string) {

@@ -440,6 +440,43 @@ function renderOperatorWebDemoHtml(input: {
         display: block;
         color: #52627a;
       }
+      .expense-detail-toolbar {
+        display: grid;
+        gap: 1rem;
+        margin: 1rem 0 1.25rem;
+        padding: 1rem;
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        background: #f8fafc;
+      }
+      .expense-filter-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+      .expense-filter-buttons button {
+        border-radius: 999px;
+        padding: 0.45rem 0.85rem;
+      }
+      .expense-filter-buttons button.is-active {
+        background: #0f766e;
+        border-color: #0f766e;
+        color: #ffffff;
+      }
+      .expense-toolbar-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem 1rem;
+        align-items: end;
+      }
+      .expense-toolbar-grid input,
+      .expense-toolbar-grid select {
+        width: 100%;
+      }
+      .expense-visible-count {
+        margin: 0;
+        color: #52627a;
+      }
       .status-badge {
         display: inline-block;
         border-radius: 999px;
@@ -690,6 +727,33 @@ ${showRuntimePayoutDiagnostics ? `
         <div id="expense-detail-summary-content" class="detail-summary-block">
           <p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a odchozí bankovní platby.</p>
         </div>
+        <section class="expense-detail-toolbar">
+          <div class="expense-filter-buttons" id="expense-detail-filter-buttons">
+            <button id="expense-filter-all" type="button">Vše</button>
+            <button id="expense-filter-expenseMatched" type="button">Spárované výdaje</button>
+            <button id="expense-filter-expenseNeedsReview" type="button">Výdaje ke kontrole</button>
+            <button id="expense-filter-expenseUnmatchedDocuments" type="button">Nespárované doklady</button>
+            <button id="expense-filter-expenseUnmatchedOutflows" type="button">Nespárované odchozí platby</button>
+            <button id="expense-filter-manualConfirmed" type="button">Ručně potvrzené</button>
+            <button id="expense-filter-manualRejected" type="button">Ručně zamítnuté</button>
+          </div>
+          <div class="expense-toolbar-grid">
+            <div>
+              <label for="expense-detail-search">Hledat v dokladech a bance</label>
+              <input id="expense-detail-search" type="search" placeholder="Lenner, VS, částka, IBAN…" />
+            </div>
+            <div>
+              <label for="expense-detail-sort">Řazení</label>
+              <select id="expense-detail-sort">
+                <option value="newest">Nejnovější nahoře</option>
+                <option value="oldest">Nejstarší nahoře</option>
+                <option value="amount-desc">Nejvyšší částka</option>
+                <option value="amount-asc">Nejnižší částka</option>
+              </select>
+            </div>
+          </div>
+          <p id="expense-detail-visible-count" class="expense-visible-count">Zobrazeno položek: 0</p>
+        </section>
         <div class="detail-grid">
           <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Spárované výdaje</h3>
@@ -765,6 +829,9 @@ ${showRuntimePayoutDiagnostics ? `
   const expenseReviewSummarySection = document.getElementById('expense-review-summary-section');
   const expenseReviewSummaryContent = document.getElementById('expense-review-summary-content');
   const expenseDetailSummaryContent = document.getElementById('expense-detail-summary-content');
+  const expenseDetailSearchInput = document.getElementById('expense-detail-search');
+  const expenseDetailSortSelect = document.getElementById('expense-detail-sort');
+  const expenseDetailVisibleCount = document.getElementById('expense-detail-visible-count');
   const openExpenseReviewButton = document.getElementById('open-expense-review-button');
   const backFromControlDetailButton = document.getElementById('back-from-control-detail-button');
   const backFromExpenseDetailButton = document.getElementById('back-from-expense-detail-button');
@@ -785,7 +852,11 @@ ${showRuntimePayoutDiagnostics ? `
       let currentExpenseReviewOverrides = [];
       let currentExportVisibleState = initialRuntimeState;
       let currentExportPreset = 'complete';
+      let currentExpenseDetailFilter = 'all';
+      let currentExpenseDetailSearch = '';
+      let currentExpenseDetailSort = 'newest';
       let currentVisibleRuntimePhase = 'placeholder';
+      let expenseDetailControlsWired = false;
       let currentWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
       const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
@@ -2480,6 +2551,156 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ];
       }
 
+      function normalizeExpenseSearchValue(value) {
+        return String(value || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .trim();
+      }
+
+      function parseExpenseAmountMinor(value) {
+        const normalized = String(value || '').replace(/\s+/g, '').replace(/[Kk][Čč]|CZK|EUR|€/g, '');
+
+        if (!normalized) {
+          return Number.NEGATIVE_INFINITY;
+        }
+
+        const decimal = normalized.replace(/\./g, '').replace(',', '.');
+        const parsed = Number(decimal);
+        return Number.isFinite(parsed) ? Math.round(parsed * 100) : Number.NEGATIVE_INFINITY;
+      }
+
+      function parseExpenseComparableTimestamp(value) {
+        const normalized = String(value || '').trim();
+
+        if (!normalized) {
+          return Number.NEGATIVE_INFINITY;
+        }
+
+        const direct = Date.parse(normalized);
+        if (Number.isFinite(direct)) {
+          return direct;
+        }
+
+        const european = normalized.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+        if (european) {
+          const day = european[1];
+          const month = european[2];
+          const year = european[3];
+          const hour = european[4] || '00';
+          const minute = european[5] || '00';
+          const second = european[6] || '00';
+          return Date.parse(year + '-' + month + '-' + day + 'T' + hour + ':' + minute + ':' + second + 'Z');
+        }
+
+        return Number.NEGATIVE_INFINITY;
+      }
+
+      function buildExpenseSearchIndex(item) {
+        const comparison = item && item.expenseComparison ? item.expenseComparison : {};
+        const documentSide = comparison.document || {};
+        const bankSide = comparison.bank || {};
+        const evidence = Array.isArray(item && item.evidenceSummary)
+          ? item.evidenceSummary.map((entry) => String(entry && entry.value || ''))
+          : [];
+
+        return normalizeExpenseSearchValue([
+          item && item.title,
+          item && item.detail,
+          documentSide.supplierOrCounterparty,
+          documentSide.reference,
+          documentSide.amount,
+          documentSide.currency,
+          documentSide.ibanHint,
+          documentSide.issueDate,
+          documentSide.dueDate,
+          bankSide.supplierOrCounterparty,
+          bankSide.reference,
+          bankSide.amount,
+          bankSide.currency,
+          bankSide.bankAccount,
+          bankSide.bookedAt,
+          Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds.join(' ') : '',
+          Array.isArray(item && item.transactionIds) ? item.transactionIds.join(' ') : '',
+          evidence.join(' ')
+        ].filter(Boolean).join(' '));
+      }
+
+      function matchesExpenseFilter(bucketKey, item) {
+        if (currentExpenseDetailFilter === 'all') {
+          return true;
+        }
+
+        if (currentExpenseDetailFilter === 'manualConfirmed') {
+          return item && item.manualDecision === 'confirmed';
+        }
+
+        if (currentExpenseDetailFilter === 'manualRejected') {
+          return item && item.manualDecision === 'rejected';
+        }
+
+        return bucketKey === currentExpenseDetailFilter;
+      }
+
+      function matchesExpenseSearch(item) {
+        const normalizedNeedle = normalizeExpenseSearchValue(currentExpenseDetailSearch);
+
+        if (!normalizedNeedle) {
+          return true;
+        }
+
+        return buildExpenseSearchIndex(item).includes(normalizedNeedle);
+      }
+
+      function compareExpenseItems(left, right) {
+        const leftDocument = left && left.expenseComparison && left.expenseComparison.document ? left.expenseComparison.document : {};
+        const rightDocument = right && right.expenseComparison && right.expenseComparison.document ? right.expenseComparison.document : {};
+        const leftBank = left && left.expenseComparison && left.expenseComparison.bank ? left.expenseComparison.bank : {};
+        const rightBank = right && right.expenseComparison && right.expenseComparison.bank ? right.expenseComparison.bank : {};
+        const leftDate = parseExpenseComparableTimestamp(leftBank.bookedAt || leftDocument.dueDate || leftDocument.issueDate);
+        const rightDate = parseExpenseComparableTimestamp(rightBank.bookedAt || rightDocument.dueDate || rightDocument.issueDate);
+        const leftAmount = parseExpenseAmountMinor(leftDocument.amount || leftBank.amount);
+        const rightAmount = parseExpenseAmountMinor(rightDocument.amount || rightBank.amount);
+        const leftTitle = String(left && left.title || '');
+        const rightTitle = String(right && right.title || '');
+
+        if (currentExpenseDetailSort === 'oldest') {
+          return leftDate - rightDate || leftAmount - rightAmount || leftTitle.localeCompare(rightTitle, 'cs');
+        }
+
+        if (currentExpenseDetailSort === 'amount-desc') {
+          return rightAmount - leftAmount || rightDate - leftDate || leftTitle.localeCompare(rightTitle, 'cs');
+        }
+
+        if (currentExpenseDetailSort === 'amount-asc') {
+          return leftAmount - rightAmount || rightDate - leftDate || leftTitle.localeCompare(rightTitle, 'cs');
+        }
+
+        return rightDate - leftDate || rightAmount - leftAmount || leftTitle.localeCompare(rightTitle, 'cs');
+      }
+
+      function buildVisibleExpenseReviewBuckets(buckets) {
+        const normalizedBuckets = Array.isArray(buckets) ? buckets : [];
+        const nextBuckets = normalizedBuckets.map((bucket) => {
+          const filteredItems = (Array.isArray(bucket.items) ? bucket.items : [])
+            .filter((item) => matchesExpenseFilter(bucket.key, item))
+            .filter((item) => matchesExpenseSearch(item))
+            .slice()
+            .sort(compareExpenseItems);
+
+          return {
+            ...bucket,
+            visibleItems: filteredItems
+          };
+        });
+
+        return {
+          buckets: nextBuckets,
+          visibleCount: nextBuckets.reduce((sum, bucket) => sum + bucket.visibleItems.length, 0)
+        };
+      }
+
       function cloneExpenseReviewItem(item) {
         return {
           ...item,
@@ -2800,6 +3021,86 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
+      function syncExpenseDetailControls() {
+        const filterButtons = [
+          ['all', 'expense-filter-all'],
+          ['expenseMatched', 'expense-filter-expenseMatched'],
+          ['expenseNeedsReview', 'expense-filter-expenseNeedsReview'],
+          ['expenseUnmatchedDocuments', 'expense-filter-expenseUnmatchedDocuments'],
+          ['expenseUnmatchedOutflows', 'expense-filter-expenseUnmatchedOutflows'],
+          ['manualConfirmed', 'expense-filter-manualConfirmed'],
+          ['manualRejected', 'expense-filter-manualRejected']
+        ];
+
+        filterButtons.forEach(([filterKey, elementId]) => {
+          const button = document.getElementById(elementId);
+
+          if (!button) {
+            return;
+          }
+
+          button.className = filterKey === currentExpenseDetailFilter ? 'is-active' : '';
+        });
+
+        if (expenseDetailSearchInput) {
+          expenseDetailSearchInput.value = currentExpenseDetailSearch;
+        }
+
+        if (expenseDetailSortSelect) {
+          expenseDetailSortSelect.value = currentExpenseDetailSort;
+        }
+      }
+
+      function wireExpenseDetailControls() {
+        if (expenseDetailControlsWired) {
+          syncExpenseDetailControls();
+          return;
+        }
+
+        const filterButtons = [
+          ['all', 'expense-filter-all'],
+          ['expenseMatched', 'expense-filter-expenseMatched'],
+          ['expenseNeedsReview', 'expense-filter-expenseNeedsReview'],
+          ['expenseUnmatchedDocuments', 'expense-filter-expenseUnmatchedDocuments'],
+          ['expenseUnmatchedOutflows', 'expense-filter-expenseUnmatchedOutflows'],
+          ['manualConfirmed', 'expense-filter-manualConfirmed'],
+          ['manualRejected', 'expense-filter-manualRejected']
+        ];
+
+        filterButtons.forEach(([filterKey, elementId]) => {
+          const button = document.getElementById(elementId);
+
+          if (!button || typeof button.addEventListener !== 'function') {
+            return;
+          }
+
+          button.addEventListener('click', () => {
+            currentExpenseDetailFilter = filterKey;
+            applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+            showOperatorView('expense-detail');
+          });
+        });
+
+        if (expenseDetailSearchInput && typeof expenseDetailSearchInput.addEventListener === 'function') {
+          expenseDetailSearchInput.addEventListener('input', () => {
+            currentExpenseDetailSearch = String(expenseDetailSearchInput.value || '');
+            applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+            showOperatorView('expense-detail');
+          });
+        }
+
+        if (expenseDetailSortSelect && typeof expenseDetailSortSelect.addEventListener === 'function') {
+          expenseDetailSortSelect.addEventListener('change', () => {
+            currentExpenseDetailSort = String(expenseDetailSortSelect.value || 'newest');
+            applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+            showOperatorView('expense-detail');
+          });
+        }
+
+        expenseDetailControlsWired = true;
+        syncExpenseDetailControls();
+      }
+
       function buildControlDetailSummaryMarkup(state, phase) {
         const normalizedState = state || initialRuntimeState;
         const payoutProjection = getVisiblePayoutProjection(normalizedState);
@@ -3034,7 +3335,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         };
         const payoutProjection = getVisiblePayoutProjection(visibleState);
         const expenseReviewBuckets = buildExpenseReviewBuckets(visibleState.reviewSections);
-        const expenseBucketMap = expenseReviewBuckets.reduce((map, bucket) => {
+        const visibleExpenseBucketResult = buildVisibleExpenseReviewBuckets(expenseReviewBuckets);
+        const visibleExpenseBuckets = visibleExpenseBucketResult.buckets;
+        const expenseBucketMap = visibleExpenseBuckets.reduce((map, bucket) => {
           map[bucket.key] = bucket;
           return map;
         }, {});
@@ -3085,17 +3388,22 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(expenseReviewBuckets, phase);
         expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
-        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.items) || [], 'Žádné spárované výdaje.', 'expenseMatched');
-        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || [], 'Žádné výdaje ke kontrole.', 'expenseNeedsReview');
-        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || [], 'Žádné nespárované doklady.', 'expenseUnmatchedDocuments');
-        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || [], 'Žádné nespárované odchozí platby.', 'expenseUnmatchedOutflows');
-        wireExpenseReviewActionButtons('expenseMatched', (expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.items) || []);
-        wireExpenseReviewActionButtons('expenseNeedsReview', (expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || []);
-        wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || []);
-        wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || []);
+        if (expenseDetailVisibleCount) {
+          expenseDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(visibleExpenseBucketResult.visibleCount);
+        }
+        syncExpenseDetailControls();
+        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.visibleItems) || [], 'Žádné spárované výdaje.', 'expenseMatched');
+        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.visibleItems) || [], 'Žádné výdaje ke kontrole.', 'expenseNeedsReview');
+        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [], 'Žádné nespárované doklady.', 'expenseUnmatchedDocuments');
+        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [], 'Žádné nespárované odchozí platby.', 'expenseUnmatchedOutflows');
+        wireExpenseReviewActionButtons('expenseMatched', (expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.visibleItems) || []);
+        wireExpenseReviewActionButtons('expenseNeedsReview', (expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.visibleItems) || []);
+        wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || []);
+        wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || []);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         wireExportControls();
+        wireExpenseDetailControls();
         renderCompletedRuntimePayoutDiagnostics(visibleState);
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
@@ -3159,6 +3467,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'running');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů se právě připravuje ze stejného runtime běhu…</p>';
+        if (expenseDetailVisibleCount) {
+          expenseDetailVisibleCount.textContent = 'Zobrazeno položek: 0';
+        }
+        syncExpenseDetailControls();
         expenseMatchedContent.innerHTML = '<p class="hint">Spárované výdaje se právě načítají ze sdíleného runtime běhu…</p>';
         expenseReviewContent.innerHTML = '<p class="hint">Výdaje ke kontrole se právě načítají ze sdíleného runtime běhu…</p>';
         expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Nespárované doklady se právě načítají ze sdíleného runtime běhu…</p>';
@@ -3204,6 +3516,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'failed');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů není k dispozici, protože runtime běh selhal.</p>';
+        if (expenseDetailVisibleCount) {
+          expenseDetailVisibleCount.textContent = 'Zobrazeno položek: 0';
+        }
+        syncExpenseDetailControls();
         expenseMatchedContent.innerHTML = '<p class="hint">Spárované výdaje nejsou k dispozici, protože runtime běh selhal.</p>';
         expenseReviewContent.innerHTML = '<p class="hint">Výdaje ke kontrole nejsou k dispozici, protože runtime běh selhal.</p>';
         expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Nespárované doklady nejsou k dispozici, protože runtime běh selhal.</p>';
@@ -3259,6 +3575,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro doplňkové položky.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'placeholder');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a odchozí bankovní platby.</p>';
+        if (expenseDetailVisibleCount) {
+          expenseDetailVisibleCount.textContent = 'Zobrazeno položek: 0';
+        }
+        syncExpenseDetailControls();
         expenseMatchedContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí spárované výdaje.</p>';
         expenseReviewContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí výdaje ke kontrole.</p>';
         expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí nespárované doklady.</p>';
