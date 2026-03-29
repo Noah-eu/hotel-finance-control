@@ -1682,7 +1682,13 @@ describe('buildWebDemo', () => {
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> potvrzená shoda')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> slabší shoda')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Důkazy:</strong> částka:')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Ruční kontrola:</strong>')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).not.toContain('Lenner')
   })
 
   it('shows SPD QR fallback payload and provenance for invoice-like PDFs without changing the stable 16 / 2 payout result', async () => {

@@ -372,6 +372,14 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchMatched[0]).toMatchObject({
       title: 'Booking payout dávka PAYOUT-ABC-1'
     })
+    expect(review.payoutBatchMatched[0]?.matchStrength).toBe('slabší shoda')
+    expect(review.payoutBatchMatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: '1 250,00 Kč · měna sedí' }),
+        expect.objectContaining({ label: 'datum', value: 'payout 2026-03-10' }),
+        expect.objectContaining({ label: 'protistrana / účet', value: 'raiffeisen-main' })
+      ])
+    )
     expect(review.summary.payoutBatchMatchCount).toBe(1)
     expect(review.summary.unmatchedPayoutBatchCount).toBe(0)
     expect(review.unmatched).toHaveLength(0)
@@ -498,6 +506,14 @@ describe('buildReviewScreen', () => {
       kind: 'unmatched',
       title: 'Booking payout dávka PAYOUT-ABC-1'
     })
+    expect(review.payoutBatchUnmatched[0]?.matchStrength).toBe('nespárováno')
+    expect(review.payoutBatchUnmatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: '1 250,00 Kč' }),
+        expect.objectContaining({ label: 'datum', value: '2026-03-10' }),
+        expect.objectContaining({ label: 'protistrana / účet', value: 'RB účet' })
+      ])
+    )
     expect(review.payoutBatchUnmatched[0]?.detail).toContain('Žádná bankovní položka se stejnou částkou.')
     expect(review.payoutBatchUnmatched[0]?.detail).toContain('Směřování: RB účet.')
     expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
@@ -587,6 +603,13 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchMatched[0]).toMatchObject({
       title: 'Booking payout 010638445054 / 35 530,12 Kč'
     })
+    expect(review.payoutBatchMatched[0]?.matchStrength).toBe('potvrzená shoda')
+    expect(review.payoutBatchMatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'reference', value: expect.stringContaining('PAYOUT-BOOK-20260310') }),
+        expect.objectContaining({ label: 'protistrana / účet', value: expect.stringContaining('BOOKING.COM B.V.') })
+      ])
+    )
     expect(review.payoutBatchMatched[0]?.detail).toContain(
       'Bankovní přípis: 2026-03-13T09:12:00 · BOOKING.COM B.V. · NO.AAOS6MOZUH8BFTER/2206371.'
     )
@@ -741,10 +764,89 @@ describe('buildReviewScreen', () => {
 
     expect(review.payoutBatchMatched[0]?.title).toBe('Airbnb payout dávka 2026-03-20 / 3 961,05 Kč')
     expect(review.payoutBatchUnmatched[0]?.title).toBe('Airbnb payout dávka 2026-03-21 / 8 241,96 Kč')
+    expect(review.payoutBatchMatched[0]?.matchStrength).toBe('slabší shoda')
+    expect(review.payoutBatchUnmatched[0]?.matchStrength).toBe('nespárováno')
     expect(review.payoutBatchMatched[0]?.title).not.toContain('AIRBNB-TRANSFER:')
     expect(review.payoutBatchUnmatched[0]?.title).not.toContain('AIRBNB-TRANSFER:')
     expect(review.payoutBatchMatched[0]?.detail).toContain('Částka: 3 961,05 Kč.')
     expect(review.payoutBatchUnmatched[0]?.detail).toContain('Očekávaná částka: 8 241,96 Kč.')
+  })
+
+  it('shows explicit document-to-bank relation status for parsed documents that still need manual review', () => {
+    const unmatchedDocument = buildExceptionCase({
+      id: toExceptionCaseId('exc:doc:invoice-qr'),
+      type: 'unmatched_document',
+      explanation: 'Uploaded document "invoice-qr.pdf" is not linked to a reconciled transaction or match group.',
+      relatedSourceDocumentIds: [toDocumentId('doc:invoice-qr')]
+    })
+
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-29T11:00:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [
+          {
+            id: 'invoice-record-qr',
+            sourceDocumentId: toDocumentId('doc:invoice-qr'),
+            recordType: 'invoice-document',
+            extractedAt: '2026-03-29T11:00:00.000Z',
+            amountMinor: 1850000,
+            currency: 'CZK',
+            occurredAt: '2026-03-25',
+            data: {
+              sourceSystem: 'invoice',
+              invoiceNumber: 'QR-141260183',
+              amountMinor: 1850000,
+              currency: 'CZK'
+            }
+          }
+        ],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [unmatchedDocument],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [unmatchedDocument],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 1,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-29T11:00:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 1,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.missingDocuments[0]?.matchStrength).toBe('vyžaduje kontrolu')
+    expect(review.missingDocuments[0]?.documentBankRelation).toBe('Doklad je načtený, ale zatím bez potvrzené bankovní vazby.')
   })
 
   it('shows reservation-settlement no-matches as a separate business-facing review section without raw matcher codes', () => {

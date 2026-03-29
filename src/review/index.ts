@@ -1,6 +1,17 @@
 import type { ExceptionCase } from '../domain'
-import type { MonthlyBatchResult } from '../monthly-batch'
+import type { MonthlyBatchResult, UploadedMonthlyFileRoute } from '../monthly-batch'
 import { formatAmountMinorCs } from '../shared/money'
+
+export type ReviewMatchStrength =
+  | 'potvrzená shoda'
+  | 'slabší shoda'
+  | 'vyžaduje kontrolu'
+  | 'nespárováno'
+
+export interface ReviewEvidenceEntry {
+  label: 'částka' | 'datum' | 'reference' | 'protistrana / účet' | 'dokument' | 'provenience'
+  value: string
+}
 
 export interface ReviewSectionItem {
   id: string
@@ -10,6 +21,11 @@ export interface ReviewSectionItem {
   transactionIds: string[]
   sourceDocumentIds: string[]
   severity?: ExceptionCase['severity']
+  matchStrength: ReviewMatchStrength
+  evidenceSummary: ReviewEvidenceEntry[]
+  operatorExplanation: string
+  operatorCheckHint?: string
+  documentBankRelation?: string
 }
 
 export interface ReviewScreenData {
@@ -29,6 +45,7 @@ export interface ReviewScreenData {
 export interface BuildReviewScreenInput {
   batch: MonthlyBatchResult
   generatedAt: string
+  fileRoutes?: UploadedMonthlyFileRoute[]
 }
 
 export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenData {
@@ -53,32 +70,15 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     }
   )
 
-  const matched = input.batch.report.matches.map((match) => ({
-    id: match.matchGroupId,
-    kind: 'matched' as const,
-    title: `Spárovaná skupina ${match.matchGroupId}`,
-    detail: `${match.reason} Jistota ${(match.confidence * 100).toFixed(0)} %.`,
-    transactionIds: match.transactionIds,
-    sourceDocumentIds: collectSourceDocumentIds(input.batch, match.transactionIds)
-  }))
+  const matched = input.batch.report.matches.map((match) => toMatchedGroupReviewItem(input.batch, match))
 
-  const payoutBatchMatched = input.batch.report.payoutBatchMatches.map((match) => ({
-    id: `payout-batch:${match.payoutBatchKey}`,
-    kind: 'matched' as const,
-    title: match.display?.title ?? buildLegacyPayoutBatchTitle(match.platform, match.payoutReference),
-    detail: buildPayoutBatchMatchDetail(input.batch, match),
-    transactionIds: [],
-    sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, match.payoutBatchKey)
-  }))
+  const payoutBatchMatched = input.batch.report.payoutBatchMatches.map((match) =>
+    toPayoutBatchMatchedReviewItem(input.batch, match)
+  )
 
-  const payoutBatchUnmatched = input.batch.report.unmatchedPayoutBatches.map((batch) => ({
-    id: `payout-batch-unmatched:${batch.payoutBatchKey}`,
-    kind: 'unmatched' as const,
-    title: batch.display?.title ?? buildLegacyPayoutBatchTitle(batch.platform, batch.payoutReference),
-    detail: buildPayoutBatchUnmatchedDetail(input.batch, batch),
-    transactionIds: [],
-    sourceDocumentIds: collectSourceDocumentIdsForPayoutBatch(input.batch, batch.payoutBatchKey)
-  }))
+  const payoutBatchUnmatched = input.batch.report.unmatchedPayoutBatches.map((batch) =>
+    toPayoutBatchUnmatchedReviewItem(input.batch, batch)
+  )
 
   const unmatchedReservationSettlements = (input.batch.reconciliation.workflowPlan?.reservationSettlementNoMatches ?? [])
     .map((noMatch) => toReservationSettlementNoMatchReviewItem(input.batch, noMatch))
@@ -90,13 +90,13 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     .map((item) => toAncillarySettlementOverviewItem(input.batch, item))
 
   const unmatched = categorizedExceptionCases.unmatched
-    .map((exceptionCase) => toReviewItem(exceptionCase, 'unmatched'))
+    .map((exceptionCase) => toReviewItem(input.batch, input.fileRoutes, exceptionCase, 'unmatched'))
 
   const suspicious = categorizedExceptionCases.suspicious
-    .map((exceptionCase) => toReviewItem(exceptionCase, 'suspicious'))
+    .map((exceptionCase) => toReviewItem(input.batch, input.fileRoutes, exceptionCase, 'suspicious'))
 
   const missingDocuments = categorizedExceptionCases.missingDocuments
-    .map((exceptionCase) => toMissingDocumentReviewItem(input.batch, exceptionCase))
+    .map((exceptionCase) => toMissingDocumentReviewItem(input.batch, input.fileRoutes, exceptionCase))
 
   return {
     generatedAt: input.generatedAt,
@@ -127,6 +127,291 @@ function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payou
   }
 
   return [...ids]
+}
+
+function toMatchedGroupReviewItem(
+  batch: MonthlyBatchResult,
+  match: MonthlyBatchResult['report']['matches'][number]
+): ReviewSectionItem {
+  const sourceDocumentIds = collectSourceDocumentIds(batch, match.transactionIds)
+
+  return {
+    id: match.matchGroupId,
+    kind: 'matched',
+    title: `Spárovaná skupina ${match.matchGroupId}`,
+    detail: `${match.reason} Jistota ${(match.confidence * 100).toFixed(0)} %.`,
+    transactionIds: match.transactionIds,
+    sourceDocumentIds,
+    matchStrength: classifyGenericMatchStrength(match.confidence),
+    evidenceSummary: buildMatchedGroupEvidenceSummary(batch, match.transactionIds, sourceDocumentIds),
+    operatorExplanation: match.reason,
+    operatorCheckHint: buildMatchedCheckHint(classifyGenericMatchStrength(match.confidence))
+  }
+}
+
+function toPayoutBatchMatchedReviewItem(
+  batch: MonthlyBatchResult,
+  match: MonthlyBatchResult['report']['payoutBatchMatches'][number]
+): ReviewSectionItem {
+  const sourceDocumentIds = collectSourceDocumentIdsForPayoutBatch(batch, match.payoutBatchKey)
+  const rawMatch = (batch.reconciliation.payoutBatchMatches ?? []).find((item) =>
+    item.payoutBatchKey === match.payoutBatchKey && item.matched
+  )
+  const matchStrength = classifyPayoutMatchStrength(
+    match.confidence,
+    rawMatch?.reasons ?? [],
+    Boolean(match.matchedBankSummary),
+    sourceDocumentIds.length
+  )
+
+  return {
+    id: `payout-batch:${match.payoutBatchKey}`,
+    kind: 'matched',
+    title: match.display?.title ?? buildLegacyPayoutBatchTitle(match.platform, match.payoutReference),
+    detail: buildPayoutBatchMatchDetail(batch, match),
+    transactionIds: [],
+    sourceDocumentIds,
+    matchStrength,
+    evidenceSummary: buildPayoutBatchMatchEvidenceSummary(batch, match, sourceDocumentIds, rawMatch?.reasons ?? []),
+    operatorExplanation: match.reason,
+    operatorCheckHint: buildPayoutMatchedCheckHint(matchStrength, rawMatch?.reasons ?? [])
+  }
+}
+
+function toPayoutBatchUnmatchedReviewItem(
+  batch: MonthlyBatchResult,
+  unmatched: MonthlyBatchResult['report']['unmatchedPayoutBatches'][number]
+): ReviewSectionItem {
+  const sourceDocumentIds = collectSourceDocumentIdsForPayoutBatch(batch, unmatched.payoutBatchKey)
+  const diagnostic = (batch.reconciliation.payoutBatchNoMatchDiagnostics ?? []).find(
+    (item) => item.payoutBatchKey === unmatched.payoutBatchKey
+  )
+
+  return {
+    id: `payout-batch-unmatched:${unmatched.payoutBatchKey}`,
+    kind: 'unmatched',
+    title: unmatched.display?.title ?? buildLegacyPayoutBatchTitle(unmatched.platform, unmatched.payoutReference),
+    detail: buildPayoutBatchUnmatchedDetail(batch, unmatched),
+    transactionIds: [],
+    sourceDocumentIds,
+    matchStrength: 'nespárováno',
+    evidenceSummary: buildPayoutBatchUnmatchedEvidenceSummary(batch, unmatched, sourceDocumentIds),
+    operatorExplanation: unmatched.reason,
+    operatorCheckHint: buildPayoutUnmatchedCheckHint(diagnostic?.noMatchReason)
+  }
+}
+
+function classifyGenericMatchStrength(confidence: number): ReviewMatchStrength {
+  if (confidence >= 0.95) {
+    return 'potvrzená shoda'
+  }
+
+  if (confidence >= 0.75) {
+    return 'slabší shoda'
+  }
+
+  return 'vyžaduje kontrolu'
+}
+
+function classifyPayoutMatchStrength(
+  confidence: number,
+  reasons: string[],
+  hasMatchedBankSummary: boolean,
+  sourceDocumentCount: number
+): ReviewMatchStrength {
+  const hasReferenceEvidence = reasons.includes('payoutReferenceAligned')
+    || reasons.includes('supplementPaymentIdAligned')
+    || reasons.includes('supplementReferenceHintAligned')
+  const hasCounterpartyEvidence = reasons.includes('counterpartyClueAligned')
+
+  if (
+    (confidence >= 0.99 && (hasReferenceEvidence || hasCounterpartyEvidence || hasMatchedBankSummary))
+    || (
+      confidence >= 0.97
+      && hasMatchedBankSummary
+      && (hasReferenceEvidence || hasCounterpartyEvidence || sourceDocumentCount > 1)
+    )
+  ) {
+    return 'potvrzená shoda'
+  }
+
+  if (confidence >= 0.95) {
+    return 'slabší shoda'
+  }
+
+  return 'vyžaduje kontrolu'
+}
+
+function buildMatchedGroupEvidenceSummary(
+  batch: MonthlyBatchResult,
+  transactionIds: string[],
+  sourceDocumentIds: string[]
+): ReviewEvidenceEntry[] {
+  const transactions = transactionIds
+    .map((transactionId) => batch.reconciliation.normalizedTransactions.find((item) => item.id === transactionId))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+
+  return [
+    maybeEvidenceEntry('částka', uniqueTextValues(transactions.map((transaction) => formatAmountMinorCs(transaction.amountMinor, transaction.currency))).join(' ↔ ')),
+    maybeEvidenceEntry('datum', uniqueTextValues(transactions.map((transaction) => transaction.bookedAt)).join(' / ')),
+    maybeEvidenceEntry('reference', uniqueTextValues(transactions.map((transaction) => transaction.reference)).join(', ')),
+    maybeEvidenceEntry(
+      'protistrana / účet',
+      uniqueTextValues(transactions.flatMap((transaction) => [transaction.counterparty, transaction.accountId])).join(' · ')
+    ),
+    maybeEvidenceEntry('dokument', describeSourceDocuments(sourceDocumentIds))
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildPayoutBatchMatchEvidenceSummary(
+  batch: MonthlyBatchResult,
+  match: MonthlyBatchResult['report']['payoutBatchMatches'][number],
+  sourceDocumentIds: string[],
+  reasons: string[]
+): ReviewEvidenceEntry[] {
+  const bankSummary = parseMatchedBankSummary(match.matchedBankSummary)
+  const referenceParts = [
+    hasVisiblePayoutReference(match.platform, match.payoutReference) ? match.payoutReference : undefined,
+    reasons.includes('supplementPaymentIdAligned') ? 'ID payoutu z dokladu sedí' : undefined,
+    reasons.includes('supplementReferenceHintAligned') ? 'doklad potvrzuje booking hint' : undefined
+  ]
+
+  return [
+    {
+      label: 'částka',
+      value: `${formatAmountMinorCs(match.amountMinor, match.currency)} · měna sedí`
+    },
+    maybeEvidenceEntry(
+      'datum',
+      [match.payoutDate ? `payout ${match.payoutDate}` : undefined, bankSummary.bookedAt ? `banka ${bankSummary.bookedAt}` : undefined]
+        .filter((value): value is string => Boolean(value))
+        .join(' · ')
+    ),
+    maybeEvidenceEntry('reference', uniqueTextValues(referenceParts).join(' · ')),
+    maybeEvidenceEntry(
+      'protistrana / účet',
+      uniqueTextValues([
+        match.bankAccountId,
+        bankSummary.counterparty,
+        reasons.includes('counterpartyClueAligned') ? 'stopa protiúčtu sedí' : undefined
+      ]).join(' · ')
+    ),
+    maybeEvidenceEntry(
+      'dokument',
+      uniqueTextValues([
+        describeSourceDocuments(sourceDocumentIds),
+        sourceDocumentIds.length > 1 ? 'doplňkový payout doklad přiložen' : undefined,
+        reasons.includes('supplementPaymentIdAligned') || reasons.includes('supplementReferenceHintAligned')
+          ? 'payout doklad potvrdil vazbu'
+          : undefined
+      ]).join(' · ')
+    )
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildPayoutBatchUnmatchedEvidenceSummary(
+  batch: MonthlyBatchResult,
+  unmatched: MonthlyBatchResult['report']['unmatchedPayoutBatches'][number],
+  sourceDocumentIds: string[]
+): ReviewEvidenceEntry[] {
+  return [
+    {
+      label: 'částka',
+      value: formatAmountMinorCs(unmatched.amountMinor, unmatched.currency)
+    },
+    maybeEvidenceEntry('datum', unmatched.payoutDate),
+    maybeEvidenceEntry('reference', hasVisiblePayoutReference(unmatched.platform, unmatched.payoutReference) ? unmatched.payoutReference : undefined),
+    maybeEvidenceEntry('protistrana / účet', unmatched.bankRoutingLabel),
+    maybeEvidenceEntry('dokument', describeSourceDocuments(sourceDocumentIds)),
+    maybeEvidenceEntry('provenience', findTransferBatchDescriptor(batch, unmatched.payoutBatchKey) ? 'textový payout export' : undefined)
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildMatchedCheckHint(matchStrength: ReviewMatchStrength): string {
+  if (matchStrength === 'potvrzená shoda') {
+    return 'Ruční kontrolu dělejte jen při sporném protiúčtu, neobvyklém datu nebo mimořádné částce.'
+  }
+
+  if (matchStrength === 'slabší shoda') {
+    return 'Zkontrolujte ručně datum, reference a případné navazující doklady.'
+  }
+
+  return 'Ověřte ručně, že vazba opravdu patří k této transakci a není jen podobná.'
+}
+
+function buildPayoutMatchedCheckHint(matchStrength: ReviewMatchStrength, reasons: string[]): string {
+  if (matchStrength === 'potvrzená shoda') {
+    return reasons.includes('supplementPaymentIdAligned') || reasons.includes('supplementReferenceHintAligned')
+      ? 'Ruční kontrolu dělejte jen při sporu; vazbu potvrzuje i payout doklad.'
+      : 'Ruční kontrolu dělejte jen při sporném protiúčtu nebo mimořádném payoutu.'
+  }
+
+  return 'Zkontrolujte ručně datum přípisu, reference payoutu a očekávaný bankovní účet.'
+}
+
+function buildPayoutUnmatchedCheckHint(noMatchReason: string | undefined): string {
+  switch (noMatchReason) {
+    case 'wrongBankRouting':
+      return 'Zkontrolujte, zda payout skutečně směřuje na správný bankovní účet.'
+    case 'dateToleranceMiss':
+      return 'Zkontrolujte ručně datum payoutu a blízké bankovní přípisy kolem očekávaného dne.'
+    case 'ambiguousCandidates':
+      return 'Zkontrolujte ručně reference payoutu a protiúčet, protože kandidátů je více.'
+    case 'counterpartyClueMismatch':
+      return 'Zkontrolujte ručně protiúčet a zdrojový payout doklad.'
+    default:
+      return 'Zkontrolujte ručně částku, datum, reference payoutu a správný bankovní účet.'
+  }
+}
+
+function parseMatchedBankSummary(summary?: string): {
+  bookedAt?: string
+  counterparty?: string
+  reference?: string
+} {
+  const parts = (summary ?? '')
+    .split('·')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0)
+
+  return {
+    bookedAt: parts[0],
+    counterparty: parts[1],
+    reference: parts[2]
+  }
+}
+
+function maybeEvidenceEntry(
+  label: ReviewEvidenceEntry['label'],
+  value: string | undefined
+): ReviewEvidenceEntry | undefined {
+  const normalized = value?.trim()
+
+  if (!normalized) {
+    return undefined
+  }
+
+  return { label, value: normalized }
+}
+
+function uniqueTextValues(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))]
+}
+
+function describeSourceDocuments(sourceDocumentIds: string[]): string | undefined {
+  if (sourceDocumentIds.length === 0) {
+    return undefined
+  }
+
+  if (sourceDocumentIds.length === 1) {
+    return '1 zdrojový doklad'
+  }
+
+  if (sourceDocumentIds.length < 5) {
+    return `${sourceDocumentIds.length} zdrojové doklady`
+  }
+
+  return `${sourceDocumentIds.length} zdrojových dokladů`
 }
 
 function buildLegacyPayoutBatchTitle(platform: string, payoutReference: string): string {
@@ -209,17 +494,31 @@ export function placeholder() {
 }
 
 function toReviewItem(
+  batch: MonthlyBatchResult,
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
   exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
   kind: ReviewSectionItem['kind']
 ): ReviewSectionItem {
+  const sourceDocumentIds = exceptionCase.relatedSourceDocumentIds
+  const evidenceSummary = buildExceptionEvidenceSummary(batch, exceptionCase, sourceDocumentIds, fileRoutes)
+  const documentBankRelation = buildDocumentBankRelationStatus(batch, sourceDocumentIds, exceptionCase.relatedTransactionIds)
+  const matchStrength = kind === 'suspicious' || kind === 'missing-document'
+    ? 'vyžaduje kontrolu'
+    : 'nespárováno'
+
   return {
     id: exceptionCase.id,
     kind,
     title: `${toTitle(kind)}: ${exceptionCase.ruleCode ?? exceptionCase.type}`,
     detail: exceptionCase.explanation,
     transactionIds: exceptionCase.relatedTransactionIds,
-    sourceDocumentIds: exceptionCase.relatedSourceDocumentIds,
-    severity: exceptionCase.severity
+    sourceDocumentIds,
+    severity: exceptionCase.severity,
+    matchStrength,
+    evidenceSummary,
+    operatorExplanation: exceptionCase.explanation,
+    operatorCheckHint: exceptionCase.recommendedNextStep ?? buildExceptionCheckHint(kind),
+    ...(documentBankRelation ? { documentBankRelation } : {})
   }
 }
 
@@ -274,7 +573,23 @@ function toReservationSettlementOverviewItem(
     title: `Rezervace ${reservation.reservationId}`,
     detail: detailParts.join(' '),
     transactionIds: match ? collectReservationMatchTransactionIds(match) : [],
-    sourceDocumentIds: [reservation.sourceDocumentId]
+    sourceDocumentIds: [reservation.sourceDocumentId],
+    matchStrength: match
+      ? classifyGenericMatchStrength(match.confidence)
+      : 'vyžaduje kontrolu',
+    evidenceSummary: [
+      { label: 'částka', value: formatAmountMinorForReview(reservation.grossRevenueMinor, reservation.currency) },
+      maybeEvidenceEntry('datum', reservation.stayStartAt && reservation.stayEndAt ? `${reservation.stayStartAt} – ${reservation.stayEndAt}` : reservation.stayStartAt),
+      maybeEvidenceEntry('reference', reservation.reference ?? reservation.reservationId),
+      maybeEvidenceEntry('protistrana / účet', buildExpectedSettlementPathCs(reservation.expectedSettlementChannels, reservation.channel)),
+      maybeEvidenceEntry('dokument', '1 zdrojový doklad')
+    ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
+    operatorExplanation: match
+      ? 'Rezervace má nalezenou odpovídající úhradu ve správném kanálu.'
+      : 'Rezervace je načtená, ale odpovídající úhrada zatím není potvrzená.',
+    operatorCheckHint: match
+      ? buildMatchedCheckHint(classifyGenericMatchStrength(match.confidence))
+      : 'Zkontrolujte ručně kanál úhrady, rezervační referenci a odpovídající bankovní nebo payout pohyb.'
   }
 }
 
@@ -304,7 +619,21 @@ function toAncillarySettlementOverviewItem(
       : `Doplňková položka ${item.reference}`,
     detail: detailParts.join(' '),
     transactionIds: candidate ? [candidate.rowId] : [],
-    sourceDocumentIds: [item.sourceDocumentId]
+    sourceDocumentIds: [item.sourceDocumentId],
+    matchStrength: candidate ? 'slabší shoda' : 'vyžaduje kontrolu',
+    evidenceSummary: [
+      { label: 'částka', value: formatAmountMinorForReview(item.grossRevenueMinor, item.currency) },
+      maybeEvidenceEntry('datum', item.bookedAt),
+      maybeEvidenceEntry('reference', item.reference),
+      maybeEvidenceEntry('protistrana / účet', buildExpectedSettlementPathCs([], item.channel)),
+      maybeEvidenceEntry('dokument', '1 zdrojový doklad')
+    ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
+    operatorExplanation: candidate
+      ? 'Doplňková položka má nalezený odpovídající kandidát úhrady.'
+      : 'Doplňková položka je načtená, ale bez potvrzené úhrady.',
+    operatorCheckHint: candidate
+      ? 'Zkontrolujte ručně, že kandidát opravdu patří k této doplňkové položce.'
+      : 'Zkontrolujte ručně kanál úhrady, částku a návaznost na rezervaci.'
   }
 }
 
@@ -448,7 +777,19 @@ function toReservationSettlementNoMatchReviewItem(
     title: `Rezervace ${reservation?.reservationId ?? noMatch.reservationId}`,
     detail: detailParts.join(' '),
     transactionIds: [],
-    sourceDocumentIds: [noMatch.sourceDocumentId]
+    sourceDocumentIds: [noMatch.sourceDocumentId],
+    matchStrength: 'nespárováno',
+    evidenceSummary: [
+      typeof reservation?.grossRevenueMinor === 'number'
+        ? { label: 'částka', value: formatAmountMinorForReview(reservation.grossRevenueMinor, reservation.currency) }
+        : undefined,
+      maybeEvidenceEntry('datum', reservation?.stayStartAt && reservation?.stayEndAt ? `${reservation.stayStartAt} – ${reservation.stayEndAt}` : reservation?.stayStartAt),
+      maybeEvidenceEntry('reference', reservation?.reference ?? reservation?.reservationId ?? noMatch.reference ?? noMatch.reservationId),
+      maybeEvidenceEntry('protistrana / účet', reservation ? buildExpectedSettlementPathCs(reservation.expectedSettlementChannels, reservation.channel) : undefined),
+      maybeEvidenceEntry('dokument', '1 zdrojový doklad')
+    ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
+    operatorExplanation: buildReservationSettlementReasonCs(noMatch.noMatchReason, reservation?.expectedSettlementChannels),
+    operatorCheckHint: 'Zkontrolujte ručně očekávaný kanál úhrady, datum pobytu a odpovídající payout nebo bankovní pohyb.'
   }
 }
 
@@ -533,6 +874,138 @@ function formatAmountMinorForReview(amountMinor: number, currency: string): stri
   return `${(amountMinor / 100).toFixed(2).replace('.', ',')} ${currency}`
 }
 
+function buildExceptionEvidenceSummary(
+  batch: MonthlyBatchResult,
+  exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
+  sourceDocumentIds: string[],
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewEvidenceEntry[] {
+  const transactions = exceptionCase.relatedTransactionIds
+    .map((transactionId) => batch.reconciliation.normalizedTransactions.find((item) => item.id === transactionId))
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  const documentProvenance = buildDocumentProvenanceLabel(fileRoutes, sourceDocumentIds)
+
+  return [
+    maybeEvidenceEntry(
+      'částka',
+      uniqueTextValues(transactions.map((transaction) => formatAmountMinorCs(transaction.amountMinor, transaction.currency))).join(' / ')
+    ),
+    maybeEvidenceEntry(
+      'datum',
+      uniqueTextValues(transactions.map((transaction) => transaction.bookedAt)).join(' / ')
+    ),
+    maybeEvidenceEntry(
+      'reference',
+      uniqueTextValues(transactions.flatMap((transaction) => [transaction.reference, transaction.invoiceNumber])).join(', ')
+    ),
+    maybeEvidenceEntry(
+      'protistrana / účet',
+      uniqueTextValues(transactions.flatMap((transaction) => [transaction.counterparty, transaction.accountId])).join(' · ')
+    ),
+    maybeEvidenceEntry('dokument', describeSourceDocuments(sourceDocumentIds)),
+    maybeEvidenceEntry('provenience', documentProvenance)
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildDocumentBankRelationStatus(
+  batch: MonthlyBatchResult,
+  sourceDocumentIds: string[],
+  relatedTransactionIds: string[]
+): string | undefined {
+  const hasDocument = batch.extractedRecords.some((record) =>
+    sourceDocumentIds.includes(record.sourceDocumentId)
+    && (record.recordType === 'invoice-document' || record.recordType === 'receipt-document')
+  )
+
+  if (!hasDocument) {
+    return undefined
+  }
+
+  const hasConfirmedLink = batch.reconciliation.supportedExpenseLinks.some((link) =>
+    link.supportSourceDocumentIds.some((sourceDocumentId) => sourceDocumentIds.includes(sourceDocumentId))
+  )
+
+  if (hasConfirmedLink) {
+    return 'Potvrzená pravděpodobná vazba mezi dokladem a bankovním výdajem.'
+  }
+
+  const hasBankCandidate = relatedTransactionIds.some((transactionId) =>
+    batch.reconciliation.normalizedTransactions.some((transaction) => transaction.id === transactionId && transaction.source === 'bank')
+  )
+
+  if (hasBankCandidate) {
+    return 'Doklad je načtený a existuje související bankovní pohyb, ale vazba zatím není potvrzená.'
+  }
+
+  return 'Doklad je načtený, ale zatím bez potvrzené bankovní vazby.'
+}
+
+function buildDocumentProvenanceLabel(
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  sourceDocumentIds: string[]
+): string | undefined {
+  if (!fileRoutes || sourceDocumentIds.length === 0) {
+    return undefined
+  }
+
+  const provenances = sourceDocumentIds.flatMap((sourceDocumentId) => {
+    const summary = fileRoutes.find((route) => route.sourceDocumentId === sourceDocumentId)?.parseDiagnostics?.documentExtractionSummary
+    const fieldProvenance = summary?.fieldProvenance
+      ? Object.values(summary.fieldProvenance)
+      : []
+
+    if (fieldProvenance.includes('text+qr-confirmed')) {
+      return ['text + QR']
+    }
+
+    if (fieldProvenance.includes('qr')) {
+      return ['QR']
+    }
+
+    if (fieldProvenance.includes('ocr')) {
+      return ['OCR']
+    }
+
+    if (fieldProvenance.includes('vision')) {
+      return ['vision']
+    }
+
+    if (fieldProvenance.includes('text')) {
+      return ['text']
+    }
+
+    return []
+  })
+
+  const unique = [...new Set(provenances)]
+  return unique.length > 0 ? unique.join(', ') : undefined
+}
+
+function buildExceptionCheckHint(kind: ReviewSectionItem['kind']): string {
+  switch (kind) {
+    case 'suspicious':
+      return 'Zkontrolujte ručně protiúčet, částku, účel platby a návazný doklad.'
+    case 'missing-document':
+      return 'Zkontrolujte ručně, zda je doklad opravdu nahraný a zda má potvrzenou vazbu na bankovní výdaj.'
+    default:
+      return 'Zkontrolujte ručně částku, datum, reference a odpovídající navazující doklady.'
+  }
+}
+
+function hasVisiblePayoutReference(platform: string, payoutReference: string): boolean {
+  const normalized = payoutReference.trim()
+
+  if (!normalized) {
+    return false
+  }
+
+  if (platform.trim().toLowerCase() === 'airbnb') {
+    return !normalized.toUpperCase().startsWith('AIRBNB-TRANSFER:')
+  }
+
+  return true
+}
+
 function classifyReviewBucket(
   exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number]
 ): Exclude<ReviewSectionItem['kind'], 'matched'> {
@@ -566,9 +1039,10 @@ function collectSourceDocumentIds(batch: MonthlyBatchResult, transactionIds: str
 
 function toMissingDocumentReviewItem(
   batch: MonthlyBatchResult,
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
   exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number]
 ): ReviewSectionItem {
-  const base = toReviewItem(exceptionCase, 'missing-document')
+  const base = toReviewItem(batch, fileRoutes, exceptionCase, 'missing-document')
   const transactionId = exceptionCase.relatedTransactionIds[0]
   const transaction = transactionId
     ? batch.reconciliation.normalizedTransactions.find((item) => item.id === transactionId)
@@ -584,6 +1058,9 @@ function toMissingDocumentReviewItem(
   return {
     ...base,
     title: `Chybějící doklad pro ${transactionId ?? exceptionCase.id}`,
-    detail: hints.length > 0 ? `${base.detail} ${hints.join(' • ')}` : base.detail
+    detail: hints.length > 0 ? `${base.detail} ${hints.join(' • ')}` : base.detail,
+    operatorCheckHint: exceptionCase.type === 'unmatched_document'
+      ? 'Doklad je načtený, ale zatím bez potvrzené vazby na bankovní pohyb. Zkontrolujte ručně reference, částku a protiúčet.'
+      : base.operatorCheckHint
   }
 }

@@ -3328,11 +3328,32 @@ describe('buildUploadWebFlow', () => {
     expect(
       result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
     ).toBe(2)
-    expect(result.reviewSections.payoutBatchMatched).toContainEqual(
-      expect.objectContaining({
-        title: 'Booking payout 010638445054 / 35 530,12 Kč'
-      })
+    const bookingMatchedItem = result.reviewSections.payoutBatchMatched.find((item) =>
+      item.title === 'Booking payout 010638445054 / 35 530,12 Kč'
     )
+    const firstAirbnbMatched = result.reviewSections.payoutBatchMatched.find((item) =>
+      item.title.startsWith('Airbnb payout dávka ')
+    )
+    const firstAirbnbUnmatched = result.reviewSections.payoutBatchUnmatched.find((item) =>
+      item.title.startsWith('Airbnb payout dávka ')
+    )
+
+    expect(bookingMatchedItem).toBeDefined()
+    expect(bookingMatchedItem).toMatchObject({
+      matchStrength: 'potvrzená shoda',
+      operatorExplanation: expect.stringContaining('Shoda dávky a bankovního přípisu')
+    })
+    expect(bookingMatchedItem?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: expect.stringContaining('35 530,12 Kč') }),
+        expect.objectContaining({ label: 'datum', value: expect.stringContaining('payout 2026-03-12') }),
+        expect.objectContaining({ label: 'dokument', value: expect.stringContaining('doplňkový payout doklad přiložen') })
+      ])
+    )
+    expect(['potvrzená shoda', 'slabší shoda']).toContain(firstAirbnbMatched?.matchStrength)
+    expect(firstAirbnbMatched?.evidenceSummary.some((entry) => entry.label === 'částka')).toBe(true)
+    expect(firstAirbnbUnmatched?.matchStrength).toBe('nespárováno')
+    expect(firstAirbnbUnmatched?.operatorCheckHint).toContain('Zkontrolujte ručně')
   })
 
   it('keeps the real browser-like 4-file arrayBuffer path at 16 matched and 2 unmatched even when Airbnb bank lines only carry generic transfer wording', async () => {

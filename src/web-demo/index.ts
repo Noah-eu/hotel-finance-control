@@ -1640,8 +1640,32 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return '<ul>' + items.map((item) =>
-          '<li><strong>' + escapeHtml(item.title) + '</strong><br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
         ).join('') + '</ul>';
+      }
+
+      function buildReviewAuditMarkup(item) {
+        const evidence = Array.isArray(item && item.evidenceSummary) && item.evidenceSummary.length > 0
+          ? item.evidenceSummary.map((entry) => String(entry.label || '') + ': ' + String(entry.value || '')).join(' · ')
+          : '';
+
+        return [
+          item && item.matchStrength
+            ? '<br /><span class="hint"><strong>Stav:</strong> ' + escapeHtml(String(item.matchStrength)) + '</span>'
+            : '',
+          item && item.operatorExplanation
+            ? '<br /><span class="hint"><strong>Vyhodnocení:</strong> ' + escapeHtml(String(item.operatorExplanation)) + '</span>'
+            : '',
+          evidence
+            ? '<br /><span class="hint"><strong>Důkazy:</strong> ' + escapeHtml(evidence) + '</span>'
+            : '',
+          item && item.documentBankRelation
+            ? '<br /><span class="hint"><strong>Doklad ↔ banka:</strong> ' + escapeHtml(String(item.documentBankRelation)) + '</span>'
+            : '',
+          item && item.operatorCheckHint
+            ? '<br /><span class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(String(item.operatorCheckHint)) + '</span>'
+            : ''
+        ].join('');
       }
 
       function buildSettlementOverviewMarkup(items) {
@@ -1650,7 +1674,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return '<ul>' + items.map((item) =>
-          '<li><strong>' + escapeHtml(item.title) + '</strong><br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
         ).join('') + '</ul>';
       }
 
@@ -1660,7 +1684,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return '<ul>' + items.map((item) =>
-          '<li><strong>' + escapeHtml(item.title) + '</strong><br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
         ).join('') + '</ul>';
       }
 

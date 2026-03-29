@@ -680,7 +680,7 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<section class="runtime-card"><h4>2. Extrakce a příprava</h4><ul class="trace-list">' + state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br />Extrahováno: ' + file.extractedCount + '<br />' + (file.extractedRecordIds.length > 0 ? '<code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Žádné extrahované záznamy.</span>') + '</li>').join('') + '</ul></section>',
           '<section class="runtime-card"><h4>3. Kontrola operátora</h4>' + renderRuntimeReviewSection(state.reviewSections, payoutCounts) + '</section>',
           '<section class="runtime-card"><h4>4. Náhled reportu</h4>' + renderRuntimeReportSummary(state, payoutCounts) + '</section>',
-          '<section class="runtime-card"><h4>5. Vazby na podpůrné doklady</h4>' + renderSupportedExpenseLinks(state.supportedExpenseLinks) + '</section>',
+          '<section class="runtime-card"><h4>5. Vazby na podpůrné doklady</h4>' + renderSupportedExpenseLinks(state.supportedExpenseLinks, state.fileRoutes) + '</section>',
           '<section class="runtime-card"><h4>6. Exportní předání</h4>' + renderRuntimeExportFiles(state.exportFiles) + '</section>',
           '</div>',
           '<p class="hint">Každý krok zůstává navázaný na sdílené výsledky z <code>upload-web</code>, <code>monthly-batch</code>, <code>review</code>, <code>reporting</code> a <code>export</code>.</p>'
@@ -837,10 +837,27 @@ ${renderBrowserRuntimeClientBootstrap()}
           const count = typeof group.count === 'number' ? group.count : group.items.length;
           return '<li><strong>' + escapeHtml(group.label) + ':</strong> ' + count
             + (group.items[0]
-              ? '<br /><span class="hint">' + escapeHtml(group.items[0].title) + ' — ' + escapeHtml(group.items[0].detail) + '</span>'
+              ? buildRuntimeReviewItemMarkup(group.items[0])
               : '<br /><span class="hint">Bez položek.</span>')
             + '</li>';
         }).join('') + '</ul>';
+      }
+
+      function buildRuntimeReviewItemMarkup(item) {
+        const evidence = Array.isArray(item.evidenceSummary) && item.evidenceSummary.length > 0
+          ? item.evidenceSummary.map((entry) => String(entry.label || '') + ': ' + String(entry.value || '')).join(' · ')
+          : '';
+        const explanation = item.operatorExplanation ? String(item.operatorExplanation) : '';
+        const checkHint = item.operatorCheckHint ? String(item.operatorCheckHint) : '';
+        const documentRelation = item.documentBankRelation ? String(item.documentBankRelation) : '';
+
+        return [
+          '<br /><span class="hint"><strong>' + escapeHtml(String(item.title || 'Položka')) + '</strong> · ' + escapeHtml(String(item.matchStrength || item.kind || 'stav neuveden')) + '</span>',
+          explanation ? '<br /><span class="hint"><strong>Vyhodnocení:</strong> ' + escapeHtml(explanation) + '</span>' : '',
+          evidence ? '<br /><span class="hint"><strong>Důkazy:</strong> ' + escapeHtml(evidence) + '</span>' : '',
+          documentRelation ? '<br /><span class="hint"><strong>Doklad ↔ banka:</strong> ' + escapeHtml(documentRelation) + '</span>' : '',
+          checkHint ? '<br /><span class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(checkHint) + '</span>' : ''
+        ].join('');
       }
 
       function renderRuntimeReportSummary(state, payoutCounts) {
@@ -859,17 +876,63 @@ ${renderBrowserRuntimeClientBootstrap()}
         ].join('');
       }
 
-      function renderSupportedExpenseLinks(links) {
-        if (links.length === 0) {
-          return '<p class="hint">V tomto běhu se neobjevily žádné doložené výdajové vazby mezi bankovní transakcí a fakturou nebo účtenkou.</p>';
-        }
+      function renderSupportedExpenseLinks(links, fileRoutes) {
+        const documentRoutes = Array.isArray(fileRoutes)
+          ? fileRoutes.filter((file) =>
+            file.status === 'supported'
+            && (file.documentType === 'invoice' || file.documentType === 'receipt')
+          )
+          : [];
+        const linkedDocumentIds = new Set((links || []).flatMap((link) => link.supportSourceDocumentIds || []));
+        const unresolvedDocuments = documentRoutes.filter((file) => file.sourceDocumentId && !linkedDocumentIds.has(file.sourceDocumentId));
 
-        return '<ul class="link-list">' + links.map((link) =>
-          '<li><strong><code>' + escapeHtml(link.expenseTransactionId) + '</code></strong> → <code>' + escapeHtml(link.supportTransactionId) + '</code>'
-            + '<br /><span class="hint">Skóre ' + escapeHtml(link.matchScore.toFixed(2)) + '; důvody: ' + escapeHtml(link.reasons.join(', ')) + '</span>'
-            + '<br /><span class="hint">Zdrojové dokumenty: ' + (link.supportSourceDocumentIds.length > 0 ? '<code>' + escapeHtml(link.supportSourceDocumentIds.join(', ')) + '</code>' : 'neuvedeno') + '</span>'
-            + '</li>'
-        ).join('') + '</ul>';
+        const confirmedMarkup = !links || links.length === 0
+          ? '<p class="hint">V tomto běhu se neobjevily žádné potvrzené vazby mezi bankovním výdajem a fakturou nebo účtenkou.</p>'
+          : '<ul class="link-list">' + links.map((link) =>
+            '<li><strong>potvrzená shoda</strong> · <code>' + escapeHtml(link.expenseTransactionId) + '</code> → <code>' + escapeHtml(link.supportTransactionId) + '</code>'
+              + '<br /><span class="hint"><strong>Důkazy:</strong> ' + escapeHtml(localizeSupportReasons(link.reasons || []).join(' · ')) + '</span>'
+              + '<br /><span class="hint"><strong>Doklad ↔ banka:</strong> potvrzená pravděpodobná vazba doklad–banka</span>'
+              + '<br /><span class="hint"><strong>Ruční kontrola:</strong> Zkontrolujte ručně jen při sporné částce nebo protiúčtu.</span>'
+              + '<br /><span class="hint">Zdrojové dokumenty: ' + (link.supportSourceDocumentIds.length > 0 ? '<code>' + escapeHtml(link.supportSourceDocumentIds.join(', ')) + '</code>' : 'neuvedeno') + '</span>'
+              + '</li>'
+          ).join('') + '</ul>';
+        const unresolvedMarkup = unresolvedDocuments.length === 0
+          ? '<p class="hint">Žádný načtený doklad nezůstal bez potvrzené bankovní vazby.</p>'
+          : '<h5>Načtené doklady bez potvrzené bankovní vazby</h5><ul class="link-list">' + unresolvedDocuments.map((file) =>
+            '<li><strong>' + escapeHtml(file.fileName) + '</strong>'
+              + '<br /><span class="hint"><strong>Stav:</strong> vyžaduje kontrolu</span>'
+              + '<br /><span class="hint"><strong>Doklad ↔ banka:</strong> pouze načtený doklad, bez potvrzené bankovní vazby</span>'
+              + '<br /><span class="hint"><strong>Ruční kontrola:</strong> Zkontrolujte ručně, zda dokument odpovídá některému bankovnímu výdaji.</span>'
+              + '</li>'
+          ).join('') + '</ul>';
+
+        return confirmedMarkup + unresolvedMarkup;
+      }
+
+      function localizeSupportReasons(reasons) {
+        return (reasons || []).map((reason) => {
+          if (String(reason).startsWith('amountExact:')) {
+            return 'částka sedí'
+          }
+
+          if (String(reason).startsWith('dateDistance:')) {
+            return 'datum je v toleranci'
+          }
+
+          if (reason === 'counterpartyAligned') {
+            return 'protistrana odpovídá'
+          }
+
+          if (reason === 'referenceAligned') {
+            return 'reference odpovídá'
+          }
+
+          if (String(reason).startsWith('currency:')) {
+            return 'měna sedí'
+          }
+
+          return String(reason)
+        });
       }
 
       function renderRuntimeExportFiles(files) {
@@ -1436,9 +1499,22 @@ function renderReviewSection(
 ): string {
   const body = items.length === 0
     ? '<p class="empty">Žádné položky v této sekci.</p>'
-    : `<ul>${items.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span class="badge ${badgeClass}">${escapeHtml(item.kind)}</span><br />${escapeHtml(item.detail)}${item.transactionIds.length > 0 ? `<br /><code>${escapeHtml(item.transactionIds.join(', '))}</code>` : ''}</li>`).join('')}</ul>`
+    : `<ul>${items.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span class="badge ${badgeClass}">${escapeHtml(item.matchStrength)}</span><br />${escapeHtml(item.detail)}${renderStaticReviewAuditMarkup(item)}${item.transactionIds.length > 0 ? `<br /><code>${escapeHtml(item.transactionIds.join(', '))}</code>` : ''}</li>`).join('')}</ul>`
 
   return `<section class="section-panel"><h3>${escapeHtml(title)}</h3>${body}</section>`
+}
+
+function renderStaticReviewAuditMarkup(item: ReviewScreenData['matched'][number]): string {
+  const evidence = item.evidenceSummary.length > 0
+    ? item.evidenceSummary.map((entry) => `${entry.label}: ${entry.value}`).join(' · ')
+    : ''
+
+  return [
+    item.operatorExplanation ? `<br /><span class="empty"><strong>Vyhodnocení:</strong> ${escapeHtml(item.operatorExplanation)}</span>` : '',
+    evidence ? `<br /><span class="empty"><strong>Důkazy:</strong> ${escapeHtml(evidence)}</span>` : '',
+    item.documentBankRelation ? `<br /><span class="empty"><strong>Doklad ↔ banka:</strong> ${escapeHtml(item.documentBankRelation)}</span>` : '',
+    item.operatorCheckHint ? `<br /><span class="empty"><strong>Ruční kontrola:</strong> ${escapeHtml(item.operatorCheckHint)}</span>` : ''
+  ].join('')
 }
 
 function escapeHtml(value: string): string {
