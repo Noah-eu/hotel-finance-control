@@ -9,13 +9,41 @@ export type ReviewMatchStrength =
   | 'nespárováno'
 
 export interface ReviewEvidenceEntry {
-  label: 'částka' | 'datum' | 'reference' | 'protistrana / účet' | 'dokument' | 'provenience'
+  label: 'částka' | 'datum' | 'reference' | 'protistrana / účet' | 'IBAN' | 'dokument' | 'provenience'
   value: string
+}
+
+export interface ReviewExpenseComparisonSide {
+  supplierOrCounterparty?: string
+  reference?: string
+  issueDate?: string
+  dueDate?: string
+  amount?: string
+  currency?: string
+  ibanHint?: string
+  bookedAt?: string
+  bankAccount?: string
+}
+
+export interface ReviewExpenseComparison {
+  document: ReviewExpenseComparisonSide
+  bank?: ReviewExpenseComparisonSide
 }
 
 export interface ReviewSectionItem {
   id: string
-  kind: 'matched' | 'unmatched' | 'unmatched-reservation-settlement' | 'reservation-settlement-overview' | 'ancillary-settlement-overview' | 'suspicious' | 'missing-document'
+  kind:
+    | 'matched'
+    | 'unmatched'
+    | 'unmatched-reservation-settlement'
+    | 'reservation-settlement-overview'
+    | 'ancillary-settlement-overview'
+    | 'suspicious'
+    | 'missing-document'
+    | 'expense-matched'
+    | 'expense-review'
+    | 'expense-unmatched-document'
+    | 'expense-unmatched-outflow'
   title: string
   detail: string
   transactionIds: string[]
@@ -26,6 +54,7 @@ export interface ReviewSectionItem {
   operatorExplanation: string
   operatorCheckHint?: string
   documentBankRelation?: string
+  expenseComparison?: ReviewExpenseComparison
 }
 
 export interface ReviewScreenData {
@@ -37,6 +66,10 @@ export interface ReviewScreenData {
   unmatchedReservationSettlements: ReviewSectionItem[]
   payoutBatchMatched: ReviewSectionItem[]
   payoutBatchUnmatched: ReviewSectionItem[]
+  expenseMatched: ReviewSectionItem[]
+  expenseNeedsReview: ReviewSectionItem[]
+  expenseUnmatchedDocuments: ReviewSectionItem[]
+  expenseUnmatchedOutflows: ReviewSectionItem[]
   unmatched: ReviewSectionItem[]
   suspicious: ReviewSectionItem[]
   missingDocuments: ReviewSectionItem[]
@@ -79,6 +112,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   const payoutBatchUnmatched = input.batch.report.unmatchedPayoutBatches.map((batch) =>
     toPayoutBatchUnmatchedReviewItem(input.batch, batch)
   )
+  const expenseReview = buildExpenseReviewSections(input.batch, input.fileRoutes)
 
   const unmatchedReservationSettlements = (input.batch.reconciliation.workflowPlan?.reservationSettlementNoMatches ?? [])
     .map((noMatch) => toReservationSettlementNoMatchReviewItem(input.batch, noMatch))
@@ -107,10 +141,481 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     unmatchedReservationSettlements,
     payoutBatchMatched,
     payoutBatchUnmatched,
+    expenseMatched: expenseReview.expenseMatched,
+    expenseNeedsReview: expenseReview.expenseNeedsReview,
+    expenseUnmatchedDocuments: expenseReview.expenseUnmatchedDocuments,
+    expenseUnmatchedOutflows: expenseReview.expenseUnmatchedOutflows,
     unmatched,
     suspicious,
     missingDocuments
   }
+}
+
+const EXPENSE_REVIEW_MAX_DAY_DISTANCE = 7
+const DOCUMENT_RECORD_TYPE_SET = new Set(['invoice-document', 'receipt-document'])
+
+interface ExpenseDocumentReviewEntry {
+  extractedRecord: MonthlyBatchResult['extractedRecords'][number]
+  normalizedTransaction?: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  fileRoute?: UploadedMonthlyFileRoute
+}
+
+function buildExpenseReviewSections(
+  batch: MonthlyBatchResult,
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows'> {
+  const fileRoutesBySourceDocumentId = new Map(
+    (fileRoutes ?? [])
+      .filter((route): route is UploadedMonthlyFileRoute & { sourceDocumentId: string } => Boolean(route.sourceDocumentId))
+      .map((route) => [route.sourceDocumentId, route])
+  )
+  const transactionsById = new Map(
+    batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
+  )
+  const documentEntries = batch.extractedRecords
+    .filter((record) => DOCUMENT_RECORD_TYPE_SET.has(record.recordType))
+    .map((record) => ({
+      extractedRecord: record,
+      normalizedTransaction: batch.reconciliation.normalizedTransactions.find((transaction) =>
+        transaction.extractedRecordIds.includes(record.id)
+      ),
+      fileRoute: fileRoutesBySourceDocumentId.get(record.sourceDocumentId)
+    }))
+  const linkedSupportTransactionIds = new Set(batch.reconciliation.supportedExpenseLinks.map((link) => link.supportTransactionId))
+  const linkedExpenseTransactionIds = new Set(batch.reconciliation.supportedExpenseLinks.map((link) => link.expenseTransactionId))
+  const missingSupportingOutflowIds = new Set(
+    batch.reconciliation.exceptionCases
+      .filter((exceptionCase) => exceptionCase.ruleCode === 'missing_supporting_document')
+      .flatMap((exceptionCase) => exceptionCase.relatedTransactionIds)
+  )
+  const candidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
+    transaction.source === 'bank'
+    && transaction.direction === 'out'
+    && missingSupportingOutflowIds.has(transaction.id)
+    && !linkedExpenseTransactionIds.has(transaction.id)
+  )
+  const usedCandidateBankIds = new Set<string>()
+
+  const expenseMatched = batch.reconciliation.supportedExpenseLinks.flatMap((link) => {
+    const bankTransaction = transactionsById.get(link.expenseTransactionId)
+    const supportTransaction = transactionsById.get(link.supportTransactionId)
+    const documentEntry = documentEntries.find((entry) =>
+      entry.normalizedTransaction?.id === link.supportTransactionId
+      || entry.extractedRecord.id === link.supportExtractedRecordIds[0]
+      || link.supportSourceDocumentIds.includes(entry.extractedRecord.sourceDocumentId)
+    )
+
+    if (!bankTransaction || !supportTransaction || !documentEntry) {
+      return []
+    }
+
+    return [toExpenseMatchedReviewItem(batch, documentEntry, bankTransaction, link.reasons, link.matchScore, fileRoutes)]
+  })
+
+  const expenseNeedsReview: ReviewSectionItem[] = []
+  const expenseUnmatchedDocuments: ReviewSectionItem[] = []
+
+  for (const documentEntry of documentEntries) {
+    if (documentEntry.normalizedTransaction && linkedSupportTransactionIds.has(documentEntry.normalizedTransaction.id)) {
+      continue
+    }
+
+    const candidateBankTransaction = findUniqueExpenseBankCandidate(documentEntry, candidateBankTransactions, usedCandidateBankIds)
+
+    if (candidateBankTransaction) {
+      usedCandidateBankIds.add(candidateBankTransaction.id)
+      expenseNeedsReview.push(toExpenseNeedsReviewItem(batch, documentEntry, candidateBankTransaction, fileRoutes))
+      continue
+    }
+
+    expenseUnmatchedDocuments.push(toExpenseUnmatchedDocumentReviewItem(batch, documentEntry, fileRoutes))
+  }
+
+  const expenseUnmatchedOutflows = batch.reconciliation.exceptionCases
+    .filter((exceptionCase) => exceptionCase.ruleCode === 'missing_supporting_document')
+    .flatMap((exceptionCase) => {
+      const transaction = exceptionCase.relatedTransactionIds[0]
+        ? transactionsById.get(exceptionCase.relatedTransactionIds[0])
+        : undefined
+
+      if (!transaction || linkedExpenseTransactionIds.has(transaction.id) || usedCandidateBankIds.has(transaction.id)) {
+        return []
+      }
+
+      return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes)]
+    })
+
+  return {
+    expenseMatched,
+    expenseNeedsReview,
+    expenseUnmatchedDocuments,
+    expenseUnmatchedOutflows
+  }
+}
+
+function toExpenseMatchedReviewItem(
+  _batch: MonthlyBatchResult,
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  reasons: string[],
+  matchScore: number,
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewSectionItem {
+  const documentReference = getExpenseDocumentReference(documentEntry)
+  const matchStrength = classifyExpenseMatchedStrength(reasons, matchScore)
+
+  return {
+    id: `expense-matched:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
+    kind: 'expense-matched',
+    title: documentReference
+      ? `Faktura ${documentReference}`
+      : `Doklad ${documentEntry.extractedRecord.sourceDocumentId}`,
+    detail: 'Doklad a odchozí bankovní platba tvoří potvrzenou výdajovou vazbu.',
+    transactionIds: [
+      ...(documentEntry.normalizedTransaction ? [documentEntry.normalizedTransaction.id] : []),
+      bankTransaction.id
+    ],
+    sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
+    matchStrength,
+    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons),
+    operatorExplanation: matchStrength === 'potvrzená shoda'
+      ? 'Částka, datum a alespoň jedna další stopa potvrzují vazbu dokladu na bankovní výdaj.'
+      : 'Doklad je spárovaný s bankovním výdajem, ale ručně ověřte reference nebo protistranu.',
+    operatorCheckHint: matchStrength === 'potvrzená shoda'
+      ? 'Ruční kontrolu dělejte jen při sporné protistraně nebo neobvyklém textu v bankovní platbě.'
+      : 'Zkontrolujte ručně reference dokladu, protistranu a datum platby.',
+    documentBankRelation: 'Potvrzená pravděpodobná vazba mezi dokladem a odchozí bankovní platbou.',
+    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
+  }
+}
+
+function toExpenseNeedsReviewItem(
+  _batch: MonthlyBatchResult,
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewSectionItem {
+  const documentReference = getExpenseDocumentReference(documentEntry)
+
+  return {
+    id: `expense-review:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
+    kind: 'expense-review',
+    title: documentReference
+      ? `Doklad ke kontrole ${documentReference}`
+      : `Doklad ke kontrole ${documentEntry.extractedRecord.sourceDocumentId}`,
+    detail: 'Doklad je načtený a existuje jediný blízký odchozí bankovní kandidát, ale vazba zatím není potvrzená.',
+    transactionIds: [
+      ...(documentEntry.normalizedTransaction ? [documentEntry.normalizedTransaction.id] : []),
+      bankTransaction.id
+    ],
+    sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
+    matchStrength: 'vyžaduje kontrolu',
+    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes),
+    operatorExplanation: 'Systém našel jediný kandidátní bankovní pohyb se stejnou částkou, ale chybí silnější potvrzení.',
+    operatorCheckHint: 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum odchozí platby.',
+    documentBankRelation: 'Doklad je načtený a existuje kandidátní bankovní pohyb, ale vazba zatím není potvrzená.',
+    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
+  }
+}
+
+function toExpenseUnmatchedDocumentReviewItem(
+  _batch: MonthlyBatchResult,
+  documentEntry: ExpenseDocumentReviewEntry,
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewSectionItem {
+  const documentReference = getExpenseDocumentReference(documentEntry)
+
+  return {
+    id: `expense-unmatched-document:${documentEntry.extractedRecord.id}`,
+    kind: 'expense-unmatched-document',
+    title: documentReference
+      ? `Nespárovaný doklad ${documentReference}`
+      : `Nespárovaný doklad ${documentEntry.extractedRecord.sourceDocumentId}`,
+    detail: 'Doklad je načtený, ale nebyla nalezena jednoznačná odchozí bankovní platba.',
+    transactionIds: documentEntry.normalizedTransaction ? [documentEntry.normalizedTransaction.id] : [],
+    sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
+    matchStrength: 'nespárováno',
+    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, undefined, fileRoutes),
+    operatorExplanation: 'Doklad je použitelný pro kontrolu, ale bez potvrzené vazby na bankovní výdaj.',
+    operatorCheckHint: 'Zkontrolujte ručně, zda v bance nechybí odchozí platba se stejnou částkou nebo odpovídající referencí.',
+    documentBankRelation: 'Doklad je načtený, ale zatím bez potvrzené bankovní vazby.',
+    expenseComparison: buildExpenseComparison(documentEntry, undefined)
+  }
+}
+
+function toExpenseUnmatchedOutflowReviewItem(
+  _batch: MonthlyBatchResult,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewSectionItem {
+  return {
+    id: `expense-unmatched-outflow:${bankTransaction.id}`,
+    kind: 'expense-unmatched-outflow',
+    title: `Nespárovaná odchozí platba ${formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency)}`,
+    detail: exceptionCase.explanation,
+    transactionIds: [bankTransaction.id],
+    sourceDocumentIds: [],
+    severity: exceptionCase.severity,
+    matchStrength: 'nespárováno',
+    evidenceSummary: buildExpenseOutflowEvidenceSummary(bankTransaction, fileRoutes),
+    operatorExplanation: 'Odchozí bankovní platba zatím nemá odpovídající fakturu nebo účtenku.',
+    operatorCheckHint: 'Zkontrolujte ručně bankovní zprávu, protistranu a dohledání odpovídajícího dokladu.',
+    documentBankRelation: 'Existuje odchozí bankovní platba, ale zatím bez načteného odpovídajícího dokladu.',
+    expenseComparison: buildExpenseOutflowComparison(bankTransaction)
+  }
+}
+
+function classifyExpenseMatchedStrength(reasons: string[], matchScore: number): ReviewMatchStrength {
+  const hasReference = reasons.includes('referenceAligned')
+  const hasCounterparty = reasons.includes('counterpartyAligned')
+
+  if (matchScore >= 6 && (hasReference || hasCounterparty)) {
+    return 'potvrzená shoda'
+  }
+
+  return 'slabší shoda'
+}
+
+function findUniqueExpenseBankCandidate(
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
+  usedCandidateBankIds: Set<string>
+): MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined {
+  const documentAmountMinor = documentEntry.extractedRecord.amountMinor
+  const documentCurrency = documentEntry.extractedRecord.currency
+
+  if (typeof documentAmountMinor !== 'number' || !documentCurrency) {
+    return undefined
+  }
+
+  const candidates = bankTransactions
+    .filter((transaction) => !usedCandidateBankIds.has(transaction.id))
+    .filter((transaction) => transaction.amountMinor === documentAmountMinor && transaction.currency === documentCurrency)
+    .filter((transaction) => calculateExpenseDateDistance(documentEntry, transaction.bookedAt) <= EXPENSE_REVIEW_MAX_DAY_DISTANCE)
+
+  return candidates.length === 1 ? candidates[0] : undefined
+}
+
+function buildExpenseComparison(
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined
+): ReviewExpenseComparison {
+  const documentData = documentEntry.extractedRecord.data as Record<string, unknown>
+
+  return {
+    document: {
+      supplierOrCounterparty: readString(documentData.supplier) ?? readString(documentData.merchant) ?? documentEntry.normalizedTransaction?.counterparty,
+      reference: getExpenseDocumentReference(documentEntry),
+      issueDate: readString(documentData.issueDate) ?? documentEntry.extractedRecord.occurredAt,
+      dueDate: readString(documentData.dueDate),
+      amount: typeof documentEntry.extractedRecord.amountMinor === 'number' && documentEntry.extractedRecord.currency
+        ? formatAmountMinorCs(documentEntry.extractedRecord.amountMinor, documentEntry.extractedRecord.currency)
+        : undefined,
+      currency: documentEntry.extractedRecord.currency,
+      ibanHint: readString(documentData.ibanHint)
+    },
+    ...(bankTransaction
+      ? {
+          bank: {
+            supplierOrCounterparty: bankTransaction.counterparty,
+            reference: bankTransaction.reference,
+            bookedAt: bankTransaction.bookedAt,
+            amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
+            currency: bankTransaction.currency,
+            bankAccount: bankTransaction.accountId
+          }
+        }
+      : {})
+  }
+}
+
+function buildExpenseOutflowComparison(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ReviewExpenseComparison {
+  return {
+    document: {},
+    bank: {
+      supplierOrCounterparty: bankTransaction.counterparty,
+      reference: bankTransaction.reference,
+      bookedAt: bankTransaction.bookedAt,
+      amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
+      currency: bankTransaction.currency,
+      bankAccount: bankTransaction.accountId
+    }
+  }
+}
+
+function buildExpenseEvidenceSummary(
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined,
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  confirmedReasons: string[] = []
+): ReviewEvidenceEntry[] {
+  const documentReference = getExpenseDocumentReference(documentEntry)
+  const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
+  const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
+  const documentProvenance = buildDocumentProvenanceLabel(fileRoutes, [documentEntry.extractedRecord.sourceDocumentId])
+  const dateDistance = bankTransaction ? calculateExpenseDateDistance(documentEntry, bankTransaction.bookedAt) : undefined
+  const referenceAligned = bankTransaction
+    ? confirmedReasons.includes('referenceAligned') || expenseReferenceMatches(documentReference, bankTransaction.reference)
+    : false
+  const counterpartyAligned = bankTransaction
+    ? confirmedReasons.includes('counterpartyAligned') || expenseCounterpartyMatches(documentCounterparty, bankTransaction)
+    : false
+  const ibanAligned = bankTransaction
+    ? expenseIbanMatches(documentIbanHint, bankTransaction)
+    : undefined
+
+  return [
+    {
+      label: 'částka',
+      value: bankTransaction ? 'sedí' : formatAmountMinorCs(documentEntry.extractedRecord.amountMinor ?? 0, documentEntry.extractedRecord.currency ?? 'CZK')
+    },
+    maybeEvidenceEntry(
+      'datum',
+      bankTransaction
+        ? (typeof dateDistance === 'number'
+          ? dateDistance === 0
+            ? 'sedí'
+            : `v toleranci (${dateDistance} dní)`
+          : 'nelze ověřit')
+        : getExpensePrimaryDate(documentEntry)
+    ),
+    maybeEvidenceEntry(
+      'IBAN',
+      documentIbanHint
+        ? (
+          typeof ibanAligned === 'boolean'
+            ? (ibanAligned ? 'sedí' : 'nelze ověřit')
+            : 'z dokladu načten'
+        )
+        : 'chybí'
+    ),
+    maybeEvidenceEntry(
+      'reference',
+      documentReference
+        ? (bankTransaction ? (referenceAligned ? 'sedí' : 'chybí') : documentReference)
+        : 'chybí'
+    ),
+    maybeEvidenceEntry(
+      'protistrana / účet',
+      bankTransaction
+        ? (counterpartyAligned ? 'podobná' : 'nepodobná')
+        : (documentCounterparty ?? 'bez bankovního kandidáta')
+    ),
+    maybeEvidenceEntry('provenience', documentProvenance)
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildExpenseOutflowEvidenceSummary(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  _fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewEvidenceEntry[] {
+  return [
+    { label: 'částka', value: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency) },
+    maybeEvidenceEntry('datum', bankTransaction.bookedAt),
+    maybeEvidenceEntry('reference', bankTransaction.reference ?? 'chybí'),
+    maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankTransaction.counterparty, bankTransaction.accountId]).join(' · ')),
+    { label: 'dokument', value: 'chybí' }
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function getExpenseDocumentReference(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  return readString(data.invoiceNumber)
+    ?? documentEntry.extractedRecord.rawReference
+    ?? documentEntry.normalizedTransaction?.invoiceNumber
+    ?? documentEntry.normalizedTransaction?.reference
+}
+
+function getExpenseDocumentCounterparty(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  return readString(data.supplier)
+    ?? readString(data.merchant)
+    ?? documentEntry.normalizedTransaction?.counterparty
+}
+
+function getExpenseDocumentIbanHint(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  return readString(data.ibanHint)
+}
+
+function getExpenseRelevantDates(documentEntry: ExpenseDocumentReviewEntry): string[] {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+
+  return uniqueTextValues([
+    readString(data.dueDate),
+    readString(data.issueDate),
+    readString(data.taxableDate),
+    documentEntry.extractedRecord.occurredAt
+  ])
+}
+
+function getExpensePrimaryDate(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  return getExpenseRelevantDates(documentEntry)[0]
+}
+
+function calculateExpenseDateDistance(documentEntry: ExpenseDocumentReviewEntry, bankBookedAt: string): number {
+  return getExpenseRelevantDates(documentEntry)
+    .map((dateValue) => calculateDayDistance(dateValue, bankBookedAt))
+    .sort((left, right) => left - right)[0] ?? Number.POSITIVE_INFINITY
+}
+
+function calculateDayDistance(left: string, right: string): number {
+  const leftDate = new Date(`${left}T00:00:00Z`)
+  const rightDate = new Date(`${right}T00:00:00Z`)
+  return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function expenseReferenceMatches(documentReference: string | undefined, bankReference: string | undefined): boolean {
+  return normalizedComparableIncludes(documentReference, bankReference)
+}
+
+function expenseCounterpartyMatches(
+  documentCounterparty: string | undefined,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): boolean {
+  return normalizedComparableIncludes(documentCounterparty, bankTransaction.counterparty)
+    || normalizedComparableIncludes(documentCounterparty, bankTransaction.reference)
+}
+
+function expenseIbanMatches(
+  documentIbanHint: string | undefined,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): boolean {
+  if (!documentIbanHint) {
+    return false
+  }
+
+  const ibanSuffix = documentIbanHint.replace(/\s+/g, '').slice(-4)
+  const candidates = [bankTransaction.reference, bankTransaction.counterparty, bankTransaction.accountId]
+
+  return candidates.some((candidate) =>
+    normalizedComparableIncludes(documentIbanHint, candidate)
+    || (ibanSuffix.length > 0 && normalizedComparableIncludes(ibanSuffix, candidate))
+  )
+}
+
+function normalizedComparableIncludes(left: string | undefined, right: string | undefined): boolean {
+  const normalizedLeft = normalizeComparableValue(left)
+  const normalizedRight = normalizeComparableValue(right)
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false
+  }
+
+  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)
+}
+
+function normalizeComparableValue(value: string | undefined): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim()
+    ? value.trim()
+    : undefined
 }
 
 function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payoutBatchKey: string): string[] {
@@ -538,6 +1043,14 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
       return 'Podezřelé'
     case 'missing-document':
       return 'Chybějící doklad'
+    case 'expense-matched':
+      return 'Spárovaný výdaj'
+    case 'expense-review':
+      return 'Výdaj ke kontrole'
+    case 'expense-unmatched-document':
+      return 'Nespárovaný doklad'
+    case 'expense-unmatched-outflow':
+      return 'Nespárovaná odchozí platba'
   }
 }
 

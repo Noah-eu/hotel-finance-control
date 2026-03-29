@@ -1689,6 +1689,26 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).not.toContain('Lenner')
+    expect(
+      rendered.expenseMatchedContent.innerHTML.includes('141260183')
+      || rendered.expenseReviewContent.innerHTML.includes('141260183')
+      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('141260183')
+    ).toBe(true)
+    expect(
+      rendered.expenseMatchedContent.innerHTML.includes('Lenner Motors s.r.o.')
+      || rendered.expenseReviewContent.innerHTML.includes('Lenner Motors s.r.o.')
+      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('Lenner Motors s.r.o.')
+    ).toBe(true)
+    expect(
+      rendered.expenseMatchedContent.innerHTML.includes('Doklad ↔ banka:')
+      || rendered.expenseReviewContent.innerHTML.includes('Doklad ↔ banka:')
+      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('Doklad ↔ banka:')
+    ).toBe(true)
+    expect(
+      rendered.expenseMatchedContent.innerHTML.includes('Částka:')
+      || rendered.expenseReviewContent.innerHTML.includes('Částka:')
+      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('Částka:')
+    ).toBe(true)
   })
 
   it('shows SPD QR fallback payload and provenance for invoice-like PDFs without changing the stable 16 / 2 payout result', async () => {
@@ -1992,6 +2012,10 @@ async function executeWebDemoMainWorkflow(input: {
   buildFingerprint: StubDomElement
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
+  expenseMatchedContent: StubDomElement
+  expenseReviewContent: StubDomElement
+  expenseUnmatchedDocumentsContent: StubDomElement
+  expenseUnmatchedOutflowsContent: StubDomElement
   matchedPayoutBatchesContent: StubDomElement
   unmatchedPayoutBatchesContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
@@ -2062,6 +2086,10 @@ async function executeWebDemoMainWorkflow(input: {
     buildFingerprint: elements['build-fingerprint'],
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
+    expenseMatchedContent: elements['expense-matched-content'],
+    expenseReviewContent: elements['expense-review-content'],
+    expenseUnmatchedDocumentsContent: elements['expense-unmatched-documents-content'],
+    expenseUnmatchedOutflowsContent: elements['expense-unmatched-outflows-content'],
     matchedPayoutBatchesContent: elements['matched-payout-batches-content'],
     unmatchedPayoutBatchesContent: elements['unmatched-payout-batches-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
@@ -2144,6 +2172,14 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'matched-payout-batches-content',
     'unmatched-payout-batches-section',
     'unmatched-payout-batches-content',
+    'expense-matched-section',
+    'expense-matched-content',
+    'expense-review-section',
+    'expense-review-content',
+    'expense-unmatched-documents-section',
+    'expense-unmatched-documents-content',
+    'expense-unmatched-outflows-section',
+    'expense-unmatched-outflows-content',
     'unmatched-reservations-section',
     'unmatched-reservations-content',
     'export-handoff-section',

@@ -35,7 +35,8 @@ export function buildBrowserRuntimeUploadStateFromFiles(
   const batch = ingestion.batch
   const review = buildReviewScreen({
     batch,
-    generatedAt: input.generatedAt
+    generatedAt: input.generatedAt,
+    fileRoutes: ingestion.fileRoutes
   })
   const exportFiles = buildExportArtifactsFiles({
     batch,
@@ -128,6 +129,10 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       unmatchedReservationSettlements: review.unmatchedReservationSettlements,
       payoutBatchMatched: review.payoutBatchMatched,
       payoutBatchUnmatched: review.payoutBatchUnmatched,
+      expenseMatched: review.expenseMatched,
+      expenseNeedsReview: review.expenseNeedsReview,
+      expenseUnmatchedDocuments: review.expenseUnmatchedDocuments,
+      expenseUnmatchedOutflows: review.expenseUnmatchedOutflows,
       unmatched: review.unmatched,
       suspicious: review.suspicious,
       missingDocuments: review.missingDocuments

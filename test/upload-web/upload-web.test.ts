@@ -488,6 +488,33 @@ describe('buildUploadWebFlow', () => {
     expect(
       result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
     ).toBe(2)
+    const lennerExpenseItem = [
+      ...result.reviewSections.expenseMatched,
+      ...result.reviewSections.expenseNeedsReview,
+      ...result.reviewSections.expenseUnmatchedDocuments
+    ].find((item) =>
+      item.expenseComparison?.document.reference === '141260183'
+      && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+    )
+
+    expect(lennerExpenseItem).toBeDefined()
+    expect(lennerExpenseItem?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Lenner Motors s.r.o.',
+        reference: '141260183',
+        issueDate: '2026-03-11',
+        dueDate: '2026-03-25',
+        amount: '12 629,52 Kč',
+        ibanHint: 'CZ4903000000000274621920'
+      })
+    })
+    expect(lennerExpenseItem?.evidenceSummary.some((entry) => entry.label === 'částka')).toBe(true)
+    expect(lennerExpenseItem?.evidenceSummary.some((entry) => entry.label === 'datum')).toBe(true)
+    expect(
+      result.reviewSections.expenseMatched.length
+      + result.reviewSections.expenseNeedsReview.length
+      + result.reviewSections.expenseUnmatchedDocuments.length
+    ).toBeGreaterThan(0)
   })
 
   it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {

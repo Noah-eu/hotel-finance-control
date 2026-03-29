@@ -195,6 +195,10 @@ function renderOperatorWebDemoHtml(input: {
       unmatchedReservationSettlements: [],
       payoutBatchMatched: [],
       payoutBatchUnmatched: [],
+      expenseMatched: [],
+      expenseNeedsReview: [],
+      expenseUnmatchedDocuments: [],
+      expenseUnmatchedOutflows: [],
       unmatched: [],
       suspicious: [],
       missingDocuments: []
@@ -318,6 +322,46 @@ function renderOperatorWebDemoHtml(input: {
         padding: 16px;
         background: #fbfdff;
       }
+      .expense-item {
+        border: 1px solid #e4ebf6;
+        border-radius: 12px;
+        background: #fbfdff;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .expense-comparison {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);
+        gap: 12px;
+      }
+      .expense-side,
+      .expense-status {
+        border-radius: 10px;
+        background: #f7f9fc;
+        padding: 10px 12px;
+      }
+      .expense-side h6,
+      .expense-status h6 {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+      .expense-side ul,
+      .expense-status ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .status-badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .status-badge.confirmed { background: #e7f6ec; color: #0f7a32; }
+      .status-badge.weak { background: #fff4dd; color: #946200; }
+      .status-badge.review { background: #fff4dd; color: #946200; }
+      .status-badge.unmatched { background: #ffe3e8; color: #b42318; }
       code {
         background: #f1f4f8;
         padding: 2px 6px;
@@ -488,6 +532,36 @@ ${input.debugMode ? `
         </div>
       </section>
 
+      <section class="card">
+        <h2>Kontrola výdajů a dokladů</h2>
+        <div class="detail-grid">
+          <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Spárované výdaje</h3>
+            <div id="expense-matched-content">
+              <p class="hint">Po spuštění se zde zobrazí potvrzené vazby mezi dokladem a odchozí bankovní platbou.</p>
+            </div>
+          </section>
+          <section id="expense-review-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Výdaje ke kontrole</h3>
+            <div id="expense-review-content">
+              <p class="hint">Po spuštění se zde zobrazí doklady s kandidátním bankovním pohybem, které ještě vyžadují ruční potvrzení.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-documents-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované doklady</h3>
+            <div id="expense-unmatched-documents-content">
+              <p class="hint">Po spuštění se zde zobrazí načtené doklady bez potvrzené bankovní vazby.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-outflows-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované odchozí platby</h3>
+            <div id="expense-unmatched-outflows-content">
+              <p class="hint">Po spuštění se zde zobrazí odchozí bankovní platby bez odpovídajícího dokladu.</p>
+            </div>
+          </section>
+        </div>
+      </section>
+
       <section id="export-handoff-section" class="card" data-runtime-phase="placeholder">
         <h2>Exportní handoff</h2>
         <div id="export-handoff-content">
@@ -548,6 +622,14 @@ ${showRuntimePayoutDiagnostics ? `
   const unmatchedPayoutBatchesContent = document.getElementById('unmatched-payout-batches-content');
   const unmatchedReservationsSection = document.getElementById('unmatched-reservations-section');
   const unmatchedReservationsContent = document.getElementById('unmatched-reservations-content');
+  const expenseMatchedSection = document.getElementById('expense-matched-section');
+  const expenseMatchedContent = document.getElementById('expense-matched-content');
+  const expenseReviewSection = document.getElementById('expense-review-section');
+  const expenseReviewContent = document.getElementById('expense-review-content');
+  const expenseUnmatchedDocumentsSection = document.getElementById('expense-unmatched-documents-section');
+  const expenseUnmatchedDocumentsContent = document.getElementById('expense-unmatched-documents-content');
+  const expenseUnmatchedOutflowsSection = document.getElementById('expense-unmatched-outflows-section');
+  const expenseUnmatchedOutflowsContent = document.getElementById('expense-unmatched-outflows-content');
   const exportHandoffSection = document.getElementById('export-handoff-section');
   const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}${runtimeFileIntakeDiagnosticsBindings}
   const runtimePayoutProjectionDebugSection = document.getElementById('runtime-payout-projection-debug-section');
@@ -1664,8 +1746,102 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : '',
           item && item.operatorCheckHint
             ? '<br /><span class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(String(item.operatorCheckHint)) + '</span>'
-            : ''
+          : ''
         ].join('');
+      }
+
+      function buildExpenseReviewSectionMarkup(items, emptyLabel) {
+        if (!items || items.length === 0) {
+          return '<p class="hint">' + escapeHtml(emptyLabel) + '</p>';
+        }
+
+        return items.map((item) => buildExpenseReviewItemMarkup(item)).join('');
+      }
+
+      function buildExpenseReviewItemMarkup(item) {
+        const comparison = item && item.expenseComparison ? item.expenseComparison : {};
+
+        return [
+          '<article class="expense-item">',
+          '<strong>' + escapeHtml(String((item && item.title) || 'Výdaj')) + '</strong>',
+          '<div class="expense-comparison">',
+          buildExpenseReviewSideMarkup('Doklad', comparison.document, true),
+          '<div class="expense-status">',
+          '<h6>Stav a důkazy</h6>',
+          '<span class="status-badge ' + escapeHtml(mapMatchStrengthToBadgeClass(item && item.matchStrength)) + '">' + escapeHtml(String((item && item.matchStrength) || 'neuvedeno')) + '</span>',
+          item && item.operatorExplanation
+            ? '<div class="hint"><strong>Vyhodnocení:</strong> ' + escapeHtml(String(item.operatorExplanation)) + '</div>'
+            : '',
+          buildExpenseEvidenceMarkup(item),
+          item && item.documentBankRelation
+            ? '<div class="hint"><strong>Doklad ↔ banka:</strong> ' + escapeHtml(String(item.documentBankRelation)) + '</div>'
+            : '',
+          item && item.operatorCheckHint
+            ? '<div class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(String(item.operatorCheckHint)) + '</div>'
+            : '',
+          '</div>',
+          buildExpenseReviewSideMarkup('Banka', comparison.bank, false),
+          '</div>',
+          '</article>'
+        ].join('');
+      }
+
+      function buildExpenseReviewSideMarkup(title, side, isDocument) {
+        const fields = isDocument
+          ? [
+              ['Dodavatel', side && side.supplierOrCounterparty],
+              ['Číslo faktury / reference', side && side.reference],
+              ['Datum vystavení', side && side.issueDate],
+              ['Datum splatnosti', side && side.dueDate],
+              ['Částka', side && side.amount],
+              ['Měna', side && side.currency],
+              ['IBAN hint', side && side.ibanHint]
+            ]
+          : [
+              ['Datum pohybu', side && side.bookedAt],
+              ['Částka', side && side.amount],
+              ['Měna', side && side.currency],
+              ['Protistrana / název účtu', side && side.supplierOrCounterparty],
+              ['Reference / zpráva / VS', side && side.reference],
+              ['Bankovní účet', side && side.bankAccount]
+            ];
+        const visibleFields = fields.filter((entry) => Boolean(entry[1]));
+
+        return '<div class="expense-side"><h6>' + escapeHtml(title) + '</h6>'
+          + (visibleFields.length === 0
+            ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
+            : '<ul>' + visibleFields.map((entry) =>
+              '<li><strong>' + escapeHtml(String(entry[0])) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>'
+            ).join('') + '</ul>')
+          + '</div>';
+      }
+
+      function buildExpenseEvidenceMarkup(item) {
+        const evidence = Array.isArray(item && item.evidenceSummary) ? item.evidenceSummary : [];
+
+        if (evidence.length === 0) {
+          return '<p class="hint">Bez doplňujících důkazů.</p>';
+        }
+
+        return '<ul>' + evidence.map((entry) =>
+          '<li><strong>' + escapeHtml(String(entry.label || '')) + ':</strong> ' + escapeHtml(String(entry.value || '')) + '</li>'
+        ).join('') + '</ul>';
+      }
+
+      function mapMatchStrengthToBadgeClass(matchStrength) {
+        if (matchStrength === 'potvrzená shoda') {
+          return 'confirmed';
+        }
+
+        if (matchStrength === 'slabší shoda') {
+          return 'weak';
+        }
+
+        if (matchStrength === 'vyžaduje kontrolu') {
+          return 'review';
+        }
+
+        return 'unmatched';
       }
 
       function buildSettlementOverviewMarkup(items) {
@@ -1765,6 +1941,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', phase);
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', phase);
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', phase);
+  expenseMatchedSection.setAttribute('data-runtime-phase', phase);
+  expenseReviewSection.setAttribute('data-runtime-phase', phase);
+  expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', phase);
+  expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', phase);
         unmatchedReservationsSection.setAttribute('data-runtime-phase', phase);
         exportHandoffSection.setAttribute('data-runtime-phase', phase);
         syncRuntimePayoutDiagnosticsPhase(phase);
@@ -1794,6 +1974,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
+        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseMatched) || [], 'Žádné spárované výdaje.');
+        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseNeedsReview) || [], 'Žádné výdaje ke kontrole.');
+        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedDocuments) || [], 'Žádné nespárované doklady.');
+        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedOutflows) || [], 'Žádné nespárované odchozí platby.');
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         renderCompletedRuntimePayoutDiagnostics(visibleState);
@@ -1818,6 +2002,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'running');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'running');
+  expenseMatchedSection.setAttribute('data-runtime-phase', 'running');
+  expenseReviewSection.setAttribute('data-runtime-phase', 'running');
+  expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', 'running');
+  expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', 'running');
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'running');
         exportHandoffSection.setAttribute('data-runtime-phase', 'running');
         syncRuntimePayoutDiagnosticsPhase('running');
@@ -1838,6 +2026,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
+        expenseMatchedContent.innerHTML = '<p class="hint">Spárované výdaje se právě načítají ze sdíleného runtime běhu…</p>';
+        expenseReviewContent.innerHTML = '<p class="hint">Výdaje ke kontrole se právě načítají ze sdíleného runtime běhu…</p>';
+        expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Nespárované doklady se právě načítají ze sdíleného runtime běhu…</p>';
+        expenseUnmatchedOutflowsContent.innerHTML = '<p class="hint">Nespárované odchozí platby se právě načítají ze sdíleného runtime běhu…</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff se právě připravuje ze stejného runtime výsledku…</p>';
         renderRunningRuntimePayoutDiagnostics();
@@ -1855,6 +2047,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesSection.setAttribute('data-runtime-phase', 'failed');
   reservationSettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
   ancillarySettlementOverviewSection.setAttribute('data-runtime-phase', 'failed');
+  expenseMatchedSection.setAttribute('data-runtime-phase', 'failed');
+  expenseReviewSection.setAttribute('data-runtime-phase', 'failed');
+  expenseUnmatchedDocumentsSection.setAttribute('data-runtime-phase', 'failed');
+  expenseUnmatchedOutflowsSection.setAttribute('data-runtime-phase', 'failed');
         unmatchedReservationsSection.setAttribute('data-runtime-phase', 'failed');
         exportHandoffSection.setAttribute('data-runtime-phase', 'failed');
         syncRuntimePayoutDiagnosticsPhase('failed');
@@ -1868,6 +2064,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
         reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací není k dispozici, protože runtime běh selhal.</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
+        expenseMatchedContent.innerHTML = '<p class="hint">Spárované výdaje nejsou k dispozici, protože runtime běh selhal.</p>';
+        expenseReviewContent.innerHTML = '<p class="hint">Výdaje ke kontrole nejsou k dispozici, protože runtime běh selhal.</p>';
+        expenseUnmatchedDocumentsContent.innerHTML = '<p class="hint">Nespárované doklady nejsou k dispozici, protože runtime běh selhal.</p>';
+        expenseUnmatchedOutflowsContent.innerHTML = '<p class="hint">Nespárované odchozí platby nejsou k dispozici, protože runtime běh selhal.</p>';
         unmatchedReservationsContent.innerHTML = '<p class="hint">Detail nespárovaných rezervací není k dispozici, protože runtime běh selhal.</p>';
         exportHandoffContent.innerHTML = '<p class="hint">Exportní handoff není k dispozici, protože runtime běh selhal.</p>';
         renderFailedRuntimePayoutDiagnostics();

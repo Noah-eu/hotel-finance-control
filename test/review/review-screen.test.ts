@@ -849,6 +849,250 @@ describe('buildReviewScreen', () => {
     expect(review.missingDocuments[0]?.documentBankRelation).toBe('Doklad je načtený, ale zatím bez potvrzené bankovní vazby.')
   })
 
+  it('builds dedicated expense review sections with side-by-side evidence for matched, review, and unmatched expense items', () => {
+    const missingReviewDoc = buildExceptionCase({
+      id: toExceptionCaseId('exc:txn:bank-review'),
+      ruleCode: 'missing_supporting_document',
+      explanation: 'Outgoing expense-like transaction has no structured supporting invoice or receipt match in the current monthly batch.',
+      severity: 'high',
+      relatedTransactionIds: [toTransactionId('txn:bank-review')],
+      relatedSourceDocumentIds: [toDocumentId('doc:invoice-review')]
+    })
+    const missingOutflowDoc = buildExceptionCase({
+      id: toExceptionCaseId('exc:txn:bank-unmatched'),
+      ruleCode: 'missing_supporting_document',
+      explanation: 'Outgoing expense-like transaction has no structured supporting invoice or receipt match in the current monthly batch.',
+      severity: 'high',
+      relatedTransactionIds: [toTransactionId('txn:bank-unmatched')]
+    })
+
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-29T13:00:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [
+          {
+            id: 'invoice-record-linked',
+            sourceDocumentId: toDocumentId('doc:invoice-linked'),
+            recordType: 'invoice-document',
+            extractedAt: '2026-03-29T13:00:00.000Z',
+            rawReference: '141260183',
+            amountMinor: 1262952,
+            currency: 'CZK',
+            occurredAt: '2026-03-11',
+            data: {
+              sourceSystem: 'invoice',
+              supplier: 'Lenner Motors s.r.o.',
+              customer: 'JOKELAND s.r.o.',
+              invoiceNumber: '141260183',
+              issueDate: '2026-03-11',
+              dueDate: '2026-03-25',
+              taxableDate: '2026-03-11',
+              ibanHint: 'CZ4903000000000274621920'
+            }
+          },
+          {
+            id: 'invoice-record-review',
+            sourceDocumentId: toDocumentId('doc:invoice-review'),
+            recordType: 'invoice-document',
+            extractedAt: '2026-03-29T13:00:00.000Z',
+            rawReference: 'QR-141260183',
+            amountMinor: 1850000,
+            currency: 'CZK',
+            occurredAt: '2026-03-11',
+            data: {
+              sourceSystem: 'invoice',
+              supplier: 'QR Hotel Supply s.r.o.',
+              customer: 'JOKELAND s.r.o.',
+              invoiceNumber: 'QR-141260183',
+              issueDate: '2026-03-11',
+              dueDate: '2026-03-25',
+              taxableDate: '2026-03-11'
+            }
+          },
+          {
+            id: 'invoice-record-unmatched',
+            sourceDocumentId: toDocumentId('doc:invoice-unmatched'),
+            recordType: 'invoice-document',
+            extractedAt: '2026-03-29T13:00:00.000Z',
+            rawReference: '2026-999',
+            amountMinor: 990000,
+            currency: 'CZK',
+            occurredAt: '2026-03-09',
+            data: {
+              sourceSystem: 'invoice',
+              supplier: 'Bez vazby s.r.o.',
+              invoiceNumber: '2026-999',
+              issueDate: '2026-03-09',
+              dueDate: '2026-03-20'
+            }
+          }
+        ],
+        reconciliation: {
+          normalizedTransactions: [
+            buildTransaction({
+              id: toTransactionId('txn:doc-linked'),
+              direction: 'out',
+              source: 'invoice',
+              amountMinor: 1262952,
+              currency: 'CZK',
+              bookedAt: '2026-03-11',
+              counterparty: 'Lenner Motors s.r.o.',
+              reference: '141260183',
+              invoiceNumber: '141260183',
+              extractedRecordIds: ['invoice-record-linked'],
+              sourceDocumentIds: [toDocumentId('doc:invoice-linked')]
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:bank-linked'),
+              direction: 'out',
+              source: 'bank',
+              amountMinor: 1262952,
+              currency: 'CZK',
+              bookedAt: '2026-03-25',
+              accountId: 'fio-main',
+              counterparty: 'Lenner Motors s.r.o.',
+              reference: 'VS 141260183'
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:doc-review'),
+              direction: 'out',
+              source: 'invoice',
+              amountMinor: 1850000,
+              currency: 'CZK',
+              bookedAt: '2026-03-11',
+              counterparty: 'QR Hotel Supply s.r.o.',
+              reference: 'QR-141260183',
+              invoiceNumber: 'QR-141260183',
+              extractedRecordIds: ['invoice-record-review'],
+              sourceDocumentIds: [toDocumentId('doc:invoice-review')]
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:bank-review'),
+              direction: 'out',
+              source: 'bank',
+              amountMinor: 1850000,
+              currency: 'CZK',
+              bookedAt: '2026-03-25',
+              accountId: 'fio-main',
+              counterparty: 'QR Hotel Supply s.r.o.',
+              reference: 'Úhrada QR-141260183'
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:doc-unmatched'),
+              direction: 'out',
+              source: 'invoice',
+              amountMinor: 990000,
+              currency: 'CZK',
+              bookedAt: '2026-03-09',
+              counterparty: 'Bez vazby s.r.o.',
+              reference: '2026-999',
+              invoiceNumber: '2026-999',
+              extractedRecordIds: ['invoice-record-unmatched'],
+              sourceDocumentIds: [toDocumentId('doc:invoice-unmatched')]
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:bank-unmatched'),
+              direction: 'out',
+              source: 'bank',
+              amountMinor: 450000,
+              currency: 'CZK',
+              bookedAt: '2026-03-28',
+              accountId: 'fio-main',
+              counterparty: 'Dodavatel bez dokladu',
+              reference: 'Platba bez dokladu'
+            })
+          ],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [missingReviewDoc, missingOutflowDoc],
+          supportedExpenseLinks: [
+            {
+              expenseTransactionId: toTransactionId('txn:bank-linked'),
+              supportTransactionId: toTransactionId('txn:doc-linked'),
+              matchScore: 7,
+              reasons: ['currency:CZK', 'amountExact:1262952', 'dateDistance:0', 'referenceAligned', 'counterpartyAligned'],
+              supportSourceDocumentIds: [toDocumentId('doc:invoice-linked')],
+              supportExtractedRecordIds: ['invoice-record-linked']
+            }
+          ],
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [missingReviewDoc, missingOutflowDoc],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 6,
+            matchedGroupCount: 0,
+            exceptionCount: 2,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-29T13:00:00.000Z',
+          summary: {
+            normalizedTransactionCount: 6,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 2,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.expenseMatched).toHaveLength(1)
+    expect(review.expenseNeedsReview).toHaveLength(1)
+    expect(review.expenseUnmatchedDocuments).toHaveLength(1)
+    expect(review.expenseUnmatchedOutflows).toHaveLength(1)
+
+    expect(review.expenseMatched[0]).toMatchObject({
+      matchStrength: 'potvrzená shoda',
+      documentBankRelation: 'Potvrzená pravděpodobná vazba mezi dokladem a odchozí bankovní platbou.'
+    })
+    expect(review.expenseMatched[0]?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Lenner Motors s.r.o.',
+        reference: '141260183'
+      }),
+      bank: expect.objectContaining({
+        bookedAt: '2026-03-25',
+        reference: 'VS 141260183'
+      })
+    })
+    expect(review.expenseMatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: 'sedí' }),
+        expect.objectContaining({ label: 'reference', value: 'sedí' })
+      ])
+    )
+
+    expect(review.expenseNeedsReview[0]).toMatchObject({
+      matchStrength: 'vyžaduje kontrolu'
+    })
+    expect(review.expenseNeedsReview[0]?.expenseComparison?.document.reference).toBe('QR-141260183')
+    expect(review.expenseNeedsReview[0]?.expenseComparison?.bank?.reference).toBe('Úhrada QR-141260183')
+
+    expect(review.expenseUnmatchedDocuments[0]?.expenseComparison?.document.reference).toBe('2026-999')
+    expect(review.expenseUnmatchedDocuments[0]?.expenseComparison?.bank).toBeUndefined()
+
+    expect(review.expenseUnmatchedOutflows[0]?.expenseComparison?.document).toEqual({})
+    expect(review.expenseUnmatchedOutflows[0]?.expenseComparison?.bank?.reference).toBe('Platba bez dokladu')
+  })
+
   it('shows reservation-settlement no-matches as a separate business-facing review section without raw matcher codes', () => {
     const previo = getRealInputFixture('previo-reservation-export')
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')

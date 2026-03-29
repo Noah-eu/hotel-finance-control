@@ -209,5 +209,13 @@ function toSectionLabel(kind: ReviewScreenData['matched'][number]['kind']): stri
       return 'Podezřelé položky'
     case 'missing-document':
       return 'Chybějící doklady'
+    case 'expense-matched':
+      return 'Spárované výdaje'
+    case 'expense-review':
+      return 'Výdaje ke kontrole'
+    case 'expense-unmatched-document':
+      return 'Nespárované doklady'
+    case 'expense-unmatched-outflow':
+      return 'Nespárované odchozí platby'
   }
 }

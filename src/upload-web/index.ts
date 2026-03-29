@@ -8,7 +8,13 @@ import {
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
-import { buildReviewScreen, type ReviewScreenData } from '../review'
+import {
+  buildReviewScreen,
+  type ReviewEvidenceEntry,
+  type ReviewExpenseComparisonSide,
+  type ReviewScreenData,
+  type ReviewSectionItem
+} from '../review'
 import type { ReconciliationReport } from '../reporting'
 import { formatAmountMinorCs } from '../shared/money'
 import { emitBrowserRuntimeBundle } from './browser-bundle'
@@ -255,7 +261,7 @@ export interface BrowserRuntimeUploadState {
     status: string
   }>
   reviewSummary: ReviewScreenData['summary']
-  reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'unmatched' | 'suspicious' | 'missingDocuments'>
+  reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{
     labelCs: string
     fileName: string
@@ -503,6 +509,52 @@ function renderUploadWebFlowHtmlInternal(generatedAt: string): string {
       .amount {
         font-weight: 700;
       }
+      .expense-review-group {
+        margin-bottom: 16px;
+      }
+      .expense-review-group h5 {
+        margin: 0 0 8px;
+      }
+      .expense-item {
+        border: 1px solid #e4ebf6;
+        border-radius: 12px;
+        background: #fbfdff;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .expense-comparison {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) minmax(0, 1fr);
+        gap: 12px;
+      }
+      .expense-side,
+      .expense-status {
+        border-radius: 10px;
+        background: #f7f9fc;
+        padding: 10px 12px;
+      }
+      .expense-side h6,
+      .expense-status h6 {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+      .expense-side ul,
+      .expense-status ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .status-badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .status-badge.confirmed { background: #e7f6ec; color: #0f7a32; }
+      .status-badge.weak { background: #fff4dd; color: #946200; }
+      .status-badge.review { background: #fff4dd; color: #946200; }
+      .status-badge.unmatched { background: #ffe3e8; color: #b42318; }
       code {
         background: #f1f4f8;
         padding: 2px 6px;
@@ -679,9 +731,10 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<section class="runtime-card"><h4>1. Připravené soubory a trasování</h4>' + buildRuntimeFileRouting(state) + '</section>',
           '<section class="runtime-card"><h4>2. Extrakce a příprava</h4><ul class="trace-list">' + state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br />Extrahováno: ' + file.extractedCount + '<br />' + (file.extractedRecordIds.length > 0 ? '<code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Žádné extrahované záznamy.</span>') + '</li>').join('') + '</ul></section>',
           '<section class="runtime-card"><h4>3. Kontrola operátora</h4>' + renderRuntimeReviewSection(state.reviewSections, payoutCounts) + '</section>',
-          '<section class="runtime-card"><h4>4. Náhled reportu</h4>' + renderRuntimeReportSummary(state, payoutCounts) + '</section>',
-          '<section class="runtime-card"><h4>5. Vazby na podpůrné doklady</h4>' + renderSupportedExpenseLinks(state.supportedExpenseLinks, state.fileRoutes) + '</section>',
-          '<section class="runtime-card"><h4>6. Exportní předání</h4>' + renderRuntimeExportFiles(state.exportFiles) + '</section>',
+          '<section class="runtime-card"><h4>4. Kontrola výdajů a dokladů</h4>' + renderRuntimeExpenseReviewSection(state.reviewSections) + '</section>',
+          '<section class="runtime-card"><h4>5. Náhled reportu</h4>' + renderRuntimeReportSummary(state, payoutCounts) + '</section>',
+          '<section class="runtime-card"><h4>6. Vazby na podpůrné doklady</h4>' + renderSupportedExpenseLinks(state.supportedExpenseLinks, state.fileRoutes) + '</section>',
+          '<section class="runtime-card"><h4>7. Exportní předání</h4>' + renderRuntimeExportFiles(state.exportFiles) + '</section>',
           '</div>',
           '<p class="hint">Každý krok zůstává navázaný na sdílené výsledky z <code>upload-web</code>, <code>monthly-batch</code>, <code>review</code>, <code>reporting</code> a <code>export</code>.</p>'
         ].join('');
@@ -843,6 +896,106 @@ ${renderBrowserRuntimeClientBootstrap()}
         }).join('') + '</ul>';
       }
 
+      function renderRuntimeExpenseReviewSection(sections) {
+        const groups = [
+          { label: 'Spárované výdaje', items: Array.isArray(sections.expenseMatched) ? sections.expenseMatched : [] },
+          { label: 'Výdaje ke kontrole', items: Array.isArray(sections.expenseNeedsReview) ? sections.expenseNeedsReview : [] },
+          { label: 'Nespárované doklady', items: Array.isArray(sections.expenseUnmatchedDocuments) ? sections.expenseUnmatchedDocuments : [] },
+          { label: 'Nespárované odchozí platby', items: Array.isArray(sections.expenseUnmatchedOutflows) ? sections.expenseUnmatchedOutflows : [] }
+        ];
+
+        return groups.map((group) => buildRuntimeExpenseReviewGroupMarkup(group.label, group.items)).join('');
+      }
+
+      function buildRuntimeExpenseReviewGroupMarkup(label, items) {
+        const body = !items || items.length === 0
+          ? '<p class="hint">Žádné položky v této sekci.</p>'
+          : items.map((item) => buildRuntimeExpenseReviewItemMarkup(item)).join('');
+
+        return '<div class="expense-review-group"><h5>' + escapeHtml(label) + ' (' + escapeHtml(String(items ? items.length : 0)) + ')</h5>' + body + '</div>';
+      }
+
+      function buildRuntimeExpenseReviewItemMarkup(item) {
+        const comparison = item && item.expenseComparison ? item.expenseComparison : {};
+        const statusClass = buildRuntimeMatchStrengthClass(item && item.matchStrength);
+
+        return [
+          '<article class="expense-item">',
+          '<strong>' + escapeHtml(String((item && item.title) || 'Výdaj')) + '</strong>',
+          '<div class="expense-comparison">',
+          buildRuntimeExpenseSideMarkup('Doklad', comparison.document, true),
+          '<div class="expense-status">',
+          '<h6>Stav a důkazy</h6>',
+          '<span class="status-badge ' + escapeHtml(statusClass) + '">' + escapeHtml(String((item && item.matchStrength) || 'neuvedeno')) + '</span>',
+          item && item.operatorExplanation ? '<div class="hint"><strong>Vyhodnocení:</strong> ' + escapeHtml(String(item.operatorExplanation)) + '</div>' : '',
+          buildRuntimeExpenseEvidenceListMarkup(item),
+          item && item.documentBankRelation ? '<div class="hint"><strong>Doklad ↔ banka:</strong> ' + escapeHtml(String(item.documentBankRelation)) + '</div>' : '',
+          item && item.operatorCheckHint ? '<div class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(String(item.operatorCheckHint)) + '</div>' : '',
+          '</div>',
+          buildRuntimeExpenseSideMarkup('Banka', comparison.bank, false),
+          '</div>',
+          '</article>'
+        ].join('');
+      }
+
+      function buildRuntimeExpenseSideMarkup(title, side, isDocument) {
+        const fields = isDocument
+          ? [
+              ['Dodavatel', side && side.supplierOrCounterparty],
+              ['Číslo faktury / reference', side && side.reference],
+              ['Datum vystavení', side && side.issueDate],
+              ['Datum splatnosti', side && side.dueDate],
+              ['Částka', side && side.amount],
+              ['Měna', side && side.currency],
+              ['IBAN hint', side && side.ibanHint]
+            ]
+          : [
+              ['Datum pohybu', side && side.bookedAt],
+              ['Částka', side && side.amount],
+              ['Měna', side && side.currency],
+              ['Protistrana / název účtu', side && side.supplierOrCounterparty],
+              ['Reference / zpráva / VS', side && side.reference],
+              ['Bankovní účet', side && side.bankAccount]
+            ];
+        const visibleFields = fields.filter((entry) => Boolean(entry[1]));
+
+        return '<div class="expense-side"><h6>' + escapeHtml(title) + '</h6>'
+          + (visibleFields.length === 0
+            ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
+            : '<ul>' + visibleFields.map((entry) =>
+              '<li><strong>' + escapeHtml(String(entry[0])) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>'
+            ).join('') + '</ul>')
+          + '</div>';
+      }
+
+      function buildRuntimeExpenseEvidenceListMarkup(item) {
+        const evidence = item && Array.isArray(item.evidenceSummary) ? item.evidenceSummary : [];
+
+        if (evidence.length === 0) {
+          return '<p class="hint">Bez doplňujících důkazů.</p>';
+        }
+
+        return '<ul>' + evidence.map((entry) =>
+          '<li><strong>' + escapeHtml(String(entry.label || '')) + ':</strong> ' + escapeHtml(String(entry.value || '')) + '</li>'
+        ).join('') + '</ul>';
+      }
+
+      function buildRuntimeMatchStrengthClass(matchStrength) {
+        if (matchStrength === 'potvrzená shoda') {
+          return 'confirmed';
+        }
+
+        if (matchStrength === 'slabší shoda') {
+          return 'weak';
+        }
+
+        if (matchStrength === 'vyžaduje kontrolu') {
+          return 'review';
+        }
+
+        return 'unmatched';
+      }
+
       function buildRuntimeReviewItemMarkup(item) {
         const evidence = Array.isArray(item.evidenceSummary) && item.evidenceSummary.length > 0
           ? item.evidenceSummary.map((entry) => String(entry.label || '') + ': ' + String(entry.value || '')).join(' · ')
@@ -984,7 +1137,8 @@ export function buildUploadedBatchPreview(input: BuildUploadedBatchPreviewInput)
   const batch = ingestion.batch
   const review = buildReviewScreen({
     batch,
-    generatedAt: input.generatedAt
+    generatedAt: input.generatedAt,
+    fileRoutes: ingestion.fileRoutes
   })
 
   return {
@@ -1181,6 +1335,46 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
       .badge.unmatched { background: #fff4dd; color: #946200; }
       .badge.suspicious { background: #ffe3e8; color: #b42318; }
       .badge.missing { background: #ede9fe; color: #6d28d9; }
+      .expense-item {
+        border: 1px solid #e4ebf6;
+        border-radius: 12px;
+        background: #fbfdff;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .expense-comparison {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) minmax(0, 1fr);
+        gap: 12px;
+      }
+      .expense-side,
+      .expense-status {
+        border-radius: 10px;
+        background: #f7f9fc;
+        padding: 10px 12px;
+      }
+      .expense-side h6,
+      .expense-status h6 {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+      .expense-side ul,
+      .expense-status ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .status-badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .status-badge.confirmed { background: #e7f6ec; color: #0f7a32; }
+      .status-badge.weak { background: #fff4dd; color: #946200; }
+      .status-badge.review { background: #fff4dd; color: #946200; }
+      .status-badge.unmatched { background: #ffe3e8; color: #b42318; }
     </style>
   </head>
   <body>
@@ -1237,6 +1431,11 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
           ${renderReviewSection('Podezřelé položky', 'suspicious', run.review.suspicious)}
           ${renderReviewSection('Chybějící doklady', 'missing', run.review.missingDocuments)}
         </div>
+      </section>
+
+      <section class="card">
+        <h2>Kontrola výdajů a dokladů</h2>
+        ${renderExpenseReviewSectionHtml(run.review)}
       </section>
 
       <section class="card">
@@ -1441,6 +1640,46 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
       .badge.unmatched { background: #fff4dd; color: #946200; }
       .badge.suspicious { background: #ffe3e8; color: #b42318; }
       .badge.missing { background: #ede9fe; color: #6d28d9; }
+      .expense-item {
+        border: 1px solid #e4ebf6;
+        border-radius: 12px;
+        background: #fbfdff;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .expense-comparison {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 220px) minmax(0, 1fr);
+        gap: 12px;
+      }
+      .expense-side,
+      .expense-status {
+        border-radius: 10px;
+        background: #f7f9fc;
+        padding: 10px 12px;
+      }
+      .expense-side h6,
+      .expense-status h6 {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+      .expense-side ul,
+      .expense-status ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .status-badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .status-badge.confirmed { background: #e7f6ec; color: #0f7a32; }
+      .status-badge.weak { background: #fff4dd; color: #946200; }
+      .status-badge.review { background: #fff4dd; color: #946200; }
+      .status-badge.unmatched { background: #ffe3e8; color: #b42318; }
       code {
         background: #f1f4f8;
         padding: 2px 6px;
@@ -1481,6 +1720,11 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
       </section>
 
       <section class="card">
+        <h2>Kontrola výdajů a dokladů</h2>
+        ${renderExpenseReviewSectionHtml(review)}
+      </section>
+
+      <section class="card">
   <h2>Trasování souborů</h2>
         <ul>
           ${batch.files.map((file) => `<li><strong>${escapeHtml(file.sourceDocumentId)}</strong> — ${file.extractedCount} extrahovaných záznamů</li>`).join('')}
@@ -1515,6 +1759,101 @@ function renderStaticReviewAuditMarkup(item: ReviewScreenData['matched'][number]
     item.documentBankRelation ? `<br /><span class="empty"><strong>Doklad ↔ banka:</strong> ${escapeHtml(item.documentBankRelation)}</span>` : '',
     item.operatorCheckHint ? `<br /><span class="empty"><strong>Ruční kontrola:</strong> ${escapeHtml(item.operatorCheckHint)}</span>` : ''
   ].join('')
+}
+
+function renderExpenseReviewSectionHtml(review: Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows'>): string {
+  const groups: Array<{ title: string; items: ReviewSectionItem[] }> = [
+    { title: 'Spárované výdaje', items: review.expenseMatched ?? [] },
+    { title: 'Výdaje ke kontrole', items: review.expenseNeedsReview ?? [] },
+    { title: 'Nespárované doklady', items: review.expenseUnmatchedDocuments ?? [] },
+    { title: 'Nespárované odchozí platby', items: review.expenseUnmatchedOutflows ?? [] }
+  ]
+
+  return groups.map((group) => {
+    const body = group.items.length === 0
+      ? '<p class="empty">Žádné položky v této sekci.</p>'
+      : group.items.map((item) => renderExpenseReviewItemHtml(item)).join('')
+
+    return `<section class="section-panel"><h3>${escapeHtml(group.title)}</h3>${body}</section>`
+  }).join('')
+}
+
+function renderExpenseReviewItemHtml(item: ReviewSectionItem): string {
+  const comparison = item.expenseComparison ?? { document: {} }
+
+  return [
+    '<article class="expense-item">',
+    `<strong>${escapeHtml(item.title)}</strong>`,
+    '<div class="expense-comparison">',
+    renderExpenseComparisonSideHtml('Doklad', comparison.document, true),
+    '<div class="expense-status">',
+    '<h6>Stav a důkazy</h6>',
+    `<span class="status-badge ${escapeHtml(mapMatchStrengthToStatusClass(item.matchStrength))}">${escapeHtml(item.matchStrength)}</span>`,
+    item.operatorExplanation ? `<div class="empty"><strong>Vyhodnocení:</strong> ${escapeHtml(item.operatorExplanation)}</div>` : '',
+    renderExpenseEvidenceHtml(item.evidenceSummary),
+    item.documentBankRelation ? `<div class="empty"><strong>Doklad ↔ banka:</strong> ${escapeHtml(item.documentBankRelation)}</div>` : '',
+    item.operatorCheckHint ? `<div class="empty"><strong>Ruční kontrola:</strong> ${escapeHtml(item.operatorCheckHint)}</div>` : '',
+    '</div>',
+    renderExpenseComparisonSideHtml('Banka', comparison.bank, false),
+    '</div>',
+    '</article>'
+  ].join('')
+}
+
+function renderExpenseComparisonSideHtml(
+  title: string,
+  side: ReviewExpenseComparisonSide | undefined,
+  isDocument: boolean
+): string {
+  const fields = isDocument
+    ? [
+        ['Dodavatel', side?.supplierOrCounterparty],
+        ['Číslo faktury / reference', side?.reference],
+        ['Datum vystavení', side?.issueDate],
+        ['Datum splatnosti', side?.dueDate],
+        ['Částka', side?.amount],
+        ['Měna', side?.currency],
+        ['IBAN hint', side?.ibanHint]
+      ]
+    : [
+        ['Datum pohybu', side?.bookedAt],
+        ['Částka', side?.amount],
+        ['Měna', side?.currency],
+        ['Protistrana / název účtu', side?.supplierOrCounterparty],
+        ['Reference / zpráva / VS', side?.reference],
+        ['Bankovní účet', side?.bankAccount]
+      ]
+  const visibleFields = fields.filter((entry) => Boolean(entry[1]))
+
+  return [
+    '<div class="expense-side">',
+    `<h6>${escapeHtml(title)}</h6>`,
+    visibleFields.length === 0
+      ? `<p class="empty">${escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.')}</p>`
+      : `<ul>${visibleFields.map((entry) => `<li><strong>${escapeHtml(String(entry[0]))}:</strong> ${escapeHtml(String(entry[1]))}</li>`).join('')}</ul>`,
+    '</div>'
+  ].join('')
+}
+
+function renderExpenseEvidenceHtml(evidence: ReviewEvidenceEntry[]): string {
+  if (evidence.length === 0) {
+    return '<p class="empty">Bez doplňujících důkazů.</p>'
+  }
+
+  return `<ul>${evidence.map((entry) => `<li><strong>${escapeHtml(entry.label)}:</strong> ${escapeHtml(entry.value)}</li>`).join('')}</ul>`
+}
+
+function mapMatchStrengthToStatusClass(matchStrength: ReviewSectionItem['matchStrength']): string {
+  switch (matchStrength) {
+    case 'potvrzená shoda':
+      return 'confirmed'
+    case 'slabší shoda':
+      return 'weak'
+    case 'vyžaduje kontrolu':
+      return 'review'
+    default:
+      return 'unmatched'
+  }
 }
 
 function escapeHtml(value: string): string {
