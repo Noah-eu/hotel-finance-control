@@ -3,6 +3,11 @@ import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state
 import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
 import { detectUploadedMonthlyFileCapability } from '../monthly-batch/capabilities.js'
 import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
+import {
+  buildBrowserWorkspaceExcelExport,
+  type BrowserWorkspaceExcelExportArtifact,
+  type MonthlyWorkspaceExportPreset
+} from '../export/browser.js'
 
 interface BufferLikeConstructor {
   alloc(size: number): Uint8Array
@@ -38,6 +43,13 @@ export interface BrowserRuntimeBridge {
     month?: string
     generatedAt: string
   }): Promise<BrowserRuntimeUploadState>
+}
+
+export function buildBrowserRuntimeWorkspaceExcelExport(input: {
+  state: BrowserRuntimeUploadState
+  preset: MonthlyWorkspaceExportPreset
+}): BrowserWorkspaceExcelExportArtifact {
+  return buildBrowserWorkspaceExcelExport(input)
 }
 
 export async function buildBrowserRuntimeStateFromSelectedFiles(input: {

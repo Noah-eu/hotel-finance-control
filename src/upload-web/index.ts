@@ -342,6 +342,7 @@ export function renderBrowserRuntimeClientBootstrap(runtimeAssetPath = './browse
   return `
       import(${JSON.stringify(runtimeAssetPath)}).then((module) => {
         window.__hotelFinanceCreateBrowserRuntime = module.createBrowserRuntime;
+        window.__hotelFinanceBuildWorkspaceExcelExport = module.buildBrowserRuntimeWorkspaceExcelExport;
         window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRuntimeState(input) {
           const runtime = module.createBrowserRuntime();
           return runtime.buildRuntimeState({

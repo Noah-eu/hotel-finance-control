@@ -783,6 +783,8 @@ ${showRuntimePayoutDiagnostics ? `
       const runtimePayoutProjectionDebugMode = runtimeOperatorDebugMode;
       let currentExpenseReviewState = initialRuntimeState;
       let currentExpenseReviewOverrides = [];
+      let currentExportVisibleState = initialRuntimeState;
+      let currentExportPreset = 'complete';
       let currentVisibleRuntimePhase = 'placeholder';
       let currentWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
@@ -2882,12 +2884,80 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const exports = state.exportFiles.length === 0
           ? '<li>Žádné exporty.</li>'
           : state.exportFiles.map((file) => '<li><strong>' + escapeHtml(file.labelCs) + '</strong> — <code>' + escapeHtml(file.fileName) + '</code></li>').join('');
+        const normalizedMonth = String(state.monthLabel || '');
 
         return [
           '<p class="hint">Exportní handoff je po spuštění přepsaný skutečným runtime výsledkem.</p>',
+          '<div class="input-grid">',
+          '<div>',
+          '<label for="workspace-export-preset">Výběr Excel exportu pro aktuální měsíc</label>',
+          '<select id="workspace-export-preset">',
+          '<option value="complete"' + (currentExportPreset === 'complete' ? ' selected' : '') + '>Kompletní export</option>',
+          '<option value="review-needed"' + (currentExportPreset === 'review-needed' ? ' selected' : '') + '>Jen ke kontrole / chybějící</option>',
+          '<option value="matched-only"' + (currentExportPreset === 'matched-only' ? ' selected' : '') + '>Jen spárované</option>',
+          '</select>',
+          '<p class="hint">Excel vždy vychází z právě obnoveného workspace pro měsíc <strong>' + escapeHtml(normalizedMonth || 'neuvedeno') + '</strong>.</p>',
+          '</div>',
+          '<div>',
+          '<label>&nbsp;</label>',
+          '<button id="download-workspace-excel-button" type="button">Stáhnout Excel export</button>',
+          '<p class="hint">Listy Souhrn, Payout a rezervace, Výdaje a doklady používají stejný workspace state jako přehled a detailní stránky.</p>',
+          '</div>',
+          '</div>',
           '<ul>' + exports + '</ul>',
           '<p class="hint">Run ID: <code>' + escapeHtml(state.runId) + '</code></p>'
         ].join('');
+      }
+
+      function triggerWorkspaceExcelDownload() {
+        if (!currentExportVisibleState || !currentExportVisibleState.runId) {
+          runtimeOutput.innerHTML = '<p class="hint">Nejprve spusťte nebo obnovte měsíc, ze kterého se má Excel vytvořit.</p>';
+          return;
+        }
+
+        if (typeof window.__hotelFinanceBuildWorkspaceExcelExport !== 'function') {
+          runtimeOutput.innerHTML = '<p class="hint">Browser Excel export ještě není připravený. Zkuste akci za okamžik znovu.</p>';
+          return;
+        }
+
+        const artifact = window.__hotelFinanceBuildWorkspaceExcelExport({
+          state: currentExportVisibleState,
+          preset: currentExportPreset
+        });
+
+        window.__hotelFinanceLastExcelExport = artifact;
+
+        if (typeof document.createElement === 'function') {
+          const anchor = document.createElement('a');
+
+          if (anchor) {
+            anchor.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + artifact.base64Content;
+            anchor.download = artifact.fileName;
+            anchor.rel = 'noopener';
+
+            if (typeof anchor.click === 'function') {
+              anchor.click();
+            }
+          }
+        }
+      }
+
+      function wireExportControls() {
+        const exportPresetSelect = document.getElementById('workspace-export-preset');
+        const downloadWorkspaceExcelButton = document.getElementById('download-workspace-excel-button');
+
+        if (exportPresetSelect && typeof exportPresetSelect.addEventListener === 'function') {
+          exportPresetSelect.value = currentExportPreset;
+          exportPresetSelect.addEventListener('change', () => {
+            currentExportPreset = String(exportPresetSelect.value || 'complete');
+          });
+        }
+
+        if (downloadWorkspaceExcelButton && typeof downloadWorkspaceExcelButton.addEventListener === 'function') {
+          downloadWorkspaceExcelButton.addEventListener('click', () => {
+            triggerWorkspaceExcelDownload();
+          });
+        }
       }
 
       function buildCompletedVisibleRuntimeState(state) {
@@ -3022,10 +3092,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
         wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || []);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
+        wireExportControls();
         renderCompletedRuntimePayoutDiagnostics(visibleState);
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
         currentExpenseReviewState = baseVisibleState;
+        currentExportVisibleState = visibleState;
         if (phase === 'completed' && currentWorkspaceMonth) {
           persistCurrentMonthWorkspace();
         }
@@ -3093,6 +3165,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderRunningRuntimePayoutDiagnostics();
         renderRunningRuntimeFileIntakeDiagnostics();
         renderRunningRuntimePayoutProjectionDebug();
+        currentExportVisibleState = initialRuntimeState;
       }
 
       function renderFailedState(error) {
@@ -3137,6 +3210,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderFailedRuntimePayoutDiagnostics();
         renderFailedRuntimeFileIntakeDiagnostics();
         renderFailedRuntimePayoutProjectionDebug();
+        currentExportVisibleState = initialRuntimeState;
         if (buildFingerprint) {
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
         }
@@ -3192,6 +3266,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderInitialRuntimeFileIntakeDiagnostics();
         renderInitialRuntimePayoutProjectionDebug();
         currentExpenseReviewState = initialRuntimeState;
+        currentExportVisibleState = initialRuntimeState;
         currentExpenseReviewOverrides = [];
         currentVisibleRuntimePhase = 'placeholder';
       }

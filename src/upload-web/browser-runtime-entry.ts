@@ -1,8 +1,11 @@
 import {
   buildBrowserRuntimeStateFromSelectedFiles,
+  buildBrowserRuntimeWorkspaceExcelExport,
   createBrowserRuntime,
   type BrowserRuntimeBridge
 } from './browser-runtime.js'
+import type { BrowserRuntimeUploadState } from './index.js'
+import type { BrowserWorkspaceExcelExportArtifact, MonthlyWorkspaceExportPreset } from '../export/browser.js'
 
 declare global {
   interface Window {
@@ -15,6 +18,10 @@ declare global {
       runId: string
       generatedAt: string
     }) => Promise<unknown>
+    __hotelFinanceBuildWorkspaceExcelExport?: (input: {
+      state: BrowserRuntimeUploadState
+      preset: MonthlyWorkspaceExportPreset
+    }) => BrowserWorkspaceExcelExportArtifact
   }
 }
 
@@ -31,4 +38,8 @@ window.__hotelFinanceBuildBrowserRuntimeState = async function buildBrowserRunti
   })
 }
 
-export { createBrowserRuntime }
+window.__hotelFinanceBuildWorkspaceExcelExport = function buildWorkspaceExcelExport(input) {
+  return buildBrowserRuntimeWorkspaceExcelExport(input)
+}
+
+export { createBrowserRuntime, buildBrowserRuntimeWorkspaceExcelExport }

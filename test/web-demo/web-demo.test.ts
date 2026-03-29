@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { runInNewContext } from 'node:vm'
+import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
@@ -56,6 +57,8 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('window.open(')
     expect(result.html).not.toContain('about:blank')
     expect(result.html).toContain('Exportní handoff')
+    expect(result.html).toContain('Výběr Excel exportu pro aktuální měsíc')
+    expect(result.html).toContain('Stáhnout Excel export')
     expect(result.html).toContain('Airbnb payout')
     expect(result.html).not.toContain('<iframe')
     expect(result.html).not.toContain('buildBrowserRuntimeUploadState(runtimeInput)')
@@ -84,6 +87,7 @@ describe('buildWebDemo', () => {
     expect(readFileSync(outputPath, 'utf8')).toContain('Soubory k nahrání')
     expect(readFileSync(outputPath, 'utf8')).toContain('Spustit přípravu a měsíční workflow')
     expect(readFileSync(outputPath, 'utf8')).toContain('__hotelFinanceCreateBrowserRuntime')
+    expect(readFileSync(outputPath, 'utf8')).toContain('__hotelFinanceBuildWorkspaceExcelExport')
     expect(readFileSync(outputPath, 'utf8')).toContain(`import(${JSON.stringify(result.runtimeAssetPath)})`)
     expect(readFileSync(outputPath, 'utf8')).not.toContain('import("./browser-runtime.js")')
     expect(existsSync(resolve('dist/test-web-demo', result.runtimeAssetPath!.slice(2)))).toBe(true)
@@ -94,6 +98,7 @@ describe('buildWebDemo', () => {
     expect(runtimeAsset).toContain('ingestUploadedMonthlyFiles')
     expect(runtimeAsset).toContain('buildReviewScreen')
     expect(runtimeAsset).toContain('buildExportArtifacts')
+    expect(runtimeAsset).toContain('buildBrowserRuntimeWorkspaceExcelExport')
   })
 
   it('uses the explicit browser runtime creator instead of fixture dataset matching', async () => {
@@ -2208,6 +2213,186 @@ describe('buildWebDemo', () => {
     expect(reloadedState.fileRoutes).toHaveLength(1)
   })
 
+  it('builds complete monthly Excel export from the restored current month workspace state', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const storageState = new Map<string, string>()
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-workspace-export-source',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    const restored = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:31:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-month-workspace-export-restored',
+      locationSearch: '?debug=1',
+      storageState,
+      skipStart: true,
+      files: []
+    })
+
+    restored.setWorkspaceExportPreset('complete')
+    restored.downloadWorkspaceExcelExport()
+
+    const exportArtifact = restored.getLastExcelExport() as {
+      fileName: string
+      preset: string
+      payoutRowCount: number
+      expenseRowCount: number
+      base64Content: string
+    }
+    const workbook = readWorkbookFromBrowserExportBase64(exportArtifact.base64Content)
+    const summaryRows = XLSX.utils.sheet_to_json<{ Položka: string; Hodnota: string }>(workbook.Sheets.Souhrn)
+    const payoutRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Payout a rezervace'])
+    const expenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Výdaje a doklady'])
+
+    expect(exportArtifact.fileName).toBe('hotel-finance-control-2026-03-kompletni-export.xlsx')
+    expect(exportArtifact.preset).toBe('complete')
+    expect(summaryRows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ Položka: 'Měsíc', Hodnota: '2026-03' }),
+      expect.objectContaining({ Položka: 'Exportní preset', Hodnota: 'Kompletní export' })
+    ]))
+    expect(payoutRows.some((row) => row.Sekce === 'Spárované payout dávky')).toBe(true)
+    expect(payoutRows.some((row) => row.Sekce === 'Nespárované payout dávky')).toBe(true)
+    expect(expenseRows.some((row) => row.Sekce === 'Výdaje ke kontrole' && row['Číslo faktury / reference'] === '141260183')).toBe(true)
+    expect(expenseRows.some((row) => row.Sekce === 'Nespárované odchozí platby')).toBe(true)
+    expect(exportArtifact.payoutRowCount).toBe(payoutRows.length)
+    expect(exportArtifact.expenseRowCount).toBe(expenseRows.length)
+    expect(restored.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(restored.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
+  it('filters monthly Excel export to review-needed items and keeps row counts aligned with visible expense buckets', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-workspace-export-review-only',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+    rendered.setWorkspaceExportPreset('review-needed')
+    rendered.downloadWorkspaceExcelExport()
+
+    const exportArtifact = rendered.getLastExcelExport() as {
+      fileName: string
+      preset: string
+      expenseRowCount: number
+      base64Content: string
+    }
+    const workbook = readWorkbookFromBrowserExportBase64(exportArtifact.base64Content)
+    const payoutRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Payout a rezervace'])
+    const expenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Výdaje a doklady'])
+    const expectedExpenseCount =
+      extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
+      + extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedDocuments')
+      + extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')
+
+    expect(exportArtifact.fileName).toBe('hotel-finance-control-2026-03-jen-ke-kontrole.xlsx')
+    expect(exportArtifact.preset).toBe('review-needed')
+    expect(payoutRows.some((row) => row.Sekce === 'Spárované payout dávky')).toBe(false)
+    expect(expenseRows.some((row) => row.Sekce === 'Spárované výdaje')).toBe(false)
+    expect(expenseRows.some((row) => row.Sekce === 'Výdaje ke kontrole' && row['Číslo faktury / reference'] === '141260183')).toBe(true)
+    expect(exportArtifact.expenseRowCount).toBe(expectedExpenseCount)
+    expect(expenseRows.length).toBe(expectedExpenseCount)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
+  it('reflects manual expense confirm and reject decisions in matched-only and review-needed Excel exports', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:50:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-workspace-export-manual-overrides',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+    const initialState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = initialState.reviewSections.expenseNeedsReview[0]?.id
+    expect(reviewItemId).toBeTruthy()
+
+    rendered.confirmExpenseReviewItem(String(reviewItemId))
+    rendered.setWorkspaceExportPreset('matched-only')
+    rendered.downloadWorkspaceExcelExport()
+
+    const matchedWorkbook = readWorkbookFromBrowserExportBase64(
+      (rendered.getLastExcelExport() as { base64Content: string }).base64Content
+    )
+    const matchedExpenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(matchedWorkbook.Sheets['Výdaje a doklady'])
+
+    expect(matchedExpenseRows.some((row) =>
+      row.Sekce === 'Spárované výdaje'
+      && row['Ruční rozhodnutí'] === 'Ručně potvrzená shoda'
+      && row['Číslo faktury / reference'] === '141260183'
+    )).toBe(true)
+    expect(matchedExpenseRows.some((row) => row.Sekce === 'Výdaje ke kontrole')).toBe(false)
+
+    rendered.undoConfirmedExpenseReviewItem(`expense-manual-confirmed:${String(reviewItemId)}`)
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+    rendered.setWorkspaceExportPreset('review-needed')
+    rendered.downloadWorkspaceExcelExport()
+
+    const reviewWorkbook = readWorkbookFromBrowserExportBase64(
+      (rendered.getLastExcelExport() as { base64Content: string }).base64Content
+    )
+    const reviewExpenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(reviewWorkbook.Sheets['Výdaje a doklady'])
+
+    expect(reviewExpenseRows.some((row) =>
+      row['Ruční rozhodnutí'] === 'Ručně zamítnuto'
+      && row.Sekce === 'Nespárované doklady'
+    )).toBe(true)
+    expect(reviewExpenseRows.some((row) =>
+      row['Ruční rozhodnutí'] === 'Ručně zamítnuto'
+      && row.Sekce === 'Nespárované odchozí platby'
+    )).toBe(true)
+    expect(reviewExpenseRows.some((row) => row.Sekce === 'Spárované výdaje')).toBe(false)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({
@@ -2446,9 +2631,13 @@ interface StubDomElement {
   className: string
   value: string
   files: unknown[]
+  href?: string
+  download?: string
+  rel?: string
   listeners: Record<string, () => void>
   setAttribute(name: string, value: string): void
   addEventListener(name: string, listener: () => void): void
+  click?: () => void
 }
 
 async function executeWebDemoMainWorkflow(input: {
@@ -2489,6 +2678,7 @@ async function executeWebDemoMainWorkflow(input: {
   expenseReviewContent: StubDomElement
   expenseUnmatchedDocumentsContent: StubDomElement
   expenseUnmatchedOutflowsContent: StubDomElement
+  exportHandoffContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
   runtimePayoutProjectionDebugSection: StubDomElement
@@ -2503,6 +2693,9 @@ async function executeWebDemoMainWorkflow(input: {
   rejectExpenseReviewItem: (reviewItemId: string) => void
   undoConfirmedExpenseReviewItem: (itemId: string) => void
   undoRejectedExpenseReviewItem: (itemId: string) => void
+  setWorkspaceExportPreset: (preset: 'complete' | 'review-needed' | 'matched-only') => void
+  downloadWorkspaceExcelExport: () => void
+  getLastExcelExport: () => unknown
   reloadWithSameStorage: () => Promise<any>
   getLastVisibleRuntimeState: () => unknown
   lastVisibleRuntimeState?: unknown
@@ -2539,10 +2732,12 @@ async function executeWebDemoMainWorkflow(input: {
     TextEncoder?: typeof TextEncoder
     TextDecoder?: typeof TextDecoder
     __hotelFinanceCreateBrowserRuntime?: unknown
+    __hotelFinanceBuildWorkspaceExcelExport?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
     __hotelFinanceExpenseReviewOverrides?: unknown
     __hotelFinanceExpenseReviewOverrideStorageKey?: unknown
+    __hotelFinanceLastExcelExport?: unknown
   } = {
     location: {
       search: input.locationSearch ?? '',
@@ -2586,6 +2781,9 @@ async function executeWebDemoMainWorkflow(input: {
     document: {
       getElementById(id: string) {
         return elements[id] ?? createStubDomElement(id, elements)
+      },
+      createElement(tagName: string) {
+        return createStubDomElement(`created:${tagName}:${Object.keys(elements).length}`, elements)
       }
     },
     TextEncoder,
@@ -2635,6 +2833,7 @@ async function executeWebDemoMainWorkflow(input: {
     expenseReviewContent: elements['expense-review-content'],
     expenseUnmatchedDocumentsContent: elements['expense-unmatched-documents-content'],
     expenseUnmatchedOutflowsContent: elements['expense-unmatched-outflows-content'],
+    exportHandoffContent: elements['export-handoff-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
     runtimePayoutProjectionDebugSection: elements['runtime-payout-projection-debug-section'],
@@ -2671,6 +2870,16 @@ async function executeWebDemoMainWorkflow(input: {
     },
     undoRejectedExpenseReviewItem(itemId: string) {
       elements[buildExpenseReviewActionElementId('undo-reject', itemId)].listeners.click()
+    },
+    setWorkspaceExportPreset(preset: 'complete' | 'review-needed' | 'matched-only') {
+      elements['workspace-export-preset'].value = preset
+      elements['workspace-export-preset'].listeners.change()
+    },
+    downloadWorkspaceExcelExport() {
+      elements['download-workspace-excel-button'].listeners.click()
+    },
+    getLastExcelExport() {
+      return windowObject.__hotelFinanceLastExcelExport
     },
     async reloadWithSameStorage() {
       return executeWebDemoMainWorkflow({
@@ -2785,6 +2994,8 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'unmatched-reservations-content',
     'export-handoff-section',
     'export-handoff-content',
+    'workspace-export-preset',
+    'download-workspace-excel-button',
     'runtime-payout-diagnostics-section',
     'runtime-payout-diagnostics-content',
     'runtime-file-intake-diagnostics-section',
@@ -2816,7 +3027,8 @@ function createStubDomElement(
     setAttribute() {},
     addEventListener(name: string, listener: () => void) {
       element.listeners[name] = listener
-    }
+    },
+    click() {}
   }
 
   elements[id] = element
@@ -2843,6 +3055,10 @@ function extractExpenseBucketCount(markup: string, key: string): number {
   }
 
   return Number(match[1])
+}
+
+function readWorkbookFromBrowserExportBase64(base64Content: string) {
+  return XLSX.read(base64Content, { type: 'base64' })
 }
 
 function buildExpenseReviewActionElementId(action: 'confirm' | 'reject' | 'undo-confirm' | 'undo-reject', reviewItemId: string): string {
