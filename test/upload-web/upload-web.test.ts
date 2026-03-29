@@ -685,6 +685,35 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
   })
 
+  it('pairs an own-account Fio to RB transfer as an internal matched transfer instead of an unmatched expense outflow', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithInternalTransferInflowOnly(),
+          'text/csv'
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithInternalTransferOutflowOnly(),
+          'text/csv'
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T19:30:00.000Z'
+    })
+
+    expect(result.reviewSections.expenseMatched.some((item) =>
+      item.title === 'Vnitřní převod 5 000,00 Kč'
+      && item.expenseComparison?.variant === 'bank-bank'
+      && item.expenseComparison?.document.bankAccount === '8888997777/2010'
+      && item.expenseComparison?.bank?.bankAccount === '5599955956/5500'
+    )).toBe(true)
+    expect(result.reviewSections.expenseUnmatchedOutflows.some((item) =>
+      item.title.includes('5 000,00 Kč')
+    )).toBe(false)
+  })
+
   it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
 
@@ -4847,6 +4876,20 @@ function buildRealUploadedFioContentWithInternalTransferInflow(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:02;5000,00;CZK;8888997777/2010;5599955956/5500;Převod z vlastního RB účtu;Převod z RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithInternalTransferInflowOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:02;27.03.2026 09:04;5599955956/5500;8888997777/2010;Převod z vlastního Fio účtu;5000,00;CZK;Převod z Fio 8888997777/2010'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
   ].join('\n')
 }
 

@@ -2606,6 +2606,54 @@ describe('buildWebDemo', () => {
     )).toBe(false)
   })
 
+  it('renders and exports an own-account Fio to RB transfer as an internal matched transfer instead of an unmatched expense outflow', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T19:32:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-internal-transfer-pair-fio-rb',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithInternalTransferInflowOnly(),
+          'text/csv'
+        ),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithInternalTransferOutflowOnly(),
+          'text/csv'
+        )
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Vnitřní převod 5 000,00 Kč')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Odchozí účet')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Příchozí účet')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('8888997777/2010')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('5599955956/5500')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+
+    rendered.setWorkspaceExportPreset('complete')
+    rendered.downloadWorkspaceExcelExport()
+
+    const workbook = readWorkbookFromBrowserExportBase64(
+      (rendered.getLastExcelExport() as { base64Content: string }).base64Content
+    )
+    const expenseRows = XLSX.utils.sheet_to_json<Record<string, string>>(workbook.Sheets['Výdaje a doklady'])
+
+    expect(expenseRows.some((row) =>
+      row.Sekce === 'Spárované výdaje'
+      && row.Titulek === 'Vnitřní převod 5 000,00 Kč'
+      && row['Účet / IBAN hint'] === '8888997777/2010 ↔ 5599955956/5500'
+    )).toBe(true)
+    expect(expenseRows.some((row) =>
+      row.Sekce === 'Nespárované odchozí platby'
+      && row.Titulek.includes('5 000,00 Kč')
+    )).toBe(false)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({
@@ -3786,6 +3834,20 @@ function buildRealUploadedFioContentWithInternalTransferInflow(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:02;5000,00;CZK;8888997777/2010;5599955956/5500;Převod z vlastního RB účtu;Převod z RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithInternalTransferInflowOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:02;27.03.2026 09:04;5599955956/5500;8888997777/2010;Převod z vlastního Fio účtu;5000,00;CZK;Převod z Fio 8888997777/2010'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
   ].join('\n')
 }
 

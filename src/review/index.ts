@@ -457,7 +457,6 @@ function buildExpenseReviewSections(
   )
   const internalTransferPairs = buildInternalTransferPairSelections(
     batch.reconciliation.normalizedTransactions,
-    missingSupportingOutflowIds,
     linkedExpenseTransactionIds
   )
   const internalTransferOutflowKeys = new Set(
@@ -1132,7 +1131,6 @@ function buildInternalTransferEvidenceSummary(
 
 function buildInternalTransferPairSelections(
   transactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
-  missingSupportingOutflowIds: Set<NormalizedTransaction['id']>,
   linkedExpenseTransactionIds: Set<NormalizedTransaction['id']>
 ): InternalTransferPairSelection[] {
   const bankTransactions = transactions.filter((transaction) =>
@@ -1144,13 +1142,18 @@ function buildInternalTransferPairSelections(
   const incomingTransactions = bankTransactions.filter((transaction) => transaction.direction === 'in')
   const outgoingTransactions = bankTransactions.filter((transaction) =>
     transaction.direction === 'out'
-    && missingSupportingOutflowIds.has(transaction.id)
     && !linkedExpenseTransactionIds.has(transaction.id)
   )
+  const usedOutgoingKeys = new Set<string>()
   const usedIncomingKeys = new Set<string>()
   const pairs: InternalTransferPairSelection[] = []
 
   for (const outgoingTransaction of outgoingTransactions) {
+    const outgoingKey = buildReviewBankTransactionKey(outgoingTransaction)
+    if (usedOutgoingKeys.has(outgoingKey)) {
+      continue
+    }
+
     const evaluations = incomingTransactions
       .filter((incomingTransaction) => !usedIncomingKeys.has(buildReviewBankTransactionKey(incomingTransaction)))
       .map((incomingTransaction) =>
@@ -1179,6 +1182,7 @@ function buildInternalTransferPairSelections(
     }
 
     const incomingKey = buildReviewBankTransactionKey(winner.incomingTransaction)
+    usedOutgoingKeys.add(outgoingKey)
     usedIncomingKeys.add(incomingKey)
     pairs.push({
       outgoingTransaction,
