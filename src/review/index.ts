@@ -66,6 +66,10 @@ export interface ReviewSectionItem {
   operatorCheckHint?: string
   documentBankRelation?: string
   expenseComparison?: ReviewExpenseComparison
+  manualDecision?: 'confirmed' | 'rejected'
+  manualDecisionLabel?: string
+  manualDecisionAt?: string
+  manualSourceReviewItemId?: string
 }
 
 export interface ReviewScreenData {
@@ -84,6 +88,17 @@ export interface ReviewScreenData {
   unmatched: ReviewSectionItem[]
   suspicious: ReviewSectionItem[]
   missingDocuments: ReviewSectionItem[]
+}
+
+export type ExpenseReviewSections = Pick<
+  ReviewScreenData,
+  'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows'
+>
+
+export interface ExpenseReviewOperatorOverride {
+  reviewItemId: string
+  decision: 'confirmed' | 'rejected'
+  decidedAt?: string
 }
 
 export interface BuildReviewScreenInput {
@@ -162,6 +177,62 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   }
 }
 
+export function applyExpenseReviewOperatorOverrides(
+  sections: ExpenseReviewSections,
+  overrides: ExpenseReviewOperatorOverride[]
+): ExpenseReviewSections {
+  const overrideByReviewItemId = new Map<string, ExpenseReviewOperatorOverride>()
+
+  for (const override of overrides) {
+    if (!override.reviewItemId) {
+      continue
+    }
+
+    overrideByReviewItemId.set(override.reviewItemId, override)
+  }
+
+  const baseMatched = cloneReviewSectionItems(sections.expenseMatched ?? [])
+  const baseReview = cloneReviewSectionItems(sections.expenseNeedsReview ?? [])
+  const baseUnmatchedDocuments = cloneReviewSectionItems(sections.expenseUnmatchedDocuments ?? [])
+  const baseUnmatchedOutflows = cloneReviewSectionItems(sections.expenseUnmatchedOutflows ?? [])
+  const reviewItemsById = new Map(baseReview.map((item) => [item.id, item]))
+  const confirmedOverrides: ReviewSectionItem[] = []
+  const rejectedDocumentOverrides: ReviewSectionItem[] = []
+  const rejectedOutflowOverrides: ReviewSectionItem[] = []
+
+  for (const override of overrideByReviewItemId.values()) {
+    const reviewItem = reviewItemsById.get(override.reviewItemId)
+
+    if (!reviewItem) {
+      continue
+    }
+
+    if (override.decision === 'confirmed') {
+      confirmedOverrides.push(toManuallyConfirmedExpenseItem(reviewItem, override))
+      continue
+    }
+
+    rejectedDocumentOverrides.push(toManuallyRejectedExpenseDocumentItem(reviewItem, override))
+    rejectedOutflowOverrides.push(toManuallyRejectedExpenseOutflowItem(reviewItem, override))
+  }
+
+  return {
+    expenseMatched: [
+      ...baseMatched,
+      ...confirmedOverrides
+    ],
+    expenseNeedsReview: baseReview.filter((item) => !overrideByReviewItemId.has(item.id)),
+    expenseUnmatchedDocuments: [
+      ...baseUnmatchedDocuments,
+      ...rejectedDocumentOverrides
+    ],
+    expenseUnmatchedOutflows: [
+      ...baseUnmatchedOutflows,
+      ...rejectedOutflowOverrides
+    ]
+  }
+}
+
 const EXPENSE_REVIEW_CONFIRMED_MAX_DAY_DISTANCE = 7
 const EXPENSE_REVIEW_STRONG_MAX_DAY_DISTANCE = 14
 const EXPENSE_REVIEW_CANDIDATE_MAX_DAY_DISTANCE = 21
@@ -196,6 +267,143 @@ interface ExpenseBankCandidateSelection {
 interface ExpenseCandidatePlan {
   documentEntry: ExpenseDocumentReviewEntry
   evaluations: ExpenseBankCandidateEvaluation[]
+}
+
+function cloneReviewSectionItems(items: ReviewSectionItem[]): ReviewSectionItem[] {
+  return items.map((item) => cloneReviewSectionItem(item))
+}
+
+function cloneReviewSectionItem(item: ReviewSectionItem): ReviewSectionItem {
+  return {
+    ...item,
+    transactionIds: [...item.transactionIds],
+    sourceDocumentIds: [...item.sourceDocumentIds],
+    evidenceSummary: item.evidenceSummary.map((entry) => ({ ...entry })),
+    expenseComparison: item.expenseComparison
+      ? {
+          document: { ...item.expenseComparison.document },
+          ...(item.expenseComparison.bank ? { bank: { ...item.expenseComparison.bank } } : {})
+        }
+      : undefined
+  }
+}
+
+function toManuallyConfirmedExpenseItem(
+  reviewItem: ReviewSectionItem,
+  override: ExpenseReviewOperatorOverride
+): ReviewSectionItem {
+  const item = cloneReviewSectionItem(reviewItem)
+
+  return {
+    ...item,
+    id: `expense-manual-confirmed:${reviewItem.id}`,
+    kind: 'expense-matched',
+    matchStrength: 'potvrzená shoda',
+    detail: 'Operátor ručně potvrdil vazbu dokladu na odchozí bankovní platbu.',
+    operatorExplanation: 'Operátor ručně potvrdil navrženou vazbu doklad ↔ banka.',
+    operatorCheckHint: 'Ruční rozhodnutí je uložené pro tento běh; další kontrola je nutná jen při sporu.',
+    documentBankRelation: 'Ručně potvrzená vazba mezi dokladem a odchozí bankovní platbou.',
+    manualDecision: 'confirmed',
+    manualDecisionLabel: 'Ručně potvrzená shoda',
+    manualDecisionAt: override.decidedAt,
+    manualSourceReviewItemId: reviewItem.id
+  }
+}
+
+function toManuallyRejectedExpenseDocumentItem(
+  reviewItem: ReviewSectionItem,
+  override: ExpenseReviewOperatorOverride
+): ReviewSectionItem {
+  const comparison = reviewItem.expenseComparison
+    ? {
+        document: { ...reviewItem.expenseComparison.document }
+      }
+    : { document: {} }
+  const documentReference = reviewItem.expenseComparison?.document?.reference
+  const documentTransactionIds = extractExpenseDocumentTransactionIds(reviewItem)
+  const documentAmount = reviewItem.expenseComparison?.document?.amount
+  const documentCurrency = reviewItem.expenseComparison?.document?.currency
+  const documentIssueDate = reviewItem.expenseComparison?.document?.issueDate
+  const documentDueDate = reviewItem.expenseComparison?.document?.dueDate
+  const documentIbanHint = reviewItem.expenseComparison?.document?.ibanHint
+  const documentSupplier = reviewItem.expenseComparison?.document?.supplierOrCounterparty
+  const provenance = reviewItem.evidenceSummary.find((entry) => entry.label === 'provenience')?.value
+
+  return {
+    id: `expense-manual-rejected-document:${reviewItem.id}`,
+    kind: 'expense-unmatched-document',
+    title: documentReference
+      ? `Nespárovaný doklad ${documentReference}`
+      : reviewItem.title,
+    detail: 'Operátor ručně odmítl navrženou vazbu dokladu na bankovní odtok.',
+    transactionIds: documentTransactionIds,
+    sourceDocumentIds: [...reviewItem.sourceDocumentIds],
+    matchStrength: 'nespárováno',
+    evidenceSummary: [
+      maybeEvidenceEntry('částka', documentAmount),
+      maybeEvidenceEntry('datum', documentDueDate ?? documentIssueDate),
+      maybeEvidenceEntry('reference', documentReference ?? 'chybí'),
+      maybeEvidenceEntry('IBAN', documentIbanHint ?? 'chybí'),
+      maybeEvidenceEntry('protistrana / dodavatel', documentSupplier ?? 'bez bankovního kandidáta'),
+      maybeEvidenceEntry('provenience', provenance)
+    ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
+    operatorExplanation: 'Operátor označil navržený bankovní kandidát jako neshodu; doklad zůstává bez potvrzené platby.',
+    operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Zkontrolujte jiný bankovní odtok nebo chybějící doklad.',
+    documentBankRelation: 'Doklad zůstává bez potvrzené bankovní vazby; navržená shoda byla ručně odmítnuta.',
+    expenseComparison: comparison,
+    manualDecision: 'rejected',
+    manualDecisionLabel: 'Ručně odmítnutá shoda',
+    manualDecisionAt: override.decidedAt,
+    manualSourceReviewItemId: reviewItem.id
+  }
+}
+
+function toManuallyRejectedExpenseOutflowItem(
+  reviewItem: ReviewSectionItem,
+  override: ExpenseReviewOperatorOverride
+): ReviewSectionItem {
+  const bankSide = reviewItem.expenseComparison?.bank
+    ? { ...reviewItem.expenseComparison.bank }
+    : undefined
+  const bankTransactionId = extractExpenseBankTransactionId(reviewItem)
+
+  return {
+    id: `expense-manual-rejected-outflow:${reviewItem.id}`,
+    kind: 'expense-unmatched-outflow',
+    title: bankSide?.amount
+      ? `Nespárovaná odchozí platba ${bankSide.amount}`
+      : reviewItem.title,
+    detail: 'Operátor ručně odmítl navrženou vazbu odchozí bankovní platby na doklad.',
+    transactionIds: bankTransactionId ? [bankTransactionId] : [],
+    sourceDocumentIds: [],
+    matchStrength: 'nespárováno',
+    evidenceSummary: [
+      maybeEvidenceEntry('částka', bankSide?.amount),
+      maybeEvidenceEntry('datum', bankSide?.bookedAt),
+      maybeEvidenceEntry('zpráva banky', bankSide?.reference ?? 'chybí'),
+      maybeEvidenceEntry('reference', bankSide?.reference ?? 'chybí'),
+      maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankSide?.supplierOrCounterparty, bankSide?.bankAccount]).join(' · ')),
+      maybeEvidenceEntry('dokument', 'chybí')
+    ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
+    operatorExplanation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
+    operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Dohledejte jiný doklad nebo ponechte platbu bez vazby.',
+    documentBankRelation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
+    expenseComparison: bankSide ? { document: {}, bank: bankSide } : { document: {} },
+    manualDecision: 'rejected',
+    manualDecisionLabel: 'Ručně odmítnutá shoda',
+    manualDecisionAt: override.decidedAt,
+    manualSourceReviewItemId: reviewItem.id
+  }
+}
+
+function extractExpenseBankTransactionId(reviewItem: ReviewSectionItem): string | undefined {
+  return reviewItem.transactionIds[reviewItem.transactionIds.length - 1]
+}
+
+function extractExpenseDocumentTransactionIds(reviewItem: ReviewSectionItem): string[] {
+  return reviewItem.transactionIds.length > 1
+    ? reviewItem.transactionIds.slice(0, -1)
+    : []
 }
 
 function buildExpenseReviewSections(

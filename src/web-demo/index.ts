@@ -393,6 +393,31 @@ function renderOperatorWebDemoHtml(input: {
       .expense-zone li {
         margin-bottom: 6px;
       }
+      .expense-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .expense-actions button {
+        flex: 0 0 auto;
+        padding: 10px 14px;
+        font-size: 14px;
+      }
+      .expense-actions .danger-button {
+        background: #fff1f3;
+        color: #b42318;
+      }
+      .manual-audit {
+        display: inline-block;
+        margin-bottom: 10px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #4338ca;
+        font-size: 12px;
+        font-weight: 700;
+      }
       .expense-summary-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -754,6 +779,8 @@ ${showRuntimePayoutDiagnostics ? `
       const runtimeFileIntakeDebugMode = runtimeOperatorDebugMode;
       const runtimePayoutProjectionDebugMode = runtimeOperatorDebugMode;
       let currentExpenseReviewState = initialRuntimeState;
+      let currentExpenseReviewOverrides = [];
+      let currentVisibleRuntimePhase = 'placeholder';
 
       function escapeHtml(value) {
         return String(value)
@@ -1861,18 +1888,28 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
-      function buildExpenseReviewSectionMarkup(items, emptyLabel) {
+      function buildExpenseReviewSectionMarkup(items, emptyLabel, bucketKey) {
         if (!items || items.length === 0) {
           return '<p class="hint">' + escapeHtml(emptyLabel) + '</p>';
         }
 
-        return items.map((item) => buildExpenseReviewItemMarkup(item)).join('');
+        return items.map((item) => buildExpenseReviewItemMarkup(item, bucketKey)).join('');
       }
 
-      function buildExpenseReviewItemMarkup(item) {
+      function buildExpenseReviewItemMarkup(item, bucketKey) {
         const comparison = item && item.expenseComparison ? item.expenseComparison : {};
         const matchStrength = String((item && item.matchStrength) || 'neuvedeno');
         const badgeClass = mapMatchStrengthToBadgeClass(item && item.matchStrength);
+        const manualAuditMarkup = item && item.manualDecisionLabel
+          ? '<div class="manual-audit">' + escapeHtml(String(item.manualDecisionLabel)) + '</div>'
+          : '';
+        const reviewItemId = String((item && item.id) || '');
+        const actionsMarkup = bucketKey === 'expenseNeedsReview' && reviewItemId
+          ? '<div class="expense-actions">'
+            + '<button id="' + escapeHtml(buildExpenseActionElementId('confirm', reviewItemId)) + '" type="button">Potvrdit shodu</button>'
+            + '<button id="' + escapeHtml(buildExpenseActionElementId('reject', reviewItemId)) + '" type="button" class="danger-button">Není to shoda</button>'
+            + '</div>'
+          : '';
 
         return [
           '<article class="expense-item">',
@@ -1884,6 +1921,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           buildExpenseReviewSideMarkup('Doklad', comparison.document, true),
           '<div class="expense-zone expense-status">',
           '<h6>Stav a důkazy</h6>',
+          manualAuditMarkup,
           item && item.operatorExplanation
             ? '<div class="hint"><strong>Vyhodnocení:</strong> ' + escapeHtml(String(item.operatorExplanation)) + '</div>'
             : '',
@@ -1894,6 +1932,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           item && item.operatorCheckHint
             ? '<div class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(String(item.operatorCheckHint)) + '</div>'
             : '',
+          actionsMarkup,
           '</div>',
           buildExpenseReviewSideMarkup('Banka', comparison.bank, false),
           '</div>',
@@ -1972,6 +2011,243 @@ ${showRuntimePayoutDiagnostics ? '' : `
             emptyLabel: 'Žádné nespárované odchozí platby.'
           }
         ];
+      }
+
+      function cloneExpenseReviewItem(item) {
+        return {
+          ...item,
+          transactionIds: Array.isArray(item && item.transactionIds) ? item.transactionIds.slice() : [],
+          sourceDocumentIds: Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds.slice() : [],
+          evidenceSummary: Array.isArray(item && item.evidenceSummary)
+            ? item.evidenceSummary.map((entry) => ({ ...entry }))
+            : [],
+          expenseComparison: item && item.expenseComparison
+            ? {
+                document: { ...((item.expenseComparison && item.expenseComparison.document) || {}) },
+                ...(
+                  item.expenseComparison && item.expenseComparison.bank
+                    ? { bank: { ...item.expenseComparison.bank } }
+                    : {}
+                )
+              }
+            : undefined
+        };
+      }
+
+      function extractExpenseDocumentTransactionIds(item) {
+        const transactionIds = Array.isArray(item && item.transactionIds) ? item.transactionIds : [];
+
+        return transactionIds.length > 1 ? transactionIds.slice(0, -1) : [];
+      }
+
+      function extractExpenseBankTransactionId(item) {
+        const transactionIds = Array.isArray(item && item.transactionIds) ? item.transactionIds : [];
+        return transactionIds.length > 0 ? transactionIds[transactionIds.length - 1] : undefined;
+      }
+
+      function maybeExpenseEvidence(label, value) {
+        const normalized = typeof value === 'string' ? value.trim() : '';
+        return normalized ? { label, value: normalized } : undefined;
+      }
+
+      function buildManualConfirmedExpenseItem(item, override) {
+        const manualItem = cloneExpenseReviewItem(item);
+
+        manualItem.id = 'expense-manual-confirmed:' + String(item && item.id || '');
+        manualItem.kind = 'expense-matched';
+        manualItem.matchStrength = 'potvrzená shoda';
+        manualItem.detail = 'Operátor ručně potvrdil vazbu dokladu na odchozí bankovní platbu.';
+        manualItem.operatorExplanation = 'Operátor ručně potvrdil navrženou vazbu doklad ↔ banka.';
+        manualItem.operatorCheckHint = 'Ruční potvrzení je uložené pro tento běh; další kontrola je nutná jen při sporu.';
+        manualItem.documentBankRelation = 'Ručně potvrzená vazba mezi dokladem a odchozí bankovní platbou.';
+        manualItem.manualDecision = 'confirmed';
+        manualItem.manualDecisionLabel = 'Ručně potvrzená shoda';
+        manualItem.manualDecisionAt = override && override.decidedAt ? override.decidedAt : undefined;
+        manualItem.manualSourceReviewItemId = item && item.id ? String(item.id) : undefined;
+
+        return manualItem;
+      }
+
+      function buildManualRejectedExpenseDocumentItem(item, override) {
+        const documentSide = item && item.expenseComparison && item.expenseComparison.document
+          ? { ...item.expenseComparison.document }
+          : {};
+        const documentReference = documentSide.reference;
+        const provenance = Array.isArray(item && item.evidenceSummary)
+          ? item.evidenceSummary.find((entry) => entry && entry.label === 'provenience')
+          : undefined;
+
+        return {
+          id: 'expense-manual-rejected-document:' + String(item && item.id || ''),
+          kind: 'expense-unmatched-document',
+          title: documentReference
+            ? 'Nespárovaný doklad ' + String(documentReference)
+            : String((item && item.title) || 'Nespárovaný doklad'),
+          detail: 'Operátor ručně odmítl navrženou vazbu dokladu na bankovní odtok.',
+          transactionIds: extractExpenseDocumentTransactionIds(item),
+          sourceDocumentIds: Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds.slice() : [],
+          matchStrength: 'nespárováno',
+          evidenceSummary: [
+            maybeExpenseEvidence('částka', documentSide.amount),
+            maybeExpenseEvidence('datum', documentSide.dueDate || documentSide.issueDate),
+            maybeExpenseEvidence('reference', documentReference || 'chybí'),
+            maybeExpenseEvidence('IBAN', documentSide.ibanHint || 'chybí'),
+            maybeExpenseEvidence('protistrana / dodavatel', documentSide.supplierOrCounterparty || 'bez bankovního kandidáta'),
+            maybeExpenseEvidence('provenience', provenance && provenance.value)
+          ].filter(Boolean),
+          operatorExplanation: 'Operátor označil navržený bankovní kandidát jako neshodu; doklad zůstává bez potvrzené platby.',
+          operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Zkontrolujte jiný bankovní odtok nebo chybějící doklad.',
+          documentBankRelation: 'Doklad zůstává bez potvrzené bankovní vazby; navržená shoda byla ručně odmítnuta.',
+          expenseComparison: {
+            document: documentSide
+          },
+          manualDecision: 'rejected',
+          manualDecisionLabel: 'Ručně odmítnutá shoda',
+          manualDecisionAt: override && override.decidedAt ? override.decidedAt : undefined,
+          manualSourceReviewItemId: item && item.id ? String(item.id) : undefined
+        };
+      }
+
+      function buildManualRejectedExpenseOutflowItem(item, override) {
+        const bankSide = item && item.expenseComparison && item.expenseComparison.bank
+          ? { ...item.expenseComparison.bank }
+          : undefined;
+        const bankTransactionId = extractExpenseBankTransactionId(item);
+
+        return {
+          id: 'expense-manual-rejected-outflow:' + String(item && item.id || ''),
+          kind: 'expense-unmatched-outflow',
+          title: bankSide && bankSide.amount
+            ? 'Nespárovaná odchozí platba ' + String(bankSide.amount)
+            : 'Nespárovaná odchozí platba',
+          detail: 'Operátor ručně odmítl navrženou vazbu odchozí bankovní platby na doklad.',
+          transactionIds: bankTransactionId ? [bankTransactionId] : [],
+          sourceDocumentIds: [],
+          matchStrength: 'nespárováno',
+          evidenceSummary: [
+            maybeExpenseEvidence('částka', bankSide && bankSide.amount),
+            maybeExpenseEvidence('datum', bankSide && bankSide.bookedAt),
+            maybeExpenseEvidence('zpráva banky', bankSide && bankSide.reference ? bankSide.reference : 'chybí'),
+            maybeExpenseEvidence('reference', bankSide && bankSide.reference ? bankSide.reference : 'chybí'),
+            maybeExpenseEvidence(
+              'protistrana / účet',
+              [bankSide && bankSide.supplierOrCounterparty, bankSide && bankSide.bankAccount].filter(Boolean).join(' · ')
+            ),
+            maybeExpenseEvidence('dokument', 'chybí')
+          ].filter(Boolean),
+          operatorExplanation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
+          operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Dohledejte jiný doklad nebo ponechte platbu bez vazby.',
+          documentBankRelation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
+          expenseComparison: bankSide
+            ? {
+                document: {},
+                bank: bankSide
+              }
+            : { document: {} },
+          manualDecision: 'rejected',
+          manualDecisionLabel: 'Ručně odmítnutá shoda',
+          manualDecisionAt: override && override.decidedAt ? override.decidedAt : undefined,
+          manualSourceReviewItemId: item && item.id ? String(item.id) : undefined
+        };
+      }
+
+      function buildEffectiveExpenseReviewSections(sections, overrides) {
+        const baseSections = {
+          expenseMatched: Array.isArray(sections && sections.expenseMatched) ? sections.expenseMatched.map((item) => cloneExpenseReviewItem(item)) : [],
+          expenseNeedsReview: Array.isArray(sections && sections.expenseNeedsReview) ? sections.expenseNeedsReview.map((item) => cloneExpenseReviewItem(item)) : [],
+          expenseUnmatchedDocuments: Array.isArray(sections && sections.expenseUnmatchedDocuments) ? sections.expenseUnmatchedDocuments.map((item) => cloneExpenseReviewItem(item)) : [],
+          expenseUnmatchedOutflows: Array.isArray(sections && sections.expenseUnmatchedOutflows) ? sections.expenseUnmatchedOutflows.map((item) => cloneExpenseReviewItem(item)) : []
+        };
+        const overrideByReviewItemId = new Map();
+
+        (Array.isArray(overrides) ? overrides : []).forEach((override) => {
+          if (override && override.reviewItemId) {
+            overrideByReviewItemId.set(String(override.reviewItemId), override);
+          }
+        });
+
+        const reviewItemsById = new Map(
+          baseSections.expenseNeedsReview.map((item) => [String(item.id), item])
+        );
+        const confirmedOverrides = [];
+        const rejectedDocumentOverrides = [];
+        const rejectedOutflowOverrides = [];
+
+        overrideByReviewItemId.forEach((override, reviewItemId) => {
+          const reviewItem = reviewItemsById.get(reviewItemId);
+
+          if (!reviewItem) {
+            return;
+          }
+
+          if (override.decision === 'confirmed') {
+            confirmedOverrides.push(buildManualConfirmedExpenseItem(reviewItem, override));
+            return;
+          }
+
+          rejectedDocumentOverrides.push(buildManualRejectedExpenseDocumentItem(reviewItem, override));
+          rejectedOutflowOverrides.push(buildManualRejectedExpenseOutflowItem(reviewItem, override));
+        });
+
+        return {
+          expenseMatched: baseSections.expenseMatched.concat(confirmedOverrides),
+          expenseNeedsReview: baseSections.expenseNeedsReview.filter((item) => !overrideByReviewItemId.has(String(item.id))),
+          expenseUnmatchedDocuments: baseSections.expenseUnmatchedDocuments.concat(rejectedDocumentOverrides),
+          expenseUnmatchedOutflows: baseSections.expenseUnmatchedOutflows.concat(rejectedOutflowOverrides)
+        };
+      }
+
+      function buildExpenseActionElementId(action, reviewItemId) {
+        return 'expense-review-' + String(action || 'action') + '-' + encodeURIComponent(String(reviewItemId || '')).replace(/%/g, '_');
+      }
+
+      function upsertExpenseReviewOverride(reviewItemId, decision) {
+        const normalizedReviewItemId = String(reviewItemId || '');
+
+        if (!normalizedReviewItemId) {
+          return;
+        }
+
+        const nextOverride = {
+          reviewItemId: normalizedReviewItemId,
+          decision: decision === 'confirmed' ? 'confirmed' : 'rejected',
+          decidedAt: new Date().toISOString()
+        };
+        const existingIndex = currentExpenseReviewOverrides.findIndex((override) => String(override.reviewItemId) === normalizedReviewItemId);
+
+        if (existingIndex >= 0) {
+          currentExpenseReviewOverrides.splice(existingIndex, 1, nextOverride);
+        } else {
+          currentExpenseReviewOverrides.push(nextOverride);
+        }
+
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+        showOperatorView('expense-detail');
+      }
+
+      function wireExpenseReviewActionButtons(items) {
+        (Array.isArray(items) ? items : []).forEach((item) => {
+          const reviewItemId = String((item && item.id) || '');
+
+          if (!reviewItemId) {
+            return;
+          }
+
+          const confirmButton = document.getElementById(buildExpenseActionElementId('confirm', reviewItemId));
+          const rejectButton = document.getElementById(buildExpenseActionElementId('reject', reviewItemId));
+
+          if (confirmButton && typeof confirmButton.addEventListener === 'function') {
+            confirmButton.addEventListener('click', () => {
+              upsertExpenseReviewOverride(reviewItemId, 'confirmed');
+            });
+          }
+
+          if (rejectButton && typeof rejectButton.addEventListener === 'function') {
+            rejectButton.addEventListener('click', () => {
+              upsertExpenseReviewOverride(reviewItemId, 'rejected');
+            });
+          }
+        });
       }
 
       function buildExpenseSummaryTilesMarkup(buckets) {
@@ -2164,13 +2440,26 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function applyVisibleRuntimeState(state, phase) {
-        const visibleState = state && state.finalPayoutProjection
+        currentVisibleRuntimePhase = phase;
+
+        const baseVisibleState = state && state.finalPayoutProjection
           ? state
           : {
             ...state,
             runtimeBuildInfo: (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo,
             finalPayoutProjection: collectVisiblePayoutProjection(state)
           };
+        const effectiveExpenseSections = buildEffectiveExpenseReviewSections(
+          baseVisibleState && baseVisibleState.reviewSections,
+          currentExpenseReviewOverrides
+        );
+        const visibleState = {
+          ...baseVisibleState,
+          reviewSections: {
+            ...((baseVisibleState && baseVisibleState.reviewSections) || {}),
+            ...effectiveExpenseSections
+          }
+        };
         const payoutProjection = getVisiblePayoutProjection(visibleState);
         const expenseReviewBuckets = buildExpenseReviewBuckets(visibleState.reviewSections);
         const expenseBucketMap = expenseReviewBuckets.reduce((map, bucket) => {
@@ -2224,20 +2513,22 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(expenseReviewBuckets, phase);
         expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
-        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.items) || [], 'Žádné spárované výdaje.');
-        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || [], 'Žádné výdaje ke kontrole.');
-        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || [], 'Žádné nespárované doklady.');
-        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || [], 'Žádné nespárované odchozí platby.');
+        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.items) || [], 'Žádné spárované výdaje.', 'expenseMatched');
+        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || [], 'Žádné výdaje ke kontrole.', 'expenseNeedsReview');
+        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || [], 'Žádné nespárované doklady.', 'expenseUnmatchedDocuments');
+        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || [], 'Žádné nespárované odchozí platby.', 'expenseUnmatchedOutflows');
+        wireExpenseReviewActionButtons((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || []);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         renderCompletedRuntimePayoutDiagnostics(visibleState);
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
-        currentExpenseReviewState = visibleState;
+        currentExpenseReviewState = baseVisibleState;
 
         if (runtimeOperatorDebugMode) {
           window.__hotelFinanceLastVisibleRuntimeState = visibleState;
           window.__hotelFinanceLastVisiblePayoutProjection = payoutProjection;
+          window.__hotelFinanceExpenseReviewOverrides = currentExpenseReviewOverrides.slice();
         }
       }
 
@@ -2391,6 +2682,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderInitialRuntimeFileIntakeDiagnostics();
         renderInitialRuntimePayoutProjectionDebug();
         currentExpenseReviewState = initialRuntimeState;
+        currentExpenseReviewOverrides = [];
+        currentVisibleRuntimePhase = 'placeholder';
       }
 
       async function startMainWorkflow() {
@@ -2423,6 +2716,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             generatedAt
           });
           const visibleState = buildCompletedVisibleRuntimeState(state);
+          currentExpenseReviewOverrides = [];
           applyVisibleRuntimeState(visibleState, 'completed');
           runtimeOutput.innerHTML = renderMainRuntimeState(visibleState);
         } catch (error) {

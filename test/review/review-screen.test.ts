@@ -3,7 +3,7 @@ import type { ExceptionCase, NormalizedTransaction } from '../../src/domain'
 import type { DocumentId, ExceptionCaseId, TransactionId } from '../../src/domain'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
-import { buildReviewScreen } from '../../src/review'
+import { applyExpenseReviewOperatorOverrides, buildReviewScreen } from '../../src/review'
 describe('buildReviewScreen', () => {
   it('builds deterministic review sections for matched, unmatched, suspicious, and missing-document items', () => {
     const booking = getRealInputFixture('booking-payout-export')
@@ -1112,6 +1112,97 @@ describe('buildReviewScreen', () => {
       + review.expenseNeedsReview.length
       + review.expenseUnmatchedOutflows.length
     ).toBe(3)
+  })
+
+  it('applies manual expense review overrides as one shared bucket transformation', () => {
+    const sections = {
+      expenseMatched: [],
+      expenseNeedsReview: [
+        {
+          id: 'expense-review:invoice-record:bank-1',
+          kind: 'expense-review' as const,
+          title: 'Doklad ke kontrole 141260183',
+          detail: 'Doklad je načtený a existuje jediný blízký odchozí bankovní kandidát, ale vazba zatím není potvrzená.',
+          transactionIds: ['txn:doc-1' as TransactionId, 'txn:bank-1' as TransactionId],
+          sourceDocumentIds: ['doc:invoice-linked' as DocumentId],
+          matchStrength: 'slabší shoda' as const,
+          evidenceSummary: [
+            { label: 'částka' as const, value: 'sedí' },
+            { label: 'reference' as const, value: 'sedí' },
+            { label: 'provenience' as const, value: 'text-layer PDF' }
+          ],
+          operatorExplanation: 'Systém našel pravděpodobný odchozí bankovní kandidát, ale vazba zatím není dost silná na automatické potvrzení.',
+          operatorCheckHint: 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum odchozí platby.',
+          documentBankRelation: 'Doklad je načtený a existuje pravděpodobný bankovní kandidát, ale vazba zatím není potvrzená.',
+          expenseComparison: {
+            document: {
+              supplierOrCounterparty: 'Lenner Motors s.r.o.',
+              reference: '141260183',
+              issueDate: '2026-03-11',
+              dueDate: '2026-03-25',
+              amount: '12 629,52 CZK',
+              currency: 'CZK',
+              ibanHint: 'CZ4903000000000274621920'
+            },
+            bank: {
+              supplierOrCounterparty: 'Lenner Motors s.r.o.',
+              reference: 'VS 141260183 Servis vozidla',
+              bookedAt: '2026-03-25',
+              amount: '12 629,52 CZK',
+              currency: 'CZK',
+              bankAccount: 'fio-main'
+            }
+          }
+        }
+      ],
+      expenseUnmatchedDocuments: [],
+      expenseUnmatchedOutflows: []
+    }
+
+    const confirmed = applyExpenseReviewOperatorOverrides(sections, [
+      {
+        reviewItemId: 'expense-review:invoice-record:bank-1',
+        decision: 'confirmed',
+        decidedAt: '2026-03-29T14:10:00.000Z'
+      }
+    ])
+
+    expect(confirmed.expenseNeedsReview).toHaveLength(0)
+    expect(confirmed.expenseMatched).toHaveLength(1)
+    expect(confirmed.expenseMatched[0]).toMatchObject({
+      kind: 'expense-matched',
+      matchStrength: 'potvrzená shoda',
+      manualDecision: 'confirmed',
+      manualDecisionLabel: 'Ručně potvrzená shoda',
+      manualSourceReviewItemId: 'expense-review:invoice-record:bank-1'
+    })
+
+    const rejected = applyExpenseReviewOperatorOverrides(sections, [
+      {
+        reviewItemId: 'expense-review:invoice-record:bank-1',
+        decision: 'rejected',
+        decidedAt: '2026-03-29T14:12:00.000Z'
+      }
+    ])
+
+    expect(rejected.expenseNeedsReview).toHaveLength(0)
+    expect(rejected.expenseMatched).toHaveLength(0)
+    expect(rejected.expenseUnmatchedDocuments).toHaveLength(1)
+    expect(rejected.expenseUnmatchedOutflows).toHaveLength(1)
+    expect(rejected.expenseUnmatchedDocuments[0]).toMatchObject({
+      kind: 'expense-unmatched-document',
+      matchStrength: 'nespárováno',
+      manualDecision: 'rejected',
+      manualDecisionLabel: 'Ručně odmítnutá shoda'
+    })
+    expect(rejected.expenseUnmatchedDocuments[0]?.expenseComparison?.bank).toBeUndefined()
+    expect(rejected.expenseUnmatchedOutflows[0]).toMatchObject({
+      kind: 'expense-unmatched-outflow',
+      matchStrength: 'nespárováno',
+      manualDecision: 'rejected',
+      manualDecisionLabel: 'Ručně odmítnutá shoda'
+    })
+    expect(rejected.expenseUnmatchedOutflows[0]?.expenseComparison?.bank?.reference).toBe('VS 141260183 Servis vozidla')
   })
 
   it('shows reservation-settlement no-matches as a separate business-facing review section without raw matcher codes', () => {

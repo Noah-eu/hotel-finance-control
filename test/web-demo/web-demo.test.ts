@@ -1834,6 +1834,139 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
   })
 
+  it('lets the operator manually confirm a review-worthy expense pair and keeps counts aligned', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T15:45:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-expense-manual-confirm',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Potvrdit shodu')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Není to shoda')
+
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = stateBefore.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+
+    rendered.confirmExpenseReviewItem(String(reviewItemId))
+
+    const stateAfter = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseMatched: Array<{ manualDecision?: string; manualSourceReviewItemId?: string }>
+        expenseNeedsReview: Array<unknown>
+      }
+    }
+
+    expect(stateAfter.reviewSections.expenseNeedsReview).toHaveLength(0)
+    expect(
+      stateAfter.reviewSections.expenseMatched.some((item) =>
+        item.manualDecision === 'confirmed'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Ručně potvrzená shoda')
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Lenner Motors s.r.o.')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Žádné výdaje ke kontrole.')
+
+    const expenseMatchedSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseMatched')
+    const expenseReviewSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
+
+    expect(expenseMatchedSummaryCount).toBe(rendered.expenseMatchedContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseReviewSummaryCount).toBe(rendered.expenseReviewContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
+  it('lets the operator reject a review-worthy expense pair and does not immediately re-suggest the same pair', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T15:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-expense-manual-reject',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = stateBefore.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const stateAfter = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<unknown>
+        expenseUnmatchedDocuments: Array<{ manualDecision?: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ manualDecision?: string; manualSourceReviewItemId?: string }>
+      }
+    }
+
+    expect(stateAfter.reviewSections.expenseNeedsReview).toHaveLength(0)
+    expect(
+      stateAfter.reviewSections.expenseUnmatchedDocuments.some((item) =>
+        item.manualDecision === 'rejected'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+    expect(
+      stateAfter.reviewSections.expenseUnmatchedOutflows.some((item) =>
+        item.manualDecision === 'rejected'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Žádné výdaje ke kontrole.')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Ručně odmítnutá shoda')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Ručně odmítnutá shoda')
+    expect(rendered.expenseReviewContent.innerHTML).not.toContain('VS 141260183 Servis vozidla')
+
+    const expenseReviewSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
+    const expenseUnmatchedDocumentsSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedDocuments')
+    const expenseUnmatchedOutflowsSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')
+
+    expect(expenseReviewSummaryCount).toBe(rendered.expenseReviewContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseUnmatchedDocumentsSummaryCount).toBe(rendered.expenseUnmatchedDocumentsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseUnmatchedOutflowsSummaryCount).toBe(rendered.expenseUnmatchedOutflowsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({
@@ -2121,6 +2254,9 @@ async function executeWebDemoMainWorkflow(input: {
   openControlDetailPage: () => StubDomElement
   backToMainOverviewFromExpense: () => void
   backToMainOverviewFromControl: () => void
+  confirmExpenseReviewItem: (reviewItemId: string) => void
+  rejectExpenseReviewItem: (reviewItemId: string) => void
+  getLastVisibleRuntimeState: () => unknown
   lastVisibleRuntimeState?: unknown
   lastVisiblePayoutProjection?: unknown
 }> {
@@ -2144,6 +2280,7 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceCreateBrowserRuntime?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
+    __hotelFinanceExpenseReviewOverrides?: unknown
   } = {
     location: {
       search: input.locationSearch ?? '',
@@ -2220,6 +2357,15 @@ async function executeWebDemoMainWorkflow(input: {
     },
     backToMainOverviewFromControl() {
       elements['back-from-control-detail-button'].listeners.click()
+    },
+    confirmExpenseReviewItem(reviewItemId: string) {
+      elements[buildExpenseReviewActionElementId('confirm', reviewItemId)].listeners.click()
+    },
+    rejectExpenseReviewItem(reviewItemId: string) {
+      elements[buildExpenseReviewActionElementId('reject', reviewItemId)].listeners.click()
+    },
+    getLastVisibleRuntimeState() {
+      return windowObject.__hotelFinanceLastVisibleRuntimeState
     },
     lastVisibleRuntimeState: windowObject.__hotelFinanceLastVisibleRuntimeState,
     lastVisiblePayoutProjection: windowObject.__hotelFinanceLastVisiblePayoutProjection
@@ -2380,6 +2526,10 @@ function extractExpenseBucketCount(markup: string, key: string): number {
   }
 
   return Number(match[1])
+}
+
+function buildExpenseReviewActionElementId(action: 'confirm' | 'reject', reviewItemId: string): string {
+  return `expense-review-${action}-${encodeURIComponent(reviewItemId).replace(/%/g, '_')}`
 }
 
 function resolveCurrentGitCommitHash(): string {
@@ -2795,6 +2945,14 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
   return [
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(daysShift),
     '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '08.04.2026 10:15;08.04.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
   ].join('\n')
 }
