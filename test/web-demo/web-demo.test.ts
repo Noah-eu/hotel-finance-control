@@ -45,6 +45,7 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
     expect(result.html).toContain('Sekvence měsíčního běhu')
     expect(result.html).toContain('Příprava, kontrola a report v jednom pohledu')
+    expect(result.html).toContain('id="open-expense-review-button"')
     expect(result.html).toContain('Exportní handoff')
     expect(result.html).toContain('Airbnb payout')
     expect(result.html).not.toContain('<iframe')
@@ -1689,26 +1690,26 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).not.toContain('Lenner')
-    expect(
-      rendered.expenseMatchedContent.innerHTML.includes('141260183')
-      || rendered.expenseReviewContent.innerHTML.includes('141260183')
-      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('141260183')
-    ).toBe(true)
-    expect(
-      rendered.expenseMatchedContent.innerHTML.includes('Lenner Motors s.r.o.')
-      || rendered.expenseReviewContent.innerHTML.includes('Lenner Motors s.r.o.')
-      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('Lenner Motors s.r.o.')
-    ).toBe(true)
-    expect(
-      rendered.expenseMatchedContent.innerHTML.includes('Doklad ↔ banka:')
-      || rendered.expenseReviewContent.innerHTML.includes('Doklad ↔ banka:')
-      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('Doklad ↔ banka:')
-    ).toBe(true)
-    expect(
-      rendered.expenseMatchedContent.innerHTML.includes('Částka:')
-      || rendered.expenseReviewContent.innerHTML.includes('Částka:')
-      || rendered.expenseUnmatchedDocumentsContent.innerHTML.includes('Částka:')
-    ).toBe(true)
+    expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Spárované výdaje')
+    expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Výdaje ke kontrole')
+    expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Nespárované doklady')
+    expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Nespárované odchozí platby')
+
+    const expenseReviewPageHtml = rendered.openExpenseReviewPage()
+
+    expect(expenseReviewPageHtml).toContain('Kontrola výdajů a dokladů')
+    expect(expenseReviewPageHtml).toContain('Spárované výdaje')
+    expect(expenseReviewPageHtml).toContain('Výdaje ke kontrole')
+    expect(expenseReviewPageHtml).toContain('Nespárované doklady')
+    expect(expenseReviewPageHtml).toContain('Nespárované odchozí platby')
+    expect(expenseReviewPageHtml).toContain('<h6>Doklad</h6>')
+    expect(expenseReviewPageHtml).toContain('<h6>Stav a důkazy</h6>')
+    expect(expenseReviewPageHtml).toContain('<h6>Banka</h6>')
+    expect(expenseReviewPageHtml).toContain('Lenner Motors s.r.o.')
+    expect(expenseReviewPageHtml).toContain('141260183')
+    expect(expenseReviewPageHtml).toContain('Doklad ↔ banka:')
+    expect(expenseReviewPageHtml).toContain('Částka:')
+    expect(expenseReviewPageHtml).not.toContain('Airbnb payout dávka')
   })
 
   it('shows SPD QR fallback payload and provenance for invoice-like PDFs without changing the stable 16 / 2 payout result', async () => {
@@ -2012,16 +2013,15 @@ async function executeWebDemoMainWorkflow(input: {
   buildFingerprint: StubDomElement
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
-  expenseMatchedContent: StubDomElement
-  expenseReviewContent: StubDomElement
-  expenseUnmatchedDocumentsContent: StubDomElement
-  expenseUnmatchedOutflowsContent: StubDomElement
+  expenseReviewSummaryContent: StubDomElement
+  openExpenseReviewButton: StubDomElement
   matchedPayoutBatchesContent: StubDomElement
   unmatchedPayoutBatchesContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
   runtimePayoutProjectionDebugSection: StubDomElement
   runtimePayoutProjectionDebugContent: StubDomElement
+  openExpenseReviewPage: () => string
   lastVisibleRuntimeState?: unknown
   lastVisiblePayoutProjection?: unknown
 }> {
@@ -2040,8 +2040,16 @@ async function executeWebDemoMainWorkflow(input: {
   const html = readFileSync(outputPath, 'utf8')
   const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
+  let openedExpenseReviewHtml = ''
   const windowObject: {
     location: { search: string; hash: string }
+    open?: () => {
+      document: {
+        open: () => void
+        write: (value: string) => void
+        close: () => void
+      }
+    }
     __hotelFinanceCreateBrowserRuntime?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
@@ -2049,6 +2057,21 @@ async function executeWebDemoMainWorkflow(input: {
     location: {
       search: input.locationSearch ?? '',
       hash: input.locationHash ?? ''
+    },
+    open() {
+      openedExpenseReviewHtml = ''
+
+      return {
+        document: {
+          open() {
+            openedExpenseReviewHtml = ''
+          },
+          write(value: string) {
+            openedExpenseReviewHtml += value
+          },
+          close() {}
+        }
+      }
     }
   }
 
@@ -2086,16 +2109,18 @@ async function executeWebDemoMainWorkflow(input: {
     buildFingerprint: elements['build-fingerprint'],
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
-    expenseMatchedContent: elements['expense-matched-content'],
-    expenseReviewContent: elements['expense-review-content'],
-    expenseUnmatchedDocumentsContent: elements['expense-unmatched-documents-content'],
-    expenseUnmatchedOutflowsContent: elements['expense-unmatched-outflows-content'],
+    expenseReviewSummaryContent: elements['expense-review-summary-content'],
+    openExpenseReviewButton: elements['open-expense-review-button'],
     matchedPayoutBatchesContent: elements['matched-payout-batches-content'],
     unmatchedPayoutBatchesContent: elements['unmatched-payout-batches-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
     runtimePayoutProjectionDebugSection: elements['runtime-payout-projection-debug-section'],
     runtimePayoutProjectionDebugContent: elements['runtime-payout-projection-debug-content'],
+    openExpenseReviewPage() {
+      elements['open-expense-review-button'].listeners.click()
+      return openedExpenseReviewHtml
+    },
     lastVisibleRuntimeState: windowObject.__hotelFinanceLastVisibleRuntimeState,
     lastVisiblePayoutProjection: windowObject.__hotelFinanceLastVisiblePayoutProjection
   }
@@ -2172,14 +2197,9 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'matched-payout-batches-content',
     'unmatched-payout-batches-section',
     'unmatched-payout-batches-content',
-    'expense-matched-section',
-    'expense-matched-content',
-    'expense-review-section',
-    'expense-review-content',
-    'expense-unmatched-documents-section',
-    'expense-unmatched-documents-content',
-    'expense-unmatched-outflows-section',
-    'expense-unmatched-outflows-content',
+    'expense-review-summary-section',
+    'expense-review-summary-content',
+    'open-expense-review-button',
     'unmatched-reservations-section',
     'unmatched-reservations-content',
     'export-handoff-section',

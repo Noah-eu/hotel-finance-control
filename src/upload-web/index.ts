@@ -639,6 +639,7 @@ ${renderBrowserRuntimeClientBootstrap()}
       const runtimeOutput = document.getElementById('runtime-output');
       const generatedAt = ${JSON.stringify(generatedAt)};
       let browserRuntime;
+      let currentExpenseReviewState = null;
 
       function renderSummary() {
         const files = Array.from(fileInput.files || []);
@@ -699,6 +700,8 @@ ${renderBrowserRuntimeClientBootstrap()}
 
           runtimeOutput.className = 'runtime-panel';
           runtimeOutput.innerHTML = renderRuntimeState(state);
+          currentExpenseReviewState = state;
+          wireRuntimeExpenseReviewLauncher();
         } catch (error) {
           runtimeOutput.className = 'runtime-panel error';
           runtimeOutput.innerHTML = [
@@ -731,7 +734,7 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<section class="runtime-card"><h4>1. Připravené soubory a trasování</h4>' + buildRuntimeFileRouting(state) + '</section>',
           '<section class="runtime-card"><h4>2. Extrakce a příprava</h4><ul class="trace-list">' + state.extractedRecords.map((file) => '<li><strong>' + escapeHtml(file.fileName) + '</strong><br />Extrahováno: ' + file.extractedCount + '<br />' + (file.extractedRecordIds.length > 0 ? '<code>' + escapeHtml(file.extractedRecordIds.join(', ')) + '</code>' : '<span class="hint">Žádné extrahované záznamy.</span>') + '</li>').join('') + '</ul></section>',
           '<section class="runtime-card"><h4>3. Kontrola operátora</h4>' + renderRuntimeReviewSection(state.reviewSections, payoutCounts) + '</section>',
-          '<section class="runtime-card"><h4>4. Kontrola výdajů a dokladů</h4>' + renderRuntimeExpenseReviewSection(state.reviewSections) + '</section>',
+          '<section class="runtime-card"><h4>4. Kontrola výdajů a dokladů</h4>' + buildRuntimeExpenseReviewSummaryMarkup(state.reviewSections) + '</section>',
           '<section class="runtime-card"><h4>5. Náhled reportu</h4>' + renderRuntimeReportSummary(state, payoutCounts) + '</section>',
           '<section class="runtime-card"><h4>6. Vazby na podpůrné doklady</h4>' + renderSupportedExpenseLinks(state.supportedExpenseLinks, state.fileRoutes) + '</section>',
           '<section class="runtime-card"><h4>7. Exportní předání</h4>' + renderRuntimeExportFiles(state.exportFiles) + '</section>',
@@ -896,13 +899,32 @@ ${renderBrowserRuntimeClientBootstrap()}
         }).join('') + '</ul>';
       }
 
-      function renderRuntimeExpenseReviewSection(sections) {
-        const groups = [
-          { label: 'Spárované výdaje', items: Array.isArray(sections.expenseMatched) ? sections.expenseMatched : [] },
-          { label: 'Výdaje ke kontrole', items: Array.isArray(sections.expenseNeedsReview) ? sections.expenseNeedsReview : [] },
-          { label: 'Nespárované doklady', items: Array.isArray(sections.expenseUnmatchedDocuments) ? sections.expenseUnmatchedDocuments : [] },
-          { label: 'Nespárované odchozí platby', items: Array.isArray(sections.expenseUnmatchedOutflows) ? sections.expenseUnmatchedOutflows : [] }
+      function buildRuntimeExpenseReviewBuckets(sections) {
+        const normalizedSections = sections || {};
+
+        return [
+          { label: 'Spárované výdaje', items: Array.isArray(normalizedSections.expenseMatched) ? normalizedSections.expenseMatched : [], emptyLabel: 'Žádné spárované výdaje.' },
+          { label: 'Výdaje ke kontrole', items: Array.isArray(normalizedSections.expenseNeedsReview) ? normalizedSections.expenseNeedsReview : [], emptyLabel: 'Žádné výdaje ke kontrole.' },
+          { label: 'Nespárované doklady', items: Array.isArray(normalizedSections.expenseUnmatchedDocuments) ? normalizedSections.expenseUnmatchedDocuments : [], emptyLabel: 'Žádné nespárované doklady.' },
+          { label: 'Nespárované odchozí platby', items: Array.isArray(normalizedSections.expenseUnmatchedOutflows) ? normalizedSections.expenseUnmatchedOutflows : [], emptyLabel: 'Žádné nespárované odchozí platby.' }
         ];
+      }
+
+      function buildRuntimeExpenseReviewSummaryMarkup(sections) {
+        const groups = buildRuntimeExpenseReviewBuckets(sections);
+
+        return [
+          '<p class="hint">Detailní kontrola dokladů a odchozích plateb se otevírá do samostatného tabu, aby hlavní stránka zůstala přehledná.</p>',
+          '<ul>',
+          groups.map((group) => '<li><strong>' + escapeHtml(group.label) + ':</strong> ' + escapeHtml(String(group.items.length)) + '</li>').join(''),
+          '</ul>',
+          '<p><button id="open-expense-review-button" type="button">Kontrola výdajů a dokladů</button></p>',
+          '<p class="hint">Otevře samostatnou stránku s porovnáním Doklad / Stav a důkazy / Banka.</p>'
+        ].join('');
+      }
+
+      function renderRuntimeExpenseReviewSection(sections) {
+        const groups = buildRuntimeExpenseReviewBuckets(sections);
 
         return groups.map((group) => buildRuntimeExpenseReviewGroupMarkup(group.label, group.items)).join('');
       }
@@ -936,6 +958,89 @@ ${renderBrowserRuntimeClientBootstrap()}
           '</div>',
           '</article>'
         ].join('');
+      }
+
+      function buildRuntimeExpenseReviewStandalonePageMarkup(state) {
+        const normalizedState = state || { monthLabel: 'neuvedeno', runId: 'bez runtime běhu', reviewSections: {} };
+        const groups = buildRuntimeExpenseReviewBuckets(normalizedState.reviewSections);
+        const sectionsMarkup = groups.map((group) => [
+          '<section class="expense-page-bucket">',
+          '<div class="expense-page-bucket-header">',
+          '<h2>' + escapeHtml(group.label) + '</h2>',
+          '<span class="expense-page-count">' + escapeHtml(String(group.items.length)) + '</span>',
+          '</div>',
+          (!group.items || group.items.length === 0
+            ? '<p class="hint">' + escapeHtml(group.emptyLabel) + '</p>'
+            : group.items.map((item) => buildRuntimeExpenseReviewItemMarkup(item)).join('')),
+          '</section>'
+        ].join('')).join('');
+
+        return [
+          '<!doctype html>',
+          '<html lang="cs">',
+          '<head>',
+          '<meta charset="utf-8" />',
+          '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+          '<title>Hotel Finance Control – Kontrola výdajů a dokladů</title>',
+          '<style>',
+          ':root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }',
+          'body { margin: 0; padding: 28px; background: #eef3f9; color: #142033; }',
+          'main { max-width: 1560px; margin: 0 auto; }',
+          '.expense-page-hero, .expense-page-bucket { background: #ffffff; border-radius: 20px; padding: 24px; box-shadow: 0 12px 36px rgba(20, 32, 51, 0.08); margin-bottom: 18px; }',
+          '.expense-page-bucket-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }',
+          '.expense-page-bucket-header h2 { margin: 0; font-size: 22px; }',
+          '.expense-page-count { display: inline-block; min-width: 38px; text-align: center; border-radius: 999px; padding: 6px 12px; background: #eaf2ff; color: #174ea6; font-weight: 700; }',
+          '.expense-item { border: 1px solid #dce6f5; border-radius: 16px; background: #fbfdff; padding: 18px; margin-bottom: 14px; }',
+          '.expense-item strong { font-size: 17px; line-height: 1.4; display: block; margin-bottom: 12px; }',
+          '.expense-comparison { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(300px, 360px) minmax(280px, 1fr); gap: 18px; align-items: start; }',
+          '.expense-side, .expense-status { border-radius: 14px; background: #f6f9fc; padding: 16px; overflow-wrap: anywhere; word-break: break-word; }',
+          '.expense-side h6, .expense-status h6 { margin: 0 0 10px; font-size: 14px; }',
+          '.expense-side ul, .expense-status ul { margin: 0; padding-left: 20px; }',
+          '.expense-side li, .expense-status li { margin-bottom: 6px; }',
+          '.hint { color: #52627a; line-height: 1.5; }',
+          '.status-badge { display: inline-block; border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 700; margin-bottom: 10px; }',
+          '.status-badge.confirmed { background: #e7f6ec; color: #0f7a32; }',
+          '.status-badge.weak { background: #fff4dd; color: #946200; }',
+          '.status-badge.review { background: #fff4dd; color: #946200; }',
+          '.status-badge.unmatched { background: #ffe3e8; color: #b42318; }',
+          '@media (max-width: 1080px) { .expense-comparison { grid-template-columns: 1fr; } body { padding: 18px; } }',
+          '</style>',
+          '</head>',
+          '<body>',
+          '<main>',
+          '<section class="expense-page-hero">',
+          '<h1>Kontrola výdajů a dokladů</h1>',
+          '<p><strong>Měsíc:</strong> ' + escapeHtml(normalizedState.monthLabel || 'neuvedeno') + '</p>',
+          '<p><strong>Run ID:</strong> <code>' + escapeHtml(normalizedState.runId || 'bez runtime běhu') + '</code></p>',
+          '<p class="hint">Tato stránka ukazuje pouze doklady, kandidátní odchozí bankovní platby a jejich důkazy. Payout matching zůstává na hlavním přehledu.</p>',
+          '</section>',
+          sectionsMarkup,
+          '</main>',
+          '</body>',
+          '</html>'
+        ].join('');
+      }
+
+      function wireRuntimeExpenseReviewLauncher() {
+        const expenseReviewButton = document.getElementById('open-expense-review-button');
+
+        if (!expenseReviewButton) {
+          return;
+        }
+
+        expenseReviewButton.addEventListener('click', () => {
+          const popup = typeof window.open === 'function'
+            ? window.open('', '_blank', 'noopener,noreferrer')
+            : null;
+
+          if (!popup || !popup.document) {
+            return;
+          }
+
+          popup.document.open();
+          popup.document.write(buildRuntimeExpenseReviewStandalonePageMarkup(currentExpenseReviewState));
+          popup.document.close();
+        });
       }
 
       function buildRuntimeExpenseSideMarkup(title, side, isDocument) {

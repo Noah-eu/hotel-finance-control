@@ -3628,6 +3628,41 @@ describe('buildUploadWebFlow', () => {
     expect(rendered.runtimeOutput.innerHTML).toContain('<strong>Spárované payout dávky:</strong> 16')
     expect(rendered.runtimeOutput.innerHTML).toContain('<strong>Nespárované payout dávky:</strong> 2')
     expect(rendered.runtimeOutput.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
+    expect(rendered.runtimeOutput.innerHTML).toContain('id="open-expense-review-button"')
+  })
+
+  it('opens a dedicated expense review page from the upload workflow and keeps Lenner visible outside payout matching', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeUploadWebFlowMainWorkflow({
+      generatedAt: '2026-03-29T14:30:00.000Z',
+      month: '2026-03',
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    const expenseReviewPageHtml = rendered.openExpenseReviewPage()
+
+    expect(expenseReviewPageHtml).toContain('Kontrola výdajů a dokladů')
+    expect(expenseReviewPageHtml).toContain('Spárované výdaje')
+    expect(expenseReviewPageHtml).toContain('Výdaje ke kontrole')
+    expect(expenseReviewPageHtml).toContain('Nespárované doklady')
+    expect(expenseReviewPageHtml).toContain('Nespárované odchozí platby')
+    expect(expenseReviewPageHtml).toContain('<h6>Doklad</h6>')
+    expect(expenseReviewPageHtml).toContain('<h6>Stav a důkazy</h6>')
+    expect(expenseReviewPageHtml).toContain('<h6>Banka</h6>')
+    expect(expenseReviewPageHtml).toContain('Lenner Motors s.r.o.')
+    expect(expenseReviewPageHtml).toContain('141260183')
+    expect(expenseReviewPageHtml).toContain('Doklad ↔ banka:')
+    expect(expenseReviewPageHtml).not.toContain('Airbnb payout dávka')
   })
 
   it('preserves one shared Booking payout batch key across multiple reservation-linked browser-upload rows', async () => {
@@ -3975,14 +4010,31 @@ async function executeUploadWebFlowMainWorkflow(input: {
   html: string
   uploadSummary: StubDomElement
   runtimeOutput: StubDomElement
+  openExpenseReviewPage: () => string
 }> {
   const flow = buildUploadWebFlow({
     generatedAt: input.generatedAt
   })
   const script = extractUploadWebInlineScript(flow.html)
   const elements = createUploadWebDomStub()
+  let openedExpenseReviewHtml = ''
   const windowObject = {
-    __hotelFinanceCreateBrowserRuntime: createBrowserRuntime
+    __hotelFinanceCreateBrowserRuntime: createBrowserRuntime,
+    open() {
+      openedExpenseReviewHtml = ''
+
+      return {
+        document: {
+          open() {
+            openedExpenseReviewHtml = ''
+          },
+          write(value: string) {
+            openedExpenseReviewHtml += value
+          },
+          close() {}
+        }
+      }
+    }
   }
 
   runInNewContext(script, {
@@ -4014,7 +4066,16 @@ async function executeUploadWebFlowMainWorkflow(input: {
   return {
     html: flow.html,
     uploadSummary: elements['upload-summary'],
-    runtimeOutput: elements['runtime-output']
+    runtimeOutput: elements['runtime-output'],
+    openExpenseReviewPage() {
+      const button = elements['open-expense-review-button']
+
+      if (button?.listeners.click) {
+        button.listeners.click()
+      }
+
+      return openedExpenseReviewHtml
+    }
   }
 }
 
@@ -4042,7 +4103,8 @@ function createUploadWebDomStub(): Record<string, StubDomElement> {
     'month-label',
     'prepare-upload',
     'upload-summary',
-    'runtime-output'
+    'runtime-output',
+    'open-expense-review-button'
   ]
 
   for (const id of ids) {
