@@ -1193,14 +1193,14 @@ describe('buildReviewScreen', () => {
       kind: 'expense-unmatched-document',
       matchStrength: 'nespárováno',
       manualDecision: 'rejected',
-      manualDecisionLabel: 'Ručně odmítnutá shoda'
+      manualDecisionLabel: 'Ručně zamítnuto'
     })
     expect(rejected.expenseUnmatchedDocuments[0]?.expenseComparison?.bank).toBeUndefined()
     expect(rejected.expenseUnmatchedOutflows[0]).toMatchObject({
       kind: 'expense-unmatched-outflow',
       matchStrength: 'nespárováno',
       manualDecision: 'rejected',
-      manualDecisionLabel: 'Ručně odmítnutá shoda'
+      manualDecisionLabel: 'Ručně zamítnuto'
     })
     expect(rejected.expenseUnmatchedOutflows[0]?.expenseComparison?.bank?.reference).toBe('VS 141260183 Servis vozidla')
   })

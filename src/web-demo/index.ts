@@ -781,6 +781,100 @@ ${showRuntimePayoutDiagnostics ? `
       let currentExpenseReviewState = initialRuntimeState;
       let currentExpenseReviewOverrides = [];
       let currentVisibleRuntimePhase = 'placeholder';
+      const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
+
+      function getExpenseReviewOverrideStorage() {
+        try {
+          return window && window.localStorage ? window.localStorage : undefined;
+        } catch {
+          return undefined;
+        }
+      }
+
+      function buildExpenseReviewOverrideScopeKey(state) {
+        const normalizedState = state || {};
+        const runId = String(normalizedState.runId || '');
+        const reviewItems = normalizedState.reviewSections && Array.isArray(normalizedState.reviewSections.expenseNeedsReview)
+          ? normalizedState.reviewSections.expenseNeedsReview
+          : [];
+        const reviewItemIds = reviewItems
+          .map((item) => String(item && item.id || ''))
+          .filter(Boolean)
+          .sort();
+
+        if (!runId) {
+          return '';
+        }
+
+        return runId + '::' + reviewItemIds.join('|');
+      }
+
+      function buildExpenseReviewOverrideStorageKey(state) {
+        const scopeKey = buildExpenseReviewOverrideScopeKey(state);
+        return scopeKey ? expenseReviewOverrideStoragePrefix + scopeKey : '';
+      }
+
+      function loadExpenseReviewOverridesFromStorage(state) {
+        const storage = getExpenseReviewOverrideStorage();
+        const storageKey = buildExpenseReviewOverrideStorageKey(state);
+
+        if (!storage || !storageKey) {
+          return [];
+        }
+
+        try {
+          const rawValue = storage.getItem(storageKey);
+
+          if (!rawValue) {
+            return [];
+          }
+
+          const parsed = JSON.parse(rawValue);
+
+          if (!Array.isArray(parsed)) {
+            return [];
+          }
+
+          return parsed
+            .filter((item) =>
+              item
+              && typeof item.reviewItemId === 'string'
+              && item.reviewItemId
+              && (item.decision === 'confirmed' || item.decision === 'rejected')
+            )
+            .map((item) => ({
+              reviewItemId: String(item.reviewItemId),
+              decision: item.decision === 'confirmed' ? 'confirmed' : 'rejected',
+              decidedAt: typeof item.decidedAt === 'string' && item.decidedAt ? item.decidedAt : undefined
+            }));
+        } catch {
+          return [];
+        }
+      }
+
+      function persistExpenseReviewOverrides(state) {
+        const storage = getExpenseReviewOverrideStorage();
+        const storageKey = buildExpenseReviewOverrideStorageKey(state);
+
+        if (!storage || !storageKey) {
+          return;
+        }
+
+        try {
+          if (!Array.isArray(currentExpenseReviewOverrides) || currentExpenseReviewOverrides.length === 0) {
+            storage.removeItem(storageKey);
+            return;
+          }
+
+          storage.setItem(storageKey, JSON.stringify(currentExpenseReviewOverrides.map((override) => ({
+            reviewItemId: String(override.reviewItemId || ''),
+            decision: override.decision === 'confirmed' ? 'confirmed' : 'rejected',
+            decidedAt: override.decidedAt ? String(override.decidedAt) : undefined
+          }))));
+        } catch {
+          // Browser persistence is best-effort only; the UI still works for the current render pass.
+        }
+      }
 
       function escapeHtml(value) {
         return String(value)
@@ -1904,12 +1998,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
           ? '<div class="manual-audit">' + escapeHtml(String(item.manualDecisionLabel)) + '</div>'
           : '';
         const reviewItemId = String((item && item.id) || '');
+        const sourceReviewItemId = String((item && item.manualSourceReviewItemId) || reviewItemId);
         const actionsMarkup = bucketKey === 'expenseNeedsReview' && reviewItemId
           ? '<div class="expense-actions">'
             + '<button id="' + escapeHtml(buildExpenseActionElementId('confirm', reviewItemId)) + '" type="button">Potvrdit shodu</button>'
             + '<button id="' + escapeHtml(buildExpenseActionElementId('reject', reviewItemId)) + '" type="button" class="danger-button">Není to shoda</button>'
             + '</div>'
-          : '';
+          : item && item.manualDecision === 'confirmed' && reviewItemId && sourceReviewItemId
+            ? '<div class="expense-actions">'
+              + '<button id="' + escapeHtml(buildExpenseActionElementId('undo-confirm', reviewItemId)) + '" type="button">Zrušit ruční potvrzení</button>'
+              + '</div>'
+            : item && item.manualDecision === 'rejected' && reviewItemId && sourceReviewItemId
+              ? '<div class="expense-actions">'
+                + '<button id="' + escapeHtml(buildExpenseActionElementId('undo-reject', reviewItemId)) + '" type="button">Zrušit zamítnutí</button>'
+                + '</div>'
+              : '';
 
         return [
           '<article class="expense-item">',
@@ -2102,7 +2205,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             document: documentSide
           },
           manualDecision: 'rejected',
-          manualDecisionLabel: 'Ručně odmítnutá shoda',
+          manualDecisionLabel: 'Ručně zamítnuto',
           manualDecisionAt: override && override.decidedAt ? override.decidedAt : undefined,
           manualSourceReviewItemId: item && item.id ? String(item.id) : undefined
         };
@@ -2145,7 +2248,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               }
             : { document: {} },
           manualDecision: 'rejected',
-          manualDecisionLabel: 'Ručně odmítnutá shoda',
+          manualDecisionLabel: 'Ručně zamítnuto',
           manualDecisionAt: override && override.decidedAt ? override.decidedAt : undefined,
           manualSourceReviewItemId: item && item.id ? String(item.id) : undefined
         };
@@ -2221,13 +2324,30 @@ ${showRuntimePayoutDiagnostics ? '' : `
           currentExpenseReviewOverrides.push(nextOverride);
         }
 
+        persistExpenseReviewOverrides(currentExpenseReviewState);
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
         showOperatorView('expense-detail');
       }
 
-      function wireExpenseReviewActionButtons(items) {
+      function removeExpenseReviewOverride(reviewItemId) {
+        const normalizedReviewItemId = String(reviewItemId || '');
+
+        if (!normalizedReviewItemId) {
+          return;
+        }
+
+        currentExpenseReviewOverrides = currentExpenseReviewOverrides.filter((override) =>
+          String(override && override.reviewItemId || '') !== normalizedReviewItemId
+        );
+        persistExpenseReviewOverrides(currentExpenseReviewState);
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+        showOperatorView('expense-detail');
+      }
+
+      function wireExpenseReviewActionButtons(bucketKey, items) {
         (Array.isArray(items) ? items : []).forEach((item) => {
           const reviewItemId = String((item && item.id) || '');
+          const sourceReviewItemId = String((item && item.manualSourceReviewItemId) || reviewItemId);
 
           if (!reviewItemId) {
             return;
@@ -2245,6 +2365,23 @@ ${showRuntimePayoutDiagnostics ? '' : `
           if (rejectButton && typeof rejectButton.addEventListener === 'function') {
             rejectButton.addEventListener('click', () => {
               upsertExpenseReviewOverride(reviewItemId, 'rejected');
+            });
+          }
+
+          const undoConfirmButton = document.getElementById(buildExpenseActionElementId('undo-confirm', reviewItemId));
+          const undoRejectButton = document.getElementById(buildExpenseActionElementId('undo-reject', reviewItemId));
+
+          if (bucketKey === 'expenseMatched' && undoConfirmButton && typeof undoConfirmButton.addEventListener === 'function') {
+            undoConfirmButton.addEventListener('click', () => {
+              removeExpenseReviewOverride(sourceReviewItemId);
+            });
+          }
+
+          if ((bucketKey === 'expenseUnmatchedDocuments' || bucketKey === 'expenseUnmatchedOutflows')
+            && undoRejectButton
+            && typeof undoRejectButton.addEventListener === 'function') {
+            undoRejectButton.addEventListener('click', () => {
+              removeExpenseReviewOverride(sourceReviewItemId);
             });
           }
         });
@@ -2517,7 +2654,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || [], 'Žádné výdaje ke kontrole.', 'expenseNeedsReview');
         expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || [], 'Žádné nespárované doklady.', 'expenseUnmatchedDocuments');
         expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || [], 'Žádné nespárované odchozí platby.', 'expenseUnmatchedOutflows');
-        wireExpenseReviewActionButtons((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || []);
+        wireExpenseReviewActionButtons('expenseMatched', (expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.items) || []);
+        wireExpenseReviewActionButtons('expenseNeedsReview', (expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.items) || []);
+        wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.items) || []);
+        wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.items) || []);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         renderCompletedRuntimePayoutDiagnostics(visibleState);
@@ -2529,6 +2669,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           window.__hotelFinanceLastVisibleRuntimeState = visibleState;
           window.__hotelFinanceLastVisiblePayoutProjection = payoutProjection;
           window.__hotelFinanceExpenseReviewOverrides = currentExpenseReviewOverrides.slice();
+          window.__hotelFinanceExpenseReviewOverrideStorageKey = buildExpenseReviewOverrideStorageKey(baseVisibleState);
         }
       }
 
@@ -2716,7 +2857,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             generatedAt
           });
           const visibleState = buildCompletedVisibleRuntimeState(state);
-          currentExpenseReviewOverrides = [];
+          currentExpenseReviewOverrides = loadExpenseReviewOverridesFromStorage(visibleState);
           applyVisibleRuntimeState(visibleState, 'completed');
           runtimeOutput.innerHTML = renderMainRuntimeState(visibleState);
         } catch (error) {

@@ -352,7 +352,7 @@ function toManuallyRejectedExpenseDocumentItem(
     documentBankRelation: 'Doklad zůstává bez potvrzené bankovní vazby; navržená shoda byla ručně odmítnuta.',
     expenseComparison: comparison,
     manualDecision: 'rejected',
-    manualDecisionLabel: 'Ručně odmítnutá shoda',
+    manualDecisionLabel: 'Ručně zamítnuto',
     manualDecisionAt: override.decidedAt,
     manualSourceReviewItemId: reviewItem.id
   }
@@ -390,7 +390,7 @@ function toManuallyRejectedExpenseOutflowItem(
     documentBankRelation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
     expenseComparison: bankSide ? { document: {}, bank: bankSide } : { document: {} },
     manualDecision: 'rejected',
-    manualDecisionLabel: 'Ručně odmítnutá shoda',
+    manualDecisionLabel: 'Ručně zamítnuto',
     manualDecisionAt: override.decidedAt,
     manualSourceReviewItemId: reviewItem.id
   }

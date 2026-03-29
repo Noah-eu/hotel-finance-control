@@ -1895,6 +1895,44 @@ describe('buildWebDemo', () => {
     expect(expenseReviewSummaryCount).toBe(rendered.expenseReviewContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseMatched: Array<{ id: string; manualDecision?: string; manualSourceReviewItemId?: string }>
+        expenseNeedsReview: Array<unknown>
+      }
+    }
+
+    expect(reloadedState.reviewSections.expenseNeedsReview).toHaveLength(0)
+    expect(
+      reloadedState.reviewSections.expenseMatched.some((item) =>
+        item.manualDecision === 'confirmed'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+    expect(reloaded.expenseMatchedContent.innerHTML).toContain('Ručně potvrzená shoda')
+
+    const confirmedItemId = reloadedState.reviewSections.expenseMatched.find((item) =>
+      item.manualSourceReviewItemId === reviewItemId
+    )?.id
+
+    expect(confirmedItemId).toBeTruthy()
+
+    reloaded.undoConfirmedExpenseReviewItem(String(confirmedItemId))
+
+    const undoneState = reloaded.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseMatched: Array<unknown>
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+
+    expect(undoneState.reviewSections.expenseMatched).toHaveLength(0)
+    expect(undoneState.reviewSections.expenseNeedsReview.map((item) => item.id)).toContain(String(reviewItemId))
+    expect(reloaded.expenseReviewContent.innerHTML).toContain('Potvrdit shodu')
   })
 
   it('lets the operator reject a review-worthy expense pair and does not immediately re-suggest the same pair', async () => {
@@ -1952,8 +1990,8 @@ describe('buildWebDemo', () => {
       )
     ).toBe(true)
     expect(rendered.expenseReviewContent.innerHTML).toContain('Žádné výdaje ke kontrole.')
-    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Ručně odmítnutá shoda')
-    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Ručně odmítnutá shoda')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Ručně zamítnuto')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Ručně zamítnuto')
     expect(rendered.expenseReviewContent.innerHTML).not.toContain('VS 141260183 Servis vozidla')
 
     const expenseReviewSummaryCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
@@ -1965,6 +2003,54 @@ describe('buildWebDemo', () => {
     expect(expenseUnmatchedOutflowsSummaryCount).toBe(rendered.expenseUnmatchedOutflowsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<unknown>
+        expenseUnmatchedDocuments: Array<{ id: string; manualDecision?: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ manualDecision?: string; manualSourceReviewItemId?: string }>
+      }
+    }
+
+    expect(reloadedState.reviewSections.expenseNeedsReview).toHaveLength(0)
+    expect(
+      reloadedState.reviewSections.expenseUnmatchedDocuments.some((item) =>
+        item.manualDecision === 'rejected'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+    expect(
+      reloadedState.reviewSections.expenseUnmatchedOutflows.some((item) =>
+        item.manualDecision === 'rejected'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+
+    const rejectedDocumentItemId = reloadedState.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.manualSourceReviewItemId === reviewItemId
+    )?.id
+
+    expect(rejectedDocumentItemId).toBeTruthy()
+
+    reloaded.undoRejectedExpenseReviewItem(String(rejectedDocumentItemId))
+
+    const undoneState = reloaded.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+        expenseUnmatchedDocuments: Array<{ manualSourceReviewItemId?: string }>
+      }
+    }
+
+    expect(undoneState.reviewSections.expenseNeedsReview.map((item) => item.id)).toContain(String(reviewItemId))
+    expect(
+      undoneState.reviewSections.expenseUnmatchedDocuments.some((item) =>
+        item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(false)
+    expect(reloaded.expenseReviewContent.innerHTML).toContain('Potvrdit shodu')
   })
 
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
@@ -2217,6 +2303,7 @@ async function executeWebDemoMainWorkflow(input: {
   outputDirName?: string
   locationSearch?: string
   locationHash?: string
+  storageState?: Map<string, string>
   files: Array<{
     name: string
     type?: string
@@ -2256,6 +2343,9 @@ async function executeWebDemoMainWorkflow(input: {
   backToMainOverviewFromControl: () => void
   confirmExpenseReviewItem: (reviewItemId: string) => void
   rejectExpenseReviewItem: (reviewItemId: string) => void
+  undoConfirmedExpenseReviewItem: (itemId: string) => void
+  undoRejectedExpenseReviewItem: (itemId: string) => void
+  reloadWithSameStorage: () => Promise<any>
   getLastVisibleRuntimeState: () => unknown
   lastVisibleRuntimeState?: unknown
   lastVisiblePayoutProjection?: unknown
@@ -2275,16 +2365,46 @@ async function executeWebDemoMainWorkflow(input: {
   const html = readFileSync(outputPath, 'utf8')
   const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
+  const storageState = input.storageState ?? new Map<string, string>()
   const windowObject: {
     location: { search: string; hash: string }
+    localStorage: {
+      getItem: (key: string) => string | null
+      setItem: (key: string, value: string) => void
+      removeItem: (key: string) => void
+      clear: () => void
+      key: (index: number) => string | null
+      readonly length: number
+    }
     __hotelFinanceCreateBrowserRuntime?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
     __hotelFinanceExpenseReviewOverrides?: unknown
+    __hotelFinanceExpenseReviewOverrideStorageKey?: unknown
   } = {
     location: {
       search: input.locationSearch ?? '',
       hash: input.locationHash ?? ''
+    },
+    localStorage: {
+      getItem(key: string) {
+        return storageState.has(key) ? storageState.get(key)! : null
+      },
+      setItem(key: string, value: string) {
+        storageState.set(key, String(value))
+      },
+      removeItem(key: string) {
+        storageState.delete(key)
+      },
+      clear() {
+        storageState.clear()
+      },
+      key(index: number) {
+        return Array.from(storageState.keys())[index] ?? null
+      },
+      get length() {
+        return storageState.size
+      }
     }
   }
 
@@ -2363,6 +2483,20 @@ async function executeWebDemoMainWorkflow(input: {
     },
     rejectExpenseReviewItem(reviewItemId: string) {
       elements[buildExpenseReviewActionElementId('reject', reviewItemId)].listeners.click()
+    },
+    undoConfirmedExpenseReviewItem(itemId: string) {
+      elements[buildExpenseReviewActionElementId('undo-confirm', itemId)].listeners.click()
+    },
+    undoRejectedExpenseReviewItem(itemId: string) {
+      elements[buildExpenseReviewActionElementId('undo-reject', itemId)].listeners.click()
+    },
+    async reloadWithSameStorage() {
+      return executeWebDemoMainWorkflow({
+        ...input,
+        storageState,
+        locationHash: windowObject.location.hash,
+        locationSearch: windowObject.location.search
+      })
     },
     getLastVisibleRuntimeState() {
       return windowObject.__hotelFinanceLastVisibleRuntimeState
@@ -2528,7 +2662,7 @@ function extractExpenseBucketCount(markup: string, key: string): number {
   return Number(match[1])
 }
 
-function buildExpenseReviewActionElementId(action: 'confirm' | 'reject', reviewItemId: string): string {
+function buildExpenseReviewActionElementId(action: 'confirm' | 'reject' | 'undo-confirm' | 'undo-reject', reviewItemId: string): string {
   return `expense-review-${action}-${encodeURIComponent(reviewItemId).replace(/%/g, '_')}`
 }
 
