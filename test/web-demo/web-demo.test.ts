@@ -39,7 +39,9 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="monthly-files"')
     expect(result.html).toContain('Označení měsíce')
     expect(result.html).toContain('id="month-label"')
+    expect(result.html).toContain('id="clear-month-workspace-button"')
     expect(result.html).toContain('Spustit přípravu a měsíční workflow')
+    expect(result.html).toContain('Soubory i ruční rozhodnutí se ukládají zvlášť pro každý měsíc')
     expect(result.html).toContain('let browserRuntime;')
     expect(result.html).toContain("button.addEventListener('click'")
     expect(result.html).toContain('Výsledek spuštěného browser workflow')
@@ -2053,6 +2055,159 @@ describe('buildWebDemo', () => {
     expect(reloaded.expenseReviewContent.innerHTML).toContain('Potvrdit shodu')
   })
 
+  it('restores the last used month workspace with persisted manual expense confirmation after reload', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const storageState = new Map<string, string>()
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-workspace-restore',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = stateBefore.reviewSections.expenseNeedsReview[0]?.id
+    expect(reviewItemId).toBeTruthy()
+
+    rendered.confirmExpenseReviewItem(String(reviewItemId))
+
+    const restored = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:12:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-month-workspace-restore-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      skipStart: true,
+      files: []
+    })
+
+    expect(restored.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5')
+    expect(restored.expenseReviewSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseMatched"')
+    restored.openExpenseReviewPage()
+
+    const restoredState = restored.getLastVisibleRuntimeState() as {
+      runId: string
+      reviewSections: {
+        expenseMatched: Array<{ id: string; manualDecision?: string; manualSourceReviewItemId?: string }>
+        expenseNeedsReview: Array<unknown>
+      }
+    }
+
+    expect(restoredState.runId).toContain('2026-03')
+    expect(restoredState.reviewSections.expenseNeedsReview).toHaveLength(0)
+    expect(
+      restoredState.reviewSections.expenseMatched.some((item) =>
+        item.manualDecision === 'confirmed'
+        && item.manualSourceReviewItemId === reviewItemId
+      )
+    ).toBe(true)
+    expect(restored.expenseMatchedContent.innerHTML).toContain('Ručně potvrzená shoda')
+    expect(extractExpenseBucketCount(restored.expenseDetailSummaryContent.innerHTML, 'expenseMatched'))
+      .toBe(restored.expenseMatchedContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(restored.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(restored.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
+  it('appends uploads within the same month, deduplicates exact re-uploads, isolates months, and clears only the selected month workspace', async () => {
+    const storageState = new Map<string, string>()
+    const monthAFirst = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-workspace-append-a1',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const firstState = monthAFirst.getLastVisibleRuntimeState() as { fileRoutes: Array<unknown> }
+    expect(firstState.fileRoutes).toHaveLength(2)
+
+    const monthASecond = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:21:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-workspace-append-a2',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        )
+      ]
+    })
+
+    const secondState = monthASecond.getLastVisibleRuntimeState() as { fileRoutes: Array<{ fileName: string }> }
+    expect(secondState.fileRoutes).toHaveLength(3)
+    expect(secondState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+
+    const monthB = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:22:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-month-workspace-append-b',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv')
+      ]
+    })
+
+    const monthBState = monthB.getLastVisibleRuntimeState() as { fileRoutes: Array<{ fileName: string }>; runId: string }
+    expect(monthBState.runId).toContain('2026-04')
+    expect(monthBState.fileRoutes).toHaveLength(1)
+
+    monthB.changeMonth('2026-03')
+    const switchedBackState = monthB.getLastVisibleRuntimeState() as { fileRoutes: Array<{ fileName: string }>; runId: string }
+    expect(switchedBackState.runId).toContain('2026-03')
+    expect(switchedBackState.fileRoutes).toHaveLength(3)
+
+    monthB.clearCurrentMonthWorkspace()
+    expect(monthB.preparedFilesContent.innerHTML).not.toContain('Rozpoznáno souborů: 3')
+
+    monthB.changeMonth('2026-04')
+    const monthBAfterClear = monthB.getLastVisibleRuntimeState() as { fileRoutes: Array<{ fileName: string }>; runId: string }
+    expect(monthBAfterClear.runId).toContain('2026-04')
+    expect(monthBAfterClear.fileRoutes).toHaveLength(1)
+
+    const reloaded = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T16:23:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-month-workspace-append-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      skipStart: true,
+      files: []
+    })
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as { runId: string; fileRoutes: Array<{ fileName: string }> }
+    expect(reloadedState.runId).toContain('2026-04')
+    expect(reloadedState.fileRoutes).toHaveLength(1)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({
@@ -2303,6 +2458,7 @@ async function executeWebDemoMainWorkflow(input: {
   outputDirName?: string
   locationSearch?: string
   locationHash?: string
+  skipStart?: boolean
   storageState?: Map<string, string>
   files: Array<{
     name: string
@@ -2341,6 +2497,8 @@ async function executeWebDemoMainWorkflow(input: {
   openControlDetailPage: () => StubDomElement
   backToMainOverviewFromExpense: () => void
   backToMainOverviewFromControl: () => void
+  changeMonth: (month: string) => void
+  clearCurrentMonthWorkspace: () => void
   confirmExpenseReviewItem: (reviewItemId: string) => void
   rejectExpenseReviewItem: (reviewItemId: string) => void
   undoConfirmedExpenseReviewItem: (itemId: string) => void
@@ -2376,6 +2534,10 @@ async function executeWebDemoMainWorkflow(input: {
       key: (index: number) => string | null
       readonly length: number
     }
+    btoa: (value: string) => string
+    atob: (value: string) => string
+    TextEncoder?: typeof TextEncoder
+    TextDecoder?: typeof TextDecoder
     __hotelFinanceCreateBrowserRuntime?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
@@ -2405,7 +2567,15 @@ async function executeWebDemoMainWorkflow(input: {
       get length() {
         return storageState.size
       }
-    }
+    },
+    btoa(value: string) {
+      return Buffer.from(value, 'binary').toString('base64')
+    },
+    atob(value: string) {
+      return Buffer.from(value, 'base64').toString('binary')
+    },
+    TextEncoder,
+    TextDecoder
   }
 
   await loadBuiltWebDemoRuntimeModule(outputPath, result.runtimeAssetPath!, windowObject)
@@ -2418,23 +2588,28 @@ async function executeWebDemoMainWorkflow(input: {
         return elements[id] ?? createStubDomElement(id, elements)
       }
     },
+    TextEncoder,
+    TextDecoder,
     URLSearchParams,
     console
   })
 
   elements['monthly-files'].files = input.files
   elements['month-label'].value = input.month
-  elements['prepare-upload'].listeners.click()
 
-  for (let index = 0; index < 50; index += 1) {
-    if (
-      elements['prepared-files-content'].innerHTML.includes('Rozpoznáno souborů:')
-      || elements['prepared-files-content'].innerHTML.includes('Runtime běh selhal.')
-    ) {
-      break
+  if (!input.skipStart) {
+    elements['prepare-upload'].listeners.click()
+
+    for (let index = 0; index < 50; index += 1) {
+      if (
+        elements['prepared-files-content'].innerHTML.includes('Rozpoznáno souborů:')
+        || elements['prepared-files-content'].innerHTML.includes('Runtime běh selhal.')
+      ) {
+        break
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 0))
     }
-
-    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
   return {
@@ -2477,6 +2652,13 @@ async function executeWebDemoMainWorkflow(input: {
     },
     backToMainOverviewFromControl() {
       elements['back-from-control-detail-button'].listeners.click()
+    },
+    changeMonth(month: string) {
+      elements['month-label'].value = month
+      elements['month-label'].listeners.change()
+    },
+    clearCurrentMonthWorkspace() {
+      elements['clear-month-workspace-button'].listeners.click()
     },
     confirmExpenseReviewItem(reviewItemId: string) {
       elements[buildExpenseReviewActionElementId('confirm', reviewItemId)].listeners.click()
@@ -2557,6 +2739,7 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'monthly-files',
     'month-label',
     'prepare-upload',
+    'clear-month-workspace-button',
     'runtime-output',
     'runtime-stage-copy',
     'build-fingerprint',

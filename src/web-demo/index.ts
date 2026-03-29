@@ -533,17 +533,19 @@ ${input.debugMode ? `
             <label for="month-label">Označení měsíce</label>
             <input id="month-label" type="month" />
             <p class="hint">Např. <code>2026-03</code> pro březen 2026.</p>
+            <p class="hint">Soubory i ruční rozhodnutí se ukládají zvlášť pro každý měsíc a další upload je do stejného měsíce přidává místo úplného přepsání.</p>
           </div>
         </div>
         <p>
           <button id="prepare-upload" type="button">Spustit přípravu a měsíční workflow</button>
+          <button id="clear-month-workspace-button" type="button" class="secondary-button">Vymazat tento měsíc</button>
         </p>
         <div id="runtime-output" class="operator-panel runtime-output">
           <p class="hint">Měsíční workflow zatím neběželo. Výsledek se zobrazí až po výběru skutečných souborů a spuštění uploadu.</p>
         </div>
         <div id="runtime-stage-banner" class="operator-panel">
           <h3>Aktuální testovatelný stav v prohlížeči</h3>
-          <p id="runtime-stage-copy" class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Bez backendu a bez fake persistence.</p>
+          <p id="runtime-stage-copy" class="hint">Tlačítko spouští stejný browser-only sdílený tok jako v <code>src/upload-web</code>: přípravu souborů, runtime stav, kontrolu, report a exportní handoff. Pracovní stav se ukládá lokálně po měsících bez backendu.</p>
           <div class="summary-grid">
             <div class="metric"><strong id="runtime-summary-uploaded-files">0</strong><br />Nahrané soubory</div>
             <div class="metric"><strong id="runtime-summary-normalized-transactions">0</strong><br />Normalizované transakce</div>
@@ -722,6 +724,7 @@ ${showRuntimePayoutDiagnostics ? `
       const fileInput = document.getElementById('monthly-files');
       const monthInput = document.getElementById('month-label');
       const button = document.getElementById('prepare-upload');
+      const clearMonthWorkspaceButton = document.getElementById('clear-month-workspace-button');
       const runtimeOutput = document.getElementById('runtime-output');
   const runtimeStageCopy = document.getElementById('runtime-stage-copy');
   const buildFingerprint = document.getElementById('build-fingerprint');
@@ -781,7 +784,10 @@ ${showRuntimePayoutDiagnostics ? `
       let currentExpenseReviewState = initialRuntimeState;
       let currentExpenseReviewOverrides = [];
       let currentVisibleRuntimePhase = 'placeholder';
+      let currentWorkspaceMonth = '';
+      let currentWorkspaceFiles = [];
       const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
+      const monthlyWorkspaceStorageKey = 'hotel-finance-control:monthly-browser-workspaces:v1';
 
       function getExpenseReviewOverrideStorage() {
         try {
@@ -789,6 +795,362 @@ ${showRuntimePayoutDiagnostics ? `
         } catch {
           return undefined;
         }
+      }
+
+      function loadMonthlyWorkspaceStore() {
+        const storage = getExpenseReviewOverrideStorage();
+
+        if (!storage) {
+          return { lastUsedMonth: '', workspaces: {} };
+        }
+
+        try {
+          const rawValue = storage.getItem(monthlyWorkspaceStorageKey);
+
+          if (!rawValue) {
+            return { lastUsedMonth: '', workspaces: {} };
+          }
+
+          const parsed = JSON.parse(rawValue);
+
+          return {
+            lastUsedMonth: parsed && typeof parsed.lastUsedMonth === 'string' ? parsed.lastUsedMonth : '',
+            workspaces: parsed && typeof parsed.workspaces === 'object' && parsed.workspaces
+              ? parsed.workspaces
+              : {}
+          };
+        } catch {
+          return { lastUsedMonth: '', workspaces: {} };
+        }
+      }
+
+      function saveMonthlyWorkspaceStore(store) {
+        const storage = getExpenseReviewOverrideStorage();
+
+        if (!storage) {
+          return;
+        }
+
+        try {
+          storage.setItem(monthlyWorkspaceStorageKey, JSON.stringify({
+            lastUsedMonth: typeof store && typeof store.lastUsedMonth === 'string' ? store.lastUsedMonth : '',
+            workspaces: store && typeof store.workspaces === 'object' && store.workspaces ? store.workspaces : {}
+          }));
+        } catch {
+          // Browser workspace persistence is best-effort only.
+        }
+      }
+
+      function pickFallbackWorkspaceMonth(workspaces) {
+        const months = Object.keys(workspaces || {}).filter(Boolean).sort();
+        return months.length > 0 ? months[months.length - 1] : '';
+      }
+
+      function buildWorkspaceFileId(record) {
+        return [
+          String(record && record.fileName || ''),
+          String(record && record.mimeType || ''),
+          String(record && record.encoding || ''),
+          String(record && record.contentHash || '')
+        ].join('::');
+      }
+
+      function hashStringContent(value) {
+        const normalized = String(value || '');
+        let hash = 2166136261;
+
+        for (let index = 0; index < normalized.length; index += 1) {
+          hash ^= normalized.charCodeAt(index);
+          hash = Math.imul(hash, 16777619);
+        }
+
+        return (hash >>> 0).toString(16).padStart(8, '0');
+      }
+
+      function hashByteArray(bytes) {
+        const normalized = bytes instanceof Uint8Array ? bytes : new Uint8Array(0);
+        let hash = 2166136261;
+
+        for (let index = 0; index < normalized.length; index += 1) {
+          hash ^= normalized[index];
+          hash = Math.imul(hash, 16777619);
+        }
+
+        return (hash >>> 0).toString(16).padStart(8, '0');
+      }
+
+      function encodeBytesToBase64(bytes) {
+        let binary = '';
+
+        for (let index = 0; index < bytes.length; index += 1) {
+          binary += String.fromCharCode(bytes[index]);
+        }
+
+        return window && typeof window.btoa === 'function'
+          ? window.btoa(binary)
+          : '';
+      }
+
+      function decodeBase64ToArrayBuffer(value) {
+        if (!(window && typeof window.atob === 'function')) {
+          return new Uint8Array(0).buffer;
+        }
+
+        const binary = window.atob(String(value || ''));
+        const bytes = new Uint8Array(binary.length);
+
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+
+        return bytes.buffer;
+      }
+
+      function detectBinaryWorkspaceFile(fileName, mimeType) {
+        const normalizedName = String(fileName || '').toLowerCase();
+        const normalizedType = String(mimeType || '').toLowerCase();
+
+        return normalizedType.includes('pdf')
+          || normalizedType.includes('spreadsheet')
+          || normalizedType.includes('excel')
+          || normalizedType.includes('officedocument')
+          || normalizedType.includes('octet-stream')
+          || /\.(pdf|xlsx|xls)$/i.test(normalizedName);
+      }
+
+      async function serializeSelectedFileForWorkspace(file) {
+        const fileName = String(file && file.name || 'uploaded-file');
+        const mimeType = String(file && file.type || '');
+        const uploadedAt = new Date().toISOString();
+
+        if (detectBinaryWorkspaceFile(fileName, mimeType) && file && typeof file.arrayBuffer === 'function') {
+          const buffer = await file.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          const contentBase64 = encodeBytesToBase64(bytes);
+          const contentHash = hashByteArray(bytes);
+
+          return {
+            id: buildWorkspaceFileId({
+              fileName,
+              mimeType,
+              encoding: 'base64',
+              contentHash
+            }),
+            fileName,
+            mimeType,
+            encoding: 'base64',
+            contentBase64,
+            contentHash,
+            uploadedAt
+          };
+        }
+
+        const textContent = file && typeof file.text === 'function'
+          ? await file.text()
+          : '';
+        const contentHash = hashStringContent(textContent);
+
+        return {
+          id: buildWorkspaceFileId({
+            fileName,
+            mimeType,
+            encoding: 'text',
+            contentHash
+          }),
+          fileName,
+          mimeType,
+          encoding: 'text',
+          textContent,
+          contentHash,
+          uploadedAt
+        };
+      }
+
+      function mergeWorkspaceFiles(existingFiles, incomingFiles) {
+        const merged = [];
+        const seenIds = new Set();
+
+        (Array.isArray(existingFiles) ? existingFiles : []).forEach((file) => {
+          const normalizedId = String(file && file.id || '');
+
+          if (!normalizedId || seenIds.has(normalizedId)) {
+            return;
+          }
+
+          seenIds.add(normalizedId);
+          merged.push(file);
+        });
+
+        (Array.isArray(incomingFiles) ? incomingFiles : []).forEach((file) => {
+          const normalizedId = String(file && file.id || '');
+
+          if (!normalizedId) {
+            return;
+          }
+
+          const existingIndex = merged.findIndex((item) => String(item && item.id || '') === normalizedId);
+
+          if (existingIndex >= 0) {
+            merged.splice(existingIndex, 1, file);
+            return;
+          }
+
+          merged.push(file);
+        });
+
+        return merged;
+      }
+
+      function buildRuntimeFileFromWorkspaceRecord(record) {
+        const fileName = String(record && record.fileName || 'uploaded-file');
+        const mimeType = String(record && record.mimeType || '');
+
+        if (record && record.encoding === 'base64') {
+          return {
+            name: fileName,
+            type: mimeType,
+            text: async () => {
+              const buffer = decodeBase64ToArrayBuffer(record.contentBase64 || '');
+              const decoder = typeof TextDecoder === 'function' ? new TextDecoder() : undefined;
+
+              return decoder ? decoder.decode(buffer) : '';
+            },
+            arrayBuffer: async () => decodeBase64ToArrayBuffer(record.contentBase64 || '')
+          };
+        }
+
+        return {
+          name: fileName,
+          type: mimeType,
+          text: async () => String(record && record.textContent || ''),
+          arrayBuffer: async () => {
+            const encoder = typeof TextEncoder === 'function' ? new TextEncoder() : undefined;
+            return encoder ? encoder.encode(String(record && record.textContent || '')).buffer : new Uint8Array(0).buffer;
+          }
+        };
+      }
+
+      function sanitizeExpenseReviewOverridesForStorage(overrides) {
+        return (Array.isArray(overrides) ? overrides : [])
+          .filter((override) =>
+            override
+            && typeof override.reviewItemId === 'string'
+            && override.reviewItemId
+            && (override.decision === 'confirmed' || override.decision === 'rejected')
+          )
+          .map((override) => ({
+            reviewItemId: String(override.reviewItemId),
+            decision: override.decision === 'confirmed' ? 'confirmed' : 'rejected',
+            decidedAt: override.decidedAt ? String(override.decidedAt) : undefined
+          }));
+      }
+
+      function cloneWorkspaceRuntimeState(sourceState) {
+        if (!sourceState) {
+          return undefined;
+        }
+
+        try {
+          const serializedState = JSON.stringify(sourceState);
+          return serializedState ? JSON.parse(serializedState) : undefined;
+        } catch {
+          return undefined;
+        }
+      }
+
+      function persistCurrentMonthWorkspace() {
+        const normalizedMonth = String(currentWorkspaceMonth || monthInput && monthInput.value || '');
+
+        if (!normalizedMonth) {
+          return;
+        }
+
+        const store = loadMonthlyWorkspaceStore();
+        store.lastUsedMonth = normalizedMonth;
+        store.workspaces[normalizedMonth] = {
+          month: normalizedMonth,
+          savedAt: new Date().toISOString(),
+          files: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.slice() : [],
+          runtimeState: cloneWorkspaceRuntimeState(currentExpenseReviewState),
+          expenseReviewOverrides: sanitizeExpenseReviewOverridesForStorage(currentExpenseReviewOverrides)
+        };
+        saveMonthlyWorkspaceStore(store);
+      }
+
+      function loadMonthWorkspace(month) {
+        const normalizedMonth = String(month || '');
+        const store = loadMonthlyWorkspaceStore();
+
+        return normalizedMonth && store.workspaces && store.workspaces[normalizedMonth]
+          ? store.workspaces[normalizedMonth]
+          : undefined;
+      }
+
+      function clearMonthWorkspace(month) {
+        const normalizedMonth = String(month || '');
+
+        if (!normalizedMonth) {
+          return false;
+        }
+
+        const store = loadMonthlyWorkspaceStore();
+
+        if (!store.workspaces || !store.workspaces[normalizedMonth]) {
+          return false;
+        }
+
+        delete store.workspaces[normalizedMonth];
+        if (store.lastUsedMonth === normalizedMonth) {
+          store.lastUsedMonth = pickFallbackWorkspaceMonth(store.workspaces);
+        }
+        saveMonthlyWorkspaceStore(store);
+        return true;
+      }
+
+      function restoreWorkspaceForMonth(month, options) {
+        const normalizedMonth = String(month || '');
+        const workspace = loadMonthWorkspace(normalizedMonth);
+
+        currentWorkspaceMonth = normalizedMonth;
+
+        if (monthInput) {
+          monthInput.value = normalizedMonth;
+        }
+
+        if (!workspace || !workspace.runtimeState) {
+          currentWorkspaceFiles = [];
+          currentExpenseReviewOverrides = [];
+          renderInitialVisibleState();
+          runtimeOutput.innerHTML = normalizedMonth
+            ? '<p class="hint">Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> zatím není uložený žádný browser workspace.</p>'
+            : '<p class="hint">Měsíční workflow zatím neběželo. Výsledek se zobrazí až po výběru skutečných souborů a spuštění uploadu.</p>';
+          runtimeStageCopy.innerHTML = normalizedMonth
+            ? 'Stav stránky: <strong>vybraný měsíc zatím nemá uložený workspace</strong>. Další upload do tohoto měsíce založí nový pracovní stav.'
+            : 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
+          return false;
+        }
+
+        currentWorkspaceFiles = Array.isArray(workspace.files) ? workspace.files.slice() : [];
+        currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+        const visibleState = buildCompletedVisibleRuntimeState(workspace.runtimeState);
+        applyVisibleRuntimeState(visibleState, 'completed');
+        runtimeOutput.innerHTML = [
+          '<h3>Výsledek spuštěného browser workflow</h3>',
+          '<p><strong>Obnovený měsíc:</strong> ' + escapeHtml(normalizedMonth) + '</p>',
+          '<p><strong>Run ID:</strong> <code>' + escapeHtml(String(visibleState.runId || 'bez runtime běhu')) + '</code></p>',
+          '<p class="hint">Stránka obnovila uložený browser workspace pro tento měsíc včetně souborů a ručních rozhodnutí ve výdajích.</p>'
+        ].join('');
+        runtimeStageCopy.innerHTML = 'Stav stránky: <strong>obnovený uložený workspace měsíce</strong>. Další upload do stejného měsíce doplní existující soubory místo úplného přepsání.';
+
+        const store = loadMonthlyWorkspaceStore();
+        store.lastUsedMonth = normalizedMonth;
+        saveMonthlyWorkspaceStore(store);
+
+        if (!(options && options.preserveCurrentView)) {
+          showOperatorView(resolveOperatorViewFromHash());
+        }
+
+        return true;
       }
 
       function buildExpenseReviewOverrideScopeKey(state) {
@@ -2161,7 +2523,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         manualItem.matchStrength = 'potvrzená shoda';
         manualItem.detail = 'Operátor ručně potvrdil vazbu dokladu na odchozí bankovní platbu.';
         manualItem.operatorExplanation = 'Operátor ručně potvrdil navrženou vazbu doklad ↔ banka.';
-        manualItem.operatorCheckHint = 'Ruční potvrzení je uložené pro tento běh; další kontrola je nutná jen při sporu.';
+        manualItem.operatorCheckHint = 'Ruční potvrzení je uložené pro tento měsíc; další kontrola je nutná jen při sporu.';
         manualItem.documentBankRelation = 'Ručně potvrzená vazba mezi dokladem a odchozí bankovní platbou.';
         manualItem.manualDecision = 'confirmed';
         manualItem.manualDecisionLabel = 'Ručně potvrzená shoda';
@@ -2199,7 +2561,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             maybeExpenseEvidence('provenience', provenance && provenance.value)
           ].filter(Boolean),
           operatorExplanation: 'Operátor označil navržený bankovní kandidát jako neshodu; doklad zůstává bez potvrzené platby.',
-          operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Zkontrolujte jiný bankovní odtok nebo chybějící doklad.',
+          operatorCheckHint: 'Tato dvojice se v tomto měsíci znovu nenavrhuje. Zkontrolujte jiný bankovní odtok nebo chybějící doklad.',
           documentBankRelation: 'Doklad zůstává bez potvrzené bankovní vazby; navržená shoda byla ručně odmítnuta.',
           expenseComparison: {
             document: documentSide
@@ -2239,7 +2601,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             maybeExpenseEvidence('dokument', 'chybí')
           ].filter(Boolean),
           operatorExplanation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
-          operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Dohledejte jiný doklad nebo ponechte platbu bez vazby.',
+          operatorCheckHint: 'Tato dvojice se v tomto měsíci znovu nenavrhuje. Dohledejte jiný doklad nebo ponechte platbu bez vazby.',
           documentBankRelation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
           expenseComparison: bankSide
             ? {
@@ -2324,7 +2686,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           currentExpenseReviewOverrides.push(nextOverride);
         }
 
-        persistExpenseReviewOverrides(currentExpenseReviewState);
+        persistCurrentMonthWorkspace();
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
         showOperatorView('expense-detail');
       }
@@ -2339,7 +2701,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         currentExpenseReviewOverrides = currentExpenseReviewOverrides.filter((override) =>
           String(override && override.reviewItemId || '') !== normalizedReviewItemId
         );
-        persistExpenseReviewOverrides(currentExpenseReviewState);
+        persistCurrentMonthWorkspace();
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
         showOperatorView('expense-detail');
       }
@@ -2664,12 +3026,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
         currentExpenseReviewState = baseVisibleState;
+        if (phase === 'completed' && currentWorkspaceMonth) {
+          persistCurrentMonthWorkspace();
+        }
 
         if (runtimeOperatorDebugMode) {
           window.__hotelFinanceLastVisibleRuntimeState = visibleState;
           window.__hotelFinanceLastVisiblePayoutProjection = payoutProjection;
           window.__hotelFinanceExpenseReviewOverrides = currentExpenseReviewOverrides.slice();
           window.__hotelFinanceExpenseReviewOverrideStorageKey = buildExpenseReviewOverrideStorageKey(baseVisibleState);
+          window.__hotelFinanceMonthlyWorkspaceState = {
+            month: currentWorkspaceMonth,
+            fileCount: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.length : 0
+          };
         }
       }
 
@@ -2829,10 +3198,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       async function startMainWorkflow() {
         const files = Array.from(fileInput.files || []);
+        const normalizedMonth = String(monthInput && monthInput.value || '');
         runtimeOutput.innerHTML = '<p class="hint">Spouštím browser/local workflow nad právě zvolenými soubory…</p>';
 
         if (files.length === 0) {
-          runtimeOutput.innerHTML = '<p class="hint">Nejprve vyberte alespoň jeden soubor.</p>';
+          const existingWorkspace = loadMonthWorkspace(normalizedMonth);
+
+          if (existingWorkspace && existingWorkspace.runtimeState) {
+            restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
+            return;
+          }
+
+          runtimeOutput.innerHTML = '<p class="hint">Nejprve vyberte alespoň jeden soubor nebo se vraťte k měsíci, který už má uložený workspace.</p>';
           return;
         }
 
@@ -2851,13 +3228,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         try {
+          const serializedFiles = await Promise.all(files.map((file) => serializeSelectedFileForWorkspace(file)));
+          const existingWorkspace = loadMonthWorkspace(normalizedMonth);
+          const mergedWorkspaceFiles = mergeWorkspaceFiles(existingWorkspace && existingWorkspace.files, serializedFiles);
           const state = await browserRuntime.buildRuntimeState({
-            files,
-            month: monthInput.value,
+            files: mergedWorkspaceFiles.map((record) => buildRuntimeFileFromWorkspaceRecord(record)),
+            month: normalizedMonth,
             generatedAt
           });
           const visibleState = buildCompletedVisibleRuntimeState(state);
-          currentExpenseReviewOverrides = loadExpenseReviewOverridesFromStorage(visibleState);
+          currentWorkspaceMonth = normalizedMonth;
+          currentWorkspaceFiles = mergedWorkspaceFiles;
+          currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(existingWorkspace && existingWorkspace.expenseReviewOverrides);
           applyVisibleRuntimeState(visibleState, 'completed');
           runtimeOutput.innerHTML = renderMainRuntimeState(visibleState);
         } catch (error) {
@@ -2888,6 +3270,37 @@ ${showRuntimePayoutDiagnostics ? '' : `
       button.addEventListener('click', () => {
         void startMainWorkflow();
       });
+      monthInput.addEventListener('change', () => {
+        const normalizedMonth = String(monthInput && monthInput.value || '');
+
+        if (!normalizedMonth) {
+          renderInitialVisibleState();
+          runtimeOutput.innerHTML = '<p class="hint">Měsíční workflow zatím neběželo. Výsledek se zobrazí až po výběru skutečných souborů a spuštění uploadu.</p>';
+          return;
+        }
+
+        restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
+      });
+      clearMonthWorkspaceButton.addEventListener('click', () => {
+        const normalizedMonth = String(monthInput && monthInput.value || '');
+
+        if (!normalizedMonth) {
+          runtimeOutput.innerHTML = '<p class="hint">Nejprve vyberte měsíc, který chcete vymazat.</p>';
+          return;
+        }
+
+        if (!clearMonthWorkspace(normalizedMonth)) {
+          runtimeOutput.innerHTML = '<p class="hint">Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> zatím není uložený žádný workspace k vymazání.</p>';
+          return;
+        }
+
+        currentWorkspaceMonth = normalizedMonth;
+        currentWorkspaceFiles = [];
+        currentExpenseReviewOverrides = [];
+        renderInitialVisibleState();
+        runtimeOutput.innerHTML = '<p class="hint">Workspace pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> byl vymazán. Ostatní měsíce zůstaly beze změny.</p>';
+        showOperatorView('main-overview');
+      });
       openControlDetailButton.addEventListener('click', () => {
         showOperatorView('control-detail');
       });
@@ -2903,6 +3316,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       renderInitialVisibleState();
       showOperatorView(resolveOperatorViewFromHash());
+      const initialWorkspaceStore = loadMonthlyWorkspaceStore();
+
+      if (initialWorkspaceStore.lastUsedMonth) {
+        monthInput.value = initialWorkspaceStore.lastUsedMonth;
+        restoreWorkspaceForMonth(initialWorkspaceStore.lastUsedMonth, { preserveCurrentView: true });
+      }
     </script>
   </body>
 </html>
