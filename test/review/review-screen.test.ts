@@ -906,7 +906,7 @@ describe('buildReviewScreen', () => {
               customer: 'JOKELAND s.r.o.',
               invoiceNumber: 'QR-141260183',
               issueDate: '2026-03-11',
-              dueDate: '2026-03-25',
+              dueDate: '2026-04-08',
               taxableDate: '2026-03-11'
             }
           },
@@ -1076,21 +1076,42 @@ describe('buildReviewScreen', () => {
     expect(review.expenseMatched[0]?.evidenceSummary).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ label: 'částka', value: 'sedí' }),
-        expect.objectContaining({ label: 'reference', value: 'sedí' })
+        expect.objectContaining({ label: 'reference', value: 'sedí' }),
+        expect.objectContaining({ label: 'rozdíl částky', value: '0,00 Kč' }),
+        expect.objectContaining({ label: 'rozdíl dnů', value: '0 dní' }),
+        expect.objectContaining({ label: 'zpráva banky', value: 'VS 141260183' })
       ])
     )
 
     expect(review.expenseNeedsReview[0]).toMatchObject({
-      matchStrength: 'vyžaduje kontrolu'
+      matchStrength: 'slabší shoda',
+      documentBankRelation: 'Doklad je načtený a existuje pravděpodobný bankovní kandidát, ale vazba zatím není potvrzená.'
     })
     expect(review.expenseNeedsReview[0]?.expenseComparison?.document.reference).toBe('QR-141260183')
     expect(review.expenseNeedsReview[0]?.expenseComparison?.bank?.reference).toBe('Úhrada QR-141260183')
+    expect(review.expenseNeedsReview[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: 'sedí' }),
+        expect.objectContaining({ label: 'rozdíl částky', value: '0,00 Kč' }),
+        expect.objectContaining({ label: 'rozdíl dnů', value: '14 dní' })
+      ])
+    )
 
     expect(review.expenseUnmatchedDocuments[0]?.expenseComparison?.document.reference).toBe('2026-999')
     expect(review.expenseUnmatchedDocuments[0]?.expenseComparison?.bank).toBeUndefined()
 
     expect(review.expenseUnmatchedOutflows[0]?.expenseComparison?.document).toEqual({})
     expect(review.expenseUnmatchedOutflows[0]?.expenseComparison?.bank?.reference).toBe('Platba bez dokladu')
+    expect(
+      review.expenseMatched.length
+      + review.expenseNeedsReview.length
+      + review.expenseUnmatchedDocuments.length
+    ).toBe(3)
+    expect(
+      review.expenseMatched.length
+      + review.expenseNeedsReview.length
+      + review.expenseUnmatchedOutflows.length
+    ).toBe(3)
   })
 
   it('shows reservation-settlement no-matches as a separate business-facing review section without raw matcher codes', () => {

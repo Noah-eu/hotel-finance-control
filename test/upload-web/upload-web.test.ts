@@ -517,6 +517,90 @@ describe('buildUploadWebFlow', () => {
     ).toBeGreaterThan(0)
   })
 
+  it('matches a parsed expense invoice to an outgoing bank candidate on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndExpenseOutflows(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T12:45:00.000Z'
+    })
+
+    expect(result.reconciliationSnapshot.matchedCount).toBe(16)
+    expect(result.reconciliationSnapshot.unmatchedCount).toBe(2)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+
+    const lennerMatchedExpense = result.reviewSections.expenseMatched.find((item) =>
+      item.expenseComparison?.document.reference === '141260183'
+      && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+    )
+
+    expect(lennerMatchedExpense).toMatchObject({
+      matchStrength: 'potvrzená shoda',
+      documentBankRelation: 'Potvrzená pravděpodobná vazba mezi dokladem a odchozí bankovní platbou.'
+    })
+    expect(lennerMatchedExpense?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Lenner Motors s.r.o.',
+        reference: '141260183',
+        issueDate: '2026-03-11',
+        dueDate: '2026-03-25',
+        amount: '12 629,52 Kč',
+        ibanHint: 'CZ4903000000000274621920'
+      }),
+      bank: expect.objectContaining({
+        supplierOrCounterparty: 'Lenner Motors s.r.o.',
+        reference: 'VS 141260183 Servis vozidla',
+        bookedAt: '2026-03-25T10:17:00',
+        amount: '12 629,52 Kč'
+      })
+    })
+    expect(lennerMatchedExpense?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: 'sedí' }),
+        expect.objectContaining({ label: 'rozdíl částky', value: '0,00 Kč' }),
+        expect.objectContaining({ label: 'datum', value: 'sedí' }),
+        expect.objectContaining({ label: 'rozdíl dnů', value: '0 dní' }),
+        expect.objectContaining({ label: 'reference', value: 'sedí' }),
+        expect.objectContaining({ label: 'protistrana / dodavatel', value: 'podobná' }),
+        expect.objectContaining({ label: 'zpráva banky', value: 'VS 141260183 Servis vozidla' })
+      ])
+    )
+    expect(
+      result.reviewSections.expenseUnmatchedDocuments.some((item) =>
+        item.expenseComparison?.document.reference === '141260183'
+      )
+    ).toBe(false)
+    expect(
+      result.reviewSections.expenseUnmatchedOutflows.some((item) =>
+        item.expenseComparison?.bank?.reference === 'Platba bez dokladu'
+      )
+    ).toBe(true)
+    expect(
+      result.reviewSections.expenseMatched.length
+      + result.reviewSections.expenseNeedsReview.length
+      + result.reviewSections.expenseUnmatchedDocuments.length
+    ).toBe(1)
+    expect(
+      result.reviewSections.expenseMatched.length
+      + result.reviewSections.expenseNeedsReview.length
+      + result.reviewSections.expenseUnmatchedOutflows.length
+    ).toBe(2)
+  })
+
   it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
 
@@ -4648,6 +4732,14 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
   return [
     buildRealUploadedRbGenericContentForSharedAirbnbPayouts(daysShift),
     '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndExpenseOutflows(daysShift = 0): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(daysShift),
+    '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
   ].join('\n')
 }
 

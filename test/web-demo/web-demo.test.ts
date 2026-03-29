@@ -1375,7 +1375,7 @@ describe('buildWebDemo', () => {
         createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile(
           'Pohyby_5599955956_202603191023.csv',
-          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndExpenseOutflows(),
           'text/csv'
         ),
         createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
@@ -1484,7 +1484,7 @@ describe('buildWebDemo', () => {
         createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile(
           'Pohyby_5599955956_202603191023.csv',
-          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndExpenseOutflows(),
           'text/csv'
         ),
         createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
@@ -1633,7 +1633,7 @@ describe('buildWebDemo', () => {
         createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile(
           'Pohyby_5599955956_202603191023.csv',
-          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndExpenseOutflows(),
           'text/csv'
         ),
         createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
@@ -1754,6 +1754,14 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('141260183')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Doklad ↔ banka:')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('Částka:')
+    const renderedExpenseEvidenceHtml = rendered.expenseMatchedContent.innerHTML
+      + rendered.expenseReviewContent.innerHTML
+      + rendered.expenseUnmatchedDocumentsContent.innerHTML
+
+    expect(renderedExpenseEvidenceHtml).toContain('VS 141260183 Servis vozidla')
+    expect(renderedExpenseEvidenceHtml).toContain('rozdíl částky:')
+    expect(renderedExpenseEvidenceHtml).toContain('rozdíl dnů:')
+    expect(renderedExpenseEvidenceHtml).toContain('zpráva banky:')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-item-header">')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-zone"><h6>Doklad</h6>')
     expect(rendered.expenseMatchedContent.innerHTML + rendered.expenseReviewContent.innerHTML + rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('<div class="expense-zone expense-status"><h6>Stav a důkazy</h6>')
@@ -1778,6 +1786,8 @@ describe('buildWebDemo', () => {
     expect(expenseReviewSummaryCount).toBe(rendered.expenseReviewContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(expenseUnmatchedDocumentsSummaryCount).toBe(rendered.expenseUnmatchedDocumentsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(expenseUnmatchedOutflowsSummaryCount).toBe(rendered.expenseUnmatchedOutflowsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
+    expect(expenseMatchedSummaryCount + expenseReviewSummaryCount).toBeGreaterThanOrEqual(1)
+    expect(expenseUnmatchedOutflowsSummaryCount).toBeGreaterThanOrEqual(1)
 
     rendered.backToMainOverviewFromExpense()
     expect(rendered.mainDashboardView.hidden).toBe(false)
@@ -2778,6 +2788,14 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
   return [
     buildRealUploadedRbGenericContentForSharedAirbnbPayouts(daysShift),
     '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndExpenseOutflows(daysShift = 0): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(daysShift),
+    '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
   ].join('\n')
 }
 

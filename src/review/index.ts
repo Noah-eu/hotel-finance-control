@@ -9,7 +9,18 @@ export type ReviewMatchStrength =
   | 'nespárováno'
 
 export interface ReviewEvidenceEntry {
-  label: 'částka' | 'datum' | 'reference' | 'protistrana / účet' | 'IBAN' | 'dokument' | 'provenience'
+  label:
+    | 'částka'
+    | 'rozdíl částky'
+    | 'datum'
+    | 'rozdíl dnů'
+    | 'reference'
+    | 'protistrana / účet'
+    | 'protistrana / dodavatel'
+    | 'IBAN'
+    | 'zpráva banky'
+    | 'dokument'
+    | 'provenience'
   value: string
 }
 
@@ -151,13 +162,40 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   }
 }
 
-const EXPENSE_REVIEW_MAX_DAY_DISTANCE = 7
+const EXPENSE_REVIEW_CONFIRMED_MAX_DAY_DISTANCE = 7
+const EXPENSE_REVIEW_STRONG_MAX_DAY_DISTANCE = 14
+const EXPENSE_REVIEW_CANDIDATE_MAX_DAY_DISTANCE = 21
+const EXPENSE_REVIEW_WEAK_AMOUNT_DELTA_MINOR = 1000
 const DOCUMENT_RECORD_TYPE_SET = new Set(['invoice-document', 'receipt-document'])
 
 interface ExpenseDocumentReviewEntry {
   extractedRecord: MonthlyBatchResult['extractedRecords'][number]
   normalizedTransaction?: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
   fileRoute?: UploadedMonthlyFileRoute
+}
+
+interface ExpenseBankCandidateEvaluation {
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  amountDeltaMinor: number
+  dateDistance: number
+  exactAmount: boolean
+  nearAmount: boolean
+  referenceAligned: boolean
+  counterpartyAligned: boolean
+  ibanAligned: boolean
+  score: number
+  reasons: string[]
+  matchType: 'confirmed' | 'review'
+}
+
+interface ExpenseBankCandidateSelection {
+  winner: ExpenseBankCandidateEvaluation
+  ambiguousCount: number
+}
+
+interface ExpenseCandidatePlan {
+  documentEntry: ExpenseDocumentReviewEntry
+  evaluations: ExpenseBankCandidateEvaluation[]
 }
 
 function buildExpenseReviewSections(
@@ -214,21 +252,51 @@ function buildExpenseReviewSections(
 
   const expenseNeedsReview: ReviewSectionItem[] = []
   const expenseUnmatchedDocuments: ReviewSectionItem[] = []
+  const candidatePlans = documentEntries
+    .filter((documentEntry) => !documentEntry.normalizedTransaction || !linkedSupportTransactionIds.has(documentEntry.normalizedTransaction.id))
+    .map((documentEntry) => ({
+      documentEntry,
+      evaluations: evaluateExpenseBankCandidates(documentEntry, candidateBankTransactions)
+    }))
+    .sort(compareExpenseCandidatePlans)
 
-  for (const documentEntry of documentEntries) {
-    if (documentEntry.normalizedTransaction && linkedSupportTransactionIds.has(documentEntry.normalizedTransaction.id)) {
+  for (const plan of candidatePlans) {
+    const selection = selectExpenseBankCandidate(
+      plan.evaluations.filter((evaluation) => !usedCandidateBankIds.has(evaluation.bankTransaction.id))
+    )
+
+    if (!selection) {
+      expenseUnmatchedDocuments.push(toExpenseUnmatchedDocumentReviewItem(batch, plan.documentEntry, fileRoutes))
       continue
     }
 
-    const candidateBankTransaction = findUniqueExpenseBankCandidate(documentEntry, candidateBankTransactions, usedCandidateBankIds)
+    usedCandidateBankIds.add(selection.winner.bankTransaction.id)
 
-    if (candidateBankTransaction) {
-      usedCandidateBankIds.add(candidateBankTransaction.id)
-      expenseNeedsReview.push(toExpenseNeedsReviewItem(batch, documentEntry, candidateBankTransaction, fileRoutes))
+    if (selection.winner.matchType === 'confirmed' && selection.ambiguousCount === 1) {
+      expenseMatched.push(
+        toExpenseMatchedReviewItem(
+          batch,
+          plan.documentEntry,
+          selection.winner.bankTransaction,
+          selection.winner.reasons,
+          selection.winner.score,
+          fileRoutes,
+          selection.winner
+        )
+      )
       continue
     }
 
-    expenseUnmatchedDocuments.push(toExpenseUnmatchedDocumentReviewItem(batch, documentEntry, fileRoutes))
+    expenseNeedsReview.push(
+      toExpenseNeedsReviewItem(
+        batch,
+        plan.documentEntry,
+        selection.winner.bankTransaction,
+        selection.winner,
+        selection.ambiguousCount,
+        fileRoutes
+      )
+    )
   }
 
   const expenseUnmatchedOutflows = batch.reconciliation.exceptionCases
@@ -259,7 +327,8 @@ function toExpenseMatchedReviewItem(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   reasons: string[],
   matchScore: number,
-  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  candidateEvaluation?: ExpenseBankCandidateEvaluation
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
   const matchStrength = classifyExpenseMatchedStrength(reasons, matchScore)
@@ -277,7 +346,7 @@ function toExpenseMatchedReviewItem(
     ],
     sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
     matchStrength,
-    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons),
+    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons, candidateEvaluation),
     operatorExplanation: matchStrength === 'potvrzená shoda'
       ? 'Částka, datum a alespoň jedna další stopa potvrzují vazbu dokladu na bankovní výdaj.'
       : 'Doklad je spárovaný s bankovním výdajem, ale ručně ověřte reference nebo protistranu.',
@@ -293,9 +362,13 @@ function toExpenseNeedsReviewItem(
   _batch: MonthlyBatchResult,
   documentEntry: ExpenseDocumentReviewEntry,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  candidateEvaluation: ExpenseBankCandidateEvaluation,
+  ambiguousCount: number,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
+  const uniqueCandidate = ambiguousCount === 1
+  const matchStrength: ReviewMatchStrength = uniqueCandidate ? 'slabší shoda' : 'vyžaduje kontrolu'
 
   return {
     id: `expense-review:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
@@ -309,11 +382,23 @@ function toExpenseNeedsReviewItem(
       bankTransaction.id
     ],
     sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
-    matchStrength: 'vyžaduje kontrolu',
-    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes),
-    operatorExplanation: 'Systém našel jediný kandidátní bankovní pohyb se stejnou částkou, ale chybí silnější potvrzení.',
-    operatorCheckHint: 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum odchozí platby.',
-    documentBankRelation: 'Doklad je načtený a existuje kandidátní bankovní pohyb, ale vazba zatím není potvrzená.',
+    matchStrength,
+    evidenceSummary: buildExpenseEvidenceSummary(
+      documentEntry,
+      bankTransaction,
+      fileRoutes,
+      candidateEvaluation.reasons,
+      candidateEvaluation
+    ),
+    operatorExplanation: uniqueCandidate
+      ? 'Systém našel pravděpodobný odchozí bankovní kandidát, ale vazba zatím není dost silná na automatické potvrzení.'
+      : `Systém našel více možných odchozích kandidátů (${ambiguousCount}); zobrazen je nejlepší z nich a vazba vyžaduje ruční kontrolu.`,
+    operatorCheckHint: uniqueCandidate
+      ? 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum odchozí platby.'
+      : 'Zkontrolujte ručně více podobných bankovních kandidátů a potvrďte správnou vazbu dokladu.',
+    documentBankRelation: uniqueCandidate
+      ? 'Doklad je načtený a existuje pravděpodobný bankovní kandidát, ale vazba zatím není potvrzená.'
+      : 'Doklad je načtený a existuje více podobných bankovních kandidátů; vazba není jednoznačná.',
     expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
   }
 }
@@ -367,6 +452,10 @@ function toExpenseUnmatchedOutflowReviewItem(
 }
 
 function classifyExpenseMatchedStrength(reasons: string[], matchScore: number): ReviewMatchStrength {
+  if (reasons.includes('ibanAligned') && reasons.includes('referenceAligned') && matchScore >= 9) {
+    return 'potvrzená shoda'
+  }
+
   const hasReference = reasons.includes('referenceAligned')
   const hasCounterparty = reasons.includes('counterpartyAligned')
 
@@ -377,24 +466,182 @@ function classifyExpenseMatchedStrength(reasons: string[], matchScore: number): 
   return 'slabší shoda'
 }
 
-function findUniqueExpenseBankCandidate(
+function evaluateExpenseBankCandidates(
   documentEntry: ExpenseDocumentReviewEntry,
-  bankTransactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
-  usedCandidateBankIds: Set<string>
-): MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined {
+  bankTransactions: MonthlyBatchResult['reconciliation']['normalizedTransactions']
+): ExpenseBankCandidateEvaluation[] {
+  return bankTransactions
+    .map((bankTransaction) => evaluateExpenseBankCandidate(documentEntry, bankTransaction))
+    .filter((evaluation): evaluation is ExpenseBankCandidateEvaluation => Boolean(evaluation))
+    .sort(compareExpenseBankCandidateQuality)
+}
+
+function evaluateExpenseBankCandidate(
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ExpenseBankCandidateEvaluation | null {
   const documentAmountMinor = documentEntry.extractedRecord.amountMinor
   const documentCurrency = documentEntry.extractedRecord.currency
 
   if (typeof documentAmountMinor !== 'number' || !documentCurrency) {
+    return null
+  }
+
+  if (bankTransaction.currency !== documentCurrency) {
+    return null
+  }
+
+  const amountDeltaMinor = Math.abs(bankTransaction.amountMinor - documentAmountMinor)
+  const exactAmount = amountDeltaMinor === 0
+  const nearAmount = amountDeltaMinor <= EXPENSE_REVIEW_WEAK_AMOUNT_DELTA_MINOR
+
+  if (!exactAmount && !nearAmount) {
+    return null
+  }
+
+  const dateDistance = calculateExpenseDateDistance(documentEntry, bankTransaction.bookedAt)
+  if (!Number.isFinite(dateDistance) || dateDistance > EXPENSE_REVIEW_CANDIDATE_MAX_DAY_DISTANCE) {
+    return null
+  }
+
+  const documentReference = getExpenseDocumentReference(documentEntry)
+  const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
+  const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
+  const referenceAligned = expenseReferenceMatches(documentReference, bankTransaction.reference)
+  const counterpartyAligned = expenseCounterpartyMatches(documentCounterparty, bankTransaction)
+  const ibanAligned = expenseIbanMatches(documentIbanHint, bankTransaction)
+
+  let score = 0
+  const reasons: string[] = []
+
+  if (exactAmount) {
+    score += 5
+    reasons.push('amountExact')
+  } else if (nearAmount) {
+    score += 1
+    reasons.push(`amountDelta:${amountDeltaMinor}`)
+  }
+
+  if (dateDistance === 0) {
+    score += 3
+  } else if (dateDistance <= 3) {
+    score += 2
+  } else if (dateDistance <= EXPENSE_REVIEW_STRONG_MAX_DAY_DISTANCE) {
+    score += 1
+  }
+  reasons.push(`dateDistance:${dateDistance}`)
+
+  if (referenceAligned) {
+    score += 4
+    reasons.push('referenceAligned')
+  }
+
+  if (ibanAligned) {
+    score += 4
+    reasons.push('ibanAligned')
+  }
+
+  if (counterpartyAligned) {
+    score += 3
+    reasons.push('counterpartyAligned')
+  }
+
+  const hasIdentityEvidence = referenceAligned || ibanAligned || counterpartyAligned
+  const hasStrongIdentityEvidence = referenceAligned || ibanAligned
+  const confirmed = exactAmount
+    && dateDistance <= EXPENSE_REVIEW_CONFIRMED_MAX_DAY_DISTANCE
+    && (
+      hasStrongIdentityEvidence
+      || (counterpartyAligned && dateDistance <= 3)
+    )
+
+  if (!confirmed && !hasIdentityEvidence && (!exactAmount || dateDistance > 7)) {
+    return null
+  }
+
+  if (!confirmed && !exactAmount && !hasStrongIdentityEvidence) {
+    return null
+  }
+
+  return {
+    bankTransaction,
+    amountDeltaMinor,
+    dateDistance,
+    exactAmount,
+    nearAmount,
+    referenceAligned,
+    counterpartyAligned,
+    ibanAligned,
+    score,
+    reasons,
+    matchType: confirmed ? 'confirmed' : 'review'
+  }
+}
+
+function compareExpenseBankCandidateQuality(
+  left: ExpenseBankCandidateEvaluation,
+  right: ExpenseBankCandidateEvaluation
+): number {
+  if (left.matchType !== right.matchType) {
+    return left.matchType === 'confirmed' ? -1 : 1
+  }
+
+  return (
+    right.score - left.score
+    || left.amountDeltaMinor - right.amountDeltaMinor
+    || left.dateDistance - right.dateDistance
+    || left.bankTransaction.bookedAt.localeCompare(right.bankTransaction.bookedAt)
+    || left.bankTransaction.id.localeCompare(right.bankTransaction.id)
+  )
+}
+
+function selectExpenseBankCandidate(
+  evaluations: ExpenseBankCandidateEvaluation[]
+): ExpenseBankCandidateSelection | undefined {
+  if (evaluations.length === 0) {
     return undefined
   }
 
-  const candidates = bankTransactions
-    .filter((transaction) => !usedCandidateBankIds.has(transaction.id))
-    .filter((transaction) => transaction.amountMinor === documentAmountMinor && transaction.currency === documentCurrency)
-    .filter((transaction) => calculateExpenseDateDistance(documentEntry, transaction.bookedAt) <= EXPENSE_REVIEW_MAX_DAY_DISTANCE)
+  const winner = [...evaluations].sort(compareExpenseBankCandidateQuality)[0]
+  if (!winner) {
+    return undefined
+  }
 
-  return candidates.length === 1 ? candidates[0] : undefined
+  const ambiguousCount = evaluations.filter((candidate) =>
+    candidate.matchType === winner.matchType
+    && candidate.score === winner.score
+    && candidate.amountDeltaMinor === winner.amountDeltaMinor
+    && candidate.dateDistance === winner.dateDistance
+  ).length
+
+  return {
+    winner,
+    ambiguousCount
+  }
+}
+
+function compareExpenseCandidatePlans(
+  left: ExpenseCandidatePlan,
+  right: ExpenseCandidatePlan
+): number {
+  const leftWinner = selectExpenseBankCandidate(left.evaluations)?.winner
+  const rightWinner = selectExpenseBankCandidate(right.evaluations)?.winner
+
+  if (!leftWinner && !rightWinner) {
+    return left.documentEntry.extractedRecord.id.localeCompare(right.documentEntry.extractedRecord.id)
+  }
+
+  if (!leftWinner) {
+    return 1
+  }
+
+  if (!rightWinner) {
+    return -1
+  }
+
+  return compareExpenseBankCandidateQuality(leftWinner, rightWinner)
+    || left.evaluations.length - right.evaluations.length
+    || left.documentEntry.extractedRecord.id.localeCompare(right.documentEntry.extractedRecord.id)
 }
 
 function buildExpenseComparison(
@@ -450,13 +697,20 @@ function buildExpenseEvidenceSummary(
   documentEntry: ExpenseDocumentReviewEntry,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
-  confirmedReasons: string[] = []
+  confirmedReasons: string[] = [],
+  candidateEvaluation?: ExpenseBankCandidateEvaluation
 ): ReviewEvidenceEntry[] {
   const documentReference = getExpenseDocumentReference(documentEntry)
   const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
   const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
   const documentProvenance = buildDocumentProvenanceLabel(fileRoutes, [documentEntry.extractedRecord.sourceDocumentId])
-  const dateDistance = bankTransaction ? calculateExpenseDateDistance(documentEntry, bankTransaction.bookedAt) : undefined
+  const dateDistance = candidateEvaluation?.dateDistance ?? (bankTransaction ? calculateExpenseDateDistance(documentEntry, bankTransaction.bookedAt) : undefined)
+  const amountDeltaMinor = candidateEvaluation?.amountDeltaMinor
+    ?? (
+      bankTransaction && typeof documentEntry.extractedRecord.amountMinor === 'number'
+        ? Math.abs(bankTransaction.amountMinor - documentEntry.extractedRecord.amountMinor)
+        : undefined
+    )
   const referenceAligned = bankTransaction
     ? confirmedReasons.includes('referenceAligned') || expenseReferenceMatches(documentReference, bankTransaction.reference)
     : false
@@ -470,17 +724,31 @@ function buildExpenseEvidenceSummary(
   return [
     {
       label: 'částka',
-      value: bankTransaction ? 'sedí' : formatAmountMinorCs(documentEntry.extractedRecord.amountMinor ?? 0, documentEntry.extractedRecord.currency ?? 'CZK')
+      value: bankTransaction
+        ? (amountDeltaMinor === 0 ? 'sedí' : 'nesedí')
+        : formatAmountMinorCs(documentEntry.extractedRecord.amountMinor ?? 0, documentEntry.extractedRecord.currency ?? 'CZK')
     },
+    maybeEvidenceEntry(
+      'rozdíl částky',
+      bankTransaction && typeof amountDeltaMinor === 'number'
+        ? formatAmountMinorCs(amountDeltaMinor, documentEntry.extractedRecord.currency ?? bankTransaction.currency)
+        : undefined
+    ),
     maybeEvidenceEntry(
       'datum',
       bankTransaction
         ? (typeof dateDistance === 'number'
-          ? dateDistance === 0
-            ? 'sedí'
-            : `v toleranci (${dateDistance} dní)`
+          ? dateDistance <= EXPENSE_REVIEW_CANDIDATE_MAX_DAY_DISTANCE
+            ? (dateDistance === 0 ? 'sedí' : 'v toleranci')
+            : 'mimo toleranci'
           : 'nelze ověřit')
         : getExpensePrimaryDate(documentEntry)
+    ),
+    maybeEvidenceEntry(
+      'rozdíl dnů',
+      bankTransaction && typeof dateDistance === 'number'
+        ? `${dateDistance} dní`
+        : undefined
     ),
     maybeEvidenceEntry(
       'IBAN',
@@ -499,10 +767,14 @@ function buildExpenseEvidenceSummary(
         : 'chybí'
     ),
     maybeEvidenceEntry(
-      'protistrana / účet',
+      'protistrana / dodavatel',
       bankTransaction
         ? (counterpartyAligned ? 'podobná' : 'nepodobná')
         : (documentCounterparty ?? 'bez bankovního kandidáta')
+    ),
+    maybeEvidenceEntry(
+      'zpráva banky',
+      bankTransaction?.reference ?? (bankTransaction ? 'chybí' : undefined)
     ),
     maybeEvidenceEntry('provenience', documentProvenance)
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
@@ -515,6 +787,7 @@ function buildExpenseOutflowEvidenceSummary(
   return [
     { label: 'částka', value: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency) },
     maybeEvidenceEntry('datum', bankTransaction.bookedAt),
+    maybeEvidenceEntry('zpráva banky', bankTransaction.reference ?? 'chybí'),
     maybeEvidenceEntry('reference', bankTransaction.reference ?? 'chybí'),
     maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankTransaction.counterparty, bankTransaction.accountId]).join(' · ')),
     { label: 'dokument', value: 'chybí' }
@@ -563,9 +836,15 @@ function calculateExpenseDateDistance(documentEntry: ExpenseDocumentReviewEntry,
 }
 
 function calculateDayDistance(left: string, right: string): number {
-  const leftDate = new Date(`${left}T00:00:00Z`)
-  const rightDate = new Date(`${right}T00:00:00Z`)
+  const leftDate = new Date(`${normalizeExpenseComparableDate(left)}T00:00:00Z`)
+  const rightDate = new Date(`${normalizeExpenseComparableDate(right)}T00:00:00Z`)
   return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function normalizeExpenseComparableDate(value: string): string {
+  return value.includes('T')
+    ? value.split('T')[0] ?? value
+    : value
 }
 
 function expenseReferenceMatches(documentReference: string | undefined, bankReference: string | undefined): boolean {
