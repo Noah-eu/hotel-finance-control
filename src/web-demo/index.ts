@@ -2521,6 +2521,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const manualItem = cloneExpenseReviewItem(item);
 
         manualItem.id = 'expense-manual-confirmed:' + String(item && item.id || '');
+        manualItem.domain = 'expense';
         manualItem.kind = 'expense-matched';
         manualItem.matchStrength = 'potvrzená shoda';
         manualItem.detail = 'Operátor ručně potvrdil vazbu dokladu na odchozí bankovní platbu.';
@@ -2546,6 +2547,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         return {
           id: 'expense-manual-rejected-document:' + String(item && item.id || ''),
+          domain: 'expense',
           kind: 'expense-unmatched-document',
           title: documentReference
             ? 'Nespárovaný doklad ' + String(documentReference)
@@ -2583,6 +2585,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         return {
           id: 'expense-manual-rejected-outflow:' + String(item && item.id || ''),
+          domain: 'expense',
           kind: 'expense-unmatched-outflow',
           title: bankSide && bankSide.amount
             ? 'Nespárovaná odchozí platba ' + String(bankSide.amount)

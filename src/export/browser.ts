@@ -216,7 +216,9 @@ function buildPayoutRows(
       : matchedBuckets.concat(reviewBuckets)
 
   return buckets.flatMap((bucket) =>
-    bucket.items.map((item) => buildGenericReviewRow(bucket.section, item))
+    bucket.items
+      .filter((item) => isPayoutReservationReviewItem(item))
+      .map((item) => buildGenericReviewRow(bucket.section, item))
   )
 }
 
@@ -240,8 +242,33 @@ function buildExpenseRows(
       : matchedBuckets.concat(reviewBuckets)
 
   return buckets.flatMap((bucket) =>
-    bucket.items.map((item) => buildExpenseReviewRow(bucket.section, item))
+    bucket.items
+      .filter((item) => isExpenseReviewItem(item))
+      .map((item) => buildExpenseReviewRow(bucket.section, item))
   )
+}
+
+function isPayoutReservationReviewItem(item: ReviewSectionItem): boolean {
+  return item.domain === 'payout'
+    && (
+      item.kind === 'matched'
+    || item.kind === 'reservation-settlement-overview'
+    || item.kind === 'ancillary-settlement-overview'
+    || item.kind === 'unmatched-reservation-settlement'
+    || item.kind === 'unmatched'
+    || item.kind === 'suspicious'
+    || item.kind === 'missing-document'
+    )
+}
+
+function isExpenseReviewItem(item: ReviewSectionItem): boolean {
+  return item.domain === 'expense'
+    && (
+      item.kind === 'expense-matched'
+    || item.kind === 'expense-review'
+    || item.kind === 'expense-unmatched-document'
+    || item.kind === 'expense-unmatched-outflow'
+    )
 }
 
 function buildGenericReviewRow(sectionLabel: string, item: ReviewSectionItem): Record<string, string> {

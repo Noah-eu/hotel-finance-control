@@ -2268,10 +2268,22 @@ describe('buildWebDemo', () => {
     ]))
     expect(payoutRows.some((row) => row.Sekce === 'Spárované payout dávky')).toBe(true)
     expect(payoutRows.some((row) => row.Sekce === 'Nespárované payout dávky')).toBe(true)
+    expect(payoutRows.some((row) => String(row['Číslo faktury / reference'] || row.Reference || '').includes('141260183'))).toBe(false)
+    expect(payoutRows.some((row) => String(row['Titulek'] || '').includes('Lenner'))).toBe(false)
+    expect(payoutRows.some((row) => String(row['Sekce'] || '').includes('Výdaje'))).toBe(false)
+    expect(payoutRows.some((row) => String(row['Sekce'] || '').includes('Nespárované odchozí platby'))).toBe(false)
     expect(expenseRows.some((row) => row.Sekce === 'Výdaje ke kontrole' && row['Číslo faktury / reference'] === '141260183')).toBe(true)
     expect(expenseRows.some((row) => row.Sekce === 'Nespárované odchozí platby')).toBe(true)
+    expect(expenseRows.some((row) => row.Sekce === 'Spárované payout dávky')).toBe(false)
+    expect(expenseRows.some((row) => row.Sekce === 'Nespárované payout dávky')).toBe(false)
     expect(exportArtifact.payoutRowCount).toBe(payoutRows.length)
     expect(exportArtifact.expenseRowCount).toBe(expenseRows.length)
+    expect(
+      payoutRows.filter((row) => String(row.Reference || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
+        + expenseRows.filter((row) => String(row['Číslo faktury / reference'] || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
+    ).toBe(
+      expenseRows.filter((row) => String(row['Číslo faktury / reference'] || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
+    )
     expect(restored.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(restored.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
@@ -2317,8 +2329,10 @@ describe('buildWebDemo', () => {
     expect(exportArtifact.fileName).toBe('hotel-finance-control-2026-03-jen-ke-kontrole.xlsx')
     expect(exportArtifact.preset).toBe('review-needed')
     expect(payoutRows.some((row) => row.Sekce === 'Spárované payout dávky')).toBe(false)
+    expect(payoutRows.some((row) => String(row.Reference || '').includes('141260183') || String(row.Titulek || '').includes('Lenner'))).toBe(false)
     expect(expenseRows.some((row) => row.Sekce === 'Spárované výdaje')).toBe(false)
     expect(expenseRows.some((row) => row.Sekce === 'Výdaje ke kontrole' && row['Číslo faktury / reference'] === '141260183')).toBe(true)
+    expect(expenseRows.some((row) => row.Sekce === 'Nespárované payout dávky')).toBe(false)
     expect(exportArtifact.expenseRowCount).toBe(expectedExpenseCount)
     expect(expenseRows.length).toBe(expectedExpenseCount)
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
@@ -2370,6 +2384,9 @@ describe('buildWebDemo', () => {
     )).toBe(true)
     expect(matchedExpenseRows.some((row) => row.Sekce === 'Výdaje ke kontrole')).toBe(false)
 
+    const matchedPayoutRows = XLSX.utils.sheet_to_json<Record<string, string>>(matchedWorkbook.Sheets['Payout a rezervace'])
+    expect(matchedPayoutRows.some((row) => String(row.Reference || '').includes('141260183') || String(row.Titulek || '').includes('Lenner'))).toBe(false)
+
     rendered.undoConfirmedExpenseReviewItem(`expense-manual-confirmed:${String(reviewItemId)}`)
     rendered.rejectExpenseReviewItem(String(reviewItemId))
     rendered.setWorkspaceExportPreset('review-needed')
@@ -2389,6 +2406,8 @@ describe('buildWebDemo', () => {
       && row.Sekce === 'Nespárované odchozí platby'
     )).toBe(true)
     expect(reviewExpenseRows.some((row) => row.Sekce === 'Spárované výdaje')).toBe(false)
+    const reviewPayoutRows = XLSX.utils.sheet_to_json<Record<string, string>>(reviewWorkbook.Sheets['Payout a rezervace'])
+    expect(reviewPayoutRows.some((row) => String(row.Reference || '').includes('141260183') || String(row.Titulek || '').includes('Lenner'))).toBe(false)
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })

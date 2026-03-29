@@ -43,6 +43,7 @@ export interface ReviewExpenseComparison {
 
 export interface ReviewSectionItem {
   id: string
+  domain: 'payout' | 'expense'
   kind:
     | 'matched'
     | 'unmatched'
@@ -297,6 +298,7 @@ function toManuallyConfirmedExpenseItem(
   return {
     ...item,
     id: `expense-manual-confirmed:${reviewItem.id}`,
+    domain: 'expense',
     kind: 'expense-matched',
     matchStrength: 'potvrzená shoda',
     detail: 'Operátor ručně potvrdil vazbu dokladu na odchozí bankovní platbu.',
@@ -331,6 +333,7 @@ function toManuallyRejectedExpenseDocumentItem(
 
   return {
     id: `expense-manual-rejected-document:${reviewItem.id}`,
+    domain: 'expense',
     kind: 'expense-unmatched-document',
     title: documentReference
       ? `Nespárovaný doklad ${documentReference}`
@@ -369,6 +372,7 @@ function toManuallyRejectedExpenseOutflowItem(
 
   return {
     id: `expense-manual-rejected-outflow:${reviewItem.id}`,
+    domain: 'expense',
     kind: 'expense-unmatched-outflow',
     title: bankSide?.amount
       ? `Nespárovaná odchozí platba ${bankSide.amount}`
@@ -543,6 +547,7 @@ function toExpenseMatchedReviewItem(
 
   return {
     id: `expense-matched:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
+    domain: 'expense',
     kind: 'expense-matched',
     title: documentReference
       ? `Faktura ${documentReference}`
@@ -580,6 +585,7 @@ function toExpenseNeedsReviewItem(
 
   return {
     id: `expense-review:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
+    domain: 'expense',
     kind: 'expense-review',
     title: documentReference
       ? `Doklad ke kontrole ${documentReference}`
@@ -620,6 +626,7 @@ function toExpenseUnmatchedDocumentReviewItem(
 
   return {
     id: `expense-unmatched-document:${documentEntry.extractedRecord.id}`,
+    domain: 'expense',
     kind: 'expense-unmatched-document',
     title: documentReference
       ? `Nespárovaný doklad ${documentReference}`
@@ -644,6 +651,7 @@ function toExpenseUnmatchedOutflowReviewItem(
 ): ReviewSectionItem {
   return {
     id: `expense-unmatched-outflow:${bankTransaction.id}`,
+    domain: 'expense',
     kind: 'expense-unmatched-outflow',
     title: `Nespárovaná odchozí platba ${formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency)}`,
     detail: exceptionCase.explanation,
@@ -1129,6 +1137,7 @@ function toMatchedGroupReviewItem(
 
   return {
     id: match.matchGroupId,
+    domain: 'payout',
     kind: 'matched',
     title: `Spárovaná skupina ${match.matchGroupId}`,
     detail: `${match.reason} Jistota ${(match.confidence * 100).toFixed(0)} %.`,
@@ -1158,6 +1167,7 @@ function toPayoutBatchMatchedReviewItem(
 
   return {
     id: `payout-batch:${match.payoutBatchKey}`,
+    domain: 'payout',
     kind: 'matched',
     title: match.display?.title ?? buildLegacyPayoutBatchTitle(match.platform, match.payoutReference),
     detail: buildPayoutBatchMatchDetail(batch, match),
@@ -1181,6 +1191,7 @@ function toPayoutBatchUnmatchedReviewItem(
 
   return {
     id: `payout-batch-unmatched:${unmatched.payoutBatchKey}`,
+    domain: 'payout',
     kind: 'unmatched',
     title: unmatched.display?.title ?? buildLegacyPayoutBatchTitle(unmatched.platform, unmatched.payoutReference),
     detail: buildPayoutBatchUnmatchedDetail(batch, unmatched),
@@ -1500,6 +1511,13 @@ function toReviewItem(
 
   return {
     id: exceptionCase.id,
+    domain: classifyReviewItemDomain(
+      batch,
+      sourceDocumentIds,
+      exceptionCase.relatedTransactionIds,
+      exceptionCase.ruleCode,
+      exceptionCase.type
+    ),
     kind,
     title: `${toTitle(kind)}: ${exceptionCase.ruleCode ?? exceptionCase.type}`,
     detail: exceptionCase.explanation,
@@ -1569,6 +1587,7 @@ function toReservationSettlementOverviewItem(
 
   return {
     id: `reservation-settlement-overview:${reservation.sourceDocumentId}:${reservation.reservationId}`,
+    domain: 'payout',
     kind: 'reservation-settlement-overview',
     title: `Rezervace ${reservation.reservationId}`,
     detail: detailParts.join(' '),
@@ -1613,6 +1632,7 @@ function toAncillarySettlementOverviewItem(
 
   return {
     id: `ancillary-settlement-overview:${item.sourceDocumentId}:${item.reference}`,
+    domain: 'payout',
     kind: 'ancillary-settlement-overview',
     title: item.reference === item.reservationId || !item.reservationId
       ? `Doplňková položka ${item.itemLabel ?? item.reference}`
@@ -1773,6 +1793,7 @@ function toReservationSettlementNoMatchReviewItem(
 
   return {
     id: `reservation-settlement-unmatched:${noMatch.sourceDocumentId}:${noMatch.reservationId}`,
+    domain: 'payout',
     kind: 'unmatched-reservation-settlement',
     title: `Rezervace ${reservation?.reservationId ?? noMatch.reservationId}`,
     detail: detailParts.join(' '),
@@ -1938,6 +1959,42 @@ function buildDocumentBankRelationStatus(
   }
 
   return 'Doklad je načtený, ale zatím bez potvrzené bankovní vazby.'
+}
+
+function classifyReviewItemDomain(
+  batch: MonthlyBatchResult,
+  sourceDocumentIds: string[],
+  relatedTransactionIds: string[],
+  ruleCode?: string,
+  type?: string
+): ReviewSectionItem['domain'] {
+  const hasExpenseDocument = batch.extractedRecords.some((record) =>
+    sourceDocumentIds.includes(record.sourceDocumentId)
+    && DOCUMENT_RECORD_TYPE_SET.has(record.recordType)
+  )
+
+  if (hasExpenseDocument) {
+    return 'expense'
+  }
+
+  const relatedTransactions = relatedTransactionIds
+    .map((transactionId) => batch.reconciliation.normalizedTransactions.find((transaction) => transaction.id === transactionId))
+    .filter((transaction): transaction is NonNullable<typeof transaction> => Boolean(transaction))
+
+  const hasRelatedBankTransaction = relatedTransactions.some((transaction) => transaction.source === 'bank')
+  const hasExpenseLikeBankOutflow = relatedTransactions.some((transaction) =>
+    transaction.source === 'bank'
+    && transaction.direction === 'out'
+  )
+
+  if (
+    hasRelatedBankTransaction
+    && (ruleCode === 'missing_supporting_document' || type === 'unmatched_document')
+  ) {
+    return 'expense'
+  }
+
+  return hasExpenseLikeBankOutflow ? 'expense' : 'payout'
 }
 
 function buildDocumentProvenanceLabel(

@@ -1120,6 +1120,7 @@ describe('buildReviewScreen', () => {
       expenseNeedsReview: [
         {
           id: 'expense-review:invoice-record:bank-1',
+          domain: 'expense' as const,
           kind: 'expense-review' as const,
           title: 'Doklad ke kontrole 141260183',
           detail: 'Doklad je načtený a existuje jediný blízký odchozí bankovní kandidát, ale vazba zatím není potvrzená.',
