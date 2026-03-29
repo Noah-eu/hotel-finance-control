@@ -104,6 +104,16 @@ export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input:
       } catch (error) {
         const contentFormat = inferContentFormatFromFileName(file.name)
         const ingestError = error instanceof Error ? error.message : String(error)
+        let binaryContentBase64: string | undefined
+
+        if (typeof file.arrayBuffer === 'function') {
+          try {
+            binaryContentBase64 = arrayBufferToBase64(await file.arrayBuffer())
+          } catch {
+            binaryContentBase64 = undefined
+          }
+        }
+
         const sourceDescriptor = {
           mimeType: normalizeMimeType(file.type),
           browserTextExtraction: {
@@ -115,6 +125,7 @@ export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input:
         const capability = detectUploadedMonthlyFileCapability({
           fileName: file.name,
           content: '',
+          binaryContentBase64,
           contentFormat,
           sourceDescriptor,
           ingestError
@@ -124,6 +135,7 @@ export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input:
           name: file.name,
           content: '',
           uploadedAt: input.generatedAt,
+          binaryContentBase64,
           contentFormat,
           sourceDescriptor: {
             ...sourceDescriptor,

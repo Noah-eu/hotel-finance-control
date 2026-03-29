@@ -16,7 +16,9 @@ export interface RealInputFixture {
   | 'invoice-document'
   | 'invoice-document-czech-pdf'
   | 'invoice-document-czech-pdf-with-spd-qr'
+  | 'invoice-document-scan-pdf-with-ocr-stub'
   | 'receipt-document'
+  | 'receipt-document-handwritten-pdf-with-ocr-stub'
   description: string
   sourceDocument: SourceDocument
   rawInput: {
@@ -122,6 +124,20 @@ function pdfBase64FromTextLines(
   }
 
   return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
+function buildOcrStubPayloadComment(input: {
+  documentKind: 'invoice' | 'receipt'
+  fields: Record<string, string>
+  adapter?: 'ocr' | 'vision'
+}): string {
+  const payload = Buffer.from(JSON.stringify({
+    documentKind: input.documentKind,
+    adapter: input.adapter ?? 'ocr',
+    fields: input.fields
+  }), 'utf8').toString('base64')
+
+  return `HFC_OCR_STUB:${payload}`
 }
 
 function encodePdfHexString(value: string): string {
@@ -1227,6 +1243,86 @@ export const realInputFixtures: RealInputFixture[] = [
     ]
   },
   {
+    key: 'invoice-document-scan-pdf-with-ocr-stub',
+    description: 'Scan-like invoice PDF with hidden OCR stub payload for browser fallback tests.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-ocr-2026-077' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'invoice-scan-ocr.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: '',
+      binaryContentBase64: pdfBase64FromTextLines([], {
+        hiddenPayloadComments: [
+          buildOcrStubPayloadComment({
+            documentKind: 'invoice',
+            fields: {
+              referenceNumber: 'OCR-INV-2026-77',
+              issuerOrCounterparty: 'Scan Laundry Supply s.r.o.',
+              customer: 'JOKELAND s.r.o.',
+              issueDate: '2026-03-20',
+              dueDate: '2026-03-27',
+              taxableDate: '2026-03-20',
+              paymentMethod: 'Bankovní převod',
+              totalAmount: '6 500,00 CZK',
+              vatBaseAmount: '5 371,90 CZK',
+              vatAmount: '1 128,10 CZK',
+              ibanHint: 'CZ4903000000000274621920',
+              note: 'Scan invoice OCR payload'
+            }
+          })
+        ]
+      })
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record-1',
+        sourceDocumentId: 'doc-invoice-ocr-2026-077' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: 'OCR-INV-2026-77',
+        amountMinor: 650000,
+        currency: 'CZK',
+        occurredAt: '2026-03-20',
+        data: {
+          sourceSystem: 'invoice',
+          invoiceNumber: 'OCR-INV-2026-77',
+          supplier: 'Scan Laundry Supply s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          issueDate: '2026-03-20',
+          dueDate: '2026-03-27',
+          taxableDate: '2026-03-20',
+          amountMinor: 650000,
+          currency: 'CZK',
+          paymentMethod: 'Bankovní převod',
+          description: 'Scan invoice OCR payload',
+          vatBaseAmountMinor: 537190,
+          vatBaseCurrency: 'CZK',
+          vatAmountMinor: 112810,
+          vatCurrency: 'CZK',
+          ibanHint: 'CZ4903000000000274621920'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 650000,
+        currency: 'CZK',
+        bookedAt: '2026-03-20',
+        accountId: 'document-expenses',
+        counterparty: 'Scan Laundry Supply s.r.o.',
+        reference: 'OCR-INV-2026-77',
+        invoiceNumber: 'OCR-INV-2026-77',
+        extractedRecordIds: ['invoice-record-1'],
+        sourceDocumentIds: ['doc-invoice-ocr-2026-077' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
     key: 'receipt-document',
     description: 'Representative receipt text fixture for deterministic hotel expense receipt ingestion.',
     sourceDocument: sourceDocument({
@@ -1280,6 +1376,65 @@ export const realInputFixtures: RealInputFixture[] = [
         reference: 'RCPT-2026-03-55',
         extractedRecordIds: ['receipt-record-1'],
         sourceDocumentIds: ['doc-receipt-2026-03-55' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'receipt-document-handwritten-pdf-with-ocr-stub',
+    description: 'Handwritten-like receipt PDF with partial OCR stub payload that should land in needs_review.',
+    sourceDocument: sourceDocument({
+      id: 'doc-receipt-ocr-2026-04-01' as SourceDocument['id'],
+      sourceSystem: 'receipt',
+      documentType: 'receipt',
+      fileName: 'receipt-handwritten.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: '',
+      binaryContentBase64: pdfBase64FromTextLines([], {
+        hiddenPayloadComments: [
+          buildOcrStubPayloadComment({
+            documentKind: 'receipt',
+            fields: {
+              issuerOrCounterparty: 'Fresh Farm Market',
+              paymentDate: '2026-03-22',
+              totalAmount: '249,00 CZK',
+              note: 'Handwritten grocery receipt'
+            }
+          })
+        ]
+      })
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'receipt-record-1',
+        sourceDocumentId: 'doc-receipt-ocr-2026-04-01' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'receipt-document',
+        amountMinor: 24900,
+        currency: 'CZK',
+        occurredAt: '2026-03-22',
+        data: {
+          sourceSystem: 'receipt',
+          merchant: 'Fresh Farm Market',
+          purchaseDate: '2026-03-22',
+          amountMinor: 24900,
+          currency: 'CZK',
+          description: 'Handwritten grocery receipt'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:receipt-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'receipt',
+        amountMinor: 24900,
+        currency: 'CZK',
+        bookedAt: '2026-03-22',
+        accountId: 'document-expenses',
+        counterparty: 'Fresh Farm Market',
+        extractedRecordIds: ['receipt-record-1'],
+        sourceDocumentIds: ['doc-receipt-ocr-2026-04-01' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   }

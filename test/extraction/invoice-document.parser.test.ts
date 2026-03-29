@@ -10,11 +10,11 @@ import {
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 describe('parseInvoiceDocument', () => {
-  it('exposes deterministic-first document ingestion capabilities with OCR left as future fallback', () => {
+  it('exposes deterministic-first document ingestion capabilities with a browser-safe OCR stub adapter', () => {
     expect(documentIngestionCapabilities()).toEqual({
       browserCapabilityLadder: ['structured-parser', 'text-pdf-parser', 'text-document-parser', 'ocr-required'],
       mode: 'deterministic-primary',
-      ocrFallback: 'not-implemented'
+      ocrFallback: 'stub-adapter'
     })
   })
 
@@ -40,7 +40,7 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
-  it('matches the representative expected extracted output and fails clearly on missing fields', () => {
+  it('matches the representative expected extracted output and sends partial invoices to needs_review instead of hard failure', () => {
     const fixture = getRealInputFixture('invoice-document')
 
     const records = parseInvoiceDocument({
@@ -50,14 +50,18 @@ describe('parseInvoiceDocument', () => {
     })
 
     expect(records[0]).toEqual(fixture.expectedExtractedRecords[0])
-
-    expect(() =>
-      parseInvoiceDocument({
-        sourceDocument: fixture.sourceDocument,
-        content: ['Invoice No: INV-2026-332', 'Supplier: Laundry Supply s.r.o.'].join('\n'),
-        extractedAt: '2026-03-18T22:10:00.000Z'
-      })
-    ).toThrow('Invoice document is missing required fields')
+    expect(inspectInvoiceDocumentExtractionSummary(
+      ['Invoice No: INV-2026-332', 'Supplier: Laundry Supply s.r.o.'].join('\n')
+    )).toMatchObject({
+      finalStatus: 'needs_review',
+      requiredFieldsCheck: 'failed',
+      missingRequiredFields: expect.arrayContaining(['issueDate', 'dueDate', 'totalAmount'])
+    })
+    expect(parseInvoiceDocument({
+      sourceDocument: fixture.sourceDocument,
+      content: ['Invoice No: INV-2026-332', 'Supplier: Laundry Supply s.r.o.'].join('\n'),
+      extractedAt: '2026-03-18T22:10:00.000Z'
+    })).toEqual([])
   })
 
   it('accepts realistic invoice field aliases and localized amount/date formatting', () => {
@@ -88,7 +92,7 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
-  it('extracts deterministic receipt-document records and fails clearly on missing fields', () => {
+  it('extracts deterministic receipt-document records and keeps partial receipts in needs_review instead of hard failure', () => {
     const fixture = getRealInputFixture('receipt-document')
     const extractedAt = '2026-03-18T22:10:00.000Z'
 
@@ -103,13 +107,17 @@ describe('parseInvoiceDocument', () => {
       extractedAt
     })
 
-    expect(() =>
-      parseReceiptDocument({
-        sourceDocument: fixture.sourceDocument,
-        content: ['Merchant: Metro Cash & Carry', 'Total: 2 490 CZK'].join('\n'),
-        extractedAt
-      })
-    ).toThrow('Receipt document is missing required fields')
+    expect(inspectReceiptDocumentExtractionSummary(
+      ['Merchant: Metro Cash & Carry', 'Total: 2 490 CZK'].join('\n')
+    )).toMatchObject({
+      finalStatus: 'needs_review',
+      requiredFieldsCheck: 'failed'
+    })
+    expect(parseReceiptDocument({
+      sourceDocument: fixture.sourceDocument,
+      content: ['Merchant: Metro Cash & Carry', 'Total: 2 490 CZK'].join('\n'),
+      extractedAt
+    })).toEqual([])
   })
 
   it('accepts realistic receipt field aliases and decimal totals', () => {
@@ -197,10 +205,12 @@ describe('parseInvoiceDocument', () => {
       totalCurrency: 'CZK',
       referenceNumber: 'INV-2026-332',
       confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
       missingRequiredFields: []
     })
 
-    expect(inspectReceiptDocumentExtractionSummary(receipt.rawInput.content)).toEqual({
+    expect(inspectReceiptDocumentExtractionSummary(receipt.rawInput.content)).toMatchObject({
       documentKind: 'receipt',
       sourceSystem: 'receipt',
       documentType: 'receipt',
@@ -210,6 +220,10 @@ describe('parseInvoiceDocument', () => {
       totalCurrency: 'CZK',
       referenceNumber: 'RCPT-2026-03-55',
       confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      qrDetected: false,
+      ocrDetected: false,
       missingRequiredFields: []
     })
   })
@@ -516,7 +530,90 @@ describe('parseInvoiceDocument', () => {
       }),
       qrRecoveredFields: expect.arrayContaining(['referenceNumber', 'dueDate', 'totalAmount', 'ibanHint']),
       qrConfirmedFields: expect.arrayContaining(['issuerOrCounterparty']),
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
       missingRequiredFields: []
+    })
+  })
+
+  it('recovers a scan-like invoice through the OCR fallback stub without changing the normalized invoice shape', () => {
+    const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64,
+      extractedAt: '2026-03-29T08:30:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-29T08:30:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary({
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64
+    })).toMatchObject({
+      referenceNumber: 'OCR-INV-2026-77',
+      issueDate: '2026-03-20',
+      dueDate: '2026-03-27',
+      taxableDate: '2026-03-20',
+      totalAmountMinor: 650000,
+      totalCurrency: 'CZK',
+      ibanHint: 'CZ4903000000000274621920',
+      ocrDetected: true,
+      qrDetected: false,
+      ocrRecoveredFields: expect.arrayContaining([
+        'referenceNumber',
+        'issuerOrCounterparty',
+        'customer',
+        'issueDate',
+        'dueDate',
+        'taxableDate',
+        'paymentMethod',
+        'totalAmount',
+        'vatBaseAmount',
+        'vatAmount',
+        'ibanHint'
+      ]),
+      fieldProvenance: expect.objectContaining({
+        referenceNumber: 'ocr',
+        totalAmount: 'ocr',
+        ibanHint: 'ocr'
+      }),
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: []
+    })
+  })
+
+  it('sends handwritten-like receipts with partial OCR data to needs_review instead of failing the ingest path', () => {
+    const receipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
+    const records = parseReceiptDocument({
+      sourceDocument: receipt.sourceDocument,
+      content: receipt.rawInput.content,
+      binaryContentBase64: receipt.rawInput.binaryContentBase64,
+      extractedAt: '2026-03-29T08:45:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...receipt.expectedExtractedRecords[0],
+      extractedAt: '2026-03-29T08:45:00.000Z'
+    })
+
+    expect(inspectReceiptDocumentExtractionSummary({
+      content: receipt.rawInput.content,
+      binaryContentBase64: receipt.rawInput.binaryContentBase64
+    })).toMatchObject({
+      issuerOrCounterparty: 'Fresh Farm Market',
+      paymentDate: '2026-03-22',
+      totalAmountMinor: 24900,
+      totalCurrency: 'CZK',
+      ocrDetected: true,
+      requiredFieldsCheck: 'failed',
+      finalStatus: 'needs_review',
+      missingRequiredFields: ['referenceNumber']
     })
   })
 })

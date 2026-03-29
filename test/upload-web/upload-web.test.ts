@@ -547,6 +547,95 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
   })
 
+  it('routes scan-like invoices through the OCR fallback adapter on the real browser upload path', async () => {
+    const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFile(invoice.sourceDocument.fileName, invoice.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T09:10:00.000Z'
+    })
+
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'invoice-scan-ocr.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_image_only',
+            transportProfile: 'image_pdf'
+          }),
+          ingestionBranch: 'ocr-required',
+          resolvedBucket: 'recognized-supported'
+        })
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'invoice-scan-ocr.pdf',
+        requiredFieldsCheck: 'passed',
+        missingFields: [],
+        documentExtractionSummary: expect.objectContaining({
+          referenceNumber: 'OCR-INV-2026-77',
+          issueDate: '2026-03-20',
+          dueDate: '2026-03-27',
+          totalAmountMinor: 650000,
+          totalCurrency: 'CZK',
+          finalStatus: 'parsed',
+          qrDetected: false,
+          ocrDetected: true,
+          fieldProvenance: expect.objectContaining({
+            referenceNumber: 'ocr',
+            totalAmount: 'ocr'
+          })
+        })
+      })
+    )
+  })
+
+  it('keeps handwritten-like receipt scans in needs_review instead of ingest failure on the browser upload path', async () => {
+    const receipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFile(receipt.sourceDocument.fileName, receipt.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T09:25:00.000Z'
+    })
+
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'receipt-handwritten.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'receipt',
+        documentType: 'receipt'
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'receipt-handwritten.pdf',
+        requiredFieldsCheck: 'failed',
+        missingFields: ['referenceNumber'],
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'Fresh Farm Market',
+          paymentDate: '2026-03-22',
+          totalAmountMinor: 24900,
+          totalCurrency: 'CZK',
+          finalStatus: 'needs_review',
+          ocrDetected: true
+        })
+      })
+    )
+    expect(result.fileRoutes.some((file) => file.fileName === 'receipt-handwritten.pdf' && file.status === 'error')).toBe(false)
+  })
+
   it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {
     const previo = getRealInputFixture('previo-reservation-export')
     const globalWithBuffer = globalThis as typeof globalThis & { Buffer?: unknown }

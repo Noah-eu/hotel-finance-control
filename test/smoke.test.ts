@@ -14,7 +14,7 @@ describe('smoke', () => {
     expect(result.extraction.documentIngestionCapabilities()).toEqual({
       browserCapabilityLadder: ['structured-parser', 'text-pdf-parser', 'text-document-parser', 'ocr-required'],
       mode: 'deterministic-primary',
-      ocrFallback: 'not-implemented'
+      ocrFallback: 'stub-adapter'
     })
     expect(result).toHaveProperty('extraction.parseBookingPayoutExport')
     expect(result).toHaveProperty('extraction.parseComgateExport')

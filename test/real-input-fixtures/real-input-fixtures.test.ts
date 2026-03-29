@@ -17,11 +17,15 @@ describe('realInputFixtures', () => {
       'invoice-document',
       'invoice-document-czech-pdf',
       'invoice-document-czech-pdf-with-spd-qr',
-      'receipt-document'
+      'invoice-document-scan-pdf-with-ocr-stub',
+      'receipt-document',
+      'receipt-document-handwritten-pdf-with-ocr-stub'
     ])
 
     for (const fixture of realInputFixtures) {
-      expect(fixture.rawInput.content.length).toBeGreaterThan(0)
+      expect(
+        fixture.rawInput.content.length > 0 || Boolean(fixture.rawInput.binaryContentBase64)
+      ).toBe(true)
       expect(fixture.expectedExtractedRecords.length).toBeGreaterThan(0)
       expect(fixture.sourceDocument.fileName.length).toBeGreaterThan(0)
     }
@@ -38,7 +42,9 @@ describe('realInputFixtures', () => {
     const invoice = getRealInputFixture('invoice-document')
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
+    const scanInvoiceWithOcr = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const receipt = getRealInputFixture('receipt-document')
+    const handwrittenReceiptWithOcr = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
 
     expect(raiffeisen.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'bank-transaction',
@@ -128,6 +134,14 @@ describe('realInputFixtures', () => {
         customer: 'JOKELAND s.r.o.'
       }
     })
+    expect(scanInvoiceWithOcr.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'invoice-document',
+      amountMinor: 650000,
+      data: {
+        invoiceNumber: 'OCR-INV-2026-77',
+        supplier: 'Scan Laundry Supply s.r.o.'
+      }
+    })
     expect(receipt.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'receipt-document',
       amountMinor: 249000,
@@ -135,6 +149,13 @@ describe('realInputFixtures', () => {
         receiptNumber: 'RCPT-2026-03-55',
         merchant: 'Metro Cash & Carry',
         amountMinor: 249000
+      }
+    })
+    expect(handwrittenReceiptWithOcr.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'receipt-document',
+      amountMinor: 24900,
+      data: {
+        merchant: 'Fresh Farm Market'
       }
     })
   })
@@ -181,7 +202,9 @@ describe('realInputFixtures', () => {
     const invoice = getRealInputFixture('invoice-document')
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
+    const scanInvoiceWithOcr = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const receipt = getRealInputFixture('receipt-document')
+    const handwrittenReceiptWithOcr = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
     expect(invoice.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'invoice',
       amountMinor: 1850000,
@@ -201,10 +224,23 @@ describe('realInputFixtures', () => {
       counterparty: 'QR Hotel Supply s.r.o.',
       reference: '141260183'
     })
+    expect(scanInvoiceWithOcr.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'invoice',
+      amountMinor: 650000,
+      accountId: 'document-expenses',
+      counterparty: 'Scan Laundry Supply s.r.o.',
+      reference: 'OCR-INV-2026-77'
+    })
     expect(receipt.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'receipt',
       amountMinor: 249000,
       accountId: 'document-expenses'
+    })
+    expect(handwrittenReceiptWithOcr.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'receipt',
+      amountMinor: 24900,
+      accountId: 'document-expenses',
+      counterparty: 'Fresh Farm Market'
     })
   })
 })

@@ -1725,6 +1725,52 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Raw reconciliation unmatched:</strong> 2')
   })
 
+  it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
+    const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T09:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-invoice-ocr-fallback',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimePdfFile(invoice.sourceDocument.fileName, invoice.rawInput.binaryContentBase64!)
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>invoice-scan-ocr.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>invoice-scan-ocr.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('OCR detected: yes')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('OCR recovered fields: referenceNumber, issuerOrCounterparty, customer, issueDate, dueDate, taxableDate, paymentMethod, totalAmount, vatBaseAmount, vatAmount, ibanHint')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final status: parsed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final referenceNumber: OCR-INV-2026-77')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final issueDate: 2026-03-20')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final totalAmount: 6 500,00 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: passed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
+  })
+
+  it('shows handwritten-like receipt scans as needs_review instead of ingest failure on the built browser path', async () => {
+    const receipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T09:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-receipt-ocr-fallback',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimePdfFile(receipt.sourceDocument.fileName, receipt.rawInput.binaryContentBase64!)
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>receipt-handwritten.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4><ul><li><strong>receipt-handwritten.pdf</strong>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('OCR detected: yes')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Final status: needs_review')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: failed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: referenceNumber')
+  })
+
   it('shows the compact Airbnb browser export variant as a supported structured upload and keeps the 5-file result free of ingest failures', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({

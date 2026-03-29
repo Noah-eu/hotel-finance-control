@@ -1,8 +1,11 @@
 import type { ExtractedRecord } from '../../domain'
 import type {
+  DeterministicDocumentExtractionStageDebug,
+  DeterministicDocumentFieldConfidence,
   DeterministicDocumentFieldProvenance,
   DeterministicDocumentFieldExtractionDebug,
   DeterministicDocumentQrParsedFields,
+  DeterministicDocumentOcrParsedFields,
   DeterministicDocumentGroupedBlockDebug,
   DeterministicDocumentRawBlockDebug,
   DeterministicDocumentSummaryFieldKey,
@@ -16,6 +19,12 @@ import {
   parseLabeledDocumentText,
   pickRequiredField
 } from './document-utils'
+import {
+  decodeBase64ToLatin1,
+  deriveFieldConfidence,
+  extractDocumentOcrOrVisionFallback,
+  resolveDocumentFinalStatus
+} from './document-layered-recovery'
 
 const REQUIRED_FIELDS = [
   'Invoice No',
@@ -109,11 +118,18 @@ interface InvoiceDocumentExtractionDetails {
   rawBlockDiscoveryDebug: DeterministicDocumentRawBlockDebug[]
   fieldDebug: Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
   fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  fieldConfidence: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldConfidence>>
   qrDetected: boolean
   qrRawPayload?: string
   qrParsedFields?: DeterministicDocumentQrParsedFields
   qrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
   qrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+  ocrDetected: boolean
+  ocrRawPayload?: string
+  ocrParsedFields?: DeterministicDocumentOcrParsedFields
+  ocrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  ocrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+  extractionStages: DeterministicDocumentExtractionStageDebug[]
 }
 
 type InvoiceExtractedFields = InvoiceDocumentExtractionDetails['fields']
@@ -122,6 +138,13 @@ interface InvoiceQrExtractionResult {
   detected: boolean
   rawPayload?: string
   parsedFields?: DeterministicDocumentQrParsedFields
+}
+
+interface InvoiceOcrExtractionResult {
+  detected: boolean
+  rawPayload?: string
+  parsedFields?: DeterministicDocumentOcrParsedFields
+  adapter?: 'ocr' | 'vision'
 }
 
 const FIELD_ALIASES = {
@@ -180,49 +203,53 @@ const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
 
 export class InvoiceDocumentParser {
   parse(input: ParseInvoiceDocumentInput): ExtractedRecord[] {
-    const extracted = extractInvoiceDocumentDetails({
+    const extraction = extractInvoiceDocumentDetails({
       content: input.content,
       binaryContentBase64: input.binaryContentBase64
-    }).fields
-    const missing = collectMissingInvoiceFields(extracted)
+    })
+    const summary = buildInvoiceDocumentExtractionSummary(extraction, input.binaryContentBase64)
+    const extracted = extraction.fields
 
-    if (missing.length > 0) {
-      throw new Error(`Invoice document is missing required fields: ${missing.join(', ')}`)
+    if (summary.finalStatus === 'failed') {
+      throw new Error(`Invoice document is missing required fields: ${summary.missingRequiredFields.join(', ')}`)
     }
 
-    const issueDate = safeNormalizeDocumentDate(extracted.issueDateRaw, 'Invoice issue date')
-      ?? normalizeDocumentDate(extracted.taxableDateRaw!, 'Invoice taxable date')
-    const dueDate = normalizeDocumentDate(extracted.dueDateRaw!, 'Invoice due date')
-    const taxableDate = safeNormalizeDocumentDate(extracted.taxableDateRaw, 'Invoice taxable date')
-    const total = parseDocumentMoney(extracted.totalRaw!, 'Invoice total')
-    const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Invoice VAT base')
-    const vat = safeParseDocumentMoney(extracted.vatRaw, 'Invoice VAT')
-    const ibanHint = normalizeIbanValue(extracted.ibanValue)
+    const issueDate = summary.issueDate ?? summary.taxableDate
+    const dueDate = summary.dueDate
+    const taxableDate = summary.taxableDate
+
+    if (!issueDate || typeof summary.totalAmountMinor !== 'number' || !summary.totalCurrency) {
+      return []
+    }
 
     const record: ExtractedRecord = {
       id: 'invoice-record-1',
       sourceDocumentId: input.sourceDocument.id,
       recordType: 'invoice-document',
       extractedAt: input.extractedAt,
-      rawReference: extracted.invoiceNumber,
-      amountMinor: total.amountMinor,
-      currency: total.currency,
+      ...(extracted.invoiceNumber ? { rawReference: extracted.invoiceNumber } : {}),
+      amountMinor: summary.totalAmountMinor,
+      currency: summary.totalCurrency,
       occurredAt: issueDate,
       data: {
         sourceSystem: 'invoice',
-        invoiceNumber: extracted.invoiceNumber,
-        supplier: extracted.supplier,
+        ...(extracted.invoiceNumber ? { invoiceNumber: extracted.invoiceNumber } : {}),
+        ...(extracted.supplier ? { supplier: extracted.supplier } : {}),
         ...(extracted.customer ? { customer: extracted.customer } : {}),
         issueDate,
-        dueDate,
+        ...(dueDate ? { dueDate } : {}),
         ...(taxableDate ? { taxableDate } : {}),
-        amountMinor: total.amountMinor,
-        currency: total.currency,
+        amountMinor: summary.totalAmountMinor,
+        currency: summary.totalCurrency,
         ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
         ...(extracted.description ? { description: extracted.description } : {}),
-        ...(vatBase ? { vatBaseAmountMinor: vatBase.amountMinor, vatBaseCurrency: vatBase.currency } : {}),
-        ...(vat ? { vatAmountMinor: vat.amountMinor, vatCurrency: vat.currency } : {}),
-        ...(ibanHint ? { ibanHint } : {})
+        ...(typeof summary.vatBaseAmountMinor === 'number' && summary.vatBaseCurrency
+          ? { vatBaseAmountMinor: summary.vatBaseAmountMinor, vatBaseCurrency: summary.vatBaseCurrency }
+          : {}),
+        ...(typeof summary.vatAmountMinor === 'number' && summary.vatCurrency
+          ? { vatAmountMinor: summary.vatAmountMinor, vatCurrency: summary.vatCurrency }
+          : {}),
+        ...(summary.ibanHint ? { ibanHint: summary.ibanHint } : {})
       }
     }
 
@@ -240,6 +267,30 @@ export function inspectInvoiceDocumentExtractionSummary(
   input: InspectInvoiceDocumentExtractionSummaryInput
 ): DeterministicDocumentExtractionSummary {
   const extraction = extractInvoiceDocumentDetails(normalizeInvoiceInspectionInput(input))
+  return buildInvoiceDocumentExtractionSummary(
+    extraction,
+    normalizeInvoiceInspectionInput(input).binaryContentBase64
+  )
+}
+
+export function detectInvoiceDocumentKeywordHits(content: string): string[] {
+  return INVOICE_KEYWORD_PATTERNS
+    .filter(({ pattern }) => pattern.test(content))
+    .map(({ label }) => label)
+}
+
+function normalizeInvoiceInspectionInput(
+  input: InspectInvoiceDocumentExtractionSummaryInput
+): { content: string; binaryContentBase64?: string } {
+  return typeof input === 'string'
+    ? { content: input }
+    : input
+}
+
+function buildInvoiceDocumentExtractionSummary(
+  extraction: InvoiceDocumentExtractionDetails,
+  binaryContentBase64?: string
+): DeterministicDocumentExtractionSummary {
   const extracted = extraction.fields
   const missingRequiredFields = collectMissingInvoiceSummaryFields(extracted)
   const issueDate = safeNormalizeDocumentDate(extracted.issueDateRaw, 'Invoice issue date')
@@ -263,6 +314,30 @@ export function inspectInvoiceDocumentExtractionSummary(
     || extracted.ibanValue
     || extracted.description
   )
+  const finalStatus = resolveDocumentFinalStatus({
+    missingRequiredFields,
+    hasMeaningfulFields,
+    hasFallbackBinaryEvidence: Boolean(binaryContentBase64?.trim())
+  })
+  const confidence = finalStatus === 'parsed'
+    ? 'strong'
+    : finalStatus === 'needs_review'
+      ? 'hint'
+      : 'none'
+  const extractionStages = [
+    ...extraction.extractionStages,
+    {
+      stage: 'validation_and_confidence' as const,
+      outcome: 'applied' as const,
+      recoveredFields: [],
+      confirmedFields: [],
+      notes: [
+        `finalStatus=${finalStatus}`,
+        `requiredFieldsCheck=${missingRequiredFields.length === 0 ? 'passed' : 'failed'}`,
+        `missing=${missingRequiredFields.length > 0 ? missingRequiredFields.join(',') : 'none'}`
+      ]
+    }
+  ]
 
   return {
     documentKind: 'invoice',
@@ -279,18 +354,23 @@ export function inspectInvoiceDocumentExtractionSummary(
     ...(vat ? { vatAmountMinor: vat.amountMinor, vatCurrency: vat.currency } : {}),
     ...(extracted.invoiceNumber ? { referenceNumber: extracted.invoiceNumber } : {}),
     ...(ibanHint ? { ibanHint } : {}),
-    confidence: missingRequiredFields.length === 0
-      ? 'strong'
-      : hasMeaningfulFields
-        ? 'hint'
-        : 'none',
+    confidence,
+    finalStatus,
+    requiredFieldsCheck: missingRequiredFields.length === 0 ? 'passed' : 'failed',
     missingRequiredFields,
     qrDetected: extraction.qrDetected,
     ...(extraction.qrRawPayload ? { qrRawPayload: extraction.qrRawPayload } : {}),
     ...(extraction.qrParsedFields ? { qrParsedFields: extraction.qrParsedFields } : {}),
+    ocrDetected: extraction.ocrDetected,
+    ...(extraction.ocrRawPayload ? { ocrRawPayload: extraction.ocrRawPayload } : {}),
+    ...(extraction.ocrParsedFields ? { ocrParsedFields: extraction.ocrParsedFields } : {}),
     ...(Object.keys(extraction.fieldProvenance).length > 0 ? { fieldProvenance: extraction.fieldProvenance } : {}),
+    ...(Object.keys(extraction.fieldConfidence).length > 0 ? { fieldConfidence: extraction.fieldConfidence } : {}),
     ...(extraction.qrRecoveredFields.length > 0 ? { qrRecoveredFields: extraction.qrRecoveredFields } : {}),
     ...(extraction.qrConfirmedFields.length > 0 ? { qrConfirmedFields: extraction.qrConfirmedFields } : {}),
+    ...(extraction.ocrRecoveredFields.length > 0 ? { ocrRecoveredFields: extraction.ocrRecoveredFields } : {}),
+    ...(extraction.ocrConfirmedFields.length > 0 ? { ocrConfirmedFields: extraction.ocrConfirmedFields } : {}),
+    ...(extractionStages.length > 0 ? { extractionStages } : {}),
     ...(extraction.groupedHeaderLabels.length > 0 ? { groupedHeaderLabels: extraction.groupedHeaderLabels } : {}),
     ...(extraction.groupedHeaderValues.length > 0 ? { groupedHeaderValues: extraction.groupedHeaderValues } : {}),
     ...(extraction.groupedTotalsLabels.length > 0 ? { groupedTotalsLabels: extraction.groupedTotalsLabels } : {}),
@@ -300,20 +380,6 @@ export function inspectInvoiceDocumentExtractionSummary(
     ...(extraction.rawBlockDiscoveryDebug.length > 0 ? { rawBlockDiscoveryDebug: extraction.rawBlockDiscoveryDebug } : {}),
     fieldExtractionDebug: extraction.fieldDebug
   }
-}
-
-export function detectInvoiceDocumentKeywordHits(content: string): string[] {
-  return INVOICE_KEYWORD_PATTERNS
-    .filter(({ pattern }) => pattern.test(content))
-    .map(({ label }) => label)
-}
-
-function normalizeInvoiceInspectionInput(
-  input: InspectInvoiceDocumentExtractionSummaryInput
-): { content: string; binaryContentBase64?: string } {
-  return typeof input === 'string'
-    ? { content: input }
-    : input
 }
 
 function extractInvoiceDocumentDetails(input: {
@@ -353,7 +419,22 @@ function extractInvoiceDocumentDetails(input: {
     ibanValue: normalizeIbanValue(resolveInvoiceField('ibanHint', debugStates.ibanHint))
   }
   const qrExtraction = extractInvoiceQrExtraction(content, input.binaryContentBase64)
-  const mergedFields = mergeInvoiceTextAndQrFields(textExtracted, qrExtraction)
+  const qrMergedFields = mergeInvoiceTextAndQrFields(textExtracted, qrExtraction)
+  const ocrExtraction = extractInvoiceOcrExtraction(content, input.binaryContentBase64)
+  const mergedFields = mergeInvoiceFieldsAndOcr(
+    qrMergedFields.fields,
+    qrMergedFields.fieldProvenance,
+    ocrExtraction
+  )
+  const extractionStages = buildInvoiceExtractionStages({
+    textFields: textExtracted,
+    qrExtraction,
+    qrRecoveredFields: qrMergedFields.qrRecoveredFields,
+    qrConfirmedFields: qrMergedFields.qrConfirmedFields,
+    ocrExtraction,
+    ocrRecoveredFields: mergedFields.ocrRecoveredFields,
+    ocrConfirmedFields: mergedFields.ocrConfirmedFields
+  })
 
   return {
     fields: mergedFields.fields,
@@ -365,11 +446,18 @@ function extractInvoiceDocumentDetails(input: {
     groupedTotalsBlockDebug: groupedTotalsSelection.debug,
     rawBlockDiscoveryDebug,
     fieldProvenance: mergedFields.fieldProvenance,
+    fieldConfidence: buildInvoiceFieldConfidenceMap(mergedFields.fields, mergedFields.fieldProvenance),
     qrDetected: qrExtraction.detected,
     qrRawPayload: qrExtraction.rawPayload,
     qrParsedFields: qrExtraction.parsedFields,
-    qrRecoveredFields: mergedFields.qrRecoveredFields,
-    qrConfirmedFields: mergedFields.qrConfirmedFields,
+    qrRecoveredFields: qrMergedFields.qrRecoveredFields,
+    qrConfirmedFields: qrMergedFields.qrConfirmedFields,
+    ocrDetected: ocrExtraction.detected,
+    ocrRawPayload: ocrExtraction.rawPayload,
+    ocrParsedFields: ocrExtraction.parsedFields,
+    ocrRecoveredFields: mergedFields.ocrRecoveredFields,
+    ocrConfirmedFields: mergedFields.ocrConfirmedFields,
+    extractionStages,
     fieldDebug: Object.fromEntries(
       Object.entries(debugStates).map(([key, state]) => [key, {
         winnerRule: state.winnerRule,
@@ -566,6 +654,234 @@ function mergeInvoiceTextAndQrFields(
   }
 }
 
+function mergeInvoiceFieldsAndOcr(
+  baseFields: InvoiceExtractedFields,
+  baseFieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>,
+  ocrExtraction: InvoiceOcrExtractionResult
+): {
+  fields: InvoiceExtractedFields
+  fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  ocrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  ocrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+} {
+  const mergedFields: InvoiceExtractedFields = { ...baseFields }
+  const fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>> = { ...baseFieldProvenance }
+  const ocrRecoveredFields: DeterministicDocumentSummaryFieldKey[] = []
+  const ocrConfirmedFields: DeterministicDocumentSummaryFieldKey[] = []
+  const ocrFields = ocrExtraction.parsedFields
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'referenceNumber',
+    currentValue: mergedFields.invoiceNumber,
+    fallbackValue: ocrFields?.referenceNumber,
+    normalizeCurrent: normalizeInvoiceReferenceValue,
+    normalizeFallback: normalizeInvoiceReferenceValue,
+    assign(value) {
+      mergedFields.invoiceNumber = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'issuerOrCounterparty',
+    currentValue: mergedFields.supplier,
+    fallbackValue: ocrFields?.issuerOrCounterparty,
+    normalizeCurrent: normalizeComparableTextValue,
+    normalizeFallback: normalizeComparableTextValue,
+    assign(value) {
+      mergedFields.supplier = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'customer',
+    currentValue: mergedFields.customer,
+    fallbackValue: ocrFields?.customer,
+    normalizeCurrent: normalizeComparableTextValue,
+    normalizeFallback: normalizeComparableTextValue,
+    assign(value) {
+      mergedFields.customer = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'issueDate',
+    currentValue: mergedFields.issueDateRaw,
+    fallbackValue: ocrFields?.issueDate,
+    normalizeCurrent: normalizeComparableInvoiceDate,
+    normalizeFallback: normalizeComparableInvoiceDate,
+    assign(value) {
+      mergedFields.issueDateRaw = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'dueDate',
+    currentValue: mergedFields.dueDateRaw,
+    fallbackValue: ocrFields?.dueDate,
+    normalizeCurrent: normalizeComparableInvoiceDate,
+    normalizeFallback: normalizeComparableInvoiceDate,
+    assign(value) {
+      mergedFields.dueDateRaw = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'taxableDate',
+    currentValue: mergedFields.taxableDateRaw,
+    fallbackValue: ocrFields?.taxableDate,
+    normalizeCurrent: normalizeComparableInvoiceDate,
+    normalizeFallback: normalizeComparableInvoiceDate,
+    assign(value) {
+      mergedFields.taxableDateRaw = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'paymentMethod',
+    currentValue: mergedFields.paymentMethod,
+    fallbackValue: ocrFields?.paymentMethod,
+    normalizeCurrent: normalizeComparableTextValue,
+    normalizeFallback: normalizeComparableTextValue,
+    assign(value) {
+      mergedFields.paymentMethod = normalizePaymentMethodValue(value)
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'totalAmount',
+    currentValue: mergedFields.totalRaw,
+    fallbackValue: ocrFields?.totalAmount,
+    normalizeCurrent: normalizeComparableMoneyValue,
+    normalizeFallback: normalizeComparableMoneyValue,
+    assign(value) {
+      mergedFields.totalRaw = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'vatBaseAmount',
+    currentValue: mergedFields.vatBaseRaw,
+    fallbackValue: ocrFields?.vatBaseAmount,
+    normalizeCurrent: normalizeComparableMoneyValue,
+    normalizeFallback: normalizeComparableMoneyValue,
+    assign(value) {
+      mergedFields.vatBaseRaw = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'vatAmount',
+    currentValue: mergedFields.vatRaw,
+    fallbackValue: ocrFields?.vatAmount,
+    normalizeCurrent: normalizeComparableMoneyValue,
+    normalizeFallback: normalizeComparableMoneyValue,
+    assign(value) {
+      mergedFields.vatRaw = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeInvoiceFallbackField({
+    fieldKey: 'ibanHint',
+    currentValue: mergedFields.ibanValue,
+    fallbackValue: ocrFields?.ibanHint,
+    normalizeCurrent: normalizeIbanValue,
+    normalizeFallback: normalizeIbanValue,
+    assign(value) {
+      mergedFields.ibanValue = value
+    },
+    fallbackProvenance: ocrExtraction.adapter === 'vision' ? 'vision' : 'ocr',
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  if (!mergedFields.description?.trim() && ocrFields?.note?.trim()) {
+    mergedFields.description = ocrFields.note
+  }
+
+  return {
+    fields: mergedFields,
+    fieldProvenance,
+    ocrRecoveredFields,
+    ocrConfirmedFields
+  }
+}
+
+function mergeInvoiceFallbackField(input: {
+  fieldKey: DeterministicDocumentSummaryFieldKey
+  currentValue?: string
+  fallbackValue?: string
+  normalizeCurrent: (value: string | undefined) => string | undefined
+  normalizeFallback?: (value: string | undefined) => string | undefined
+  assign: (value: string | undefined) => void
+  fallbackProvenance: DeterministicDocumentFieldProvenance
+  fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+  recoveredFields: DeterministicDocumentSummaryFieldKey[]
+  confirmedFields: DeterministicDocumentSummaryFieldKey[]
+}): void {
+  const normalizedCurrentValue = input.normalizeCurrent(input.currentValue)
+  const normalizedFallbackValue = (input.normalizeFallback ?? input.normalizeCurrent)(input.fallbackValue)
+
+  if (normalizedCurrentValue && normalizedFallbackValue && normalizedCurrentValue === normalizedFallbackValue) {
+    if (!input.confirmedFields.includes(input.fieldKey)) {
+      input.confirmedFields.push(input.fieldKey)
+    }
+    return
+  }
+
+  if (normalizedCurrentValue) {
+    return
+  }
+
+  if (normalizedFallbackValue) {
+    input.assign(input.fallbackValue)
+    input.fieldProvenance[input.fieldKey] = input.fallbackProvenance
+    if (!input.recoveredFields.includes(input.fieldKey)) {
+      input.recoveredFields.push(input.fieldKey)
+    }
+  }
+}
+
 function mergeInvoiceSummaryField(input: {
   fieldKey: DeterministicDocumentSummaryFieldKey
   textValue?: string
@@ -649,6 +965,21 @@ function extractInvoiceQrExtraction(content: string, binaryContentBase64?: strin
   }
 }
 
+function extractInvoiceOcrExtraction(content: string, binaryContentBase64?: string): InvoiceOcrExtractionResult {
+  const extraction = extractDocumentOcrOrVisionFallback({
+    content,
+    binaryContentBase64,
+    documentKind: 'invoice'
+  })
+
+  return {
+    detected: extraction.detected,
+    rawPayload: extraction.rawPayload,
+    parsedFields: extraction.parsedFields,
+    adapter: extraction.adapter
+  }
+}
+
 function detectInvoiceQrPayload(content: string, binaryContentBase64?: string): string | undefined {
   const textPayload = extractSpdPayloadCandidate(content)
   if (textPayload) {
@@ -684,27 +1015,6 @@ function extractSpdPayloadCandidate(source: string): string | undefined {
 
   return candidate.startsWith('SPD*1.0*') ? candidate : undefined
 }
-
-function decodeBase64ToLatin1(value: string): string | undefined {
-  try {
-    if (typeof atob === 'function') {
-      return atob(value)
-    }
-  } catch {
-    // Fall through to Buffer for Node-based tests.
-  }
-
-  try {
-    if (typeof Buffer !== 'undefined') {
-      return Buffer.from(value, 'base64').toString('latin1')
-    }
-  } catch {
-    return undefined
-  }
-
-  return undefined
-}
-
 function parseCzechSpdQrPayload(payload: string): DeterministicDocumentQrParsedFields {
   const parsedFields: DeterministicDocumentQrParsedFields = {}
   const parts = payload.split('*').slice(2)
@@ -971,6 +1281,118 @@ function normalizePaymentMethodValue(value: string | undefined): string | undefi
   return normalized
     .replace(/^Přev\.\s*příkaz$/iu, 'Přev. příkaz')
     .replace(/^Prev\.\s*prikaz$/iu, 'Přev. příkaz')
+}
+
+function buildInvoiceFieldConfidenceMap(
+  fields: InvoiceExtractedFields,
+  fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
+): Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldConfidence>> {
+  const byField: Array<[DeterministicDocumentSummaryFieldKey, string | undefined]> = [
+    ['referenceNumber', fields.invoiceNumber],
+    ['issuerOrCounterparty', fields.supplier],
+    ['customer', fields.customer],
+    ['issueDate', fields.issueDateRaw],
+    ['dueDate', fields.dueDateRaw],
+    ['taxableDate', fields.taxableDateRaw],
+    ['paymentMethod', fields.paymentMethod],
+    ['totalAmount', fields.totalRaw],
+    ['vatBaseAmount', fields.vatBaseRaw],
+    ['vatAmount', fields.vatRaw],
+    ['ibanHint', fields.ibanValue]
+  ]
+
+  return Object.fromEntries(
+    byField
+      .map(([fieldKey, value]) => [
+        fieldKey,
+        deriveFieldConfidence(fieldProvenance[fieldKey], Boolean(value?.trim()))
+      ])
+      .filter((entry) => entry[1] !== 'none')
+  ) as Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldConfidence>>
+}
+
+function buildInvoiceExtractionStages(input: {
+  textFields: InvoiceExtractedFields
+  qrExtraction: InvoiceQrExtractionResult
+  qrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  qrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+  ocrExtraction: InvoiceOcrExtractionResult
+  ocrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
+  ocrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
+}): DeterministicDocumentExtractionStageDebug[] {
+  const textRecoveredFields = summarizeInvoiceTextRecoveredFields(input.textFields)
+
+  return [
+    {
+      stage: 'text_layer_parse',
+      outcome: textRecoveredFields.length > 0 ? 'applied' : 'skipped',
+      adapter: 'text',
+      recoveredFields: textRecoveredFields,
+      notes: textRecoveredFields.length > 0 ? undefined : ['no text-layer fields recovered']
+    },
+    {
+      stage: 'qr_or_spd_fallback',
+      outcome: input.qrExtraction.detected ? 'applied' : 'skipped',
+      adapter: 'qr',
+      recoveredFields: input.qrRecoveredFields,
+      confirmedFields: input.qrConfirmedFields,
+      notes: input.qrExtraction.detected
+        ? [input.qrExtraction.rawPayload ?? 'qr payload detected']
+        : ['no qr/spd payload detected']
+    },
+    {
+      stage: 'ocr_or_vision_fallback',
+      outcome: input.ocrExtraction.detected ? 'applied' : 'not_available',
+      adapter: input.ocrExtraction.adapter ?? 'ocr',
+      recoveredFields: input.ocrRecoveredFields,
+      confirmedFields: input.ocrConfirmedFields,
+      notes: input.ocrExtraction.detected
+        ? [input.ocrExtraction.rawPayload ?? 'ocr payload detected']
+        : ['no ocr/vision fallback payload detected']
+    }
+  ]
+}
+
+function summarizeInvoiceTextRecoveredFields(
+  fields: InvoiceExtractedFields
+): DeterministicDocumentSummaryFieldKey[] {
+  const recoveredFields: DeterministicDocumentSummaryFieldKey[] = []
+
+  if (fields.invoiceNumber?.trim()) {
+    recoveredFields.push('referenceNumber')
+  }
+  if (fields.supplier?.trim()) {
+    recoveredFields.push('issuerOrCounterparty')
+  }
+  if (fields.customer?.trim()) {
+    recoveredFields.push('customer')
+  }
+  if (fields.issueDateRaw?.trim()) {
+    recoveredFields.push('issueDate')
+  }
+  if (fields.dueDateRaw?.trim()) {
+    recoveredFields.push('dueDate')
+  }
+  if (fields.taxableDateRaw?.trim()) {
+    recoveredFields.push('taxableDate')
+  }
+  if (fields.paymentMethod?.trim()) {
+    recoveredFields.push('paymentMethod')
+  }
+  if (fields.totalRaw?.trim()) {
+    recoveredFields.push('totalAmount')
+  }
+  if (fields.vatBaseRaw?.trim()) {
+    recoveredFields.push('vatBaseAmount')
+  }
+  if (fields.vatRaw?.trim()) {
+    recoveredFields.push('vatAmount')
+  }
+  if (fields.ibanValue?.trim()) {
+    recoveredFields.push('ibanHint')
+  }
+
+  return recoveredFields
 }
 
 function buildInvoiceFieldDebugStates(): Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState> {

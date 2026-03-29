@@ -1196,6 +1196,69 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
+      function buildDocumentOcrDebugMarkup(file) {
+        const summary = file && file.documentExtractionSummary;
+
+        if (!summary) {
+          return '';
+        }
+
+        const parsedOcrFields = summary.ocrParsedFields || {};
+        const parsedOcrEntries = Object.keys(parsedOcrFields)
+          .sort()
+          .map(function (fieldKey) {
+            return fieldKey + '=' + String(parsedOcrFields[fieldKey]);
+          });
+
+        return [
+          '<br /><span class="hint">OCR detected: ' + escapeHtml(summary.ocrDetected ? 'yes' : 'no') + '</span>',
+          summary.ocrRawPayload
+            ? '<br /><span class="hint">OCR raw payload: ' + escapeHtml(String(summary.ocrRawPayload)) + '</span>'
+            : '',
+          '<br /><span class="hint">OCR parsed fields: '
+            + escapeHtml(parsedOcrEntries.length > 0 ? parsedOcrEntries.join(' | ') : 'žádné')
+            + '</span>',
+          '<br /><span class="hint">OCR recovered fields: '
+            + escapeHtml(Array.isArray(summary.ocrRecoveredFields) && summary.ocrRecoveredFields.length > 0 ? summary.ocrRecoveredFields.join(', ') : 'žádné')
+            + '</span>',
+          '<br /><span class="hint">OCR confirmed fields: '
+            + escapeHtml(Array.isArray(summary.ocrConfirmedFields) && summary.ocrConfirmedFields.length > 0 ? summary.ocrConfirmedFields.join(', ') : 'žádné')
+            + '</span>'
+        ].join('');
+      }
+
+      function buildDocumentExtractionStagesMarkup(file) {
+        const summary = file && file.documentExtractionSummary;
+
+        if (!summary) {
+          return '';
+        }
+
+        const stageEntries = Array.isArray(summary.extractionStages)
+          ? summary.extractionStages.map(function (stage) {
+              var notes = Array.isArray(stage.notes) && stage.notes.length > 0 ? ' (' + stage.notes.join(' / ') + ')' : '';
+              return stage.stage + '=' + stage.outcome + notes;
+            })
+          : [];
+        const confidenceEntries = summary.fieldConfidence
+          ? Object.keys(summary.fieldConfidence).sort().map(function (fieldKey) {
+              return fieldKey + '=' + String(summary.fieldConfidence[fieldKey]);
+            })
+          : [];
+
+        return [
+          summary.finalStatus
+            ? '<br /><span class="hint">Final status: ' + escapeHtml(String(summary.finalStatus)) + '</span>'
+            : '',
+          '<br /><span class="hint">Field confidence: '
+            + escapeHtml(confidenceEntries.length > 0 ? confidenceEntries.join(' | ') : 'žádné')
+            + '</span>',
+          '<br /><span class="hint">Extraction stages: '
+            + escapeHtml(stageEntries.length > 0 ? stageEntries.join(' | ') : 'žádné')
+            + '</span>'
+        ].join('');
+      }
+
       function buildAirbnbHeaderDiagnosticsMarkup(file) {
         const diagnostics = file && file.airbnbHeaderDiagnostics;
 
@@ -1362,6 +1425,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
               + escapeHtml(buildAmountDisplay(file.documentExtractionSummary.vatAmountMinor, file.documentExtractionSummary.vatCurrency))
               + '</span>'
             : '',
+          buildDocumentOcrDebugMarkup(file),
+          buildDocumentExtractionStagesMarkup(file),
           buildAirbnbHeaderDiagnosticsMarkup(file),
           buildInvoiceFieldExtractionDebugMarkup(file),
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',

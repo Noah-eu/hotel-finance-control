@@ -260,6 +260,12 @@ export function inspectBookingPayoutStatementExtractionSummary(
       : hasMeaningfulFields
         ? 'hint'
         : 'none',
+    finalStatus: fieldCheck.requiredFieldsCheck === 'passed'
+      ? 'parsed'
+      : hasMeaningfulFields
+        ? 'needs_review'
+        : 'failed',
+    requiredFieldsCheck: fieldCheck.requiredFieldsCheck,
     missingRequiredFields: fieldCheck.missingFields
   }
 }

@@ -223,7 +223,7 @@ function inspectUploadedFileParseDiagnostics(
 
     return {
       documentExtractionSummary: summary,
-      requiredFieldsCheck: summary.missingRequiredFields.length === 0 ? 'passed' : 'failed',
+      requiredFieldsCheck: summary.requiredFieldsCheck,
       missingFields: [...summary.missingRequiredFields]
     }
   }
@@ -235,8 +235,15 @@ function inspectUploadedFileParseDiagnostics(
   }
 
   if (file.sourceDocument.sourceSystem === 'receipt') {
+    const summary = inspectReceiptDocumentExtractionSummary({
+      content: file.content,
+      binaryContentBase64: file.binaryContentBase64
+    })
+
     return {
-      documentExtractionSummary: inspectReceiptDocumentExtractionSummary(file.content)
+      documentExtractionSummary: summary,
+      requiredFieldsCheck: summary.requiredFieldsCheck,
+      missingFields: [...summary.missingRequiredFields]
     }
   }
 
@@ -545,7 +552,37 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     : inferDocumentType(fileNameSourceSystem)
 
   if (ingestionBranch === 'ocr-required') {
+    const hintedSourceSystem = capability.documentHints.includes('invoice_like')
+      ? 'invoice'
+      : capability.documentHints.includes('receipt_like')
+        ? 'receipt'
+        : undefined
     const sourceSystem = fileNameSourceSystem
+    const ocrSupportedSourceSystem = sourceSystem === 'unknown'
+      ? hintedSourceSystem
+      : (sourceSystem === 'invoice' || sourceSystem === 'receipt' ? sourceSystem : undefined)
+
+    if (ocrSupportedSourceSystem) {
+      return {
+        sourceSystem: ocrSupportedSourceSystem,
+        documentType: inferDocumentType(ocrSupportedSourceSystem),
+        classificationBasis: sourceSystem === 'unknown' ? 'file-name' : 'file-name',
+        role: 'primary',
+        decision: buildResolvedDecision({
+          capability,
+          ingestionBranch,
+          sourceSystem: ocrSupportedSourceSystem,
+          documentType: inferDocumentType(ocrSupportedSourceSystem),
+          classificationBasis: 'file-name',
+          role: 'primary',
+          parserSupported: true,
+          matchedRules: ['capability-ocr-required', 'ocr-fallback-parser-supported'],
+          missingSignals: [],
+          detectedSignals: []
+        })
+      }
+    }
+
     const role = fileNameRole
     const documentType = role === 'supplemental' && sourceSystem === 'booking'
       ? 'payout_statement'

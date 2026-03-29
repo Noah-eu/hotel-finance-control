@@ -1205,13 +1205,15 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
-  it('routes scan-like invoice PDFs to the explicit OCR-required branch without contaminating deterministic browser ingest', () => {
+  it('routes scan-like invoice PDFs through the OCR fallback branch without contaminating payout ingest', () => {
+    const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const result = ingestUploadedMonthlyFiles({
       files: [
         {
-          name: 'faktura-laundry-2026-03.pdf',
-          content: '',
+          name: invoice.sourceDocument.fileName,
+          content: invoice.rawInput.content,
           contentFormat: 'pdf-text',
+          binaryContentBase64: invoice.rawInput.binaryContentBase64,
           uploadedAt: '2026-03-26T09:35:00.000Z',
           sourceDescriptor: {
             mimeType: 'application/pdf',
@@ -1233,12 +1235,21 @@ describe('runMonthlyReconciliationBatch', () => {
 
     expect(result.fileRoutes).toEqual([
       expect.objectContaining({
-        fileName: 'faktura-laundry-2026-03.pdf',
-        status: 'unsupported',
-        intakeStatus: 'unsupported',
+        fileName: 'invoice-scan-ocr.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
         sourceSystem: 'invoice',
         documentType: 'invoice',
-        reason: 'Doklad vypadá jako scan faktury bez čitelné textové vrstvy. V browser režimu zatím vyžaduje OCR.',
+        parseDiagnostics: expect.objectContaining({
+          requiredFieldsCheck: 'passed',
+          missingFields: [],
+          documentExtractionSummary: expect.objectContaining({
+            referenceNumber: 'OCR-INV-2026-77',
+            totalAmountMinor: 650000,
+            finalStatus: 'parsed',
+            ocrDetected: true
+          })
+        }),
         decision: expect.objectContaining({
           capability: expect.objectContaining({
             profile: 'pdf_image_only',
@@ -1246,11 +1257,11 @@ describe('runMonthlyReconciliationBatch', () => {
             documentHints: ['invoice_like']
           }),
           ingestionBranch: 'ocr-required',
-          resolvedBucket: 'unsupported'
+          resolvedBucket: 'recognized-supported'
         })
       })
     ])
-    expect(result.importedFiles).toEqual([])
+    expect(result.importedFiles).toHaveLength(1)
     expect(result.batch.report.summary.payoutBatchMatchCount).toBe(0)
     expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(0)
   })
