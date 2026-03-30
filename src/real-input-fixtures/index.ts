@@ -17,6 +17,7 @@ export interface RealInputFixture {
   | 'booking-invoice-pdf'
   | 'invoice-document-czech-pdf'
   | 'invoice-document-dobra-energie-pdf'
+  | 'invoice-document-dobra-energie-refund-pdf'
   | 'invoice-document-czech-pdf-with-spd-qr'
   | 'invoice-document-scan-pdf-with-ocr-stub'
   | 'receipt-document'
@@ -1053,6 +1054,7 @@ export const realInputFixtures: RealInputFixture[] = [
           dueDate: '2026-03-26',
           amountMinor: 1850000,
           currency: 'CZK',
+          referenceHints: ['INV-2026-332'],
           description: 'Laundry and linens'
         }
       })
@@ -1068,6 +1070,7 @@ export const realInputFixtures: RealInputFixture[] = [
         accountId: 'document-expenses',
         counterparty: 'Laundry Supply s.r.o.',
         reference: 'INV-2026-332',
+        referenceHints: ['INV-2026-332'],
         invoiceNumber: 'INV-2026-332',
         extractedRecordIds: ['invoice-record:doc-invoice-2026-332'],
         sourceDocumentIds: ['doc-invoice-2026-332' as NormalizedTransaction['sourceDocumentIds'][number]]
@@ -1296,7 +1299,9 @@ export const realInputFixtures: RealInputFixture[] = [
         occurredAt: '2026-03-18',
         data: {
           sourceSystem: 'invoice',
+          settlementDirection: 'payable_outgoing',
           invoiceNumber: 'DE-2026-03-4501',
+          variableSymbol: '2026034501',
           supplier: 'Dobrá Energie s.r.o.',
           customer: 'JOKELAND s.r.o.',
           issueDate: '2026-03-18',
@@ -1307,6 +1312,7 @@ export const realInputFixtures: RealInputFixture[] = [
           paymentMethod: 'Přev. příkaz',
           description: 'Dodávka elektřiny',
           billingPeriod: '01.03.2026 - 31.03.2026',
+          referenceHints: ['DE-2026-03-4501', '2026034501'],
           ibanHint: 'CZ6508000000192000145399'
         }
       })
@@ -1316,15 +1322,101 @@ export const realInputFixtures: RealInputFixture[] = [
         id: 'txn:document:invoice-record:doc-invoice-dobra-energie-2026034501' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'invoice',
+        settlementDirection: 'payable_outgoing',
         amountMinor: 1845000,
         currency: 'CZK',
         bookedAt: '2026-03-18',
         accountId: 'document-expenses',
         counterparty: 'Dobrá Energie s.r.o.',
         reference: 'DE-2026-03-4501',
+        referenceHints: ['DE-2026-03-4501', '2026034501'],
         invoiceNumber: 'DE-2026-03-4501',
+        variableSymbol: '2026034501',
         extractedRecordIds: ['invoice-record:doc-invoice-dobra-energie-2026034501'],
         sourceDocumentIds: ['doc-invoice-dobra-energie-2026034501' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-dobra-energie-refund-pdf',
+    description: 'Readable Dobrá Energie overpayment settlement invoice PDF fixture for incoming refund routing and bank linking hints.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-dobra-energie-refund-2026039901' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'Dobra-Energie-preplatek-2026-03.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Faktura - daňový doklad',
+        'Dodavatel',
+        'Dobrá Energie s.r.o.',
+        'Nádražní 12',
+        '602 00 Brno',
+        'Odběratel',
+        'JOKELAND s.r.o.',
+        'Faktura číslo',
+        'DE-RET-2026-03-9901',
+        'Variabilní symbol',
+        '2026039901',
+        'Datum vystavení',
+        '21.03.2026',
+        'Datum splatnosti',
+        '25.03.2026',
+        'Přeplatek',
+        '2 450,00 Kč',
+        'Přeplatek bude připsán na Váš bankovní účet',
+        '5599955956/5500',
+        'Předmět plnění:',
+        'Vyúčtování dodávky elektřiny za březen 2026'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record:doc-invoice-dobra-energie-refund-2026039901',
+        sourceDocumentId: 'doc-invoice-dobra-energie-refund-2026039901' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: 'DE-RET-2026-03-9901',
+        amountMinor: 245000,
+        currency: 'CZK',
+        occurredAt: '2026-03-21',
+        data: {
+          sourceSystem: 'invoice',
+          settlementDirection: 'refund_incoming',
+          invoiceNumber: 'DE-RET-2026-03-9901',
+          variableSymbol: '2026039901',
+          supplier: 'Dobrá Energie s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          issueDate: '2026-03-21',
+          dueDate: '2026-03-25',
+          amountMinor: 245000,
+          currency: 'CZK',
+          description: 'Vyúčtování dodávky elektřiny za březen 2026',
+          targetBankAccountHint: '5599955956/5500',
+          referenceHints: ['DE-RET-2026-03-9901', '2026039901']
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record:doc-invoice-dobra-energie-refund-2026039901' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'invoice',
+        subtype: 'supplier_refund',
+        settlementDirection: 'refund_incoming',
+        amountMinor: 245000,
+        currency: 'CZK',
+        bookedAt: '2026-03-21',
+        accountId: 'document-refunds',
+        counterparty: 'Dobrá Energie s.r.o.',
+        reference: 'DE-RET-2026-03-9901',
+        referenceHints: ['DE-RET-2026-03-9901', '2026039901'],
+        invoiceNumber: 'DE-RET-2026-03-9901',
+        variableSymbol: '2026039901',
+        targetBankAccountHint: '5599955956/5500',
+        extractedRecordIds: ['invoice-record:doc-invoice-dobra-energie-refund-2026039901'],
+        sourceDocumentIds: ['doc-invoice-dobra-energie-refund-2026039901' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

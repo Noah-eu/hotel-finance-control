@@ -394,6 +394,7 @@ describe('parseInvoiceDocument', () => {
       documentKind: 'invoice',
       sourceSystem: 'invoice',
       documentType: 'invoice',
+      settlementDirection: 'payable_outgoing',
       issuerOrCounterparty: 'Dobrá Energie s.r.o.',
       customer: 'JOKELAND s.r.o.',
       referenceNumber: 'DE-2026-03-4501',
@@ -415,6 +416,41 @@ describe('parseInvoiceDocument', () => {
           winnerValue: 'Dobrá Energie s.r.o.'
         })
       })
+    })
+  })
+
+  it('parses readable Dobrá Energie refund settlement invoices as incoming refund documents with bank-linking hints', () => {
+    const invoice = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-30T17:00:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-30T17:00:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      settlementDirection: 'refund_incoming',
+      issuerOrCounterparty: 'Dobrá Energie s.r.o.',
+      customer: 'JOKELAND s.r.o.',
+      referenceNumber: 'DE-RET-2026-03-9901',
+      variableSymbol: '2026039901',
+      issueDate: '2026-03-21',
+      dueDate: '2026-03-25',
+      totalAmountMinor: 245000,
+      totalCurrency: 'CZK',
+      targetBankAccountHint: '5599955956/5500',
+      confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: []
     })
   })
 

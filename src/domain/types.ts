@@ -1,6 +1,7 @@
 import type {
   BankFeeCategory,
   CurrencyCode,
+  DocumentSettlementDirection,
   DocumentId,
   ExpenseSettlementKind,
   ExceptionCaseId,
@@ -44,6 +45,7 @@ export interface NormalizedTransaction {
   direction: TransactionDirection
   source: SourceSystem
   subtype?: string
+  settlementDirection?: DocumentSettlementDirection
   amountMinor: number
   currency: CurrencyCode
   bookedAt: ISODateString
@@ -51,6 +53,7 @@ export interface NormalizedTransaction {
   accountId: string
   counterparty?: string
   reference?: string
+  referenceHints?: string[]
   reservationId?: string
   bookingPayoutBatchKey?: string
   payoutBatchIdentity?: string
@@ -66,6 +69,8 @@ export interface NormalizedTransaction {
   payoutSupplementSourceDocumentIds?: DocumentId[]
   payoutSupplementReservationIds?: string[]
   invoiceNumber?: string
+  variableSymbol?: string
+  targetBankAccountHint?: string
   extractedRecordIds: string[]
   sourceDocumentIds: DocumentId[]
 }
@@ -218,12 +223,14 @@ export interface ExpenseDocumentExpectation {
   documentId: DocumentId
   kind: ExpenseSettlementKind
   sourceSystem: 'invoice' | 'receipt'
+  settlementDirection: DocumentSettlementDirection
   bookedAt: ISODateString
   amountMinor: number
   currency: CurrencyCode
-  expectedBankDirection: 'out'
-  routingTarget: 'document_expense_outflow'
+  expectedBankDirection: 'in' | 'out'
+  routingTarget: 'document_expense_outflow' | 'document_refund_inflow'
   documentReference?: string
+  targetBankAccountHint?: string
 }
 
 export interface BankFeeClassification {

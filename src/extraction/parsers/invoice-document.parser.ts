@@ -1,4 +1,4 @@
-import type { ExtractedRecord } from '../../domain'
+import type { DocumentSettlementDirection, ExtractedRecord } from '../../domain'
 import type {
   DeterministicDocumentExtractionStageDebug,
   DeterministicDocumentFieldConfidence,
@@ -109,6 +109,9 @@ interface InvoiceDocumentExtractionDetails {
     vatRaw?: string
     ibanValue?: string
     billingPeriod?: string
+    variableSymbol?: string
+    settlementDirection?: DocumentSettlementDirection
+    targetBankAccountHint?: string
     localTotalRaw?: string
     referenceHints?: string[]
   }
@@ -238,7 +241,9 @@ export class InvoiceDocumentParser {
       occurredAt: issueDate,
       data: {
         sourceSystem: 'invoice',
+        ...(extracted.settlementDirection ? { settlementDirection: extracted.settlementDirection } : {}),
         ...(extracted.invoiceNumber ? { invoiceNumber: extracted.invoiceNumber } : {}),
+        ...(extracted.variableSymbol ? { variableSymbol: extracted.variableSymbol } : {}),
         ...(extracted.supplier ? { supplier: extracted.supplier } : {}),
         ...(extracted.customer ? { customer: extracted.customer } : {}),
         issueDate,
@@ -249,6 +254,7 @@ export class InvoiceDocumentParser {
         ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
         ...(extracted.description ? { description: extracted.description } : {}),
         ...(extracted.billingPeriod ? { billingPeriod: extracted.billingPeriod } : {}),
+        ...(extracted.targetBankAccountHint ? { targetBankAccountHint: extracted.targetBankAccountHint } : {}),
         ...(typeof summary.localAmountMinor === 'number' && summary.localCurrency
           ? { localAmountMinor: summary.localAmountMinor, localCurrency: summary.localCurrency }
           : {}),
@@ -358,6 +364,7 @@ function buildInvoiceDocumentExtractionSummary(
     documentKind: 'invoice',
     sourceSystem: 'invoice',
     documentType: 'invoice',
+    ...(extracted.settlementDirection ? { settlementDirection: extracted.settlementDirection } : {}),
     ...(extracted.supplier ? { issuerOrCounterparty: extracted.supplier } : {}),
     ...(extracted.customer ? { customer: extracted.customer } : {}),
     ...(extracted.billingPeriod ? { billingPeriod: extracted.billingPeriod } : {}),
@@ -370,7 +377,9 @@ function buildInvoiceDocumentExtractionSummary(
     ...(vatBase ? { vatBaseAmountMinor: vatBase.amountMinor, vatBaseCurrency: vatBase.currency } : {}),
     ...(vat ? { vatAmountMinor: vat.amountMinor, vatCurrency: vat.currency } : {}),
     ...(extracted.invoiceNumber ? { referenceNumber: extracted.invoiceNumber } : {}),
+    ...(extracted.variableSymbol ? { variableSymbol: extracted.variableSymbol } : {}),
     ...(ibanHint ? { ibanHint } : {}),
+    ...(extracted.targetBankAccountHint ? { targetBankAccountHint: extracted.targetBankAccountHint } : {}),
     confidence,
     finalStatus,
     requiredFieldsCheck: missingRequiredFields.length === 0 ? 'passed' : 'failed',
@@ -437,20 +446,31 @@ function extractInvoiceDocumentDetails(input: {
     ibanValue: normalizeIbanValue(resolveInvoiceField('ibanHint', debugStates.ibanHint))
   }
   const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
-  const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields)
+  const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields, lines)
+  const referenceHints = uniqueInvoiceReferenceHints([
+    ...(generalSupplementaryFields.referenceHints ?? []),
+    ...(bookingSupplementaryFields.referenceHints ?? [])
+  ])
   const bookingEnrichedTextFields: InvoiceExtractedFields = {
     ...textExtracted,
-    invoiceNumber: textExtracted.invoiceNumber ?? generalSupplementaryFields.invoiceNumber ?? bookingSupplementaryFields.invoiceNumber,
+    invoiceNumber: selectPreferredInvoiceNumber(
+      textExtracted.invoiceNumber,
+      generalSupplementaryFields.invoiceNumber,
+      bookingSupplementaryFields.invoiceNumber
+    ),
     supplier: textExtracted.supplier ?? bookingSupplementaryFields.supplier,
     issueDateRaw: textExtracted.issueDateRaw ?? bookingSupplementaryFields.issueDateRaw,
     dueDateRaw: textExtracted.dueDateRaw ?? bookingSupplementaryFields.dueDateRaw,
-    totalRaw: textExtracted.totalRaw ?? bookingSupplementaryFields.totalRaw,
+    totalRaw: textExtracted.totalRaw ?? generalSupplementaryFields.totalRaw ?? bookingSupplementaryFields.totalRaw,
     paymentMethod: textExtracted.paymentMethod ?? bookingSupplementaryFields.paymentMethod,
     description: textExtracted.description ?? bookingSupplementaryFields.description,
     ibanValue: textExtracted.ibanValue ?? bookingSupplementaryFields.ibanValue,
     billingPeriod: generalSupplementaryFields.billingPeriod ?? bookingSupplementaryFields.billingPeriod,
+    variableSymbol: generalSupplementaryFields.variableSymbol,
+    settlementDirection: generalSupplementaryFields.settlementDirection,
+    targetBankAccountHint: generalSupplementaryFields.targetBankAccountHint,
     localTotalRaw: bookingSupplementaryFields.localTotalRaw,
-    referenceHints: bookingSupplementaryFields.referenceHints
+    referenceHints: referenceHints.length > 0 ? referenceHints : undefined
   }
   const qrExtraction = extractInvoiceQrExtraction(content, input.binaryContentBase64)
   const qrMergedFields = mergeInvoiceTextAndQrFields(bookingEnrichedTextFields, qrExtraction)
@@ -978,22 +998,132 @@ function buildInvoiceRecordId(sourceDocumentId: ExtractedRecord['sourceDocumentI
 
 function extractGeneralInvoiceSupplementaryFields(
   content: string,
-  fields: Record<string, string>
+  fields: Record<string, string>,
+  lines: string[]
 ): Partial<InvoiceExtractedFields> {
-  const invoiceNumber = pickRequiredField(fields, FIELD_ALIASES.invoiceNumber)
+  const explicitInvoiceNumber = normalizeInvoiceReferenceValue(
+    pickRequiredField(fields, FIELD_ALIASES.invoiceNumber)
     ?? extractInvoiceRegexValue(content, [
       /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*[:\-]?\s*([^\n]+)/iu,
-      /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*\n\s*([^\n]+)/iu,
-      /(?:^|\n)\s*(?:variabilní\s+symbol|variable\s+symbol|vs)\s*[:\-]?\s*([^\n]+)/iu
+      /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*\n\s*([^\n]+)/iu
     ])
+  )
+  const variableSymbol = normalizeInvoiceReferenceValue(extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:variabilní\s+symbol|variable\s+symbol|vs)\s*[:\-]?\s*([^\n]+)/iu
+  ]))
+  const invoiceNumber = explicitInvoiceNumber ?? variableSymbol
   const billingPeriod = extractInvoiceRegexValue(content, [
     /(?:^|\n)\s*(?:obdob[íi]|billing\s+period|invoice\s+period|period)\s*[:\-]?\s*([^\n]+)/iu
   ])
+  const settlementDetails = extractInvoiceSettlementSupplementaryFields(content, lines)
+  const referenceHints = uniqueInvoiceReferenceHints([invoiceNumber, variableSymbol])
 
   return {
     ...(invoiceNumber ? { invoiceNumber } : {}),
-    ...(billingPeriod ? { billingPeriod } : {})
+    ...(billingPeriod ? { billingPeriod } : {}),
+    ...(variableSymbol ? { variableSymbol } : {}),
+    ...(settlementDetails.settlementDirection ? { settlementDirection: settlementDetails.settlementDirection } : {}),
+    ...(settlementDetails.totalRaw ? { totalRaw: settlementDetails.totalRaw } : {}),
+    ...(settlementDetails.targetBankAccountHint ? { targetBankAccountHint: settlementDetails.targetBankAccountHint } : {}),
+    ...(referenceHints.length > 0 ? { referenceHints } : {})
   }
+}
+
+function extractInvoiceSettlementSupplementaryFields(
+  content: string,
+  lines: string[]
+): Partial<InvoiceExtractedFields> {
+  const normalizedContent = normalizeLabelSearch(content)
+  const refundAmountRaw = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:přeplatek(?:\s+k\s+vrácen[íi])?|vratka|vrácen[áa]\s+částka|refund(?:\s+amount)?|overpayment)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*(?:přeplatek(?:\s+k\s+vrácen[íi])?|vratka|vrácen[áa]\s+částka|refund(?:\s+amount)?|overpayment)\s*\n\s*([^\n]+)/iu
+  ])
+  const targetBankAccountHint = extractInvoiceSettlementTargetBankAccountHint(content, lines)
+  const refundSignalScore =
+    (refundAmountRaw ? 2 : 0)
+    + (targetBankAccountHint ? 2 : 0)
+    + (/(?:bude|budou)\s+přips[áa]n[yo]?\s+na\s+v[aá]š\s+bankovn[íi]\s+účet/iu.test(content) ? 3 : 0)
+    + (/(?:^|\n)\s*(?:přeplatek|vratka|refund|overpayment)\b/imu.test(content) ? 2 : 0)
+  const payableSignalScore =
+    (normalizedContent.includes('celkem k uhrade')
+      || normalizedContent.includes('k uhrade')
+      || normalizedContent.includes('amount due')
+      || normalizedContent.includes('total due')
+      || normalizedContent.includes('k zaplaceni')
+      ? 2
+      : 0)
+  const settlementDirection: DocumentSettlementDirection | undefined = refundSignalScore >= 4
+    ? 'refund_incoming'
+    : payableSignalScore >= 2
+      ? 'payable_outgoing'
+      : undefined
+
+  return {
+    ...(settlementDirection ? { settlementDirection } : {}),
+    ...(settlementDirection === 'refund_incoming' && refundAmountRaw ? { totalRaw: refundAmountRaw } : {}),
+    ...(targetBankAccountHint ? { targetBankAccountHint } : {})
+  }
+}
+
+function extractInvoiceSettlementTargetBankAccountHint(
+  content: string,
+  lines: string[]
+): string | undefined {
+  const directTargetHint = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:bankovn[íi]\s+účet\s+pro\s+vrácen[íi]\s+přeplatku|účet\s+pro\s+vrácen[íi]\s+přeplatku|refund\s+account)\s*[:\-]?\s*([^\n]+)/iu
+  ])
+
+  if (looksLikeInvoiceBankAccountHint(directTargetHint)) {
+    return stripTrailingNoise(directTargetHint ?? '') || undefined
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = stripTrailingNoise(lines[index] ?? '')
+    if (!/(?:bude|budou)\s+přips[áa]n[yo]?\s+na\s+v[aá]š\s+bankovn[íi]\s+účet|vrácen[ao]?\s+na\s+v[aá]š\s+bankovn[íi]\s+účet/iu.test(line)) {
+      continue
+    }
+
+    const inlineHint = extractInvoiceBankAccountHint(line)
+    if (inlineHint) {
+      return inlineHint
+    }
+
+    for (let lookahead = 1; lookahead <= 3 && index + lookahead < lines.length; lookahead += 1) {
+      const candidate = extractInvoiceBankAccountHint(lines[index + lookahead] ?? '')
+      if (candidate) {
+        return candidate
+      }
+    }
+  }
+
+  return undefined
+}
+
+function extractInvoiceBankAccountHint(value: string): string | undefined {
+  const normalized = stripTrailingNoise(value)
+  const accountMatch = normalized.match(/(\d{0,6}-?\d{2,10}\/\d{4})/u)?.[1]
+  if (looksLikeInvoiceBankAccountHint(accountMatch)) {
+    return stripTrailingNoise(accountMatch ?? '') || undefined
+  }
+
+  const ibanMatch = normalized.match(/([A-Z]{2}\d{2}[0-9A-Z ]{10,30})/iu)?.[1]
+  if (looksLikeInvoiceBankAccountHint(ibanMatch)) {
+    return normalizeIbanValue(ibanMatch)
+  }
+
+  return undefined
+}
+
+function looksLikeInvoiceBankAccountHint(value: string | undefined): boolean {
+  if (!value?.trim()) {
+    return false
+  }
+
+  if (normalizeIbanValue(value)) {
+    return true
+  }
+
+  return /\d{0,6}-?\d{2,10}\/\d{4}/u.test(value)
 }
 
 function extractBookingInvoiceSupplementaryFields(
@@ -1072,6 +1202,25 @@ function uniqueInvoiceReferenceHints(values: Array<string | undefined>): string[
   return Array.from(new Set(values
     .map((value) => stripTrailingNoise(value ?? ''))
     .filter((value) => value.length > 0)))
+}
+
+function selectPreferredInvoiceNumber(...values: Array<string | undefined>): string | undefined {
+  const normalizedCandidates = values
+    .map((value) => normalizeInvoiceReferenceValue(value))
+    .filter((value): value is string => Boolean(value))
+
+  if (normalizedCandidates.length === 0) {
+    return undefined
+  }
+
+  return normalizedCandidates.sort((left, right) => invoiceReferenceSpecificityScore(right) - invoiceReferenceSpecificityScore(left))[0]
+}
+
+function invoiceReferenceSpecificityScore(value: string): number {
+  const separatorCount = (value.match(/[-/]/g) ?? []).length
+  const letterCount = (value.match(/[A-Z]/gi) ?? []).length
+
+  return (separatorCount * 100) + (letterCount * 10) + value.length
 }
 
 function buildQrMoneyLabel(amountMinor: number | undefined, currency: string | undefined): string | undefined {
@@ -1878,6 +2027,12 @@ function collectAnchoredInvoiceHeaderWindowCandidates(
     )
 
     const headerWindowLines = collectAnchoredHeaderWindowLines(lines, labelSpan.startIndex, referenceMatch.lineIndex)
+    const hasStructuredHeaderContext = hasAnchoredHeaderDatePaymentContext(headerWindowLines)
+
+    if (!hasStructuredHeaderContext) {
+      continue
+    }
+
     const paymentMethodCandidate = extractAnchoredPaymentMethodCandidate(headerWindowLines, referenceMatch.value)
     recordInvoiceFieldAttempt(
       debugStates.paymentMethod,
@@ -2527,6 +2682,7 @@ function extractFirstInvoiceReferenceCandidate(value: string): string | undefine
     .replace(/\s+/g, ' ')
     .trim()
   const candidates = [
+    ...Array.from(compactValue.matchAll(/\b[A-Z0-9]+(?:[-/][A-Z0-9]+)+\b/gi)),
     ...Array.from(compactValue.matchAll(/\b(?:[A-Z]{0,6}[-/]?)?\d[A-Z0-9/-]{5,}\b/gi)),
     ...Array.from(compactValue.matchAll(/\b\d{3,}(?:\s+\d{3,})+\b/gu))
   ]
@@ -3689,6 +3845,21 @@ function extractAnchoredPaymentMethodCandidate(
 
 function extractAnchoredHeaderDateCandidates(lines: string[]): string[] {
   return lines.flatMap((line) => extractDateTokens(line)).slice(0, 3)
+}
+
+function hasAnchoredHeaderDatePaymentContext(lines: string[]): boolean {
+  const normalizedWindow = normalizeLabelSearch(lines.join(' '))
+  const detectedFieldKeys = new Set<InvoiceSummaryFieldKey>()
+
+  for (const fieldKey of ['paymentMethod', 'issueDate', 'taxableDate', 'dueDate'] as const) {
+    const aliases = FIELD_ALIASES[fieldKey] ?? []
+
+    if (aliases.some((alias) => normalizedWindow.includes(normalizeLabelSearch(alias)))) {
+      detectedFieldKeys.add(fieldKey)
+    }
+  }
+
+  return detectedFieldKeys.has('paymentMethod') && detectedFieldKeys.size >= 3
 }
 
 function buildCompositeGroupedDatePaymentValueMap(

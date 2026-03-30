@@ -46,19 +46,34 @@ function normalizeInvoiceRecord(record: ExtractedRecord): NormalizedTransaction 
   const data = record.data as {
     supplier?: string
     invoiceNumber?: string
+    variableSymbol?: string
+    referenceHints?: string[]
+    settlementDirection?: 'payable_outgoing' | 'refund_incoming'
+    targetBankAccountHint?: string
   }
+  const settlementDirection = data.settlementDirection === 'refund_incoming'
+    ? 'refund_incoming'
+    : 'payable_outgoing'
+  const direction = settlementDirection === 'refund_incoming' ? 'in' : 'out'
 
   return {
     id: makeTransactionId(record.id),
-    direction: 'out',
+    direction,
     source: 'invoice',
+    subtype: settlementDirection === 'refund_incoming' ? 'supplier_refund' : 'supplier_invoice',
+    settlementDirection,
     amountMinor,
     currency,
     bookedAt,
-    accountId: 'document-expenses',
+    accountId: settlementDirection === 'refund_incoming' ? 'document-refunds' : 'document-expenses',
     counterparty: data.supplier,
     reference: record.rawReference,
+    referenceHints: Array.isArray(data.referenceHints)
+      ? data.referenceHints.filter((value): value is string => typeof value === 'string')
+      : undefined,
     invoiceNumber: data.invoiceNumber,
+    variableSymbol: data.variableSymbol,
+    targetBankAccountHint: data.targetBankAccountHint,
     extractedRecordIds: [record.id],
     sourceDocumentIds: [record.sourceDocumentId]
   }

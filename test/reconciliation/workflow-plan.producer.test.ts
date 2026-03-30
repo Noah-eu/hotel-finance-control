@@ -503,12 +503,34 @@ describe('buildReconciliationWorkflowPlan', () => {
             expect.objectContaining({
                 sourceSystem: 'invoice',
                 kind: 'supplier_invoice',
+                settlementDirection: 'payable_outgoing',
                 routingTarget: 'document_expense_outflow',
                 expectedBankDirection: 'out'
             })
         ])
         expect(plan.payoutRows).toHaveLength(0)
         expect(plan.directBankSettlements).toHaveLength(0)
+    })
+
+    it('routes supplier refund settlement invoices onto the incoming document path', () => {
+        const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: refundInvoice.expectedExtractedRecords,
+            normalizedTransactions: refundInvoice.expectedNormalizedTransactions ?? [],
+            requestedAt: '2026-03-30T17:15:00.000Z'
+        })
+
+        expect(plan.expenseDocuments).toEqual([
+            expect.objectContaining({
+                sourceSystem: 'invoice',
+                kind: 'supplier_refund',
+                settlementDirection: 'refund_incoming',
+                routingTarget: 'document_refund_inflow',
+                expectedBankDirection: 'in',
+                targetBankAccountHint: '5599955956/5500'
+            })
+        ])
     })
 
     it('classifies inferable bank fee categories from normalized bank outflows', () => {

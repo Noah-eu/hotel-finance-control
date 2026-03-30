@@ -34,15 +34,21 @@ export type ReservationSettlementChannel =
   | 'comgate'
   | 'expedia_direct_bank'
 
+export type DocumentSettlementDirection =
+  | 'payable_outgoing'
+  | 'refund_incoming'
+
 export type SettlementRoutingTarget =
   | 'rb_bank_inflow'
   | 'fio_bank_inflow'
+  | 'document_refund_inflow'
   | 'document_expense_outflow'
 
 export type PayoutBatchPlatform = 'booking' | 'airbnb' | 'comgate'
 
 export type ExpenseSettlementKind =
   | 'supplier_invoice'
+  | 'supplier_refund'
   | 'merchant_receipt'
 
 export type BankFeeCategory =

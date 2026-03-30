@@ -207,6 +207,7 @@ export function applyExpenseReviewOperatorOverrides(
   const confirmedOverrides: ReviewSectionItem[] = []
   const rejectedDocumentOverrides: ReviewSectionItem[] = []
   const rejectedOutflowOverrides: ReviewSectionItem[] = []
+  const rejectedInflowOverrides: ReviewSectionItem[] = []
 
   for (const override of overrideByReviewItemId.values()) {
     const reviewItem = reviewItemsById.get(override.reviewItemId)
@@ -221,6 +222,12 @@ export function applyExpenseReviewOperatorOverrides(
     }
 
     rejectedDocumentOverrides.push(toManuallyRejectedExpenseDocumentItem(reviewItem, override))
+
+    if (isIncomingExpenseReviewItem(reviewItem)) {
+      rejectedInflowOverrides.push(toManuallyRejectedExpenseOutflowItem(reviewItem, override))
+      continue
+    }
+
     rejectedOutflowOverrides.push(toManuallyRejectedExpenseOutflowItem(reviewItem, override))
   }
 
@@ -238,8 +245,17 @@ export function applyExpenseReviewOperatorOverrides(
       ...baseUnmatchedOutflows,
       ...rejectedOutflowOverrides
     ],
-    expenseUnmatchedInflows: baseUnmatchedInflows
+    expenseUnmatchedInflows: [
+      ...baseUnmatchedInflows,
+      ...rejectedInflowOverrides
+    ]
   }
+}
+
+function isIncomingExpenseReviewItem(reviewItem: ReviewSectionItem): boolean {
+  return reviewItem.documentBankRelation?.includes('příchozí bankovní platbou') === true
+    || reviewItem.operatorExplanation?.includes('příchozí bankovní') === true
+    || reviewItem.detail?.includes('příchozí bankovní') === true
 }
 
 const EXPENSE_REVIEW_CONFIRMED_MAX_DAY_DISTANCE = 7
@@ -279,6 +295,31 @@ interface ExpenseCandidatePlan {
   evaluations: ExpenseBankCandidateEvaluation[]
 }
 
+function getExpenseDocumentExpectedBankDirection(documentEntry: ExpenseDocumentReviewEntry): 'in' | 'out' {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  const settlementDirection = readString(data.settlementDirection) ?? documentEntry.normalizedTransaction?.settlementDirection
+
+  return settlementDirection === 'refund_incoming' || documentEntry.normalizedTransaction?.direction === 'in'
+    ? 'in'
+    : 'out'
+}
+
+function isIncomingExpenseDocument(documentEntry: ExpenseDocumentReviewEntry): boolean {
+  return getExpenseDocumentExpectedBankDirection(documentEntry) === 'in'
+}
+
+function getExpenseDocumentBankMovementLabel(documentEntry: ExpenseDocumentReviewEntry): string {
+  return isIncomingExpenseDocument(documentEntry) ? 'příchozí bankovní platba' : 'odchozí bankovní platba'
+}
+
+function getExpenseDocumentBankCandidateLabel(documentEntry: ExpenseDocumentReviewEntry): string {
+  return isIncomingExpenseDocument(documentEntry) ? 'příchozí bankovní kandidát' : 'odchozí bankovní kandidát'
+}
+
+function getExpenseDocumentBankRelationLabel(documentEntry: ExpenseDocumentReviewEntry): string {
+  return isIncomingExpenseDocument(documentEntry) ? 'příchozí bankovní platbou' : 'odchozí bankovní platbou'
+}
+
 interface InternalTransferCandidateEvaluation {
   incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
   dateDistance: number
@@ -316,6 +357,7 @@ function toManuallyConfirmedExpenseItem(
   override: ExpenseReviewOperatorOverride
 ): ReviewSectionItem {
   const item = cloneReviewSectionItem(reviewItem)
+  const bankMovementLabel = isIncomingExpenseReviewItem(reviewItem) ? 'příchozí bankovní platbu' : 'odchozí bankovní platbu'
 
   return {
     ...item,
@@ -323,10 +365,10 @@ function toManuallyConfirmedExpenseItem(
     domain: 'expense',
     kind: 'expense-matched',
     matchStrength: 'potvrzená shoda',
-    detail: 'Operátor ručně potvrdil vazbu dokladu na odchozí bankovní platbu.',
+    detail: `Operátor ručně potvrdil vazbu dokladu na ${bankMovementLabel}.`,
     operatorExplanation: 'Operátor ručně potvrdil navrženou vazbu doklad ↔ banka.',
     operatorCheckHint: 'Ruční rozhodnutí je uložené pro tento běh; další kontrola je nutná jen při sporu.',
-    documentBankRelation: 'Ručně potvrzená vazba mezi dokladem a odchozí bankovní platbou.',
+    documentBankRelation: `Ručně potvrzená vazba mezi dokladem a ${bankMovementLabel}.`,
     manualDecision: 'confirmed',
     manualDecisionLabel: 'Ručně potvrzená shoda',
     manualDecisionAt: override.decidedAt,
@@ -352,6 +394,7 @@ function toManuallyRejectedExpenseDocumentItem(
   const documentIbanHint = reviewItem.expenseComparison?.document?.ibanHint
   const documentSupplier = reviewItem.expenseComparison?.document?.supplierOrCounterparty
   const provenance = reviewItem.evidenceSummary.find((entry) => entry.label === 'provenience')?.value
+  const bankMovementLabel = isIncomingExpenseReviewItem(reviewItem) ? 'příchozí bankovní platby' : 'odchozí bankovní platby'
 
   return {
     id: `expense-manual-rejected-document:${reviewItem.id}`,
@@ -360,7 +403,7 @@ function toManuallyRejectedExpenseDocumentItem(
     title: documentReference
       ? `Nespárovaný doklad ${documentReference}`
       : reviewItem.title,
-    detail: 'Operátor ručně odmítl navrženou vazbu dokladu na bankovní odtok.',
+    detail: `Operátor ručně odmítl navrženou vazbu dokladu na ${bankMovementLabel}.`,
     transactionIds: documentTransactionIds,
     sourceDocumentIds: [...reviewItem.sourceDocumentIds],
     matchStrength: 'nespárováno',
@@ -372,8 +415,8 @@ function toManuallyRejectedExpenseDocumentItem(
       maybeEvidenceEntry('protistrana / dodavatel', documentSupplier ?? 'bez bankovního kandidáta'),
       maybeEvidenceEntry('provenience', provenance)
     ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
-    operatorExplanation: 'Operátor označil navržený bankovní kandidát jako neshodu; doklad zůstává bez potvrzené platby.',
-    operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Zkontrolujte jiný bankovní odtok nebo chybějící doklad.',
+    operatorExplanation: 'Operátor označil navržený bankovní kandidát jako neshodu; doklad zůstává bez potvrzené bankovní vazby.',
+    operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Zkontrolujte jiný bankovní pohyb nebo chybějící doklad.',
     documentBankRelation: 'Doklad zůstává bez potvrzené bankovní vazby; navržená shoda byla ručně odmítnuta.',
     expenseComparison: comparison,
     manualDecision: 'rejected',
@@ -391,15 +434,16 @@ function toManuallyRejectedExpenseOutflowItem(
     ? { ...reviewItem.expenseComparison.bank }
     : undefined
   const bankTransactionId = extractExpenseBankTransactionId(reviewItem)
+  const incoming = isIncomingExpenseReviewItem(reviewItem)
 
   return {
-    id: `expense-manual-rejected-outflow:${reviewItem.id}`,
+    id: `expense-manual-rejected-bank:${reviewItem.id}`,
     domain: 'expense',
-    kind: 'expense-unmatched-outflow',
+    kind: incoming ? 'expense-unmatched-inflow' : 'expense-unmatched-outflow',
     title: bankSide?.amount
-      ? `Nespárovaná odchozí platba ${bankSide.amount}`
+      ? `${incoming ? 'Nespárovaná příchozí platba' : 'Nespárovaná odchozí platba'} ${bankSide.amount}`
       : reviewItem.title,
-    detail: 'Operátor ručně odmítl navrženou vazbu odchozí bankovní platby na doklad.',
+    detail: `Operátor ručně odmítl navrženou vazbu ${incoming ? 'příchozí' : 'odchozí'} bankovní platby na doklad.`,
     transactionIds: bankTransactionId ? [bankTransactionId] : [],
     sourceDocumentIds: [],
     matchStrength: 'nespárováno',
@@ -411,9 +455,9 @@ function toManuallyRejectedExpenseOutflowItem(
       maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankSide?.supplierOrCounterparty, bankSide?.bankAccount]).join(' · ')),
       maybeEvidenceEntry('dokument', 'chybí')
     ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry)),
-    operatorExplanation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
+    operatorExplanation: `${incoming ? 'Příchozí' : 'Odchozí'} bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.`,
     operatorCheckHint: 'Tato dvojice se v tomto běhu znovu nenavrhuje. Dohledejte jiný doklad nebo ponechte platbu bez vazby.',
-    documentBankRelation: 'Odchozí bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.',
+    documentBankRelation: `${incoming ? 'Příchozí' : 'Odchozí'} bankovní platba zůstává bez potvrzeného dokladu; navržená shoda byla ručně odmítnuta.`,
     expenseComparison: bankSide ? { document: {}, bank: bankSide } : { document: {} },
     manualDecision: 'rejected',
     manualDecisionLabel: 'Ručně zamítnuto',
@@ -478,12 +522,19 @@ function buildExpenseReviewSections(
       .filter((match) => match.matched)
       .map((match) => match.bankTransactionId)
   )
-  const candidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
+  const outgoingCandidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
     transaction.source === 'bank'
     && transaction.direction === 'out'
     && missingSupportingOutflowIds.has(transaction.id)
     && !linkedExpenseTransactionIds.has(transaction.id)
     && !internalTransferOutflowKeys.has(buildReviewBankTransactionKey(transaction))
+  )
+  const incomingCandidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
+    transaction.source === 'bank'
+    && transaction.direction === 'in'
+    && !matchedRevenueTransactionIds.has(transaction.id)
+    && !payoutMatchedBankTransactionIds.has(transaction.id)
+    && !internalTransferIncomingKeys.has(buildReviewBankTransactionKey(transaction))
   )
   const usedCandidateBankIds = new Set<string>()
 
@@ -514,7 +565,12 @@ function buildExpenseReviewSections(
     .filter((documentEntry) => !documentEntry.normalizedTransaction || !linkedSupportTransactionIds.has(documentEntry.normalizedTransaction.id))
     .map((documentEntry) => ({
       documentEntry,
-      evaluations: evaluateExpenseBankCandidates(documentEntry, candidateBankTransactions)
+      evaluations: evaluateExpenseBankCandidates(
+        documentEntry,
+        getExpenseDocumentExpectedBankDirection(documentEntry) === 'in'
+          ? incomingCandidateBankTransactions
+          : outgoingCandidateBankTransactions
+      )
     }))
     .sort(compareExpenseCandidatePlans)
 
@@ -575,14 +631,8 @@ function buildExpenseReviewSections(
       return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes)]
     })
 
-  const expenseUnmatchedInflows = batch.reconciliation.normalizedTransactions
-    .filter((transaction) =>
-      transaction.source === 'bank'
-      && transaction.direction === 'in'
-      && !matchedRevenueTransactionIds.has(transaction.id)
-      && !payoutMatchedBankTransactionIds.has(transaction.id)
-      && !internalTransferIncomingKeys.has(buildReviewBankTransactionKey(transaction))
-    )
+  const expenseUnmatchedInflows = incomingCandidateBankTransactions
+    .filter((transaction) => !usedCandidateBankIds.has(transaction.id))
     .map((transaction) => toExpenseUnmatchedInflowReviewItem(batch, transaction, fileRoutes))
 
   return {
@@ -605,6 +655,8 @@ function toExpenseMatchedReviewItem(
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
   const matchStrength = classifyExpenseMatchedStrength(reasons, matchScore)
+  const bankMovementLabel = getExpenseDocumentBankMovementLabel(documentEntry)
+  const bankRelationLabel = getExpenseDocumentBankRelationLabel(documentEntry)
 
   return {
     id: `expense-matched:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
@@ -613,7 +665,7 @@ function toExpenseMatchedReviewItem(
     title: documentReference
       ? `Faktura ${documentReference}`
       : `Doklad ${documentEntry.extractedRecord.sourceDocumentId}`,
-    detail: 'Doklad a odchozí bankovní platba tvoří potvrzenou výdajovou vazbu.',
+    detail: `Doklad a ${bankMovementLabel} tvoří potvrzenou dokumentovou vazbu.`,
     transactionIds: [
       ...(documentEntry.normalizedTransaction ? [documentEntry.normalizedTransaction.id] : []),
       bankTransaction.id
@@ -622,12 +674,12 @@ function toExpenseMatchedReviewItem(
     matchStrength,
     evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons, candidateEvaluation),
     operatorExplanation: matchStrength === 'potvrzená shoda'
-      ? 'Částka, datum a alespoň jedna další stopa potvrzují vazbu dokladu na bankovní výdaj.'
-      : 'Doklad je spárovaný s bankovním výdajem, ale ručně ověřte reference nebo protistranu.',
+      ? `Částka, datum a alespoň jedna další stopa potvrzují vazbu dokladu na ${bankMovementLabel}.`
+      : `Doklad je spárovaný s ${bankMovementLabel}, ale ručně ověřte reference nebo protistranu.`,
     operatorCheckHint: matchStrength === 'potvrzená shoda'
       ? 'Ruční kontrolu dělejte jen při sporné protistraně nebo neobvyklém textu v bankovní platbě.'
-      : 'Zkontrolujte ručně reference dokladu, protistranu a datum platby.',
-    documentBankRelation: 'Potvrzená pravděpodobná vazba mezi dokladem a odchozí bankovní platbou.',
+      : 'Zkontrolujte ručně reference dokladu, protistranu a datum bankovního pohybu.',
+    documentBankRelation: `Potvrzená pravděpodobná vazba mezi dokladem a ${bankRelationLabel}.`,
     expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
   }
 }
@@ -666,6 +718,8 @@ function toExpenseNeedsReviewItem(
   const documentReference = getExpenseDocumentReference(documentEntry)
   const uniqueCandidate = ambiguousCount === 1
   const matchStrength: ReviewMatchStrength = uniqueCandidate ? 'slabší shoda' : 'vyžaduje kontrolu'
+  const bankMovementLabel = getExpenseDocumentBankMovementLabel(documentEntry)
+  const bankCandidateLabel = getExpenseDocumentBankCandidateLabel(documentEntry)
 
   return {
     id: `expense-review:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
@@ -674,7 +728,7 @@ function toExpenseNeedsReviewItem(
     title: documentReference
       ? `Doklad ke kontrole ${documentReference}`
       : `Doklad ke kontrole ${documentEntry.extractedRecord.sourceDocumentId}`,
-    detail: 'Doklad je načtený a existuje jediný blízký odchozí bankovní kandidát, ale vazba zatím není potvrzená.',
+    detail: `Doklad je načtený a existuje jediný blízký ${bankCandidateLabel}, ale vazba zatím není potvrzená.`,
     transactionIds: [
       ...(documentEntry.normalizedTransaction ? [documentEntry.normalizedTransaction.id] : []),
       bankTransaction.id
@@ -689,13 +743,13 @@ function toExpenseNeedsReviewItem(
       candidateEvaluation
     ),
     operatorExplanation: uniqueCandidate
-      ? 'Systém našel pravděpodobný odchozí bankovní kandidát, ale vazba zatím není dost silná na automatické potvrzení.'
-      : `Systém našel více možných odchozích kandidátů (${ambiguousCount}); zobrazen je nejlepší z nich a vazba vyžaduje ruční kontrolu.`,
+      ? `Systém našel pravděpodobný ${bankCandidateLabel}, ale vazba zatím není dost silná na automatické potvrzení.`
+      : `Systém našel více možných ${bankCandidateLabel}ů (${ambiguousCount}); zobrazen je nejlepší z nich a vazba vyžaduje ruční kontrolu.`,
     operatorCheckHint: uniqueCandidate
-      ? 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum odchozí platby.'
+      ? 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum bankovního pohybu.'
       : 'Zkontrolujte ručně více podobných bankovních kandidátů a potvrďte správnou vazbu dokladu.',
     documentBankRelation: uniqueCandidate
-      ? 'Doklad je načtený a existuje pravděpodobný bankovní kandidát, ale vazba zatím není potvrzená.'
+      ? `Doklad je načtený a existuje pravděpodobný ${bankCandidateLabel}, ale vazba zatím není potvrzená.`
       : 'Doklad je načtený a existuje více podobných bankovních kandidátů; vazba není jednoznačná.',
     expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
   }
@@ -707,6 +761,7 @@ function toExpenseUnmatchedDocumentReviewItem(
   fileRoutes: UploadedMonthlyFileRoute[] | undefined
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
+  const bankMovementLabel = getExpenseDocumentBankMovementLabel(documentEntry)
 
   return {
     id: `expense-unmatched-document:${documentEntry.extractedRecord.id}`,
@@ -715,14 +770,14 @@ function toExpenseUnmatchedDocumentReviewItem(
     title: documentReference
       ? `Nespárovaný doklad ${documentReference}`
       : `Nespárovaný doklad ${documentEntry.extractedRecord.sourceDocumentId}`,
-    detail: 'Doklad je načtený, ale nebyla nalezena jednoznačná odchozí bankovní platba.',
+    detail: `Doklad je načtený, ale nebyla nalezena jednoznačná ${bankMovementLabel}.`,
     transactionIds: documentEntry.normalizedTransaction ? [documentEntry.normalizedTransaction.id] : [],
     sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
     matchStrength: 'nespárováno',
     evidenceSummary: buildExpenseEvidenceSummary(documentEntry, undefined, fileRoutes),
-    operatorExplanation: 'Doklad je použitelný pro kontrolu, ale bez potvrzené vazby na bankovní výdaj.',
-    operatorCheckHint: 'Zkontrolujte ručně, zda v bance nechybí odchozí platba se stejnou částkou nebo odpovídající referencí.',
-    documentBankRelation: 'Doklad je načtený, ale zatím bez potvrzené bankovní vazby.',
+    operatorExplanation: `Doklad je použitelný pro kontrolu, ale bez potvrzené vazby na ${bankMovementLabel}.`,
+    operatorCheckHint: 'Zkontrolujte ručně, zda v bance nechybí pohyb se stejnou částkou nebo odpovídající referencí.',
+    documentBankRelation: `Doklad je načtený, ale zatím bez potvrzené vazby na ${bankMovementLabel}.`,
     expenseComparison: buildExpenseComparison(documentEntry, undefined)
   }
 }
@@ -761,14 +816,14 @@ function toExpenseUnmatchedInflowReviewItem(
     domain: 'expense',
     kind: 'expense-unmatched-inflow',
     title: `Nespárovaná příchozí platba ${formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency)}`,
-    detail: 'Příchozí bankovní pohyb zatím nemá potvrzenou vazbu na payout, rezervaci ani interní převod mezi vlastními účty.',
+    detail: 'Příchozí bankovní pohyb zatím nemá potvrzenou vazbu na payout, refund dokument ani interní převod mezi vlastními účty.',
     transactionIds: [bankTransaction.id],
     sourceDocumentIds: [],
     matchStrength: 'nespárováno',
     evidenceSummary: buildExpenseInflowEvidenceSummary(bankTransaction),
     operatorExplanation: 'Příchozí bankovní platba zůstává bez potvrzeného vysvětlení v aktuálním měsíčním workflow.',
-    operatorCheckHint: 'Zkontrolujte ručně protistranu, zprávu banky a případnou vazbu na payout, vratku nebo interní převod.',
-    documentBankRelation: 'Existuje příchozí bankovní platba, ale zatím bez potvrzené vazby na payout nebo interní převod.',
+    operatorCheckHint: 'Zkontrolujte ručně protistranu, zprávu banky a případnou vazbu na payout, refund dokument nebo interní převod.',
+    documentBankRelation: 'Existuje příchozí bankovní platba, ale zatím bez potvrzené vazby na payout, refund dokument nebo interní převod.',
     expenseComparison: buildExpenseInflowComparison(bankTransaction)
   }
 }
@@ -813,6 +868,10 @@ function evaluateExpenseBankCandidate(
     return null
   }
 
+  if (bankTransaction.direction !== getExpenseDocumentExpectedBankDirection(documentEntry)) {
+    return null
+  }
+
   const amountDeltaMinor = Math.abs(bankTransaction.amountMinor - documentAmountMinor)
   const exactAmount = amountDeltaMinor === 0
   const nearAmount = amountDeltaMinor <= EXPENSE_REVIEW_WEAK_AMOUNT_DELTA_MINOR
@@ -826,10 +885,10 @@ function evaluateExpenseBankCandidate(
     return null
   }
 
-  const documentReference = getExpenseDocumentReference(documentEntry)
+  const documentReferenceHints = getExpenseDocumentReferenceHints(documentEntry)
   const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
   const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
-  const referenceAligned = expenseReferenceMatches(documentReference, bankTransaction.reference)
+  const referenceAligned = expenseReferenceMatches(documentReferenceHints, bankTransaction.reference)
   const counterpartyAligned = expenseCounterpartyMatches(documentCounterparty, bankTransaction)
   const ibanAligned = expenseIbanMatches(documentIbanHint, bankTransaction)
 
@@ -970,22 +1029,20 @@ function buildExpenseComparison(
   documentEntry: ExpenseDocumentReviewEntry,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined
 ): ReviewExpenseComparison {
-  const documentData = documentEntry.extractedRecord.data as Record<string, unknown>
-
   return {
     variant: 'document-bank',
     leftLabel: 'Doklad',
     rightLabel: 'Banka',
     document: {
-      supplierOrCounterparty: readString(documentData.supplier) ?? readString(documentData.merchant) ?? documentEntry.normalizedTransaction?.counterparty,
+      supplierOrCounterparty: getExpenseDocumentCounterparty(documentEntry),
       reference: getExpenseDocumentReference(documentEntry),
-      issueDate: readString(documentData.issueDate) ?? documentEntry.extractedRecord.occurredAt,
-      dueDate: readString(documentData.dueDate),
+      issueDate: getExpenseDocumentIssueDate(documentEntry),
+      dueDate: getExpenseDocumentDueDate(documentEntry),
       amount: typeof documentEntry.extractedRecord.amountMinor === 'number' && documentEntry.extractedRecord.currency
         ? formatAmountMinorCs(documentEntry.extractedRecord.amountMinor, documentEntry.extractedRecord.currency)
         : undefined,
       currency: documentEntry.extractedRecord.currency,
-      ibanHint: readString(documentData.ibanHint)
+      ibanHint: getExpenseDocumentIbanHint(documentEntry)
     },
     ...(bankTransaction
       ? {
@@ -1054,7 +1111,8 @@ function buildExpenseEvidenceSummary(
   confirmedReasons: string[] = [],
   candidateEvaluation?: ExpenseBankCandidateEvaluation
 ): ReviewEvidenceEntry[] {
-  const documentReference = getExpenseDocumentReference(documentEntry)
+  const documentReferenceHints = getExpenseDocumentReferenceHints(documentEntry)
+  const documentReference = documentReferenceHints[0]
   const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
   const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
   const documentProvenance = buildDocumentProvenanceLabel(fileRoutes, [documentEntry.extractedRecord.sourceDocumentId])
@@ -1066,7 +1124,7 @@ function buildExpenseEvidenceSummary(
         : undefined
     )
   const referenceAligned = bankTransaction
-    ? confirmedReasons.includes('referenceAligned') || expenseReferenceMatches(documentReference, bankTransaction.reference)
+    ? confirmedReasons.includes('referenceAligned') || expenseReferenceMatches(documentReferenceHints, bankTransaction.reference)
     : false
   const counterpartyAligned = bankTransaction
     ? confirmedReasons.includes('counterpartyAligned') || expenseCounterpartyMatches(documentCounterparty, bankTransaction)
@@ -1396,11 +1454,23 @@ function buildReviewBankTransactionKey(
 }
 
 function getExpenseDocumentReference(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  return getExpenseDocumentReferenceHints(documentEntry)[0]
+}
+
+function getExpenseDocumentReferenceHints(documentEntry: ExpenseDocumentReviewEntry): string[] {
   const data = documentEntry.extractedRecord.data as Record<string, unknown>
-  return readString(data.invoiceNumber)
-    ?? documentEntry.extractedRecord.rawReference
-    ?? documentEntry.normalizedTransaction?.invoiceNumber
-    ?? documentEntry.normalizedTransaction?.reference
+
+  return uniqueTextValues([
+    ...(Array.isArray(data.referenceHints)
+      ? data.referenceHints.filter((value): value is string => typeof value === 'string')
+      : []),
+    ...(documentEntry.normalizedTransaction?.referenceHints ?? []),
+    readString(data.invoiceNumber),
+    readString(data.variableSymbol),
+    documentEntry.extractedRecord.rawReference,
+    documentEntry.normalizedTransaction?.invoiceNumber,
+    documentEntry.normalizedTransaction?.reference
+  ])
 }
 
 function getExpenseDocumentCounterparty(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
@@ -1412,7 +1482,19 @@ function getExpenseDocumentCounterparty(documentEntry: ExpenseDocumentReviewEntr
 
 function getExpenseDocumentIbanHint(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
   const data = documentEntry.extractedRecord.data as Record<string, unknown>
-  return readString(data.ibanHint)
+  return readString(data.targetBankAccountHint)
+    ?? documentEntry.normalizedTransaction?.targetBankAccountHint
+    ?? readString(data.ibanHint)
+}
+
+function getExpenseDocumentIssueDate(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  return readString(data.issueDate) ?? documentEntry.extractedRecord.occurredAt
+}
+
+function getExpenseDocumentDueDate(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  return readString(data.dueDate)
 }
 
 function getExpenseRelevantDates(documentEntry: ExpenseDocumentReviewEntry): string[] {
@@ -1448,8 +1530,14 @@ function normalizeExpenseComparableDate(value: string): string {
     : value
 }
 
-function expenseReferenceMatches(documentReference: string | undefined, bankReference: string | undefined): boolean {
-  return normalizedComparableIncludes(documentReference, bankReference)
+function expenseReferenceMatches(documentReferences: string[] | string | undefined, bankReference: string | undefined): boolean {
+  const references = Array.isArray(documentReferences)
+    ? documentReferences
+    : documentReferences
+      ? [documentReferences]
+      : []
+
+  return references.some((reference) => normalizedComparableIncludes(reference, bankReference))
 }
 
 function expenseCounterpartyMatches(

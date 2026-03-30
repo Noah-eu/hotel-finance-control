@@ -148,27 +148,27 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
         payoutSupplementPaymentId: firstDefined(batchRows.map((row) => row.payoutSupplementPaymentId)),
         payoutSupplementPayoutDate: firstDefined(batchRows.map((row) => row.payoutSupplementPayoutDate)),
         payoutSupplementPayoutTotalAmountMinor: firstDefined(
-          batchRows.map((row) => row.payoutSupplementPayoutTotalAmountMinor)
+            batchRows.map((row) => row.payoutSupplementPayoutTotalAmountMinor)
         ),
         payoutSupplementPayoutTotalCurrency: firstDefined(
-          batchRows.map((row) => row.payoutSupplementPayoutTotalCurrency)
+            batchRows.map((row) => row.payoutSupplementPayoutTotalCurrency)
         ),
         payoutSupplementLocalAmountMinor: firstDefined(
-          batchRows.map((row) => row.payoutSupplementLocalAmountMinor)
+            batchRows.map((row) => row.payoutSupplementLocalAmountMinor)
         ),
         payoutSupplementLocalCurrency: firstDefined(
-          batchRows.map((row) => row.payoutSupplementLocalCurrency)
+            batchRows.map((row) => row.payoutSupplementLocalCurrency)
         ),
         payoutSupplementIbanSuffix: firstDefined(batchRows.map((row) => row.payoutSupplementIbanSuffix)),
         payoutSupplementExchangeRate: firstDefined(batchRows.map((row) => row.payoutSupplementExchangeRate)),
         payoutSupplementReferenceHints: uniqueValues(
-          batchRows.flatMap((row) => row.payoutSupplementReferenceHints ?? [])
+            batchRows.flatMap((row) => row.payoutSupplementReferenceHints ?? [])
         ),
         payoutSupplementSourceDocumentIds: uniqueValues(
-          batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
+            batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
         ),
         payoutSupplementReservationIds: uniqueValues(
-          batchRows.flatMap((row) => row.payoutSupplementReservationIds ?? [])
+            batchRows.flatMap((row) => row.payoutSupplementReservationIds ?? [])
         )
     }))
 }
@@ -195,18 +195,27 @@ function buildExpenseDocuments(
     transactions: NormalizedTransaction[]
 ): ExpenseDocumentExpectation[] {
     return transactions
-        .filter((transaction) => transaction.direction === 'out')
         .filter(isExpenseDocumentTransaction)
         .map((transaction) => ({
             documentId: transaction.sourceDocumentIds[0]!,
-            kind: transaction.source === 'invoice' ? 'supplier_invoice' : 'merchant_receipt',
+            kind:
+                transaction.source === 'receipt'
+                    ? 'merchant_receipt'
+                    : transaction.direction === 'in'
+                        ? 'supplier_refund'
+                        : 'supplier_invoice',
             sourceSystem: transaction.source,
+            settlementDirection:
+                transaction.source === 'receipt'
+                    ? 'payable_outgoing'
+                    : transaction.settlementDirection ?? (transaction.direction === 'in' ? 'refund_incoming' : 'payable_outgoing'),
             bookedAt: transaction.bookedAt,
             amountMinor: transaction.amountMinor,
             currency: transaction.currency,
-            expectedBankDirection: 'out',
-            routingTarget: 'document_expense_outflow',
-            documentReference: transaction.reference
+            expectedBankDirection: transaction.direction === 'in' ? 'in' : 'out',
+            routingTarget: transaction.direction === 'in' ? 'document_refund_inflow' : 'document_expense_outflow',
+            documentReference: transaction.reference,
+            targetBankAccountHint: transaction.targetBankAccountHint
         }))
 }
 

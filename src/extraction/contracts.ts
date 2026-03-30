@@ -1,4 +1,5 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
+import type { DocumentSettlementDirection } from '../domain'
 
 export interface DeterministicDocumentParserInput {
   sourceDocument: SourceDocument
@@ -21,6 +22,7 @@ export interface DeterministicDocumentExtractionSummary {
   documentKind: DeterministicDocumentKind
   sourceSystem: SourceDocument['sourceSystem']
   documentType: SourceDocument['documentType']
+  settlementDirection?: DocumentSettlementDirection
   issuerOrCounterparty?: string
   customer?: string
   billingPeriod?: string
@@ -38,7 +40,9 @@ export interface DeterministicDocumentExtractionSummary {
   vatAmountMinor?: number
   vatCurrency?: string
   referenceNumber?: string
+  variableSymbol?: string
   ibanHint?: string
+  targetBankAccountHint?: string
   confidence: 'none' | 'hint' | 'strong'
   finalStatus: DeterministicDocumentFinalStatus
   requiredFieldsCheck: 'passed' | 'failed'
@@ -135,10 +139,10 @@ export interface DeterministicDocumentOcrParsedFields {
 
 export interface DeterministicDocumentExtractionStageDebug {
   stage:
-    | 'text_layer_parse'
-    | 'qr_or_spd_fallback'
-    | 'ocr_or_vision_fallback'
-    | 'validation_and_confidence'
+  | 'text_layer_parse'
+  | 'qr_or_spd_fallback'
+  | 'ocr_or_vision_fallback'
+  | 'validation_and_confidence'
   outcome: 'applied' | 'skipped' | 'not_available'
   adapter?: 'text' | 'qr' | 'ocr' | 'vision'
   recoveredFields?: DeterministicDocumentSummaryFieldKey[]

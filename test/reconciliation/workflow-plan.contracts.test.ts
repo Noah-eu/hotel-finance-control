@@ -91,6 +91,7 @@ describe('reconciliation workflow business contracts', () => {
             documentId: 'doc-invoice-1' as ExpenseDocumentExpectation['documentId'],
             kind: 'supplier_invoice',
             sourceSystem: 'invoice',
+            settlementDirection: 'payable_outgoing',
             bookedAt: '2026-03-19',
             amountMinor: 1850000,
             currency: 'CZK',
@@ -101,6 +102,25 @@ describe('reconciliation workflow business contracts', () => {
 
         expect(expense.routingTarget).toBe('document_expense_outflow')
         expect(expense.expectedBankDirection).toBe('out')
+    })
+
+    it('allows supplier refund documents to declare an incoming settlement path', () => {
+        const refund: ExpenseDocumentExpectation = {
+            documentId: 'doc-invoice-refund-1' as ExpenseDocumentExpectation['documentId'],
+            kind: 'supplier_refund',
+            sourceSystem: 'invoice',
+            settlementDirection: 'refund_incoming',
+            bookedAt: '2026-03-21',
+            amountMinor: 245000,
+            currency: 'CZK',
+            expectedBankDirection: 'in',
+            routingTarget: 'document_refund_inflow',
+            documentReference: 'DE-RET-2026-03-9901',
+            targetBankAccountHint: '5599955956/5500'
+        }
+
+        expect(refund.routingTarget).toBe('document_refund_inflow')
+        expect(refund.expectedBankDirection).toBe('in')
     })
 
     it('represents bank fee categories for Fio terminal fees and RB account fees', () => {

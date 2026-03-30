@@ -13,6 +13,7 @@ export type {
   ISODateString,
   CurrencyCode,
   Money,
+  DocumentSettlementDirection,
   ExpenseSettlementKind,
   SourceSystem,
   ReservationSettlementChannel,

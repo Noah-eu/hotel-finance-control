@@ -1097,7 +1097,7 @@ describe('buildReviewScreen', () => {
 
     expect(review.expenseNeedsReview[0]).toMatchObject({
       matchStrength: 'slabší shoda',
-      documentBankRelation: 'Doklad je načtený a existuje pravděpodobný bankovní kandidát, ale vazba zatím není potvrzená.'
+      documentBankRelation: 'Doklad je načtený a existuje pravděpodobný odchozí bankovní kandidát, ale vazba zatím není potvrzená.'
     })
     expect(review.expenseNeedsReview[0]?.expenseComparison?.document.reference).toBe('QR-141260183')
     expect(review.expenseNeedsReview[0]?.expenseComparison?.bank?.reference).toBe('Úhrada QR-141260183')
@@ -1370,7 +1370,7 @@ describe('buildReviewScreen', () => {
           ],
           operatorExplanation: 'Systém našel pravděpodobný odchozí bankovní kandidát, ale vazba zatím není dost silná na automatické potvrzení.',
           operatorCheckHint: 'Zkontrolujte ručně variabilní symbol, text platby, protistranu a datum odchozí platby.',
-          documentBankRelation: 'Doklad je načtený a existuje pravděpodobný bankovní kandidát, ale vazba zatím není potvrzená.',
+          documentBankRelation: 'Doklad je načtený a existuje pravděpodobný odchozí bankovní kandidát, ale vazba zatím není potvrzená.',
           expenseComparison: {
             document: {
               supplierOrCounterparty: 'Lenner Motors s.r.o.',

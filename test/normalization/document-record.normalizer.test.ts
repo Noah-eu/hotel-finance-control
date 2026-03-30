@@ -52,4 +52,37 @@ describe('DocumentRecordNormalizer', () => {
       }
     ])
   })
+
+  it('normalizes refund settlement invoices as incoming document transactions with preserved linking hints', () => {
+    const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')
+    const registry = createDefaultRegistry()
+    const normalizer = registry.get('invoice-document')
+
+    const result = normalizer!.normalize(
+      {
+        extractedRecords: [refundInvoice.expectedExtractedRecords[0]]
+      },
+      {
+        sourceSystem: 'invoice',
+        extractionMethod: 'deterministic',
+        runId: 'normalize-refund-document',
+        requestedAt: '2026-03-30T17:10:00.000Z'
+      }
+    )
+
+    expect(result.warnings).toEqual([])
+    expect(result.transactions).toEqual([
+      expect.objectContaining({
+        id: refundInvoice.expectedNormalizedTransactions?.[0]?.id,
+        source: 'invoice',
+        direction: 'in',
+        settlementDirection: 'refund_incoming',
+        amountMinor: 245000,
+        accountId: 'document-refunds',
+        invoiceNumber: 'DE-RET-2026-03-9901',
+        variableSymbol: '2026039901',
+        targetBankAccountHint: '5599955956/5500'
+      })
+    ])
+  })
 })
