@@ -1371,7 +1371,30 @@ export const realInputFixtures: RealInputFixture[] = [
         '5599955956/5500',
         'Předmět plnění:',
         'Vyúčtování dodávky elektřiny za březen 2026'
-      ].join('\n')
+      ].join('\n'),
+      binaryContentBase64: pdfBase64FromTextLines([
+        'Faktura - daňový doklad',
+        'Dodavatel',
+        'Dobrá Energie s.r.o.',
+        'Nádražní 12',
+        '602 00 Brno',
+        'Odběratel',
+        'JOKELAND s.r.o.',
+        'Faktura číslo',
+        'DE-RET-2026-03-9901',
+        'Variabilní symbol',
+        '2026039901',
+        'Datum vystavení',
+        '21.03.2026',
+        'Datum splatnosti',
+        '25.03.2026',
+        'Přeplatek',
+        '2 450,00 Kč',
+        'Přeplatek bude připsán na Váš bankovní účet',
+        '5599955956/5500',
+        'Předmět plnění:',
+        'Vyúčtování dodávky elektřiny za březen 2026'
+      ])
     },
     expectedExtractedRecords: [
       extractedRecord({
@@ -1448,7 +1471,24 @@ export const realInputFixtures: RealInputFixture[] = [
         '8888997777/2010',
         'Předmět plnění:',
         'Vyúčtování dodávky elektřiny za březen 2026'
-      ].join('\n')
+      ].join('\n'),
+      binaryContentBase64: pdfBase64FromTextLines([
+        'Faktura - daňový doklad',
+        'Dodavatel',
+        'Dobrá Energie s.r.o.',
+        'Odběratel',
+        'JOKELAND s.r.o.',
+        'Variabilní symbol',
+        '5125144501',
+        'Datum splatnosti',
+        '26.03.2026',
+        'Přeplatek',
+        '3 804,00 Kč',
+        'Přeplatek bude připsán na Váš bankovní účet',
+        '8888997777/2010',
+        'Předmět plnění:',
+        'Vyúčtování dodávky elektřiny za březen 2026'
+      ])
     },
     expectedExtractedRecords: [
       extractedRecord({

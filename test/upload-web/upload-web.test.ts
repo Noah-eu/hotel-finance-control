@@ -913,6 +913,94 @@ describe('buildUploadWebFlow', () => {
     )).toBe(false)
   })
 
+  it('keeps the sparse Dobrá refund invoice extracted in the browser-selected PDF path when refund fields are fragmented inside TJ arrays', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithSparseDobraRefundIncoming(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextFragments('Dobra-Energie-preplatek-3804-2026-03.pdf', [
+          ['Faktura - daňový doklad'],
+          ['Dodavatel'],
+          ['Dobrá Energie s.r.o.'],
+          ['Odběratel'],
+          ['JOKELAND s.r.o.'],
+          ['Variabilní symbol'],
+          ['5125', '144501'],
+          ['Datum splatnosti'],
+          ['26.03.', '2026'],
+          ['Přeplatek'],
+          ['3 ', '804,00 Kč'],
+          ['Přeplatek bude připsán na Váš bankovní účet'],
+          ['888899', '7777/2010'],
+          ['Předmět plnění:'],
+          ['Vyúčtování dodávky elektřiny za březen ', '2026']
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T08:15:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+          extractedCount: 1
+        })
+      ])
+    )
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          settlementDirection: 'refund_incoming',
+          referenceNumber: '5125144501',
+          variableSymbol: '5125144501',
+          dueDate: '2026-03-26',
+          totalAmountMinor: 380400,
+          targetBankAccountHint: '8888997777/2010',
+          finalStatus: 'needs_review'
+        })
+      })
+    )
+
+    expect(result.reviewSections.expenseMatched).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          expenseComparison: expect.objectContaining({
+            document: expect.objectContaining({
+              supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+              reference: '5125144501',
+              dueDate: '2026-03-26',
+              ibanHint: '8888997777/2010'
+            }),
+            bank: expect.objectContaining({
+              bankAccount: '8888997777/2010',
+              amount: '3 804,00 Kč',
+              reference: 'Vrácení přeplatku VS 5125144501'
+            })
+          })
+        })
+      ])
+    )
+
+    expect(result.reviewSections.expenseUnmatchedInflows.some((item) =>
+      item.expenseComparison?.bank?.reference === 'Vrácení přeplatku VS 5125144501'
+      || item.title.includes('3 804,00 Kč')
+    )).toBe(false)
+  })
+
   it('keeps the sparse Dobrá refund invoice extracted and document-backed when the 3 804 CZK incoming refund arrives on the Fio account', async () => {
     const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
 
@@ -4839,6 +4927,10 @@ function createRuntimePdfFileFromToUnicodeTextLines(name: string, lines: string[
   return createRuntimePdfFile(name, buildRuntimePdfBase64FromToUnicodeTextLines(lines))
 }
 
+function createRuntimePdfFileFromToUnicodeTextFragments(name: string, lines: string[][]) {
+  return createRuntimePdfFile(name, buildRuntimePdfBase64FromToUnicodeTextFragments(lines))
+}
+
 function createBrokenRuntimePdfFile(name: string) {
   return {
     name,
@@ -4926,6 +5018,39 @@ function buildRuntimePdfBase64FromToUnicodeTextLines(lines: string[]): string {
   return Buffer.from(pdf, 'latin1').toString('base64')
 }
 
+function buildRuntimePdfBase64FromToUnicodeTextFragments(lines: string[][]): string {
+  const definition = buildToUnicodeFragmentPdfDefinition(lines)
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n',
+    `4 0 obj\n<< /Length ${definition.contentStream.length} >>\nstream\n${definition.contentStream}\nendstream\nendobj\n`,
+    '5 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /MockBookingFont /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 6 0 R >>\nendobj\n',
+    `6 0 obj\n<< /Length ${definition.toUnicodeStream.length} >>\nstream\n${definition.toUnicodeStream}\nendstream\nendobj\n`,
+    '7 0 obj\n<< /Type /Font /Subtype /CIDFontType2 /BaseFont /MockBookingFont /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> >>\nendobj\n'
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+
+  for (const object of objects) {
+    offsets.push(pdf.length)
+    pdf += object
+  }
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`
+
+  return Buffer.from(pdf, 'latin1').toString('base64')
+}
+
 function buildToUnicodePdfDefinition(lines: string[]): {
   contentStream: string
   toUnicodeStream: string
@@ -4960,6 +5085,73 @@ function buildToUnicodePdfDefinition(lines: string[]): {
     ...encodedLines.flatMap((line, index) => index === 0
       ? [`<${line}> Tj`]
       : ['0 -18 Td', `<${line}> Tj`]),
+    'ET'
+  ].join('\n')
+
+  const toUnicodeStream = [
+    '/CIDInit /ProcSet findresource begin',
+    '12 dict begin',
+    'begincmap',
+    '/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def',
+    '/CMapName /Adobe-Identity-UCS def',
+    '/CMapType 2 def',
+    '1 begincodespacerange',
+    '<0000> <FFFF>',
+    'endcodespacerange',
+    `${mappingEntries.length} beginbfchar`,
+    ...mappingEntries.map((entry) => `<${entry.code}> <${entry.unicodeHex}>`),
+    'endbfchar',
+    'endcmap',
+    'CMapName currentdict /CMap defineresource pop',
+    'end',
+    'end'
+  ].join('\n')
+
+  return {
+    contentStream,
+    toUnicodeStream
+  }
+}
+
+function buildToUnicodeFragmentPdfDefinition(lines: string[][]): {
+  contentStream: string
+  toUnicodeStream: string
+} {
+  const codeByCharacter = new Map<string, string>()
+  const mappingEntries: Array<{ code: string; unicodeHex: string }> = []
+  let nextCodePoint = 1
+
+  const encodeFragment = (fragment: string): string => Array.from(fragment).map((character) => {
+    const existingCode = codeByCharacter.get(character)
+
+    if (existingCode) {
+      return existingCode
+    }
+
+    const code = nextCodePoint.toString(16).toUpperCase().padStart(4, '0')
+    nextCodePoint += 1
+    codeByCharacter.set(character, code)
+    mappingEntries.push({
+      code,
+      unicodeHex: character.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0')
+    })
+    return code
+  }).join('')
+
+  const encodedLines = lines.map((line) => line.map(encodeFragment))
+  const contentStream = [
+    'BT',
+    '/F1 12 Tf',
+    '50 780 Td',
+    ...encodedLines.flatMap((line, index) => {
+      const encodedLine = line.length === 1
+        ? `<${line[0]}> Tj`
+        : `[${line.map((fragment) => `<${fragment}>`).join(' 0 ')}] TJ`
+
+      return index === 0
+        ? [encodedLine]
+        : ['0 -18 Td', encodedLine]
+    }),
     'ET'
   ].join('\n')
 

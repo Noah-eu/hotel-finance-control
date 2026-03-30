@@ -880,9 +880,12 @@ function decodePdfTextToken(value: string, fontDecoder?: PdfFontDecoder): string
 }
 
 function decodePdfTextArrayToken(value: string, fontDecoder?: PdfFontDecoder): string[] {
-  return Array.from(value.matchAll(/\((?:\\.|[^\\()])*\)|<[\da-fA-F\s]+>/g)).map((match) =>
+  const fragments = Array.from(value.matchAll(/\((?:\\.|[^\\()])*\)|<[\da-fA-F\s]+>/g)).map((match) =>
     decodePdfTextToken(match[0] ?? '', fontDecoder)
   ).filter(Boolean)
+  const joined = fragments.join('')
+
+  return joined ? [joined] : []
 }
 
 function decodePdfLiteralString(value: string, fontDecoder?: PdfFontDecoder): string {
