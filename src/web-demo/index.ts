@@ -242,7 +242,8 @@ function renderOperatorWebDemoHtml(input: {
         margin: 0 auto;
       }
       main.expense-detail-shell {
-        max-width: 1680px;
+        width: min(100%, calc(100vw - 64px));
+        max-width: 2160px;
       }
       .hero, .card {
         background: white;
@@ -276,8 +277,24 @@ function renderOperatorWebDemoHtml(input: {
         gap: 16px;
       }
       .expense-detail-grid {
-        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
         align-items: start;
+      }
+      @media (min-width: 1760px) {
+        .expense-detail-grid {
+          grid-template-columns: repeat(5, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 1080px) {
+        body {
+          padding: 18px;
+        }
+        main.expense-detail-shell {
+          width: 100%;
+        }
+        .expense-detail-grid {
+          grid-template-columns: 1fr;
+        }
       }
       .detail-view[hidden],
       .main-dashboard-view[hidden] {
@@ -3174,7 +3191,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         controlDetailView.hidden = normalizedView !== 'control-detail';
         expenseDetailView.hidden = normalizedView !== 'expense-detail';
         if (appShell) {
-          appShell.className = normalizedView === 'expense-detail' ? 'expense-detail-shell' : '';
+          if (appShell.classList && typeof appShell.classList.toggle === 'function') {
+            appShell.classList.toggle('expense-detail-shell', normalizedView === 'expense-detail');
+          } else {
+            appShell.className = normalizedView === 'expense-detail' ? 'expense-detail-shell' : '';
+          }
         }
 
         if (window && window.location) {
