@@ -229,7 +229,7 @@ function detectUploadedMonthlyFileDocumentHints(input: {
     input.detectedSignatures.includes('booking-branding')
     || input.detectedSignatures.includes('booking-payout-statement-wording')
     || (bookingSignals?.hasBookingBranding && bookingSignals?.hasStatementWording)
-    || (normalizedFileName.endsWith('.pdf') && normalizedFileName.includes('booking'))
+    || looksLikeBookingPayoutStatementFileName(normalizedFileName)
   ) {
     hints.add('payout_statement_like')
   }
@@ -283,6 +283,12 @@ function looksLikeImageUpload(fileName: string, mimeType: string | undefined): b
 
 function looksExpenseLikeDocumentName(fileName: string): boolean {
   return /(invoice|faktura|receipt|uctenka|účtenka|doklad|bill)/i.test(fileName)
+}
+
+function looksLikeBookingPayoutStatementFileName(normalizedFileName: string): boolean {
+  return normalizedFileName.endsWith('.pdf')
+    && normalizedFileName.includes('booking')
+    && /(payout|payment|statement|summary|overview|vykaz|prehled|přehled|souhrn)/i.test(normalizedFileName)
 }
 
 function looksLikeStructuredTabularContent(headerFields: string[], content: string): boolean {

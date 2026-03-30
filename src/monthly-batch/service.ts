@@ -793,6 +793,14 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
     return 'bank'
   }
 
+  if (looksLikeInvoiceDocumentFileName(normalizedFileName)) {
+    return 'invoice'
+  }
+
+  if (looksLikeReceiptDocumentFileName(normalizedFileName)) {
+    return 'receipt'
+  }
+
   if (normalizedFileName.includes('booking')) {
     return 'booking'
   }
@@ -819,18 +827,6 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
     || (normalizedFileName.includes('klientsky portal export transakci') && normalizedFileName.includes('jokeland'))
   ) {
     return 'comgate'
-  }
-
-  if (normalizedFileName.includes('invoice') || normalizedFileName.includes('faktura')) {
-    return 'invoice'
-  }
-
-  if (
-    normalizedFileName.includes('receipt')
-    || normalizedFileName.includes('uctenka')
-    || normalizedFileName.includes('účtenka')
-  ) {
-    return 'receipt'
   }
 
   return 'unknown'
@@ -1301,7 +1297,7 @@ function looksLikeBookingPayoutStatementPdf(
   const normalizedFileName = fileName.toLowerCase()
 
   return normalizedFileName.endsWith('.pdf')
-    && normalizedFileName.includes('booking')
+    && looksLikeBookingPayoutStatementFileName(normalizedFileName)
     && contentFormat === 'pdf-text'
 }
 
@@ -1310,6 +1306,21 @@ function inferSupplementRole(
   contentFormat?: UploadedMonthlyFile['contentFormat']
 ): 'primary' | 'supplemental' {
   return looksLikeBookingPayoutStatementPdf(fileName, contentFormat) ? 'supplemental' : 'primary'
+}
+
+function looksLikeInvoiceDocumentFileName(normalizedFileName: string): boolean {
+  return normalizedFileName.includes('invoice') || normalizedFileName.includes('faktura')
+}
+
+function looksLikeReceiptDocumentFileName(normalizedFileName: string): boolean {
+  return normalizedFileName.includes('receipt')
+    || normalizedFileName.includes('uctenka')
+    || normalizedFileName.includes('účtenka')
+}
+
+function looksLikeBookingPayoutStatementFileName(normalizedFileName: string): boolean {
+  return normalizedFileName.includes('booking')
+    && /(payout|payment|statement|summary|overview|vykaz|prehled|přehled|souhrn)/i.test(normalizedFileName)
 }
 
 function looksLikeInvoiceDocumentText(content: string): boolean {

@@ -1244,6 +1244,68 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('keeps invoice-like Booking PDF filenames on the invoice route even when filename fallback decides the source', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'booking-invoice-march.pdf',
+        content: 'Booking.com B.V.\nMarch 2026 billing archive',
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-31T10:32:00.000Z',
+        sourceDescriptor: {
+          mimeType: 'application/pdf',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Booking.com B.V. March 2026 billing archive',
+            detectedSignatures: ['booking-branding']
+          }
+        }
+      }
+    ])
+
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking-invoice-march.pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'file-name',
+        role: 'primary',
+        parserId: 'invoice'
+      })
+    ])
+  })
+
+  it('keeps payout-like Booking PDF filenames on the supplemental payout route', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'booking-payout-summary-march.pdf',
+        content: 'Booking.com B.V.\nMonthly archive',
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-31T10:33:00.000Z',
+        sourceDescriptor: {
+          mimeType: 'application/pdf',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Booking.com B.V. Monthly archive',
+            detectedSignatures: ['booking-branding']
+          }
+        }
+      }
+    ])
+
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'booking-payout-summary-march.pdf',
+        sourceSystem: 'booking',
+        documentType: 'payout_statement',
+        classificationBasis: 'file-name',
+        role: 'supplemental',
+        parserId: 'booking-payout-statement-pdf'
+      })
+    ])
+  })
+
   it('keeps Booking invoice PDFs out of payout rows when a real Booking payout export is present in the same monthly run', () => {
     const invoice = getRealInputFixture('booking-invoice-pdf')
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
