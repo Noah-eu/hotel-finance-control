@@ -243,11 +243,15 @@ function renderOperatorWebDemoHtml(input: {
       }
       main.operator-main-shell {
         width: min(100%, calc(100vw - 64px));
-        max-width: 1760px;
+        max-width: 1840px;
+      }
+      main.control-detail-shell {
+        width: min(100%, calc(100vw - 64px));
+        max-width: 1980px;
       }
       main.expense-detail-shell {
         width: min(100%, calc(100vw - 64px));
-        max-width: 2280px;
+        max-width: 2360px;
       }
       .hero, .card {
         background: white;
@@ -3191,18 +3195,22 @@ ${showRuntimePayoutDiagnostics ? '' : `
           ? view
           : 'main-overview';
         const showMainOverview = normalizedView === 'main-overview';
+        const showControlDetail = normalizedView === 'control-detail';
         const showExpenseDetail = normalizedView === 'expense-detail';
 
         mainDashboardView.hidden = !showMainOverview;
-        controlDetailView.hidden = normalizedView !== 'control-detail';
+        controlDetailView.hidden = !showControlDetail;
         expenseDetailView.hidden = !showExpenseDetail;
         if (appShell) {
           if (appShell.classList && typeof appShell.classList.toggle === 'function') {
             appShell.classList.toggle('operator-main-shell', showMainOverview);
+            appShell.classList.toggle('control-detail-shell', showControlDetail);
             appShell.classList.toggle('expense-detail-shell', showExpenseDetail);
           } else {
             appShell.className = showExpenseDetail
               ? 'expense-detail-shell'
+              : showControlDetail
+                ? 'control-detail-shell'
               : showMainOverview
                 ? 'operator-main-shell'
                 : '';
