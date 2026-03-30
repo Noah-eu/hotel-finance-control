@@ -712,6 +712,30 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedOutflows.some((item) =>
       item.title.includes('5 000,00 Kč')
     )).toBe(false)
+    expect(result.reviewSections.expenseUnmatchedInflows.some((item) =>
+      item.title.includes('5 000,00 Kč')
+    )).toBe(false)
+  })
+
+  it('surfaces a generic unmatched incoming bank movement in the dedicated incoming bucket', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithGenericIncomingOnly(),
+          'text/csv'
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T19:35:00.000Z'
+    })
+
+    expect(result.reviewSections.expenseUnmatchedInflows).toHaveLength(1)
+    expect(result.reviewSections.expenseUnmatchedInflows[0]).toMatchObject({
+      title: 'Nespárovaná příchozí platba 2 200,00 Kč',
+      matchStrength: 'nespárováno'
+    })
+    expect(result.reviewSections.expenseUnmatchedOutflows).toHaveLength(0)
   })
 
   it('recovers invoice payment fields from a hidden SPD QR payload on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
@@ -4228,7 +4252,7 @@ async function executeUploadWebFlowMainWorkflow(input: {
           write(value: string) {
             openedExpenseReviewHtml += value
           },
-          close() {}
+          close() { }
         }
       }
     }
@@ -4343,7 +4367,7 @@ function createStubDomElement(
     value: '',
     files: [],
     listeners: {},
-    setAttribute() {},
+    setAttribute() { },
     addEventListener(name: string, listener: () => void) {
       element.listeners[name] = listener
     }
@@ -4890,6 +4914,13 @@ function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithGenericIncomingOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '29.03.2026 12:00;29.03.2026 12:02;5599955956/5500;000000-4444555566/0100;Neznámý příjemce;2200,00;CZK;Příchozí platba bez vazby'
   ].join('\n')
 }
 

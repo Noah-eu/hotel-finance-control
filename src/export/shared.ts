@@ -217,5 +217,7 @@ function toSectionLabel(kind: ReviewScreenData['matched'][number]['kind']): stri
       return 'Nespárované doklady'
     case 'expense-unmatched-outflow':
       return 'Nespárované odchozí platby'
+    case 'expense-unmatched-inflow':
+      return 'Nespárované příchozí platby'
   }
 }

@@ -216,14 +216,14 @@ export interface BrowserRuntimeUploadState {
     warnings: string[]
     reason?: string
     errorMessage?: string
-      decision: {
-        capability: {
-          profile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
-          transportProfile: 'structured_csv' | 'structured_workbook' | 'text_pdf' | 'image_pdf' | 'text_document' | 'image_document' | 'unsupported_binary' | 'unknown_document'
-          documentHints: Array<'invoice_like' | 'receipt_like' | 'payout_statement_like'>
-          confidence: 'none' | 'hint' | 'strong'
-          evidence: string[]
-        }
+    decision: {
+      capability: {
+        profile: 'structured_tabular' | 'text_document' | 'pdf_text_layer' | 'pdf_image_only' | 'image_receipt_like' | 'unsupported_binary' | 'unknown'
+        transportProfile: 'structured_csv' | 'structured_workbook' | 'text_pdf' | 'image_pdf' | 'text_document' | 'image_document' | 'unsupported_binary' | 'unknown_document'
+        documentHints: Array<'invoice_like' | 'receipt_like' | 'payout_statement_like'>
+        confidence: 'none' | 'hint' | 'strong'
+        evidence: string[]
+      }
       ingestionBranch: 'structured-parser' | 'text-document-parser' | 'text-pdf-parser' | 'ocr-required' | 'unsupported'
       ingestionReason: string
       detectedSignals: string[]
@@ -261,7 +261,7 @@ export interface BrowserRuntimeUploadState {
     status: string
   }>
   reviewSummary: ReviewScreenData['summary']
-  reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'unmatched' | 'suspicious' | 'missingDocuments'>
+  reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{
     labelCs: string
     fileName: string
@@ -907,7 +907,8 @@ ${renderBrowserRuntimeClientBootstrap()}
           { label: 'Spárované výdaje', items: Array.isArray(normalizedSections.expenseMatched) ? normalizedSections.expenseMatched : [], emptyLabel: 'Žádné spárované výdaje.' },
           { label: 'Výdaje ke kontrole', items: Array.isArray(normalizedSections.expenseNeedsReview) ? normalizedSections.expenseNeedsReview : [], emptyLabel: 'Žádné výdaje ke kontrole.' },
           { label: 'Nespárované doklady', items: Array.isArray(normalizedSections.expenseUnmatchedDocuments) ? normalizedSections.expenseUnmatchedDocuments : [], emptyLabel: 'Žádné nespárované doklady.' },
-          { label: 'Nespárované odchozí platby', items: Array.isArray(normalizedSections.expenseUnmatchedOutflows) ? normalizedSections.expenseUnmatchedOutflows : [], emptyLabel: 'Žádné nespárované odchozí platby.' }
+          { label: 'Nespárované odchozí platby', items: Array.isArray(normalizedSections.expenseUnmatchedOutflows) ? normalizedSections.expenseUnmatchedOutflows : [], emptyLabel: 'Žádné nespárované odchozí platby.' },
+          { label: 'Nespárované příchozí platby', items: Array.isArray(normalizedSections.expenseUnmatchedInflows) ? normalizedSections.expenseUnmatchedInflows : [], emptyLabel: 'Žádné nespárované příchozí platby.' }
         ];
       }
 
@@ -915,7 +916,7 @@ ${renderBrowserRuntimeClientBootstrap()}
         const groups = buildRuntimeExpenseReviewBuckets(sections);
 
         return [
-          '<p class="hint">Detailní kontrola dokladů a odchozích plateb se otevírá do samostatného tabu, aby hlavní stránka zůstala přehledná.</p>',
+          '<p class="hint">Detailní kontrola dokladů a bankovních pohybů se otevírá do samostatného tabu, aby hlavní stránka zůstala přehledná.</p>',
           '<ul>',
           groups.map((group) => '<li><strong>' + escapeHtml(group.label) + ':</strong> ' + escapeHtml(String(group.items.length)) + '</li>').join(''),
           '</ul>',
@@ -985,15 +986,17 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<title>Hotel Finance Control – Kontrola výdajů a dokladů</title>',
           '<style>',
           ':root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }',
-          'body { margin: 0; padding: 28px; background: #eef3f9; color: #142033; }',
-          'main { max-width: 1560px; margin: 0 auto; }',
-          '.expense-page-hero, .expense-page-bucket { background: #ffffff; border-radius: 20px; padding: 24px; box-shadow: 0 12px 36px rgba(20, 32, 51, 0.08); margin-bottom: 18px; }',
+          'body { margin: 0; padding: clamp(18px, 3vw, 32px); background: #eef3f9; color: #142033; }',
+          'main { max-width: 1880px; margin: 0 auto; }',
+          '.expense-page-hero, .expense-page-bucket { background: #ffffff; border-radius: 20px; padding: 24px; box-shadow: 0 12px 36px rgba(20, 32, 51, 0.08); }',
+          '.expense-page-hero { margin-bottom: 20px; }',
+          '.expense-page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; align-items: start; }',
           '.expense-page-bucket-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }',
           '.expense-page-bucket-header h2 { margin: 0; font-size: 22px; }',
           '.expense-page-count { display: inline-block; min-width: 38px; text-align: center; border-radius: 999px; padding: 6px 12px; background: #eaf2ff; color: #174ea6; font-weight: 700; }',
           '.expense-item { border: 1px solid #dce6f5; border-radius: 16px; background: #fbfdff; padding: 18px; margin-bottom: 14px; }',
           '.expense-item strong { font-size: 17px; line-height: 1.4; display: block; margin-bottom: 12px; }',
-          '.expense-comparison { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(300px, 360px) minmax(280px, 1fr); gap: 18px; align-items: start; }',
+          '.expense-comparison { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 380px) minmax(280px, 1fr); gap: 18px; align-items: start; }',
           '.expense-side, .expense-status { border-radius: 14px; background: #f6f9fc; padding: 16px; overflow-wrap: anywhere; word-break: break-word; }',
           '.expense-side h6, .expense-status h6 { margin: 0 0 10px; font-size: 14px; }',
           '.expense-side ul, .expense-status ul { margin: 0; padding-left: 20px; }',
@@ -1004,7 +1007,8 @@ ${renderBrowserRuntimeClientBootstrap()}
           '.status-badge.weak { background: #fff4dd; color: #946200; }',
           '.status-badge.review { background: #fff4dd; color: #946200; }',
           '.status-badge.unmatched { background: #ffe3e8; color: #b42318; }',
-          '@media (max-width: 1080px) { .expense-comparison { grid-template-columns: 1fr; } body { padding: 18px; } }',
+          '@media (max-width: 1280px) { .expense-page-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); } }',
+          '@media (max-width: 1080px) { .expense-comparison { grid-template-columns: 1fr; } .expense-page-grid { grid-template-columns: 1fr; } body { padding: 18px; } }',
           '</style>',
           '</head>',
           '<body>',
@@ -1015,7 +1019,9 @@ ${renderBrowserRuntimeClientBootstrap()}
           '<p><strong>Run ID:</strong> <code>' + escapeHtml(normalizedState.runId || 'bez runtime běhu') + '</code></p>',
           '<p class="hint">Tato stránka ukazuje pouze doklady, kandidátní odchozí bankovní platby a jejich důkazy. Payout matching zůstává na hlavním přehledu.</p>',
           '</section>',
+          '<div class="expense-page-grid">',
           sectionsMarkup,
+          '</div>',
           '</main>',
           '</body>',
           '</html>'
@@ -1867,12 +1873,13 @@ function renderStaticReviewAuditMarkup(item: ReviewScreenData['matched'][number]
   ].join('')
 }
 
-function renderExpenseReviewSectionHtml(review: Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows'>): string {
+function renderExpenseReviewSectionHtml(review: Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows'>): string {
   const groups: Array<{ title: string; items: ReviewSectionItem[] }> = [
     { title: 'Spárované výdaje', items: review.expenseMatched ?? [] },
     { title: 'Výdaje ke kontrole', items: review.expenseNeedsReview ?? [] },
     { title: 'Nespárované doklady', items: review.expenseUnmatchedDocuments ?? [] },
-    { title: 'Nespárované odchozí platby', items: review.expenseUnmatchedOutflows ?? [] }
+    { title: 'Nespárované odchozí platby', items: review.expenseUnmatchedOutflows ?? [] },
+    { title: 'Nespárované příchozí platby', items: review.expenseUnmatchedInflows ?? [] }
   ]
 
   return groups.map((group) => {
@@ -1917,22 +1924,22 @@ function renderExpenseComparisonSideHtml(
   const isDocument = sideMode === 'document'
   const fields = isDocument
     ? [
-        ['Dodavatel', side?.supplierOrCounterparty],
-        ['Číslo faktury / reference', side?.reference],
-        ['Datum vystavení', side?.issueDate],
-        ['Datum splatnosti', side?.dueDate],
-        ['Částka', side?.amount],
-        ['Měna', side?.currency],
-        ['IBAN hint', side?.ibanHint]
-      ]
+      ['Dodavatel', side?.supplierOrCounterparty],
+      ['Číslo faktury / reference', side?.reference],
+      ['Datum vystavení', side?.issueDate],
+      ['Datum splatnosti', side?.dueDate],
+      ['Částka', side?.amount],
+      ['Měna', side?.currency],
+      ['IBAN hint', side?.ibanHint]
+    ]
     : [
-        ['Datum pohybu', side?.bookedAt],
-        ['Částka', side?.amount],
-        ['Měna', side?.currency],
-        ['Protistrana / název účtu', side?.supplierOrCounterparty],
-        ['Reference / zpráva / VS', side?.reference],
-        ['Bankovní účet', side?.bankAccount]
-      ]
+      ['Datum pohybu', side?.bookedAt],
+      ['Částka', side?.amount],
+      ['Měna', side?.currency],
+      ['Protistrana / název účtu', side?.supplierOrCounterparty],
+      ['Reference / zpráva / VS', side?.reference],
+      ['Bankovní účet', side?.bankAccount]
+    ]
   const visibleFields = fields.filter((entry) => Boolean(entry[1]))
 
   return [

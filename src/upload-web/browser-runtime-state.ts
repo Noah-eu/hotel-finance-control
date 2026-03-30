@@ -133,6 +133,7 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       expenseNeedsReview: review.expenseNeedsReview,
       expenseUnmatchedDocuments: review.expenseUnmatchedDocuments,
       expenseUnmatchedOutflows: review.expenseUnmatchedOutflows,
+      expenseUnmatchedInflows: review.expenseUnmatchedInflows,
       unmatched: review.unmatched,
       suspicious: review.suspicious,
       missingDocuments: review.missingDocuments

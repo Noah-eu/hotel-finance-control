@@ -1001,6 +1001,17 @@ describe('buildReviewScreen', () => {
               accountId: 'fio-main',
               counterparty: 'Dodavatel bez dokladu',
               reference: 'Platba bez dokladu'
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:bank-unmatched-in'),
+              direction: 'in',
+              source: 'bank',
+              amountMinor: 220000,
+              currency: 'CZK',
+              bookedAt: '2026-03-29',
+              accountId: 'raiffeisen-main',
+              counterparty: 'Neznámý příjemce',
+              reference: 'Příchozí platba bez vazby'
             })
           ],
           matching: buildMatchingResult(),
@@ -1026,7 +1037,7 @@ describe('buildReviewScreen', () => {
             trace: []
           },
           summary: {
-            normalizedTransactionCount: 6,
+            normalizedTransactionCount: 7,
             matchedGroupCount: 0,
             exceptionCount: 2,
             unmatchedExpectedCount: 0,
@@ -1036,7 +1047,7 @@ describe('buildReviewScreen', () => {
         report: {
           generatedAt: '2026-03-29T13:00:00.000Z',
           summary: {
-            normalizedTransactionCount: 6,
+            normalizedTransactionCount: 7,
             matchedGroupCount: 0,
             payoutBatchMatchCount: 0,
             unmatchedPayoutBatchCount: 0,
@@ -1058,6 +1069,7 @@ describe('buildReviewScreen', () => {
     expect(review.expenseNeedsReview).toHaveLength(1)
     expect(review.expenseUnmatchedDocuments).toHaveLength(1)
     expect(review.expenseUnmatchedOutflows).toHaveLength(1)
+    expect(review.expenseUnmatchedInflows).toHaveLength(1)
 
     expect(review.expenseMatched[0]).toMatchObject({
       matchStrength: 'potvrzená shoda',
@@ -1102,6 +1114,7 @@ describe('buildReviewScreen', () => {
 
     expect(review.expenseUnmatchedOutflows[0]?.expenseComparison?.document).toEqual({})
     expect(review.expenseUnmatchedOutflows[0]?.expenseComparison?.bank?.reference).toBe('Platba bez dokladu')
+    expect(review.expenseUnmatchedInflows[0]?.expenseComparison?.bank?.reference).toBe('Příchozí platba bez vazby')
     expect(
       review.expenseMatched.length
       + review.expenseNeedsReview.length
@@ -1111,7 +1124,8 @@ describe('buildReviewScreen', () => {
       review.expenseMatched.length
       + review.expenseNeedsReview.length
       + review.expenseUnmatchedOutflows.length
-    ).toBe(3)
+      + review.expenseUnmatchedInflows.length
+    ).toBe(4)
   })
 
   it('pairs own-account RB ↔ Fio transfers as internal matched transfers instead of unmatched expense outflows', () => {
@@ -1199,6 +1213,7 @@ describe('buildReviewScreen', () => {
     expect(review.expenseNeedsReview).toHaveLength(0)
     expect(review.expenseUnmatchedDocuments).toHaveLength(0)
     expect(review.expenseUnmatchedOutflows).toHaveLength(0)
+    expect(review.expenseUnmatchedInflows).toHaveLength(0)
     expect(review.expenseMatched[0]).toMatchObject({
       title: 'Vnitřní převod 5 000,00 Kč',
       matchStrength: 'potvrzená shoda',
@@ -1378,7 +1393,8 @@ describe('buildReviewScreen', () => {
         }
       ],
       expenseUnmatchedDocuments: [],
-      expenseUnmatchedOutflows: []
+      expenseUnmatchedOutflows: [],
+      expenseUnmatchedInflows: []
     }
 
     const confirmed = applyExpenseReviewOperatorOverrides(sections, [

@@ -10,17 +10,17 @@ export type ReviewMatchStrength =
 
 export interface ReviewEvidenceEntry {
   label:
-    | 'částka'
-    | 'rozdíl částky'
-    | 'datum'
-    | 'rozdíl dnů'
-    | 'reference'
-    | 'protistrana / účet'
-    | 'protistrana / dodavatel'
-    | 'IBAN'
-    | 'zpráva banky'
-    | 'dokument'
-    | 'provenience'
+  | 'částka'
+  | 'rozdíl částky'
+  | 'datum'
+  | 'rozdíl dnů'
+  | 'reference'
+  | 'protistrana / účet'
+  | 'protistrana / dodavatel'
+  | 'IBAN'
+  | 'zpráva banky'
+  | 'dokument'
+  | 'provenience'
   value: string
 }
 
@@ -48,17 +48,18 @@ export interface ReviewSectionItem {
   id: string
   domain: 'payout' | 'expense'
   kind:
-    | 'matched'
-    | 'unmatched'
-    | 'unmatched-reservation-settlement'
-    | 'reservation-settlement-overview'
-    | 'ancillary-settlement-overview'
-    | 'suspicious'
-    | 'missing-document'
-    | 'expense-matched'
-    | 'expense-review'
-    | 'expense-unmatched-document'
-    | 'expense-unmatched-outflow'
+  | 'matched'
+  | 'unmatched'
+  | 'unmatched-reservation-settlement'
+  | 'reservation-settlement-overview'
+  | 'ancillary-settlement-overview'
+  | 'suspicious'
+  | 'missing-document'
+  | 'expense-matched'
+  | 'expense-review'
+  | 'expense-unmatched-document'
+  | 'expense-unmatched-outflow'
+  | 'expense-unmatched-inflow'
   title: string
   detail: string
   transactionIds: string[]
@@ -89,6 +90,7 @@ export interface ReviewScreenData {
   expenseNeedsReview: ReviewSectionItem[]
   expenseUnmatchedDocuments: ReviewSectionItem[]
   expenseUnmatchedOutflows: ReviewSectionItem[]
+  expenseUnmatchedInflows: ReviewSectionItem[]
   unmatched: ReviewSectionItem[]
   suspicious: ReviewSectionItem[]
   missingDocuments: ReviewSectionItem[]
@@ -96,7 +98,7 @@ export interface ReviewScreenData {
 
 export type ExpenseReviewSections = Pick<
   ReviewScreenData,
-  'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows'
+  'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows'
 >
 
 export interface ExpenseReviewOperatorOverride {
@@ -175,6 +177,7 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     expenseNeedsReview: expenseReview.expenseNeedsReview,
     expenseUnmatchedDocuments: expenseReview.expenseUnmatchedDocuments,
     expenseUnmatchedOutflows: expenseReview.expenseUnmatchedOutflows,
+    expenseUnmatchedInflows: expenseReview.expenseUnmatchedInflows,
     unmatched,
     suspicious,
     missingDocuments
@@ -199,6 +202,7 @@ export function applyExpenseReviewOperatorOverrides(
   const baseReview = cloneReviewSectionItems(sections.expenseNeedsReview ?? [])
   const baseUnmatchedDocuments = cloneReviewSectionItems(sections.expenseUnmatchedDocuments ?? [])
   const baseUnmatchedOutflows = cloneReviewSectionItems(sections.expenseUnmatchedOutflows ?? [])
+  const baseUnmatchedInflows = cloneReviewSectionItems(sections.expenseUnmatchedInflows ?? [])
   const reviewItemsById = new Map(baseReview.map((item) => [item.id, item]))
   const confirmedOverrides: ReviewSectionItem[] = []
   const rejectedDocumentOverrides: ReviewSectionItem[] = []
@@ -233,7 +237,8 @@ export function applyExpenseReviewOperatorOverrides(
     expenseUnmatchedOutflows: [
       ...baseUnmatchedOutflows,
       ...rejectedOutflowOverrides
-    ]
+    ],
+    expenseUnmatchedInflows: baseUnmatchedInflows
   }
 }
 
@@ -299,9 +304,9 @@ function cloneReviewSectionItem(item: ReviewSectionItem): ReviewSectionItem {
     evidenceSummary: item.evidenceSummary.map((entry) => ({ ...entry })),
     expenseComparison: item.expenseComparison
       ? {
-          document: { ...item.expenseComparison.document },
-          ...(item.expenseComparison.bank ? { bank: { ...item.expenseComparison.bank } } : {})
-        }
+        document: { ...item.expenseComparison.document },
+        ...(item.expenseComparison.bank ? { bank: { ...item.expenseComparison.bank } } : {})
+      }
       : undefined
   }
 }
@@ -335,8 +340,8 @@ function toManuallyRejectedExpenseDocumentItem(
 ): ReviewSectionItem {
   const comparison = reviewItem.expenseComparison
     ? {
-        document: { ...reviewItem.expenseComparison.document }
-      }
+      document: { ...reviewItem.expenseComparison.document }
+    }
     : { document: {} }
   const documentReference = reviewItem.expenseComparison?.document?.reference
   const documentTransactionIds = extractExpenseDocumentTransactionIds(reviewItem)
@@ -430,7 +435,7 @@ function extractExpenseDocumentTransactionIds(reviewItem: ReviewSectionItem): st
 function buildExpenseReviewSections(
   batch: MonthlyBatchResult,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined
-): Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows'> {
+): Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows'> {
   const fileRoutesBySourceDocumentId = new Map(
     (fileRoutes ?? [])
       .filter((route): route is UploadedMonthlyFileRoute & { sourceDocumentId: string } => Boolean(route.sourceDocumentId))
@@ -461,6 +466,17 @@ function buildExpenseReviewSections(
   )
   const internalTransferOutflowKeys = new Set(
     internalTransferPairs.map((pair) => buildReviewBankTransactionKey(pair.outgoingTransaction))
+  )
+  const internalTransferIncomingKeys = new Set(
+    internalTransferPairs.map((pair) => buildReviewBankTransactionKey(pair.incomingTransaction))
+  )
+  const matchedRevenueTransactionIds = new Set(
+    batch.report.matches.flatMap((match) => match.transactionIds)
+  )
+  const payoutMatchedBankTransactionIds = new Set(
+    (batch.reconciliation.payoutBatchMatches ?? [])
+      .filter((match) => match.matched)
+      .map((match) => match.bankTransactionId)
   )
   const candidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
     transaction.source === 'bank'
@@ -559,11 +575,22 @@ function buildExpenseReviewSections(
       return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes)]
     })
 
+  const expenseUnmatchedInflows = batch.reconciliation.normalizedTransactions
+    .filter((transaction) =>
+      transaction.source === 'bank'
+      && transaction.direction === 'in'
+      && !matchedRevenueTransactionIds.has(transaction.id)
+      && !payoutMatchedBankTransactionIds.has(transaction.id)
+      && !internalTransferIncomingKeys.has(buildReviewBankTransactionKey(transaction))
+    )
+    .map((transaction) => toExpenseUnmatchedInflowReviewItem(batch, transaction, fileRoutes))
+
   return {
     expenseMatched,
     expenseNeedsReview,
     expenseUnmatchedDocuments,
-    expenseUnmatchedOutflows
+    expenseUnmatchedOutflows,
+    expenseUnmatchedInflows
   }
 }
 
@@ -721,6 +748,28 @@ function toExpenseUnmatchedOutflowReviewItem(
     operatorCheckHint: 'Zkontrolujte ručně bankovní zprávu, protistranu a dohledání odpovídajícího dokladu.',
     documentBankRelation: 'Existuje odchozí bankovní platba, ale zatím bez načteného odpovídajícího dokladu.',
     expenseComparison: buildExpenseOutflowComparison(bankTransaction)
+  }
+}
+
+function toExpenseUnmatchedInflowReviewItem(
+  _batch: MonthlyBatchResult,
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  _fileRoutes: UploadedMonthlyFileRoute[] | undefined
+): ReviewSectionItem {
+  return {
+    id: `expense-unmatched-inflow:${bankTransaction.id}`,
+    domain: 'expense',
+    kind: 'expense-unmatched-inflow',
+    title: `Nespárovaná příchozí platba ${formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency)}`,
+    detail: 'Příchozí bankovní pohyb zatím nemá potvrzenou vazbu na payout, rezervaci ani interní převod mezi vlastními účty.',
+    transactionIds: [bankTransaction.id],
+    sourceDocumentIds: [],
+    matchStrength: 'nespárováno',
+    evidenceSummary: buildExpenseInflowEvidenceSummary(bankTransaction),
+    operatorExplanation: 'Příchozí bankovní platba zůstává bez potvrzeného vysvětlení v aktuálním měsíčním workflow.',
+    operatorCheckHint: 'Zkontrolujte ručně protistranu, zprávu banky a případnou vazbu na payout, vratku nebo interní převod.',
+    documentBankRelation: 'Existuje příchozí bankovní platba, ale zatím bez potvrzené vazby na payout nebo interní převod.',
+    expenseComparison: buildExpenseInflowComparison(bankTransaction)
   }
 }
 
@@ -940,15 +989,15 @@ function buildExpenseComparison(
     },
     ...(bankTransaction
       ? {
-          bank: {
-            supplierOrCounterparty: bankTransaction.counterparty,
-            reference: bankTransaction.reference,
-            bookedAt: bankTransaction.bookedAt,
-            amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
-            currency: bankTransaction.currency,
-            bankAccount: bankTransaction.accountId
-          }
+        bank: {
+          supplierOrCounterparty: bankTransaction.counterparty,
+          reference: bankTransaction.reference,
+          bookedAt: bankTransaction.bookedAt,
+          amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
+          currency: bankTransaction.currency,
+          bankAccount: bankTransaction.accountId
         }
+      }
       : {})
   }
 }
@@ -1099,6 +1148,19 @@ function buildExpenseOutflowEvidenceSummary(
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
 }
 
+function buildExpenseInflowEvidenceSummary(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ReviewEvidenceEntry[] {
+  return [
+    { label: 'částka', value: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency) },
+    maybeEvidenceEntry('datum', bankTransaction.bookedAt),
+    maybeEvidenceEntry('zpráva banky', bankTransaction.reference ?? 'chybí'),
+    maybeEvidenceEntry('reference', bankTransaction.reference ?? 'chybí'),
+    maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankTransaction.counterparty, bankTransaction.accountId]).join(' · ')),
+    { label: 'dokument', value: 'není relevantní' }
+  ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
 function buildInternalTransferEvidenceSummary(
   outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
@@ -1127,6 +1189,25 @@ function buildInternalTransferEvidenceSummary(
     ),
     { label: 'dokument', value: 'nejde o výdajový doklad' }
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function buildExpenseInflowComparison(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): ReviewExpenseComparison {
+  return {
+    variant: 'document-bank',
+    leftLabel: 'Doklad',
+    rightLabel: 'Banka',
+    document: {},
+    bank: {
+      supplierOrCounterparty: bankTransaction.counterparty,
+      reference: bankTransaction.reference,
+      bookedAt: bankTransaction.bookedAt,
+      amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
+      currency: bankTransaction.currency,
+      bankAccount: bankTransaction.accountId
+    }
+  }
 }
 
 function buildInternalTransferPairSelections(
@@ -1860,6 +1941,8 @@ function toTitle(kind: ReviewSectionItem['kind']): string {
       return 'Nespárovaný doklad'
     case 'expense-unmatched-outflow':
       return 'Nespárovaná odchozí platba'
+    case 'expense-unmatched-inflow':
+      return 'Nespárovaná příchozí platba'
   }
 }
 

@@ -53,6 +53,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="expense-detail-search"')
     expect(result.html).toContain('id="expense-detail-sort"')
     expect(result.html).toContain('id="expense-filter-expenseUnmatchedOutflows"')
+    expect(result.html).toContain('id="expense-filter-expenseUnmatchedInflows"')
+    expect(result.html).toContain('main.expense-detail-shell')
     expect(result.html).toContain('expense-summary-grid')
     expect(result.html).toContain('expense-summary-tile')
     expect(result.html).toContain('grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));')
@@ -2375,7 +2377,7 @@ describe('buildWebDemo', () => {
     expect(exportArtifact.expenseRowCount).toBe(expenseRows.length)
     expect(
       payoutRows.filter((row) => String(row.Reference || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
-        + expenseRows.filter((row) => String(row['Číslo faktury / reference'] || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
+      + expenseRows.filter((row) => String(row['Číslo faktury / reference'] || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
     ).toBe(
       expenseRows.filter((row) => String(row['Číslo faktury / reference'] || '').includes('141260183') || String(row.Titulek || '').includes('Lenner')).length
     )
@@ -2634,6 +2636,7 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseMatchedContent.innerHTML).toContain('8888997777/2010')
     expect(rendered.expenseMatchedContent.innerHTML).toContain('5599955956/5500')
     expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).not.toContain('5 000,00 Kč')
 
     rendered.setWorkspaceExportPreset('complete')
     rendered.downloadWorkspaceExcelExport()
@@ -2652,6 +2655,32 @@ describe('buildWebDemo', () => {
       row.Sekce === 'Nespárované odchozí platby'
       && row.Titulek.includes('5 000,00 Kč')
     )).toBe(false)
+  })
+
+  it('renders a generic unmatched incoming bank movement in the dedicated incoming bucket and keeps internal transfers out of unmatched buckets', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T19:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-unmatched-incoming-bucket',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithGenericIncomingOnly(),
+          'text/csv'
+        )
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Nespárované příchozí platby')
+    rendered.setExpenseDetailFilter('expenseUnmatchedInflows')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('Nespárovaná příchozí platba 2 200,00 Kč')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('Příchozí platba bez vazby')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('2 200,00 Kč')
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedInflows'))
+      .toBe(rendered.expenseUnmatchedInflowsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
   })
 
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
@@ -2942,6 +2971,7 @@ async function executeWebDemoMainWorkflow(input: {
   expenseReviewContent: StubDomElement
   expenseUnmatchedDocumentsContent: StubDomElement
   expenseUnmatchedOutflowsContent: StubDomElement
+  expenseUnmatchedInflowsContent: StubDomElement
   exportHandoffContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
@@ -2962,6 +2992,7 @@ async function executeWebDemoMainWorkflow(input: {
       | 'expenseNeedsReview'
       | 'expenseUnmatchedDocuments'
       | 'expenseUnmatchedOutflows'
+      | 'expenseUnmatchedInflows'
       | 'manualConfirmed'
       | 'manualRejected'
   ) => void
@@ -3112,6 +3143,7 @@ async function executeWebDemoMainWorkflow(input: {
     expenseReviewContent: elements['expense-review-content'],
     expenseUnmatchedDocumentsContent: elements['expense-unmatched-documents-content'],
     expenseUnmatchedOutflowsContent: elements['expense-unmatched-outflows-content'],
+    expenseUnmatchedInflowsContent: elements['expense-unmatched-inflows-content'],
     exportHandoffContent: elements['export-handoff-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
@@ -3151,6 +3183,7 @@ async function executeWebDemoMainWorkflow(input: {
         | 'expenseNeedsReview'
         | 'expenseUnmatchedDocuments'
         | 'expenseUnmatchedOutflows'
+        | 'expenseUnmatchedInflows'
         | 'manualConfirmed'
         | 'manualRejected'
     ) {
@@ -3160,6 +3193,7 @@ async function executeWebDemoMainWorkflow(input: {
         expenseNeedsReview: 'expense-filter-expenseNeedsReview',
         expenseUnmatchedDocuments: 'expense-filter-expenseUnmatchedDocuments',
         expenseUnmatchedOutflows: 'expense-filter-expenseUnmatchedOutflows',
+        expenseUnmatchedInflows: 'expense-filter-expenseUnmatchedInflows',
         manualConfirmed: 'expense-filter-manualConfirmed',
         manualRejected: 'expense-filter-manualRejected'
       } as const
@@ -3238,7 +3272,7 @@ async function loadBuiltWebDemoRuntimeModule(
   const assetPath = resolve(dirname(outputPath), runtimeAssetPath.slice(2))
   const previousWindow = (globalThis as { window?: unknown }).window
 
-  ;(globalThis as { window?: unknown }).window = windowObject
+    ; (globalThis as { window?: unknown }).window = windowObject
 
   try {
     await import(`${pathToFileURL(assetPath).href}?web-demo-test=${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -3246,7 +3280,7 @@ async function loadBuiltWebDemoRuntimeModule(
     if (typeof previousWindow === 'undefined') {
       delete (globalThis as { window?: unknown }).window
     } else {
-      ;(globalThis as { window?: unknown }).window = previousWindow
+      ; (globalThis as { window?: unknown }).window = previousWindow
     }
   }
 }
@@ -3295,6 +3329,8 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'expense-unmatched-documents-content',
     'expense-unmatched-outflows-section',
     'expense-unmatched-outflows-content',
+    'expense-unmatched-inflows-section',
+    'expense-unmatched-inflows-content',
     'expense-review-summary-section',
     'expense-review-summary-content',
     'expense-detail-filter-buttons',
@@ -3303,6 +3339,7 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'expense-filter-expenseNeedsReview',
     'expense-filter-expenseUnmatchedDocuments',
     'expense-filter-expenseUnmatchedOutflows',
+    'expense-filter-expenseUnmatchedInflows',
     'expense-filter-manualConfirmed',
     'expense-filter-manualRejected',
     'expense-detail-search',
@@ -3344,11 +3381,11 @@ function createStubDomElement(
     value: '',
     files: [],
     listeners: {},
-    setAttribute() {},
+    setAttribute() { },
     addEventListener(name: string, listener: () => void) {
       element.listeners[name] = listener
     },
-    click() {}
+    click() { }
   }
 
   elements[id] = element
@@ -3848,6 +3885,13 @@ function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithGenericIncomingOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '29.03.2026 12:00;29.03.2026 12:02;5599955956/5500;000000-4444555566/0100;Neznámý příjemce;2200,00;CZK;Příchozí platba bez vazby'
   ].join('\n')
 }
 

@@ -14,6 +14,7 @@ interface BrowserWorkspaceExportReviewSections {
   expenseNeedsReview: ReviewSectionItem[]
   expenseUnmatchedDocuments: ReviewSectionItem[]
   expenseUnmatchedOutflows: ReviewSectionItem[]
+  expenseUnmatchedInflows: ReviewSectionItem[]
   unmatched: ReviewSectionItem[]
   suspicious: ReviewSectionItem[]
   missingDocuments: ReviewSectionItem[]
@@ -45,6 +46,7 @@ export interface BrowserWorkspaceExcelExportArtifact {
     expenseNeedsReview: number
     expenseUnmatchedDocuments: number
     expenseUnmatchedOutflows: number
+    expenseUnmatchedInflows: number
   }
 }
 
@@ -82,7 +84,8 @@ export function buildBrowserWorkspaceExcelExport(input: {
       expenseMatched: sections.expenseMatched.length,
       expenseNeedsReview: sections.expenseNeedsReview.length,
       expenseUnmatchedDocuments: sections.expenseUnmatchedDocuments.length,
-      expenseUnmatchedOutflows: sections.expenseUnmatchedOutflows.length
+      expenseUnmatchedOutflows: sections.expenseUnmatchedOutflows.length,
+      expenseUnmatchedInflows: sections.expenseUnmatchedInflows.length
     }
   }
 }
@@ -179,7 +182,8 @@ function buildSummarySheet(
     { Položka: 'Spárované výdaje', Hodnota: String(sections.expenseMatched.length) },
     { Položka: 'Výdaje ke kontrole', Hodnota: String(sections.expenseNeedsReview.length) },
     { Položka: 'Nespárované doklady', Hodnota: String(sections.expenseUnmatchedDocuments.length) },
-    { Položka: 'Nespárované odchozí platby', Hodnota: String(sections.expenseUnmatchedOutflows.length) }
+    { Položka: 'Nespárované odchozí platby', Hodnota: String(sections.expenseUnmatchedOutflows.length) },
+    { Položka: 'Nespárované příchozí platby', Hodnota: String(sections.expenseUnmatchedInflows.length) }
   ]
 
   return XLSX.utils.json_to_sheet(rows)
@@ -232,7 +236,8 @@ function buildExpenseRows(
   const reviewBuckets = [
     { section: 'Výdaje ke kontrole', items: sections.expenseNeedsReview },
     { section: 'Nespárované doklady', items: sections.expenseUnmatchedDocuments },
-    { section: 'Nespárované odchozí platby', items: sections.expenseUnmatchedOutflows }
+    { section: 'Nespárované odchozí platby', items: sections.expenseUnmatchedOutflows },
+    { section: 'Nespárované příchozí platby', items: sections.expenseUnmatchedInflows }
   ]
 
   const buckets = preset === 'matched-only'
@@ -268,6 +273,7 @@ function isExpenseReviewItem(item: ReviewSectionItem): boolean {
     || item.kind === 'expense-review'
     || item.kind === 'expense-unmatched-document'
     || item.kind === 'expense-unmatched-outflow'
+    || item.kind === 'expense-unmatched-inflow'
     )
 }
 
@@ -433,6 +439,7 @@ function emptySections(): BrowserWorkspaceExportReviewSections {
     expenseNeedsReview: [],
     expenseUnmatchedDocuments: [],
     expenseUnmatchedOutflows: [],
+    expenseUnmatchedInflows: [],
     unmatched: [],
     suspicious: [],
     missingDocuments: []
