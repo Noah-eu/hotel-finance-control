@@ -2318,6 +2318,109 @@ describe('buildWebDemo', () => {
     expect(reloadedState.fileRoutes).toHaveLength(1)
   })
 
+  it('keeps previously uploaded files visible and reruns the same month on the merged file set when RB is added later', async () => {
+    const storageState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-30T19:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-same-month-additive-initial',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const additive = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-30T19:11:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-same-month-additive-second',
+      locationSearch: '?debug=1',
+      storageState,
+      skipStart: true,
+      files: [
+        createDelayedWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          5,
+          'text/csv'
+        )
+      ]
+    })
+
+    additive.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(additive.preparedFilesContent.innerHTML).toContain('<strong>booking35k.csv</strong>')
+    expect(additive.preparedFilesContent.innerHTML).toContain('<strong>airbnb.csv</strong>')
+    expect(additive.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(additive.preparedFilesContent.innerHTML).toContain('<strong>Pohyby_5599955956_202603191023.csv</strong>')
+
+    await additive.waitForWorkflowCompletion()
+
+    const additiveState = additive.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string }>
+      extractedRecords: Array<{ accountLabelCs?: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    expect(additiveState.runId).toContain('2026-03')
+    expect(additiveState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(additiveState.extractedRecords).toHaveLength(4)
+    expect(additive.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(additive.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
+    expect(additive.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+    expect(additiveState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(additiveState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+
+    const duplicateReupload = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-30T19:12:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-same-month-additive-duplicate',
+      locationSearch: '?debug=1',
+      storageState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        )
+      ]
+    })
+
+    const duplicateState = duplicateReupload.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+    expect(duplicateState.fileRoutes).toHaveLength(4)
+    expect(duplicateState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(duplicateState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+
+    const reloaded = await duplicateReupload.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+    expect(reloadedState.runId).toContain('2026-03')
+    expect(reloadedState.fileRoutes).toHaveLength(4)
+    expect(reloadedState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(reloadedState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>booking35k.csv</strong>')
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>airbnb.csv</strong>')
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>Pohyby_5599955956_202603191023.csv</strong>')
+  })
+
   it('builds complete monthly Excel export from the restored current month workspace state', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const storageState = new Map<string, string>()
@@ -2779,6 +2882,33 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
+  it('shows live browser workflow progress before the larger selected-file run completes', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-30T11:15:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-progressive-large-upload',
+      skipStart: true,
+      files: [
+        createDelayedWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 5, 'text/csv'),
+        createDelayedWebDemoRuntimeArrayBufferTextFile('airbnb.csv', getRealInputFixture('airbnb-payout-export').rawInput.content, 5, 'text/csv'),
+        createDelayedWebDemoRuntimeArrayBufferTextFile('Pohyby_5599955956_202603191023.csv', getRealInputFixture('raiffeisenbank-statement').rawInput.content, 5, 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Ukládám vybrané soubory do browser workspace:')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('booking35k.csv')
+
+    await rendered.waitForWorkflowCompletion()
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.runtimeSummaryUploadedFiles.textContent).toContain('4')
+  })
+
   it('shows the runtime payout diagnostics block only when debug mode is explicitly enabled', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T12:13:15.000Z',
@@ -3012,6 +3142,8 @@ async function executeWebDemoMainWorkflow(input: {
   setWorkspaceExportPreset: (preset: 'complete' | 'review-needed' | 'matched-only') => void
   downloadWorkspaceExcelExport: () => void
   getLastExcelExport: () => unknown
+  startWorkflow: () => void
+  waitForWorkflowCompletion: () => Promise<void>
   reloadWithSameStorage: () => Promise<any>
   getLastVisibleRuntimeState: () => unknown
   lastVisibleRuntimeState?: unknown
@@ -3047,6 +3179,8 @@ async function executeWebDemoMainWorkflow(input: {
     atob: (value: string) => string
     TextEncoder?: typeof TextEncoder
     TextDecoder?: typeof TextDecoder
+    setTimeout?: typeof setTimeout
+    clearTimeout?: typeof clearTimeout
     __hotelFinanceCreateBrowserRuntime?: unknown
     __hotelFinanceBuildWorkspaceExcelExport?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
@@ -3086,7 +3220,9 @@ async function executeWebDemoMainWorkflow(input: {
       return Buffer.from(value, 'base64').toString('binary')
     },
     TextEncoder,
-    TextDecoder
+    TextDecoder,
+    setTimeout,
+    clearTimeout
   }
 
   await loadBuiltWebDemoRuntimeModule(outputPath, result.runtimeAssetPath!, windowObject)
@@ -3105,25 +3241,36 @@ async function executeWebDemoMainWorkflow(input: {
     TextEncoder,
     TextDecoder,
     URLSearchParams,
-    console
+    console,
+    setTimeout,
+    clearTimeout
   })
 
   elements['monthly-files'].files = input.files
   elements['month-label'].value = input.month
 
-  if (!input.skipStart) {
-    elements['prepare-upload'].listeners.click()
-
-    for (let index = 0; index < 50; index += 1) {
+  async function waitForWorkflowCompletion() {
+    for (let index = 0; index < 200; index += 1) {
       if (
         elements['prepared-files-content'].innerHTML.includes('Rozpoznáno souborů:')
         || elements['prepared-files-content'].innerHTML.includes('Runtime běh selhal.')
       ) {
-        break
+        return
       }
 
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
+
+    throw new Error('Web demo workflow did not finish in time.')
+  }
+
+  function startWorkflow() {
+    elements['prepare-upload'].listeners.click()
+  }
+
+  if (!input.skipStart) {
+    startWorkflow()
+    await waitForWorkflowCompletion()
   }
 
   return {
@@ -3234,6 +3381,8 @@ async function executeWebDemoMainWorkflow(input: {
     getLastExcelExport() {
       return windowObject.__hotelFinanceLastExcelExport
     },
+    startWorkflow,
+    waitForWorkflowCompletion,
     async reloadWithSameStorage() {
       return executeWebDemoMainWorkflow({
         ...input,
@@ -3501,6 +3650,22 @@ function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, 
       return content
     },
     async arrayBuffer() {
+      const bytes = new TextEncoder().encode(content)
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+    }
+  }
+}
+
+function createDelayedWebDemoRuntimeArrayBufferTextFile(name: string, content: string, delayMs: number, type = 'text/plain') {
+  return {
+    name,
+    type,
+    async text() {
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+      return content
+    },
+    async arrayBuffer() {
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
       const bytes = new TextEncoder().encode(content)
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }

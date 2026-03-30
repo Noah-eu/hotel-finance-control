@@ -1,5 +1,5 @@
-import type { BrowserRuntimeInputFile, BrowserRuntimeUploadState } from './index.js'
-import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state.js'
+import type { BrowserRuntimeInputFile, BrowserRuntimeProgressUpdate, BrowserRuntimeUploadState } from './index.js'
+import { buildBrowserRuntimeUploadStateFromFilesProgressively } from './browser-runtime-state.js'
 import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
 import { detectUploadedMonthlyFileCapability } from '../monthly-batch/capabilities.js'
 import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
@@ -42,6 +42,7 @@ export interface BrowserRuntimeBridge {
     files: BrowserRuntimeInputFile[]
     month?: string
     generatedAt: string
+    onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
   }): Promise<BrowserRuntimeUploadState>
 }
 
@@ -56,14 +57,17 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
   files: BrowserRuntimeInputFile[]
   month?: string
   generatedAt: string
+  onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
 }): Promise<BrowserRuntimeUploadState> {
   ensureBrowserCompatibleBuffer()
   const uploadedFiles = await prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input)
 
-  return buildBrowserRuntimeUploadStateFromFiles({
+  return buildBrowserRuntimeUploadStateFromFilesProgressively({
     files: uploadedFiles,
     runId: buildBrowserRuntimeRunId(input.month),
     generatedAt: input.generatedAt
+  }, {
+    onProgress: input.onProgress
   })
 }
 
@@ -78,86 +82,114 @@ export function createBrowserRuntime(): BrowserRuntimeBridge {
 export async function prepareBrowserRuntimeUploadedFilesFromSelectedFiles(input: {
   files: BrowserRuntimeInputFile[]
   generatedAt: string
+  onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
 }): Promise<UploadedMonthlyFile[]> {
   ensureBrowserCompatibleBuffer()
 
-  return Promise.all(
-    input.files.map(async (file) => {
-      try {
-        const uploadedFileContent = await readUploadedFileContent(file)
-        const sourceDescriptor = {
-          mimeType: normalizeMimeType(file.type),
-          browserTextExtraction: {
-            mode: uploadedFileContent.contentFormat,
-            status: 'extracted' as const,
-            textPreview: uploadedFileContent.content.slice(0, 240),
-            detectedSignatures: uploadedFileContent.detectedSignatures
-          }
-        }
-        const capability = detectUploadedMonthlyFileCapability({
-          fileName: file.name,
-          content: uploadedFileContent.content,
-          binaryContentBase64: uploadedFileContent.binaryContentBase64,
-          contentFormat: uploadedFileContent.contentFormat,
-          sourceDescriptor
-        })
+  const uploadedFiles: UploadedMonthlyFile[] = []
 
-        return {
-          name: file.name,
-          content: uploadedFileContent.content,
-          uploadedAt: input.generatedAt,
-          binaryContentBase64: uploadedFileContent.binaryContentBase64,
-          contentFormat: uploadedFileContent.contentFormat,
-          sourceDescriptor: {
-            ...sourceDescriptor,
-            capability
-          }
-        }
-      } catch (error) {
-        const contentFormat = inferContentFormatFromFileName(file.name)
-        const ingestError = error instanceof Error ? error.message : String(error)
-        let binaryContentBase64: string | undefined
-
-        if (typeof file.arrayBuffer === 'function') {
-          try {
-            binaryContentBase64 = arrayBufferToBase64(await file.arrayBuffer())
-          } catch {
-            binaryContentBase64 = undefined
-          }
-        }
-
-        const sourceDescriptor = {
-          mimeType: normalizeMimeType(file.type),
-          browserTextExtraction: {
-            mode: contentFormat,
-            status: 'failed' as const,
-            detectedSignatures: []
-          }
-        }
-        const capability = detectUploadedMonthlyFileCapability({
-          fileName: file.name,
-          content: '',
-          binaryContentBase64,
-          contentFormat,
-          sourceDescriptor,
-          ingestError
-        })
-
-        return {
-          name: file.name,
-          content: '',
-          uploadedAt: input.generatedAt,
-          binaryContentBase64,
-          contentFormat,
-          sourceDescriptor: {
-            ...sourceDescriptor,
-            capability
-          },
-          ingestError
-        }
-      }
+  for (let index = 0; index < input.files.length; index += 1) {
+    const file = input.files[index]!
+    uploadedFiles.push(await prepareBrowserRuntimeUploadedFileFromSelectedFile(file, input.generatedAt))
+    input.onProgress?.({
+      stage: 'preparing-selected-files',
+      totalFiles: input.files.length,
+      completedFiles: index + 1,
+      currentFileName: file.name,
+      currentFileStatus: uploadedFiles[index]?.ingestError ? 'error' : 'supported'
     })
-  )
+
+    if (index + 1 < input.files.length) {
+      await yieldBrowserRuntimePreparationWork()
+    }
+  }
+
+  return uploadedFiles
+}
+
+async function prepareBrowserRuntimeUploadedFileFromSelectedFile(
+  file: BrowserRuntimeInputFile,
+  generatedAt: string
+): Promise<UploadedMonthlyFile> {
+  try {
+    const uploadedFileContent = await readUploadedFileContent(file)
+    const sourceDescriptor = {
+      mimeType: normalizeMimeType(file.type),
+      browserTextExtraction: {
+        mode: uploadedFileContent.contentFormat,
+        status: 'extracted' as const,
+        textPreview: uploadedFileContent.content.slice(0, 240),
+        detectedSignatures: uploadedFileContent.detectedSignatures
+      }
+    }
+    const capability = detectUploadedMonthlyFileCapability({
+      fileName: file.name,
+      content: uploadedFileContent.content,
+      binaryContentBase64: uploadedFileContent.binaryContentBase64,
+      contentFormat: uploadedFileContent.contentFormat,
+      sourceDescriptor
+    })
+
+    return {
+      name: file.name,
+      content: uploadedFileContent.content,
+      uploadedAt: generatedAt,
+      binaryContentBase64: uploadedFileContent.binaryContentBase64,
+      contentFormat: uploadedFileContent.contentFormat,
+      sourceDescriptor: {
+        ...sourceDescriptor,
+        capability
+      }
+    }
+  } catch (error) {
+    const contentFormat = inferContentFormatFromFileName(file.name)
+    const ingestError = error instanceof Error ? error.message : String(error)
+    let binaryContentBase64: string | undefined
+
+    if (typeof file.arrayBuffer === 'function') {
+      try {
+        binaryContentBase64 = arrayBufferToBase64(await file.arrayBuffer())
+      } catch {
+        binaryContentBase64 = undefined
+      }
+    }
+
+    const sourceDescriptor = {
+      mimeType: normalizeMimeType(file.type),
+      browserTextExtraction: {
+        mode: contentFormat,
+        status: 'failed' as const,
+        detectedSignatures: []
+      }
+    }
+    const capability = detectUploadedMonthlyFileCapability({
+      fileName: file.name,
+      content: '',
+      binaryContentBase64,
+      contentFormat,
+      sourceDescriptor,
+      ingestError
+    })
+
+    return {
+      name: file.name,
+      content: '',
+      uploadedAt: generatedAt,
+      binaryContentBase64,
+      contentFormat,
+      sourceDescriptor: {
+        ...sourceDescriptor,
+        capability
+      },
+      ingestError
+    }
+  }
+}
+
+async function yieldBrowserRuntimePreparationWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })
 }
 
 async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{

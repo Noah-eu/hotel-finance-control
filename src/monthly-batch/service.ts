@@ -58,6 +58,14 @@ interface UploadedMonthlyFileClassificationDescriptor {
   ingestError?: string
 }
 
+export interface UploadedMonthlyIngestionProgress {
+  stage: 'classifying-files' | 'parsing-files'
+  totalFiles: number
+  completedFiles: number
+  currentFileName?: string
+  currentFileStatus?: 'supported' | 'unsupported' | 'error'
+}
+
 export class DefaultMonthlyBatchService implements MonthlyBatchService {
   run(input: MonthlyBatchInput): MonthlyBatchResult {
     const parsedFiles = input.files.map((file) => parseImportedMonthlySourceFile(file, input.reconciliationContext.requestedAt))
@@ -136,6 +144,138 @@ export function ingestUploadedMonthlyFiles(input: {
     fileRoutes,
     batch
   }
+}
+
+export async function ingestUploadedMonthlyFilesProgressively(input: {
+  files: UploadedMonthlyFile[]
+  reconciliationContext: MonthlyBatchInput['reconciliationContext']
+  reportGeneratedAt: MonthlyBatchInput['reportGeneratedAt']
+}, options: {
+  onProgress?: (progress: UploadedMonthlyIngestionProgress) => void
+  yieldEvery?: number
+} = {}): Promise<UploadedMonthlyIngestionResult> {
+  const yieldEvery = normalizeProgressiveYieldEvery(options.yieldEvery)
+  const classifiedFiles: Array<ReturnType<typeof classifyUploadedMonthlyFile>> = []
+
+  for (let index = 0; index < input.files.length; index += 1) {
+    const classifiedFile = classifyUploadedMonthlyFile(input.files[index]!, index)
+    classifiedFiles.push(classifiedFile)
+    options.onProgress?.({
+      stage: 'classifying-files',
+      totalFiles: input.files.length,
+      completedFiles: index + 1,
+      currentFileName: classifiedFile.fileRoute.fileName,
+      currentFileStatus: classifiedFile.fileRoute.status
+    })
+
+    if (shouldYieldProgressively(index + 1, input.files.length, yieldEvery)) {
+      await yieldProgressiveWork()
+    }
+  }
+
+  const duplicateWarningsByIndex = collectDuplicateWarnings(classifiedFiles, input.files)
+  const fileRoutes = classifiedFiles.map((classifiedFile, index) => ({
+    ...classifiedFile.fileRoute,
+    warnings: [...classifiedFile.fileRoute.warnings, ...duplicateWarningsByIndex[index]]
+  }))
+  const importedFiles = classifiedFiles.flatMap((classifiedFile, index) => {
+    if (!classifiedFile.sourceDocument || !classifiedFile.parserId) {
+      return []
+    }
+
+    return [{
+      sourceDocument: classifiedFile.sourceDocument,
+      content: input.files[index]!.content,
+      binaryContentBase64: input.files[index]!.binaryContentBase64,
+      routing: {
+        classificationBasis: classifiedFile.fileRoute.classificationBasis,
+        parserId: classifiedFile.parserId,
+        warnings: [...classifiedFile.fileRoute.warnings, ...duplicateWarningsByIndex[index]],
+        role: classifiedFile.fileRoute.role
+      }
+    }]
+  })
+  const parsedFiles: ParsedImportedMonthlySourceFile[] = []
+
+  for (let index = 0; index < importedFiles.length; index += 1) {
+    const importedFile = importedFiles[index]!
+    const routeIndex = fileRoutes.findIndex((file) => file.sourceDocumentId === importedFile.sourceDocument.id)
+    const parseDiagnostics = inspectUploadedFileParseDiagnostics(importedFile)
+
+    try {
+      const parsed = parseImportedMonthlySourceFile(importedFile, input.reconciliationContext.requestedAt)
+      parsedFiles.push(parsed)
+
+      if (routeIndex !== -1) {
+        fileRoutes[routeIndex] = {
+          ...fileRoutes[routeIndex]!,
+          status: 'supported',
+          intakeStatus: 'parsed',
+          extractedCount: parsed.extractedRecords.length,
+          extractedRecordIds: parsed.extractedRecords.map((record) => record.id),
+          parseDiagnostics,
+          reason: undefined,
+          errorMessage: undefined
+        }
+      }
+    } catch (error) {
+      if (routeIndex !== -1) {
+        const message = error instanceof Error ? error.message : String(error)
+        fileRoutes[routeIndex] = {
+          ...fileRoutes[routeIndex]!,
+          status: 'error',
+          intakeStatus: 'error',
+          extractedCount: 0,
+          extractedRecordIds: [],
+          parseDiagnostics,
+          reason: message,
+          errorMessage: message
+        }
+      }
+    }
+
+    options.onProgress?.({
+      stage: 'parsing-files',
+      totalFiles: importedFiles.length,
+      completedFiles: index + 1,
+      currentFileName: importedFile.sourceDocument.fileName,
+      currentFileStatus: routeIndex === -1 ? undefined : fileRoutes[routeIndex]?.status
+    })
+
+    if (shouldYieldProgressively(index + 1, importedFiles.length, yieldEvery)) {
+      await yieldProgressiveWork()
+    }
+  }
+
+  const parsedImportedFiles = parsedFiles.map((file) => file.importedFile)
+  const batch = buildMonthlyBatchResultFromParsedFiles(parsedFiles, {
+    reconciliationContext: input.reconciliationContext,
+    reportGeneratedAt: input.reportGeneratedAt
+  })
+
+  return {
+    importedFiles: parsedImportedFiles,
+    fileRoutes,
+    batch
+  }
+}
+
+function normalizeProgressiveYieldEvery(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 1) {
+    return 1
+  }
+
+  return Math.max(1, Math.floor(value))
+}
+
+function shouldYieldProgressively(completed: number, total: number, yieldEvery: number): boolean {
+  return completed < total && completed % yieldEvery === 0
+}
+
+async function yieldProgressiveWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })
 }
 
 export function prepareUploadedMonthlyFiles(files: UploadedMonthlyFile[]): ImportedMonthlySourceFile[] {

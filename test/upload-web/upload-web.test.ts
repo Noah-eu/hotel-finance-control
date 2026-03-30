@@ -236,6 +236,83 @@ describe('buildUploadWebFlow', () => {
     expect(result.extractedRecords[0].extractedCount).toBeGreaterThan(0)
   })
 
+  it('completes a larger mixed browser upload set progressively, isolates a broken PDF, and preserves the payout baseline', async () => {
+    const bookingInvoice = getRealInputFixture('booking-invoice-pdf')
+    const qrInvoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
+    const scanInvoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
+    const handwrittenReceipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
+    const lennerInvoice = getRealInputFixture('invoice-document')
+    const dobraPayableInvoice = getRealInputFixture('invoice-document-dobra-energie-pdf')
+    const dobraRefundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')
+    const sparseRefundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+    const czechInvoice = getRealInputFixture('invoice-document-czech-pdf')
+    const receipt = getRealInputFixture('receipt-document')
+    const progressUpdates: Array<{ stage: string; completedFiles: number; totalFiles: number; currentFileName?: string }> = []
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbCitiContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFile(bookingInvoice.sourceDocument.fileName, bookingInvoice.rawInput.binaryContentBase64!),
+        createRuntimePdfFile(qrInvoice.sourceDocument.fileName, qrInvoice.rawInput.binaryContentBase64!),
+        createRuntimePdfFile(scanInvoice.sourceDocument.fileName, scanInvoice.rawInput.binaryContentBase64!),
+        createRuntimePdfFile(handwrittenReceipt.sourceDocument.fileName, handwrittenReceipt.rawInput.binaryContentBase64!),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner-large-1.pdf', lennerInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner-large-2.pdf', lennerInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('Dobra-large-payable-1.pdf', dobraPayableInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('Dobra-large-payable-2.pdf', dobraPayableInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFile('Dobra-Energie-preplatek-2026-03.pdf', dobraRefundInvoice.rawInput.binaryContentBase64!),
+        createRuntimePdfFile('Dobra-Energie-preplatek-3804-2026-03.pdf', sparseRefundInvoice.rawInput.binaryContentBase64!),
+        createRuntimePdfFileFromToUnicodeTextLines('Large-extra-invoice-a.pdf', czechInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('Large-extra-invoice-b.pdf', czechInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('Large-extra-receipt.pdf', receipt.rawInput.content.split('\n')),
+        createBrokenRuntimePdfFile('broken-large-upload.pdf')
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T10:15:00.000Z',
+      onProgress(progress) {
+        progressUpdates.push({
+          stage: progress.stage,
+          completedFiles: progress.completedFiles,
+          totalFiles: progress.totalFiles,
+          currentFileName: progress.currentFileName
+        })
+      }
+    })
+
+    expect(result.fileRoutes).toHaveLength(18)
+    expect(result.routingSummary.uploadedFileCount).toBe(18)
+    expect(result.routingSummary.unsupportedFileCount).toBe(1)
+    expect(result.routingSummary.errorFileCount).toBe(0)
+    expect(result.fileRoutes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'broken-large-upload.pdf',
+          status: 'unsupported',
+          intakeStatus: 'unsupported'
+        })
+      ])
+    )
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(
+      result.reviewSections.payoutBatchMatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(15)
+    expect(
+      result.reviewSections.payoutBatchUnmatched.filter((item) => item.title.startsWith('Airbnb payout dávka ')).length
+    ).toBe(2)
+    expect(progressUpdates.some((progress) => progress.stage === 'preparing-selected-files' && progress.totalFiles === 18)).toBe(true)
+    expect(progressUpdates.some((progress) => progress.stage === 'classifying-files')).toBe(true)
+    expect(progressUpdates.some((progress) => progress.stage === 'parsing-files')).toBe(true)
+    expect(progressUpdates.some((progress) => progress.stage === 'finalizing')).toBe(true)
+  })
+
   it('builds browser runtime state from a real uploaded Previo reservation workbook and exposes reservation-source processing truthfully', async () => {
     const previo = getRealInputFixture('previo-reservation-export')
 

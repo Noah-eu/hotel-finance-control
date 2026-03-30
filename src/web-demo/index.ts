@@ -1026,52 +1026,123 @@ ${showRuntimePayoutDiagnostics ? `
           || /\.(pdf|xlsx|xls)$/i.test(normalizedName);
       }
 
-      async function serializeSelectedFileForWorkspace(file) {
-        const fileName = String(file && file.name || 'uploaded-file');
-        const mimeType = String(file && file.type || '');
-        const uploadedAt = new Date().toISOString();
+      async function yieldBrowserWorkflowTurn() {
+        await new Promise((resolve) => {
+          if (window && typeof window.setTimeout === 'function') {
+            window.setTimeout(resolve, 0);
+            return;
+          }
 
-        if (detectBinaryWorkspaceFile(fileName, mimeType) && file && typeof file.arrayBuffer === 'function') {
-          const buffer = await file.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          const contentBase64 = encodeBytesToBase64(bytes);
-          const contentHash = hashByteArray(bytes);
+          if (typeof setTimeout === 'function') {
+            setTimeout(resolve, 0);
+            return;
+          }
 
-          return {
-            id: buildWorkspaceFileId({
-              fileName,
-              mimeType,
-              encoding: 'base64',
-              contentHash
-            }),
-            fileName,
-            mimeType,
-            encoding: 'base64',
-            contentBase64,
-            contentHash,
-            uploadedAt
-          };
-        }
+          resolve();
+        });
+      }
 
-        const textContent = file && typeof file.text === 'function'
-          ? await file.text()
-          : '';
-        const contentHash = hashStringContent(textContent);
+      function buildFailedWorkspaceFileRecord(fileName, mimeType, uploadedAt, errorMessage) {
+        const normalizedErrorMessage = String(errorMessage || 'Nepodařilo se přečíst vybraný soubor v browser workspace.');
+        const contentHash = hashStringContent(fileName + '::' + mimeType + '::failed::' + normalizedErrorMessage);
 
         return {
           id: buildWorkspaceFileId({
             fileName,
             mimeType,
-            encoding: 'text',
+            encoding: 'failed',
             contentHash
           }),
           fileName,
           mimeType,
-          encoding: 'text',
-          textContent,
+          encoding: 'failed',
+          errorMessage: normalizedErrorMessage,
           contentHash,
           uploadedAt
         };
+      }
+
+      async function serializeSelectedFileForWorkspace(file) {
+        const fileName = String(file && file.name || 'uploaded-file');
+        const mimeType = String(file && file.type || '');
+        const uploadedAt = new Date().toISOString();
+
+        try {
+          if (detectBinaryWorkspaceFile(fileName, mimeType) && file && typeof file.arrayBuffer === 'function') {
+            const buffer = await file.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            const contentBase64 = encodeBytesToBase64(bytes);
+            const contentHash = hashByteArray(bytes);
+
+            return {
+              id: buildWorkspaceFileId({
+                fileName,
+                mimeType,
+                encoding: 'base64',
+                contentHash
+              }),
+              fileName,
+              mimeType,
+              encoding: 'base64',
+              contentBase64,
+              contentHash,
+              uploadedAt
+            };
+          }
+
+          const textContent = file && typeof file.text === 'function'
+            ? await file.text()
+            : '';
+          const contentHash = hashStringContent(textContent);
+
+          return {
+            id: buildWorkspaceFileId({
+              fileName,
+              mimeType,
+              encoding: 'text',
+              contentHash
+            }),
+            fileName,
+            mimeType,
+            encoding: 'text',
+            textContent,
+            contentHash,
+            uploadedAt
+          };
+        } catch (error) {
+          return buildFailedWorkspaceFileRecord(
+            fileName,
+            mimeType,
+            uploadedAt,
+            error instanceof Error ? error.message : String(error)
+          );
+        }
+      }
+
+      async function serializeSelectedFilesForWorkspace(files, onProgress) {
+        const serialized = [];
+
+        for (let index = 0; index < files.length; index += 1) {
+          const file = files[index];
+          const record = await serializeSelectedFileForWorkspace(file);
+          serialized.push(record);
+
+          if (typeof onProgress === 'function') {
+            onProgress({
+              stage: 'serializing-workspace-files',
+              totalFiles: files.length,
+              completedFiles: index + 1,
+              currentFileName: String(file && file.name || record && record.fileName || ''),
+              currentFileStatus: record && record.encoding === 'failed' ? 'error' : 'supported'
+            });
+          }
+
+          if (index + 1 < files.length) {
+            await yieldBrowserWorkflowTurn();
+          }
+        }
+
+        return serialized;
       }
 
       function mergeWorkspaceFiles(existingFiles, incomingFiles) {
@@ -1109,9 +1180,65 @@ ${showRuntimePayoutDiagnostics ? `
         return merged;
       }
 
+      function buildRunningWorkflowFilesFromWorkspaceRecords(records) {
+        return (Array.isArray(records) ? records : [])
+          .filter((record) => record && record.fileName)
+          .map((record) => ({
+            name: String(record.fileName),
+            type: String(record.mimeType || '')
+          }));
+      }
+
+      function buildRunningWorkflowFilesFromMonthWorkspace(existingFiles, selectedFiles) {
+        const merged = [];
+        const seenKeys = new Set();
+
+        buildRunningWorkflowFilesFromWorkspaceRecords(existingFiles).forEach((file) => {
+          const key = String(file.name || '') + '::' + String(file.type || '');
+
+          if (!key || seenKeys.has(key)) {
+            return;
+          }
+
+          seenKeys.add(key);
+          merged.push(file);
+        });
+
+        (Array.isArray(selectedFiles) ? selectedFiles : []).forEach((file) => {
+          const normalizedName = String(file && file.name || 'uploaded-file');
+          const normalizedType = String(file && file.type || '');
+          const key = normalizedName + '::' + normalizedType;
+
+          if (!normalizedName || seenKeys.has(key)) {
+            return;
+          }
+
+          seenKeys.add(key);
+          merged.push({
+            name: normalizedName,
+            type: normalizedType
+          });
+        });
+
+        return merged;
+      }
+
       function buildRuntimeFileFromWorkspaceRecord(record) {
         const fileName = String(record && record.fileName || 'uploaded-file');
         const mimeType = String(record && record.mimeType || '');
+
+        if (record && record.encoding === 'failed') {
+          return {
+            name: fileName,
+            type: mimeType,
+            text: async () => {
+              throw new Error(String(record && record.errorMessage || 'Soubor nebylo možné načíst z browser workspace.'));
+            },
+            arrayBuffer: async () => {
+              throw new Error(String(record && record.errorMessage || 'Soubor nebylo možné načíst z browser workspace.'));
+            }
+          };
+        }
 
         if (record && record.encoding === 'base64') {
           return {
@@ -1136,6 +1263,45 @@ ${showRuntimePayoutDiagnostics ? `
             return encoder ? encoder.encode(String(record && record.textContent || '')).buffer : new Uint8Array(0).buffer;
           }
         };
+      }
+
+      function buildRunningWorkflowProgressText(progress) {
+        const stage = String(progress && progress.stage || '');
+        const totalFiles = Number(progress && progress.totalFiles || 0);
+        const completedFiles = Number(progress && progress.completedFiles || 0);
+        const currentFileName = String(progress && progress.currentFileName || '');
+
+        if (stage === 'serializing-workspace-files') {
+          return 'Ukládám vybrané soubory do browser workspace: ' + completedFiles + ' z ' + totalFiles + (currentFileName ? ' · ' + currentFileName : '');
+        }
+
+        if (stage === 'preparing-selected-files') {
+          return 'Načítám a předávám vybrané soubory do sdíleného runtime: ' + completedFiles + ' z ' + totalFiles + (currentFileName ? ' · ' + currentFileName : '');
+        }
+
+        if (stage === 'classifying-files') {
+          return 'Klasifikuji uploadované soubory pro měsíční běh: ' + completedFiles + ' z ' + totalFiles + (currentFileName ? ' · ' + currentFileName : '');
+        }
+
+        if (stage === 'parsing-files') {
+          return 'Spouštím parsery a izolované intake výsledky po souborech: ' + completedFiles + ' z ' + totalFiles + (currentFileName ? ' · ' + currentFileName : '');
+        }
+
+        if (stage === 'finalizing') {
+          return 'Skládám finální měsíční runtime stav, kontrolní sekce a exportní handoff…';
+        }
+
+        return 'Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.';
+      }
+
+      function renderRunningWorkflowProgress(files, progress) {
+        const fileNames = files.length === 0
+          ? '<li>Žádné soubory.</li>'
+          : files.map((file) => '<li><strong>' + escapeHtml(file.name) + '</strong></li>').join('');
+        const progressText = buildRunningWorkflowProgressText(progress);
+
+        preparedFilesContent.innerHTML = '<p class="hint">' + escapeHtml(progressText) + '</p><ul>' + fileNames + '</ul>';
+        runtimeOutput.innerHTML = '<p class="hint">' + escapeHtml(progressText) + '</p>';
       }
 
       function sanitizeExpenseReviewOverridesForStorage(overrides) {
@@ -3490,10 +3656,6 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function renderRunningState(files) {
-        const fileNames = files.length === 0
-          ? '<li>Žádné soubory.</li>'
-          : files.map((file) => '<li><strong>' + escapeHtml(file.name) + '</strong></li>').join('');
-
         preparedFilesSection.setAttribute('data-runtime-phase', 'running');
         reviewSummarySection.setAttribute('data-runtime-phase', 'running');
         controlDetailSummarySection.setAttribute('data-runtime-phase', 'running');
@@ -3521,7 +3683,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>načítám…</strong> · Payout unmatched: <strong>načítám…</strong>';
         }
 
-        preparedFilesContent.innerHTML = '<p class="hint">Probíhá příprava skutečně vybraných souborů pro sdílený runtime běh.</p><ul>' + fileNames + '</ul>';
+        renderRunningWorkflowProgress(files, {
+          stage: 'serializing-workspace-files',
+          totalFiles: files.length,
+          completedFiles: 0
+        });
         reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
@@ -3667,11 +3833,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
       async function startMainWorkflow() {
         const files = Array.from(fileInput.files || []);
         const normalizedMonth = String(monthInput && monthInput.value || '');
+        const existingWorkspace = loadMonthWorkspace(normalizedMonth);
         runtimeOutput.innerHTML = '<p class="hint">Spouštím browser/local workflow nad právě zvolenými soubory…</p>';
 
         if (files.length === 0) {
-          const existingWorkspace = loadMonthWorkspace(normalizedMonth);
-
           if (existingWorkspace && existingWorkspace.runtimeState) {
             restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
             return;
@@ -3682,7 +3847,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>běh právě probíhá</strong>. Původní ukázkový snapshot se teď nahrazuje skutečným výsledkem vybraných souborů.';
-        renderRunningState(files);
+        const runningWorkspacePreviewFiles = buildRunningWorkflowFilesFromMonthWorkspace(existingWorkspace && existingWorkspace.files, files);
+        renderRunningState(runningWorkspacePreviewFiles);
 
         if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
           browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
@@ -3696,13 +3862,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         try {
-          const serializedFiles = await Promise.all(files.map((file) => serializeSelectedFileForWorkspace(file)));
-          const existingWorkspace = loadMonthWorkspace(normalizedMonth);
+          const serializedFiles = await serializeSelectedFilesForWorkspace(files, (progress) => {
+            renderRunningWorkflowProgress(runningWorkspacePreviewFiles, progress);
+          });
           const mergedWorkspaceFiles = mergeWorkspaceFiles(existingWorkspace && existingWorkspace.files, serializedFiles);
+          const mergedRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(mergedWorkspaceFiles);
           const state = await browserRuntime.buildRuntimeState({
             files: mergedWorkspaceFiles.map((record) => buildRuntimeFileFromWorkspaceRecord(record)),
             month: normalizedMonth,
-            generatedAt
+            generatedAt,
+            onProgress(progress) {
+              renderRunningWorkflowProgress(mergedRunningWorkflowFiles, progress);
+            }
           });
           const visibleState = buildCompletedVisibleRuntimeState(state);
           currentWorkspaceMonth = normalizedMonth;

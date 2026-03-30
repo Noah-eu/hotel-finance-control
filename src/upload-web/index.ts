@@ -330,11 +330,26 @@ export interface BrowserRuntimeInputFile {
   arrayBuffer?: () => Promise<ArrayBuffer>
 }
 
+export type BrowserRuntimeProgressStage =
+  | 'preparing-selected-files'
+  | 'classifying-files'
+  | 'parsing-files'
+  | 'finalizing'
+
+export interface BrowserRuntimeProgressUpdate {
+  stage: BrowserRuntimeProgressStage
+  totalFiles: number
+  completedFiles: number
+  currentFileName?: string
+  currentFileStatus?: 'supported' | 'unsupported' | 'error'
+}
+
 export interface BrowserRuntimeBuilder {
   buildRuntimeState(input: {
     files: BrowserRuntimeInputFile[]
     month?: string
     generatedAt: string
+    onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
   }): Promise<BrowserRuntimeUploadState>
 }
 

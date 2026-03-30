@@ -25,9 +25,12 @@ export type {
   UploadedMonthlyFile
 } from './contracts'
 
+export type { UploadedMonthlyIngestionProgress } from './service'
+
 export {
   DefaultMonthlyBatchService,
   ingestUploadedMonthlyFiles,
+  ingestUploadedMonthlyFilesProgressively,
   prepareUploadedMonthlyBatchFiles,
   prepareUploadedMonthlyFiles,
   runMonthlyReconciliationBatch

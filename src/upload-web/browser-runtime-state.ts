@@ -5,12 +5,13 @@ import {
 } from '../extraction'
 import {
   ingestUploadedMonthlyFiles,
+  ingestUploadedMonthlyFilesProgressively,
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { inspectPayoutBatchBankDecisions } from '../reconciliation'
 import { buildReviewScreen } from '../review'
 import { formatAmountMinorCs } from '../shared/money'
-import type { BrowserRuntimeUploadState } from './index.js'
+import type { BrowserRuntimeProgressUpdate, BrowserRuntimeUploadState } from './index.js'
 
 type IngestionBatch = ReturnType<typeof ingestUploadedMonthlyFiles>['batch']
 
@@ -31,6 +32,51 @@ export function buildBrowserRuntimeUploadStateFromFiles(
     },
     reportGeneratedAt: input.generatedAt
   })
+
+  return buildBrowserRuntimeUploadStateFromIngestion(input, ingestion)
+}
+
+export async function buildBrowserRuntimeUploadStateFromFilesProgressively(
+  input: BuildBrowserRuntimeStateInput,
+  options: {
+    onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
+    yieldEvery?: number
+  } = {}
+): Promise<BrowserRuntimeUploadState> {
+  const ingestion = await ingestUploadedMonthlyFilesProgressively({
+    files: input.files,
+    reconciliationContext: {
+      runId: input.runId,
+      requestedAt: input.generatedAt
+    },
+    reportGeneratedAt: input.generatedAt
+  }, {
+    onProgress(progress) {
+      options.onProgress?.({
+        stage: progress.stage,
+        totalFiles: progress.totalFiles,
+        completedFiles: progress.completedFiles,
+        currentFileName: progress.currentFileName,
+        currentFileStatus: progress.currentFileStatus
+      })
+    },
+    yieldEvery: options.yieldEvery
+  })
+
+  options.onProgress?.({
+    stage: 'finalizing',
+    totalFiles: input.files.length,
+    completedFiles: input.files.length
+  })
+  await yieldBrowserRuntimeStateWork()
+
+  return buildBrowserRuntimeUploadStateFromIngestion(input, ingestion)
+}
+
+function buildBrowserRuntimeUploadStateFromIngestion(
+  input: BuildBrowserRuntimeStateInput,
+  ingestion: ReturnType<typeof ingestUploadedMonthlyFiles>
+): BrowserRuntimeUploadState {
   const importedFiles = ingestion.importedFiles
   const batch = ingestion.batch
   const review = buildReviewScreen({
@@ -143,6 +189,12 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       fileName: file.fileName
     }))
   }
+}
+
+async function yieldBrowserRuntimeStateWork(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })
 }
 
 function buildReconciliationSnapshot(
