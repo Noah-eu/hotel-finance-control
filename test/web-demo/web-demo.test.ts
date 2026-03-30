@@ -54,9 +54,12 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="expense-detail-sort"')
     expect(result.html).toContain('id="expense-filter-expenseUnmatchedOutflows"')
     expect(result.html).toContain('id="expense-filter-expenseUnmatchedInflows"')
-    expect(result.html).toContain('main.expense-detail-shell')
+    expect(result.html).toContain('main.operator-main-shell')
+    expect(result.html).toContain('class="operator-main-shell"')
     expect(result.html).toContain('width: min(100%, calc(100vw - 64px));')
-    expect(result.html).toContain('max-width: 2160px;')
+    expect(result.html).toContain('max-width: 1760px;')
+    expect(result.html).toContain('main.expense-detail-shell')
+    expect(result.html).toContain('max-width: 2280px;')
     expect(result.html).toContain('grid-template-columns: repeat(5, minmax(0, 1fr));')
     expect(result.html).toContain('expense-summary-grid')
     expect(result.html).toContain('expense-summary-tile')
@@ -1712,6 +1715,7 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).not.toContain('Lenner')
+    expect(rendered.appShell.className).toBe('operator-main-shell')
     expect(rendered.mainDashboardView.hidden).toBe(false)
     expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Spárované výdaje')
     expect(rendered.expenseReviewSummaryContent.innerHTML).toContain('Výdaje ke kontrole')
@@ -1725,6 +1729,7 @@ describe('buildWebDemo', () => {
     expect(rendered.mainDashboardView.hidden).toBe(true)
     expect(controlDetailView.hidden).toBe(false)
     expect(rendered.expenseDetailView.hidden).toBe(true)
+    expect(rendered.appShell.className).toBe('')
     expect(rendered.controlDetailPageSummaryContent.innerHTML).toContain('Hlavní ubytovací rezervace')
     expect(rendered.controlDetailPageSummaryContent.innerHTML).toContain('Doplňkové položky')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
@@ -1751,12 +1756,14 @@ describe('buildWebDemo', () => {
     rendered.backToMainOverviewFromControl()
     expect(rendered.mainDashboardView.hidden).toBe(false)
     expect(rendered.controlDetailView.hidden).toBe(true)
+    expect(rendered.appShell.className).toBe('operator-main-shell')
 
     const expenseDetailView = rendered.openExpenseReviewPage()
 
     expect(rendered.mainDashboardView.hidden).toBe(true)
     expect(rendered.controlDetailView.hidden).toBe(true)
     expect(expenseDetailView.hidden).toBe(false)
+    expect(rendered.appShell.className).toBe('expense-detail-shell')
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Spárované výdaje')
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Výdaje ke kontrole')
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('Nespárované doklady')
@@ -2950,6 +2957,7 @@ async function executeWebDemoMainWorkflow(input: {
   }>
 }): Promise<{
   html: string
+  appShell: StubDomElement
   buildFingerprint: StubDomElement
   preparedFilesContent: StubDomElement
   runtimeSummaryUploadedFiles: StubDomElement
@@ -3122,6 +3130,7 @@ async function executeWebDemoMainWorkflow(input: {
 
   return {
     html,
+    appShell: elements['app-shell'],
     buildFingerprint: elements['build-fingerprint'],
     preparedFilesContent: elements['prepared-files-content'],
     runtimeSummaryUploadedFiles: elements['runtime-summary-uploaded-files'],
@@ -3291,6 +3300,7 @@ async function loadBuiltWebDemoRuntimeModule(
 function createWebDemoDomStub(): Record<string, StubDomElement> {
   const elements: Record<string, StubDomElement> = {}
   const ids = [
+    'app-shell',
     'monthly-files',
     'month-label',
     'prepare-upload',

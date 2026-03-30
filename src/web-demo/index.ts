@@ -241,9 +241,13 @@ function renderOperatorWebDemoHtml(input: {
         max-width: 1240px;
         margin: 0 auto;
       }
+      main.operator-main-shell {
+        width: min(100%, calc(100vw - 64px));
+        max-width: 1760px;
+      }
       main.expense-detail-shell {
         width: min(100%, calc(100vw - 64px));
-        max-width: 2160px;
+        max-width: 2280px;
       }
       .hero, .card {
         background: white;
@@ -564,7 +568,7 @@ ${input.debugMode ? `
     </style>
   </head>
   <body>
-    <main id="app-shell">
+    <main id="app-shell" class="operator-main-shell">
       <section class="hero">
         <span class="pill">Viditelný operátorský vstup</span>
         <h1>Hotel Finance Control – měsíční workflow pro operátora</h1>
@@ -3186,15 +3190,22 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const normalizedView = view === 'control-detail' || view === 'expense-detail'
           ? view
           : 'main-overview';
+        const showMainOverview = normalizedView === 'main-overview';
+        const showExpenseDetail = normalizedView === 'expense-detail';
 
-        mainDashboardView.hidden = normalizedView !== 'main-overview';
+        mainDashboardView.hidden = !showMainOverview;
         controlDetailView.hidden = normalizedView !== 'control-detail';
-        expenseDetailView.hidden = normalizedView !== 'expense-detail';
+        expenseDetailView.hidden = !showExpenseDetail;
         if (appShell) {
           if (appShell.classList && typeof appShell.classList.toggle === 'function') {
-            appShell.classList.toggle('expense-detail-shell', normalizedView === 'expense-detail');
+            appShell.classList.toggle('operator-main-shell', showMainOverview);
+            appShell.classList.toggle('expense-detail-shell', showExpenseDetail);
           } else {
-            appShell.className = normalizedView === 'expense-detail' ? 'expense-detail-shell' : '';
+            appShell.className = showExpenseDetail
+              ? 'expense-detail-shell'
+              : showMainOverview
+                ? 'operator-main-shell'
+                : '';
           }
         }
 
