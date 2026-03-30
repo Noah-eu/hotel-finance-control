@@ -338,6 +338,44 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('parses Booking invoice PDFs as invoice documents and preserves local CZK payable totals when present', () => {
+    const invoice = getRealInputFixture('booking-invoice-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64,
+      extractedAt: '2026-03-31T10:20:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-31T10:20:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary({
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64
+    })).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      issuerOrCounterparty: 'Booking.com B.V.',
+      issueDate: '2026-03-31',
+      dueDate: '2026-04-14',
+      totalAmountMinor: 145642,
+      totalCurrency: 'EUR',
+      localAmountMinor: 3553012,
+      localCurrency: 'CZK',
+      referenceNumber: 'BOOK-INV-2026-03',
+      ibanHint: 'NL91ABNA0417164300',
+      confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: []
+    })
+  })
+
   it('keeps grouped Czech invoice header/value blocks aligned when the value cells spill into following lines', () => {
     const content = [
       'Faktura - daňový doklad',

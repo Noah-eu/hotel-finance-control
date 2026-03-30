@@ -14,6 +14,7 @@ export interface RealInputFixture {
   | 'previo-reservation-export'
   | 'comgate-export'
   | 'invoice-document'
+  | 'booking-invoice-pdf'
   | 'invoice-document-czech-pdf'
   | 'invoice-document-czech-pdf-with-spd-qr'
   | 'invoice-document-scan-pdf-with-ocr-stub'
@@ -1069,6 +1070,87 @@ export const realInputFixtures: RealInputFixture[] = [
         invoiceNumber: 'INV-2026-332',
         extractedRecordIds: ['invoice-record-1'],
         sourceDocumentIds: ['doc-invoice-2026-332' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'booking-invoice-pdf',
+    description: 'Representative Booking.com invoice PDF fixture for browser document intake and deterministic invoice parsing.',
+    sourceDocument: sourceDocument({
+      id: 'doc-booking-invoice-2026-03' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'booking-invoice-2026-03.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Booking.com B.V.',
+        'Invoice number: BOOK-INV-2026-03',
+        'Invoice date: 2026-03-31',
+        'Due date: 2026-04-14',
+        'Billing period: 2026-03-01 to 2026-03-31',
+        'Total payable: 1 456,42 EUR',
+        'Total payable (CZK): 35 530,12 CZK',
+        'Payment reference: BOOK-INV-2026-03',
+        'Property reference: CHILL-APT-PRG',
+        'IBAN: NL91ABNA0417164300',
+        'Invoice type: Commission invoice'
+      ].join('\n'),
+      binaryContentBase64: pdfBase64FromTextLines([
+        'Booking.com B.V.',
+        'Invoice number: BOOK-INV-2026-03',
+        'Invoice date: 2026-03-31',
+        'Due date: 2026-04-14',
+        'Billing period: 2026-03-01 to 2026-03-31',
+        'Total payable: 1 456,42 EUR',
+        'Total payable (CZK): 35 530,12 CZK',
+        'Payment reference: BOOK-INV-2026-03',
+        'Property reference: CHILL-APT-PRG',
+        'IBAN: NL91ABNA0417164300',
+        'Invoice type: Commission invoice'
+      ])
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record-1',
+        sourceDocumentId: 'doc-booking-invoice-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: 'BOOK-INV-2026-03',
+        amountMinor: 145642,
+        currency: 'EUR',
+        occurredAt: '2026-03-31',
+        data: {
+          sourceSystem: 'invoice',
+          invoiceNumber: 'BOOK-INV-2026-03',
+          supplier: 'Booking.com B.V.',
+          issueDate: '2026-03-31',
+          dueDate: '2026-04-14',
+          amountMinor: 145642,
+          currency: 'EUR',
+          description: 'Commission invoice',
+          ibanHint: 'NL91ABNA0417164300',
+          billingPeriod: '2026-03-01 to 2026-03-31',
+          localAmountMinor: 3553012,
+          localCurrency: 'CZK',
+          referenceHints: ['BOOK-INV-2026-03', 'CHILL-APT-PRG']
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 145642,
+        currency: 'EUR',
+        bookedAt: '2026-03-31',
+        accountId: 'document-expenses',
+        counterparty: 'Booking.com B.V.',
+        reference: 'BOOK-INV-2026-03',
+        invoiceNumber: 'BOOK-INV-2026-03',
+        extractedRecordIds: ['invoice-record-1'],
+        sourceDocumentIds: ['doc-booking-invoice-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

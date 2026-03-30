@@ -544,6 +544,10 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
 } {
   const capability = detectUploadedMonthlyFileCapability(input)
   const ingestionBranch = resolveUploadedMonthlyFileIngestionBranch(capability)
+  const invoiceSummary = inspectInvoiceDocumentExtractionSummary({
+    content: input.content,
+    binaryContentBase64: input.binaryContentBase64
+  })
   const bookingPdfDecision = buildBookingPayoutSupplementDecision(input)
   const fileNameSourceSystem = inferSourceSystemFromFileName(input.fileName)
   const fileNameRole = inferSupplementRole(input.fileName, input.contentFormat)
@@ -634,6 +638,27 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         resolvedBucket: 'ingest-error'
       },
       ingestError: input.ingestError
+    }
+  }
+
+  if (invoiceSummary.confidence === 'strong') {
+    return {
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      classificationBasis: 'content',
+      role: 'primary',
+      decision: buildResolvedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: ['content-signature', 'invoice-summary-strong'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
     }
   }
 

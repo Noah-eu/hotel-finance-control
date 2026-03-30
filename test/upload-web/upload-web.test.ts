@@ -517,6 +517,68 @@ describe('buildUploadWebFlow', () => {
     ).toBeGreaterThan(0)
   })
 
+  it('routes a Booking-branded invoice PDF through the browser invoice path and keeps the payout baseline stable', async () => {
+    const invoice = getRealInputFixture('booking-invoice-pdf')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFile('Booking-invoice-March.pdf', invoice.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T10:50:00.000Z'
+    })
+
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Booking-invoice-March.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        parserId: 'invoice'
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Booking-invoice-March.pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'Booking.com B.V.',
+          referenceNumber: 'BOOK-INV-2026-03',
+          issueDate: '2026-03-31',
+          dueDate: '2026-04-14',
+          totalAmountMinor: 145642,
+          totalCurrency: 'EUR',
+          localAmountMinor: 3553012,
+          localCurrency: 'CZK',
+          finalStatus: 'parsed'
+        }),
+        requiredFieldsCheck: 'passed',
+        missingFields: []
+      })
+    )
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(
+      result.extractedRecords.some((file) =>
+        file.fileName === 'Booking-invoice-March.pdf'
+        && file.extractedRecordIds.includes('invoice-record-1')
+      )
+    ).toBe(true)
+  })
+
   it('matches a parsed expense invoice to an outgoing bank candidate on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
 

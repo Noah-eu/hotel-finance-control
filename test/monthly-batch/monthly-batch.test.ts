@@ -1205,6 +1205,95 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('routes Booking-branded invoice PDFs into the invoice document path instead of the Booking payout supplement path', () => {
+    const invoice = getRealInputFixture('booking-invoice-pdf')
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Booking-invoice-March.pdf',
+        content: invoice.rawInput.content,
+        binaryContentBase64: invoice.rawInput.binaryContentBase64,
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-31T10:30:00.000Z',
+        sourceDescriptor: {
+          mimeType: 'application/pdf',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Booking.com B.V. Invoice number: BOOK-INV-2026-03',
+            detectedSignatures: ['booking-branding']
+          }
+        }
+      }
+    ])
+
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Booking-invoice-March.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        parserId: 'invoice',
+        role: 'primary',
+        decision: expect.objectContaining({
+          resolvedBucket: 'recognized-supported',
+          ingestionBranch: 'text-pdf-parser'
+        })
+      })
+    ])
+  })
+
+  it('keeps Booking invoice PDFs out of payout rows when a real Booking payout export is present in the same monthly run', () => {
+    const invoice = getRealInputFixture('booking-invoice-pdf')
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: booking.sourceDocument.fileName,
+          content: booking.rawInput.content,
+          uploadedAt: '2026-03-31T10:40:00.000Z'
+        },
+        {
+          name: 'Booking-invoice-March.pdf',
+          content: invoice.rawInput.content,
+          binaryContentBase64: invoice.rawInput.binaryContentBase64,
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-31T10:41:00.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-invoice-no-payout-leak',
+        requestedAt: '2026-03-31T10:41:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-31T10:42:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
+        sourceSystem: 'booking',
+        documentType: 'ota_report',
+        role: 'primary'
+      }),
+      expect.objectContaining({
+        fileName: 'Booking-invoice-March.pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        role: 'primary',
+        extractedRecordIds: ['invoice-record-1']
+      })
+    ])
+    expect(result.batch.extractedRecords.map((record) => record.id)).toEqual(['booking-payout-1', 'invoice-record-1'])
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'
+      })
+    ])
+  })
+
   it('routes scan-like invoice PDFs through the OCR fallback branch without contaminating payout ingest', () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const result = ingestUploadedMonthlyFiles({

@@ -15,6 +15,7 @@ describe('realInputFixtures', () => {
       'previo-reservation-export',
       'comgate-export',
       'invoice-document',
+      'booking-invoice-pdf',
       'invoice-document-czech-pdf',
       'invoice-document-czech-pdf-with-spd-qr',
       'invoice-document-scan-pdf-with-ocr-stub',
@@ -40,6 +41,7 @@ describe('realInputFixtures', () => {
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
     const invoice = getRealInputFixture('invoice-document')
+    const bookingInvoicePdf = getRealInputFixture('booking-invoice-pdf')
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
     const scanInvoiceWithOcr = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
@@ -113,6 +115,19 @@ describe('realInputFixtures', () => {
         invoiceNumber: 'INV-2026-332',
         supplier: 'Laundry Supply s.r.o.',
         amountMinor: 1850000
+      }
+    })
+    expect(bookingInvoicePdf.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'invoice-document',
+      amountMinor: 145642,
+      currency: 'EUR',
+      data: {
+        invoiceNumber: 'BOOK-INV-2026-03',
+        supplier: 'Booking.com B.V.',
+        amountMinor: 145642,
+        localAmountMinor: 3553012,
+        localCurrency: 'CZK',
+        referenceHints: ['BOOK-INV-2026-03', 'CHILL-APT-PRG']
       }
     })
     expect(czechInvoicePdf.expectedExtractedRecords[0]).toMatchObject({

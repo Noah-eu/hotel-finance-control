@@ -34,7 +34,7 @@ const REQUIRED_FIELDS = [
   'Total'
 ] as const
 
-export interface ParseInvoiceDocumentInput extends DeterministicDocumentParserInput {}
+export interface ParseInvoiceDocumentInput extends DeterministicDocumentParserInput { }
 
 export type InspectInvoiceDocumentExtractionSummaryInput =
   | string
@@ -108,6 +108,9 @@ interface InvoiceDocumentExtractionDetails {
     vatBaseRaw?: string
     vatRaw?: string
     ibanValue?: string
+    billingPeriod?: string
+    localTotalRaw?: string
+    referenceHints?: string[]
   }
   groupedHeaderLabels: string[]
   groupedHeaderValues: string[]
@@ -148,15 +151,15 @@ interface InvoiceOcrExtractionResult {
 }
 
 const FIELD_ALIASES = {
-  invoiceNumber: ['Invoice No', 'Invoice number', 'Číslo faktury', 'Faktura číslo', 'Faktura č.', 'Doklad číslo', 'Číslo dokladu'],
-  supplier: ['Supplier', 'Vendor', 'Dodavatel'],
+  invoiceNumber: ['Invoice No', 'Invoice number', 'Invoice #', 'Číslo faktury', 'Faktura číslo', 'Faktura č.', 'Doklad číslo', 'Číslo dokladu'],
+  supplier: ['Supplier', 'Vendor', 'Dodavatel', 'From'],
   customer: ['Customer', 'Buyer', 'Odběratel'],
-  issueDate: ['Issue date', 'Issued on', 'Datum vystavení'],
-  dueDate: ['Due date', 'Payment due', 'Datum splatnosti'],
+  issueDate: ['Issue date', 'Invoice date', 'Issued on', 'Datum vystavení'],
+  dueDate: ['Due date', 'Payment due', 'Payment due date', 'Due on', 'Datum splatnosti'],
   taxableDate: ['Taxable date', 'Tax point date', 'Datum zdanitelného plnění'],
-  total: ['Total due', 'Amount due', 'Celkem Kč k úhradě', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem', 'Total'],
+  total: ['Total payable', 'Payable amount', 'Total due', 'Amount due', 'Celkem Kč k úhradě', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem', 'Total'],
   paymentMethod: ['Payment method', 'Forma úhrady'],
-  description: ['Service', 'Description', 'Položka', 'Předmět plnění'],
+  description: ['Service', 'Description', 'Invoice type', 'Položka', 'Předmět plnění'],
   vatBase: ['VAT base', 'Tax base', 'Základ DPH'],
   vat: ['VAT', 'DPH'],
   iban: ['IBAN', 'Iban']
@@ -243,6 +246,13 @@ export class InvoiceDocumentParser {
         currency: summary.totalCurrency,
         ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
         ...(extracted.description ? { description: extracted.description } : {}),
+        ...(extracted.billingPeriod ? { billingPeriod: extracted.billingPeriod } : {}),
+        ...(typeof summary.localAmountMinor === 'number' && summary.localCurrency
+          ? { localAmountMinor: summary.localAmountMinor, localCurrency: summary.localCurrency }
+          : {}),
+        ...(Array.isArray(extracted.referenceHints) && extracted.referenceHints.length > 0
+          ? { referenceHints: extracted.referenceHints }
+          : {}),
         ...(typeof summary.vatBaseAmountMinor === 'number' && summary.vatBaseCurrency
           ? { vatBaseAmountMinor: summary.vatBaseAmountMinor, vatBaseCurrency: summary.vatBaseCurrency }
           : {}),
@@ -297,6 +307,7 @@ function buildInvoiceDocumentExtractionSummary(
   const taxableDate = safeNormalizeDocumentDate(extracted.taxableDateRaw, 'Invoice taxable date')
   const dueDate = safeNormalizeDocumentDate(extracted.dueDateRaw, 'Invoice due date')
   const total = safeParseDocumentMoney(extracted.totalRaw, 'Invoice total')
+  const localTotal = safeParseDocumentMoney(extracted.localTotalRaw, 'Invoice local total')
   const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Invoice VAT base')
   const vat = safeParseDocumentMoney(extracted.vatRaw, 'Invoice VAT')
   const ibanHint = normalizeIbanValue(extracted.ibanValue)
@@ -308,11 +319,13 @@ function buildInvoiceDocumentExtractionSummary(
     || extracted.taxableDateRaw
     || extracted.dueDateRaw
     || extracted.totalRaw
+    || extracted.localTotalRaw
     || extracted.paymentMethod
     || extracted.vatBaseRaw
     || extracted.vatRaw
     || extracted.ibanValue
     || extracted.description
+    || extracted.billingPeriod
   )
   const finalStatus = resolveDocumentFinalStatus({
     missingRequiredFields,
@@ -350,6 +363,7 @@ function buildInvoiceDocumentExtractionSummary(
     ...(dueDate ? { dueDate } : {}),
     ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
     ...(total ? { totalAmountMinor: total.amountMinor, totalCurrency: total.currency } : {}),
+    ...(localTotal ? { localAmountMinor: localTotal.amountMinor, localCurrency: localTotal.currency } : {}),
     ...(vatBase ? { vatBaseAmountMinor: vatBase.amountMinor, vatBaseCurrency: vatBase.currency } : {}),
     ...(vat ? { vatAmountMinor: vat.amountMinor, vatCurrency: vat.currency } : {}),
     ...(extracted.invoiceNumber ? { referenceNumber: extracted.invoiceNumber } : {}),
@@ -418,8 +432,23 @@ function extractInvoiceDocumentDetails(input: {
     vatRaw: resolveInvoiceField('vatAmount', debugStates.vatAmount),
     ibanValue: normalizeIbanValue(resolveInvoiceField('ibanHint', debugStates.ibanHint))
   }
+  const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
+  const bookingEnrichedTextFields: InvoiceExtractedFields = {
+    ...textExtracted,
+    invoiceNumber: textExtracted.invoiceNumber ?? bookingSupplementaryFields.invoiceNumber,
+    supplier: textExtracted.supplier ?? bookingSupplementaryFields.supplier,
+    issueDateRaw: textExtracted.issueDateRaw ?? bookingSupplementaryFields.issueDateRaw,
+    dueDateRaw: textExtracted.dueDateRaw ?? bookingSupplementaryFields.dueDateRaw,
+    totalRaw: textExtracted.totalRaw ?? bookingSupplementaryFields.totalRaw,
+    paymentMethod: textExtracted.paymentMethod ?? bookingSupplementaryFields.paymentMethod,
+    description: textExtracted.description ?? bookingSupplementaryFields.description,
+    ibanValue: textExtracted.ibanValue ?? bookingSupplementaryFields.ibanValue,
+    billingPeriod: bookingSupplementaryFields.billingPeriod,
+    localTotalRaw: bookingSupplementaryFields.localTotalRaw,
+    referenceHints: bookingSupplementaryFields.referenceHints
+  }
   const qrExtraction = extractInvoiceQrExtraction(content, input.binaryContentBase64)
-  const qrMergedFields = mergeInvoiceTextAndQrFields(textExtracted, qrExtraction)
+  const qrMergedFields = mergeInvoiceTextAndQrFields(bookingEnrichedTextFields, qrExtraction)
   const ocrExtraction = extractInvoiceOcrExtraction(content, input.binaryContentBase64)
   const mergedFields = mergeInvoiceFieldsAndOcr(
     qrMergedFields.fields,
@@ -936,6 +965,84 @@ function normalizeComparableMoneyValue(value: string | undefined): string | unde
   const money = safeParseDocumentMoney(value, 'Invoice comparable amount')
 
   return money ? `${money.amountMinor}:${money.currency}` : undefined
+}
+
+function extractBookingInvoiceSupplementaryFields(
+  content: string,
+  fields: Record<string, string>
+): Partial<InvoiceExtractedFields> {
+  const hasBookingBranding = /booking\.com\s+b\.v\./iu.test(content)
+
+  if (!hasBookingBranding) {
+    return {}
+  }
+
+  const invoiceNumber = pickRequiredField(fields, FIELD_ALIASES.invoiceNumber)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*invoice\s*(?:number|no|#)\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const issueDateRaw = pickRequiredField(fields, FIELD_ALIASES.issueDate)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*invoice\s+date\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const dueDateRaw = pickRequiredField(fields, FIELD_ALIASES.dueDate)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*(?:due\s+date|due\s+on|payment\s+due\s+date)\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const totalRaw = pickRequiredField(fields, FIELD_ALIASES.total)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*(?:total\s+payable|payable\s+amount|amount\s+due)\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const localTotalRaw = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:total\s+payable\s*\(czk\)|local\s+total|equivalent\s+in\s+czk)\s*[:\-]?\s*([^\n]+)/iu
+  ])
+  const billingPeriod = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:billing\s+period|invoice\s+period|commission\s+period)\s*[:\-]?\s*([^\n]+)/iu
+  ])
+  const description = pickRequiredField(fields, FIELD_ALIASES.description)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*(?:invoice\s+type|description)\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const ibanValue = pickRequiredField(fields, FIELD_ALIASES.iban)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*iban\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const referenceHints = uniqueInvoiceReferenceHints([
+    extractInvoiceRegexValue(content, [/(?:^|\n)\s*payment\s+reference\s*[:\-]?\s*([^\n]+)/iu]),
+    extractInvoiceRegexValue(content, [/(?:^|\n)\s*bank\s+reference\s*[:\-]?\s*([^\n]+)/iu]),
+    extractInvoiceRegexValue(content, [/(?:^|\n)\s*property\s+reference\s*[:\-]?\s*([^\n]+)/iu]),
+    invoiceNumber
+  ])
+
+  return {
+    ...(hasBookingBranding ? { supplier: 'Booking.com B.V.' } : {}),
+    ...(invoiceNumber ? { invoiceNumber } : {}),
+    ...(issueDateRaw ? { issueDateRaw } : {}),
+    ...(dueDateRaw ? { dueDateRaw } : {}),
+    ...(totalRaw ? { totalRaw } : {}),
+    ...(localTotalRaw ? { localTotalRaw } : {}),
+    ...(billingPeriod ? { billingPeriod } : {}),
+    ...(description ? { description } : {}),
+    ...(ibanValue ? { ibanValue: normalizeIbanValue(ibanValue) } : {}),
+    ...(referenceHints.length > 0 ? { referenceHints } : {})
+  }
+}
+
+function extractInvoiceRegexValue(content: string, patterns: RegExp[]): string | undefined {
+  for (const pattern of patterns) {
+    const candidate = stripTrailingNoise(pattern.exec(content)?.[1] ?? '')
+    if (candidate) {
+      return candidate
+    }
+  }
+
+  return undefined
+}
+
+function uniqueInvoiceReferenceHints(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values
+    .map((value) => stripTrailingNoise(value ?? ''))
+    .filter((value) => value.length > 0)))
 }
 
 function buildQrMoneyLabel(amountMinor: number | undefined, currency: string | undefined): string | undefined {
@@ -2198,9 +2305,9 @@ function buildStructuredGroupedInvoiceHeaderBlock(
 
   return values.some((value) => Boolean(value))
     ? {
-        labels,
-        values: values.map((value) => value ?? 'n/a')
-      }
+      labels,
+      values: values.map((value) => value ?? 'n/a')
+    }
     : undefined
 }
 
@@ -2235,9 +2342,9 @@ function buildVerticalGroupedInvoiceHeaderBlock(
 
   return values.some((value) => Boolean(value))
     ? {
-        labels,
-        values: values.map((value) => value ?? 'n/a')
-      }
+      labels,
+      values: values.map((value) => value ?? 'n/a')
+    }
     : undefined
 }
 
@@ -2944,33 +3051,33 @@ function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: strin
     return false
   }
 
-    switch (fieldKey) {
-      case 'referenceNumber':
+  switch (fieldKey) {
+    case 'referenceNumber':
       return Boolean(normalizeInvoiceReferenceValue(normalizedValue))
         && !looksLikeInvoiceIban(normalizedValue)
         && !isInvoiceLabelText(normalizedValue)
-      case 'issuerOrCounterparty':
-      case 'customer':
-      case 'description':
-        return /[^\d].+/u.test(normalizedValue)
-          && !isInvoiceLabelText(normalizedValue)
-      case 'issueDate':
-      case 'dueDate':
-      case 'taxableDate':
-        return Boolean(safeNormalizeDocumentDate(normalizedValue, 'Invoice date'))
-      case 'paymentMethod':
-        return !isInvoiceLabelText(normalizedValue)
-          && !isInvoiceLabelFragmentText(normalizedValue)
-          && !containsInvoicePageArtifactValue(normalizedValue)
-          && extractDateTokens(normalizedValue).length === 0
-          && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice payment method')
-      case 'totalAmount':
-      case 'vatBaseAmount':
-      case 'vatAmount':
-        return !/%/.test(normalizedValue)
-          && Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
-      case 'ibanHint':
-        return Boolean(normalizeIbanValue(normalizedValue))
+    case 'issuerOrCounterparty':
+    case 'customer':
+    case 'description':
+      return /[^\d].+/u.test(normalizedValue)
+        && !isInvoiceLabelText(normalizedValue)
+    case 'issueDate':
+    case 'dueDate':
+    case 'taxableDate':
+      return Boolean(safeNormalizeDocumentDate(normalizedValue, 'Invoice date'))
+    case 'paymentMethod':
+      return !isInvoiceLabelText(normalizedValue)
+        && !isInvoiceLabelFragmentText(normalizedValue)
+        && !containsInvoicePageArtifactValue(normalizedValue)
+        && extractDateTokens(normalizedValue).length === 0
+        && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice payment method')
+    case 'totalAmount':
+    case 'vatBaseAmount':
+    case 'vatAmount':
+      return !/%/.test(normalizedValue)
+        && Boolean(safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice amount'))
+    case 'ibanHint':
+      return Boolean(normalizeIbanValue(normalizedValue))
     default:
       return false
   }
