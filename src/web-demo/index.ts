@@ -241,17 +241,9 @@ function renderOperatorWebDemoHtml(input: {
         max-width: 1240px;
         margin: 0 auto;
       }
-      main.operator-main-shell {
+      main.operator-shell {
         width: min(100%, calc(100vw - 64px));
-        max-width: 1840px;
-      }
-      main.control-detail-shell {
-        width: min(100%, calc(100vw - 64px));
-        max-width: 1980px;
-      }
-      main.expense-detail-shell {
-        width: min(100%, calc(100vw - 64px));
-        max-width: 2360px;
+        max-width: none;
       }
       .hero, .card {
         background: white;
@@ -297,7 +289,7 @@ function renderOperatorWebDemoHtml(input: {
         body {
           padding: 18px;
         }
-        main.expense-detail-shell {
+        main.operator-shell {
           width: 100%;
         }
         .expense-detail-grid {
@@ -572,7 +564,7 @@ ${input.debugMode ? `
     </style>
   </head>
   <body>
-    <main id="app-shell" class="operator-main-shell">
+    <main id="app-shell" class="operator-shell">
       <section class="hero">
         <span class="pill">Viditelný operátorský vstup</span>
         <h1>Hotel Finance Control – měsíční workflow pro operátora</h1>
@@ -3195,25 +3187,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
           ? view
           : 'main-overview';
         const showMainOverview = normalizedView === 'main-overview';
-        const showControlDetail = normalizedView === 'control-detail';
         const showExpenseDetail = normalizedView === 'expense-detail';
 
         mainDashboardView.hidden = !showMainOverview;
-        controlDetailView.hidden = !showControlDetail;
+        controlDetailView.hidden = normalizedView !== 'control-detail';
         expenseDetailView.hidden = !showExpenseDetail;
         if (appShell) {
           if (appShell.classList && typeof appShell.classList.toggle === 'function') {
-            appShell.classList.toggle('operator-main-shell', showMainOverview);
-            appShell.classList.toggle('control-detail-shell', showControlDetail);
-            appShell.classList.toggle('expense-detail-shell', showExpenseDetail);
+            appShell.classList.toggle('operator-shell', true);
           } else {
-            appShell.className = showExpenseDetail
-              ? 'expense-detail-shell'
-              : showControlDetail
-                ? 'control-detail-shell'
-              : showMainOverview
-                ? 'operator-main-shell'
-                : '';
+            appShell.className = 'operator-shell';
           }
         }
 
