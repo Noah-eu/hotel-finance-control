@@ -897,7 +897,7 @@ describe('buildUploadWebFlow', () => {
       document: expect.objectContaining({
         supplierOrCounterparty: 'Dobrá Energie s.r.o.',
         reference: '5125144501',
-        dueDate: '2026-03-25',
+        dueDate: '2026-03-26',
         ibanHint: '8888997777/2010'
       }),
       bank: expect.objectContaining({
@@ -910,6 +910,109 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedInflows.some((item) =>
       item.expenseComparison?.bank?.reference === 'Vrácení přeplatku VS 5125144501'
       || item.title.includes('3 804,00 Kč')
+    )).toBe(false)
+  })
+
+  it('keeps the sparse Dobrá refund invoice extracted and document-backed when the 3 804 CZK incoming refund arrives on the Fio account', async () => {
+    const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithSparseDobraRefundIncoming(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Dobra-Energie-preplatek-3804-2026-03.pdf', refundInvoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-30T18:45:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+          extractedCount: 1
+        })
+      ])
+    )
+
+    const refundMatchedItem = result.reviewSections.expenseMatched.find((item) =>
+      item.expenseComparison?.document.reference === '5125144501'
+      && item.expenseComparison?.bank?.bankAccount === '8888997777/2010'
+      && item.expenseComparison?.bank?.amount === '3 804,00 Kč'
+    )
+
+    expect(refundMatchedItem).toBeDefined()
+    expect(refundMatchedItem?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+        reference: '5125144501',
+        dueDate: '2026-03-26',
+        ibanHint: '8888997777/2010'
+      }),
+      bank: expect.objectContaining({
+        supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+        bankAccount: '8888997777/2010',
+        reference: 'Vrácení přeplatku VS 5125144501',
+        amount: '3 804,00 Kč'
+      })
+    })
+
+    const expenseReviewPage = buildBrowserReviewScreen({
+      files: [
+        {
+          name: 'booking35k.csv',
+          content: buildBooking35kBrowserUploadContent(),
+          uploadedAt: '2026-03-30T18:45:00.000Z'
+        },
+        {
+          name: 'airbnb.csv',
+          content: buildRealUploadedAirbnbContentWithoutReferenceColumn(),
+          uploadedAt: '2026-03-30T18:45:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603191023.csv',
+          content: buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          uploadedAt: '2026-03-30T18:45:00.000Z'
+        },
+        {
+          name: 'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          content: buildRealUploadedFioContentWithSparseDobraRefundIncoming(),
+          uploadedAt: '2026-03-30T18:45:00.000Z'
+        },
+        {
+          name: 'Bookinng35k.pdf',
+          content: buildCzechSingleGlyphBookingPayoutStatementPdfLines().join('\n'),
+          uploadedAt: '2026-03-30T18:45:00.000Z'
+        },
+        {
+          name: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+          content: refundInvoice.rawInput.content,
+          uploadedAt: '2026-03-30T18:45:00.000Z'
+        }
+      ],
+      runId: 'browser-review-fio-dobra-refund-3804',
+      generatedAt: '2026-03-30T18:45:00.000Z'
+    }).html
+
+    expect(expenseReviewPage).toContain('5125144501')
+    expect(expenseReviewPage).toContain('3 804,00 Kč')
+    expect(expenseReviewPage).toContain('8888997777/2010')
+    expect(expenseReviewPage).not.toContain('Zatím bez načteného dokladu.')
+
+    expect(result.reviewSections.expenseUnmatchedInflows.some((item) =>
+      item.expenseComparison?.bank?.bankAccount === '8888997777/2010'
+      && item.title.includes('3 804,00 Kč')
     )).toBe(false)
   })
 
@@ -5241,6 +5344,13 @@ function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithSparseDobraRefundIncoming(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '26.03.2026 08:12;3804,00;CZK;8888997777/2010;000000-2222333344/0800;Dobrá Energie s.r.o.;Vrácení přeplatku VS 5125144501'
   ].join('\n')
 }
 

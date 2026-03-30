@@ -134,7 +134,7 @@ function buildUnmatchedTransactionExceptions(
 ) {
   return transactions
     .filter((transaction) => !matchedIds.has(transaction.id))
-    .filter((transaction) => transaction.direction !== 'out' || !supportedExpenseIds.has(transaction.id))
+    .filter((transaction) => !supportedExpenseIds.has(transaction.id))
     .map((transaction) =>
       buildUnmatchedExceptionRule(transaction, matching.matchGroups, transactions, supportedExpenseLinks)
     )
@@ -236,21 +236,33 @@ function buildMissingSupportingDocumentReason(transaction: NormalizedTransaction
 
 function linkSupportedExpenses(transactions: NormalizedTransaction[]): SupportedExpenseLink[] {
   const expenseCandidates = transactions.filter((transaction) =>
-    transaction.direction === 'out'
-    && transaction.source === 'bank'
-    && !isKnownLegitimateOutflow(transaction)
-    && !isSuspiciousExpense(transaction)
+    transaction.source === 'bank'
+    && (
+      transaction.direction === 'in'
+      || (
+        transaction.direction === 'out'
+        && !isKnownLegitimateOutflow(transaction)
+        && !isSuspiciousExpense(transaction)
+      )
+    )
   )
   const supportCandidates = transactions.filter((transaction) =>
-    transaction.direction === 'out' && DOCUMENT_SOURCE_SET.has(transaction.source)
+    DOCUMENT_SOURCE_SET.has(transaction.source)
   )
+
+  const usedExpenseIds = new Set<NormalizedTransaction['id']>()
 
   const links: SupportedExpenseLink[] = []
   const usedSupportIds = new Set<NormalizedTransaction['id']>()
 
   for (const expense of expenseCandidates) {
+    if (usedExpenseIds.has(expense.id)) {
+      continue
+    }
+
     const candidates = supportCandidates
       .filter((support) => !usedSupportIds.has(support.id))
+      .filter((support) => support.direction === expense.direction)
       .map((support) => evaluateSupportLink(expense, support))
       .filter((candidate): candidate is SupportedExpenseLink => candidate !== null)
       .sort((left, right) => right.matchScore - left.matchScore)
@@ -260,6 +272,7 @@ function linkSupportedExpenses(transactions: NormalizedTransaction[]): Supported
       continue
     }
 
+    usedExpenseIds.add(winner.expenseTransactionId)
     usedSupportIds.add(winner.supportTransactionId)
     links.push(winner)
   }
@@ -332,9 +345,14 @@ function evaluateSupportLink(
 }
 
 function calculateDayDistance(left: string, right: string): number {
-  const leftDate = new Date(`${left}T00:00:00Z`)
-  const rightDate = new Date(`${right}T00:00:00Z`)
+  const leftDate = new Date(toIsoDayStart(left))
+  const rightDate = new Date(toIsoDayStart(right))
   return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function toIsoDayStart(value: string): string {
+  const isoDay = value.includes('T') ? value.slice(0, 10) : value
+  return `${isoDay}T00:00:00Z`
 }
 
 function normalizeComparable(value?: string): string {

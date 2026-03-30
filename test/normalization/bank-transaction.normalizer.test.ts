@@ -135,4 +135,24 @@ describe('BankTransactionNormalizer', () => {
     expect(result.trace[0].transactionIds).toHaveLength(1)
     expect(result.trace[1].transactionIds).toHaveLength(0)
   })
+
+  it('keeps transaction IDs unique when two bank files reuse the same extracted record ID', () => {
+    const input: NormalizationInput = {
+      extractedRecords: [
+        makeRecord({ id: 'fio-row-1', sourceDocumentId: 'uploaded:bank:1:rb-csv' as DocumentId }),
+        makeRecord({ id: 'fio-row-1', sourceDocumentId: 'uploaded:bank:2:fio-csv' as DocumentId })
+      ]
+    }
+    const result = normalizer.normalize(input, context)
+
+    expect(result.transactions).toHaveLength(2)
+    expect(result.transactions.map((transaction) => transaction.id)).toEqual([
+      'txn:bank:fio-row-1',
+      'txn:bank:fio-row-1:uploaded-bank-2-fio-csv'
+    ])
+    expect(result.trace).toEqual([
+      { extractedRecordId: 'fio-row-1', transactionIds: ['txn:bank:fio-row-1'] },
+      { extractedRecordId: 'fio-row-1', transactionIds: ['txn:bank:fio-row-1:uploaded-bank-2-fio-csv'] }
+    ])
+  })
 })

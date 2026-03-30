@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { reconcileExtractedRecords } from '../../src/reconciliation'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import type { ExtractedRecord } from '../../src/domain'
+import type { NormalizedTransaction } from '../../src/domain/types'
 
 describe('support-document linking', () => {
   it('suppresses missing-supporting-document exceptions when a same-amount nearby invoice supports the bank outflow', () => {
@@ -81,5 +82,50 @@ describe('support-document linking', () => {
 
     expect(result.supportedExpenseLinks).toHaveLength(0)
     expect(result.exceptionCases.some((item) => item.ruleCode === 'missing_supporting_document')).toBe(true)
+  })
+
+  it('links an incoming supplier refund document to the matching incoming bank movement', () => {
+    const bankInflow: ExtractedRecord = {
+      id: 'bank-refund-1',
+      sourceDocumentId: 'doc-bank-refund-1' as ExtractedRecord['sourceDocumentId'],
+      recordType: 'bank-transaction',
+      extractedAt: '2026-03-26T08:12:00.000Z',
+      rawReference: 'Vrácení přeplatku VS 5125144501',
+      amountMinor: 380400,
+      currency: 'CZK',
+      occurredAt: '2026-03-26',
+      data: {
+        sourceSystem: 'bank',
+        bookedAt: '2026-03-26T08:12:00',
+        amountMinor: 380400,
+        currency: 'CZK',
+        accountId: 'fio-main',
+        counterparty: 'Dobrá Energie s.r.o.',
+        reference: 'Vrácení přeplatku VS 5125144501',
+        transactionType: 'refund'
+      }
+    }
+    const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const result = reconcileExtractedRecords(
+      {
+        extractedRecords: [bankInflow, refundInvoice.expectedExtractedRecords[0]!]
+      },
+      {
+        runId: 'support-link-incoming-refund',
+        requestedAt: '2026-03-26T08:12:00.000Z'
+      }
+    )
+
+    expect(result.supportedExpenseLinks).toHaveLength(1)
+    expect(result.supportedExpenseLinks[0]).toMatchObject({
+      expenseTransactionId: 'txn:bank:bank-refund-1',
+      supportTransactionId: refundInvoice.expectedNormalizedTransactions?.[0]?.id
+    })
+    expect(result.supportedExpenseLinks[0].reasons).toContain('referenceAligned')
+    const refundTransactionId = 'txn:bank:bank-refund-1' as NormalizedTransaction['id']
+    expect(
+      result.exceptionCases.some((item) => item.relatedTransactionIds.includes(refundTransactionId))
+    ).toBe(false)
   })
 })

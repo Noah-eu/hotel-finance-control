@@ -534,6 +534,7 @@ function buildExpenseReviewSections(
     && transaction.direction === 'in'
     && !matchedRevenueTransactionIds.has(transaction.id)
     && !payoutMatchedBankTransactionIds.has(transaction.id)
+    && !linkedExpenseTransactionIds.has(transaction.id)
     && !internalTransferIncomingKeys.has(buildReviewBankTransactionKey(transaction))
   )
   const usedCandidateBankIds = new Set<string>()

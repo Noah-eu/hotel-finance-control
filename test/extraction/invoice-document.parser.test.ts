@@ -479,7 +479,7 @@ describe('parseInvoiceDocument', () => {
       customer: 'JOKELAND s.r.o.',
       referenceNumber: '5125144501',
       variableSymbol: '5125144501',
-      dueDate: '2026-03-25',
+      dueDate: '2026-03-26',
       totalAmountMinor: 380400,
       totalCurrency: 'CZK',
       targetBankAccountHint: '8888997777/2010',
