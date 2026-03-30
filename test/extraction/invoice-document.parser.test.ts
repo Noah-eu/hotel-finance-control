@@ -454,6 +454,41 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('keeps sparse refund settlement invoices as extracted support documents even when issue date is missing', () => {
+    const invoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-30T18:20:00.000Z'
+    })
+
+    expect(records).toEqual([
+      {
+        ...invoice.expectedExtractedRecords[0],
+        extractedAt: '2026-03-30T18:20:00.000Z'
+      }
+    ])
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      settlementDirection: 'refund_incoming',
+      issuerOrCounterparty: 'Dobrá Energie s.r.o.',
+      customer: 'JOKELAND s.r.o.',
+      referenceNumber: '5125144501',
+      variableSymbol: '5125144501',
+      dueDate: '2026-03-25',
+      totalAmountMinor: 380400,
+      totalCurrency: 'CZK',
+      targetBankAccountHint: '8888997777/2010',
+      finalStatus: 'needs_review',
+      requiredFieldsCheck: 'failed',
+      missingRequiredFields: ['issueDate']
+    })
+  })
+
   it('keeps grouped Czech invoice header/value blocks aligned when the value cells spill into following lines', () => {
     const content = [
       'Faktura - daňový doklad',

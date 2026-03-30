@@ -19,6 +19,7 @@ describe('realInputFixtures', () => {
       'invoice-document-czech-pdf',
       'invoice-document-dobra-energie-pdf',
       'invoice-document-dobra-energie-refund-pdf',
+      'invoice-document-dobra-energie-refund-sparse-pdf',
       'invoice-document-czech-pdf-with-spd-qr',
       'invoice-document-scan-pdf-with-ocr-stub',
       'receipt-document',
@@ -47,6 +48,7 @@ describe('realInputFixtures', () => {
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const dobraInvoicePdf = getRealInputFixture('invoice-document-dobra-energie-pdf')
     const dobraRefundInvoicePdf = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')
+    const dobraSparseRefundInvoicePdf = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
     const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
     const scanInvoiceWithOcr = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const receipt = getRealInputFixture('receipt-document')
@@ -168,6 +170,19 @@ describe('realInputFixtures', () => {
         targetBankAccountHint: '5599955956/5500'
       }
     })
+    expect(dobraSparseRefundInvoicePdf.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'invoice-document',
+      amountMinor: 380400,
+      occurredAt: '2026-03-25',
+      data: {
+        settlementDirection: 'refund_incoming',
+        invoiceNumber: '5125144501',
+        variableSymbol: '5125144501',
+        supplier: 'Dobrá Energie s.r.o.',
+        dueDate: '2026-03-25',
+        targetBankAccountHint: '8888997777/2010'
+      }
+    })
     expect(czechInvoicePdfWithQr.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'invoice-document',
       amountMinor: 1850000,
@@ -246,6 +261,7 @@ describe('realInputFixtures', () => {
     const czechInvoicePdf = getRealInputFixture('invoice-document-czech-pdf')
     const dobraInvoicePdf = getRealInputFixture('invoice-document-dobra-energie-pdf')
     const dobraRefundInvoicePdf = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')
+    const dobraSparseRefundInvoicePdf = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
     const czechInvoicePdfWithQr = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
     const scanInvoiceWithOcr = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const receipt = getRealInputFixture('receipt-document')
@@ -279,6 +295,16 @@ describe('realInputFixtures', () => {
       counterparty: 'Dobrá Energie s.r.o.',
       reference: 'DE-RET-2026-03-9901',
       targetBankAccountHint: '5599955956/5500'
+    })
+    expect(dobraSparseRefundInvoicePdf.expectedNormalizedTransactions?.[0]).toMatchObject({
+      source: 'invoice',
+      direction: 'in',
+      settlementDirection: 'refund_incoming',
+      amountMinor: 380400,
+      accountId: 'document-refunds',
+      counterparty: 'Dobrá Energie s.r.o.',
+      reference: '5125144501',
+      targetBankAccountHint: '8888997777/2010'
     })
     expect(czechInvoicePdfWithQr.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'invoice',

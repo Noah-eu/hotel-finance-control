@@ -18,6 +18,7 @@ export interface RealInputFixture {
   | 'invoice-document-czech-pdf'
   | 'invoice-document-dobra-energie-pdf'
   | 'invoice-document-dobra-energie-refund-pdf'
+  | 'invoice-document-dobra-energie-refund-sparse-pdf'
   | 'invoice-document-czech-pdf-with-spd-qr'
   | 'invoice-document-scan-pdf-with-ocr-stub'
   | 'receipt-document'
@@ -1417,6 +1418,82 @@ export const realInputFixtures: RealInputFixture[] = [
         targetBankAccountHint: '5599955956/5500',
         extractedRecordIds: ['invoice-record:doc-invoice-dobra-energie-refund-2026039901'],
         sourceDocumentIds: ['doc-invoice-dobra-energie-refund-2026039901' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-dobra-energie-refund-sparse-pdf',
+    description: 'Sparse Dobrá Energie overpayment settlement invoice PDF fixture that omits issue date but still carries enough evidence for incoming refund document linking in browser flow.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-dobra-energie-refund-sparse-5125144501' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Faktura - daňový doklad',
+        'Dodavatel',
+        'Dobrá Energie s.r.o.',
+        'Odběratel',
+        'JOKELAND s.r.o.',
+        'Variabilní symbol',
+        '5125144501',
+        'Datum splatnosti',
+        '25.03.2026',
+        'Přeplatek',
+        '3 804,00 Kč',
+        'Přeplatek bude připsán na Váš bankovní účet',
+        '8888997777/2010',
+        'Předmět plnění:',
+        'Vyúčtování dodávky elektřiny za březen 2026'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record:doc-invoice-dobra-energie-refund-sparse-5125144501',
+        sourceDocumentId: 'doc-invoice-dobra-energie-refund-sparse-5125144501' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: '5125144501',
+        amountMinor: 380400,
+        currency: 'CZK',
+        occurredAt: '2026-03-25',
+        data: {
+          sourceSystem: 'invoice',
+          settlementDirection: 'refund_incoming',
+          invoiceNumber: '5125144501',
+          variableSymbol: '5125144501',
+          supplier: 'Dobrá Energie s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          dueDate: '2026-03-25',
+          amountMinor: 380400,
+          currency: 'CZK',
+          description: 'Vyúčtování dodávky elektřiny za březen 2026',
+          targetBankAccountHint: '8888997777/2010',
+          referenceHints: ['5125144501']
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record:doc-invoice-dobra-energie-refund-sparse-5125144501' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'invoice',
+        subtype: 'supplier_refund',
+        settlementDirection: 'refund_incoming',
+        amountMinor: 380400,
+        currency: 'CZK',
+        bookedAt: '2026-03-25',
+        accountId: 'document-refunds',
+        counterparty: 'Dobrá Energie s.r.o.',
+        reference: '5125144501',
+        referenceHints: ['5125144501'],
+        invoiceNumber: '5125144501',
+        variableSymbol: '5125144501',
+        targetBankAccountHint: '8888997777/2010',
+        extractedRecordIds: ['invoice-record:doc-invoice-dobra-energie-refund-sparse-5125144501'],
+        sourceDocumentIds: ['doc-invoice-dobra-energie-refund-sparse-5125144501' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

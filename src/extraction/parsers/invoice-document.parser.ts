@@ -223,8 +223,9 @@ export class InvoiceDocumentParser {
     const issueDate = summary.issueDate ?? summary.taxableDate
     const dueDate = summary.dueDate
     const taxableDate = summary.taxableDate
+    const occurredAt = issueDate ?? dueDate
 
-    if (!issueDate || typeof summary.totalAmountMinor !== 'number' || !summary.totalCurrency) {
+    if (!occurredAt || typeof summary.totalAmountMinor !== 'number' || !summary.totalCurrency) {
       return []
     }
 
@@ -238,7 +239,7 @@ export class InvoiceDocumentParser {
       ...(extracted.invoiceNumber ? { rawReference: extracted.invoiceNumber } : {}),
       amountMinor: summary.totalAmountMinor,
       currency: summary.totalCurrency,
-      occurredAt: issueDate,
+      occurredAt,
       data: {
         sourceSystem: 'invoice',
         ...(extracted.settlementDirection ? { settlementDirection: extracted.settlementDirection } : {}),
@@ -246,7 +247,7 @@ export class InvoiceDocumentParser {
         ...(extracted.variableSymbol ? { variableSymbol: extracted.variableSymbol } : {}),
         ...(extracted.supplier ? { supplier: extracted.supplier } : {}),
         ...(extracted.customer ? { customer: extracted.customer } : {}),
-        issueDate,
+        ...(issueDate ? { issueDate } : {}),
         ...(dueDate ? { dueDate } : {}),
         ...(taxableDate ? { taxableDate } : {}),
         amountMinor: summary.totalAmountMinor,

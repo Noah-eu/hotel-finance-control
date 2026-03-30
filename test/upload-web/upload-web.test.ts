@@ -844,6 +844,75 @@ describe('buildUploadWebFlow', () => {
     ).toBe(false)
   })
 
+  it('keeps a sparse refund settlement invoice visible in browser flow instead of recognized-with-zero-extracted and links it to the incoming Dobrá refund movement', async () => {
+    const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndSparseDobraRefundDocument(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Dobra-Energie-preplatek-3804-2026-03.pdf', refundInvoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-30T18:25:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+          extractedCount: 1
+        })
+      ])
+    )
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          settlementDirection: 'refund_incoming',
+          referenceNumber: '5125144501',
+          variableSymbol: '5125144501',
+          totalAmountMinor: 380400,
+          targetBankAccountHint: '8888997777/2010'
+        })
+      })
+    )
+
+    const refundMatchedItem = result.reviewSections.expenseMatched.find((item) =>
+      item.expenseComparison?.document.reference === '5125144501'
+      && item.expenseComparison?.bank?.amount === '3 804,00 Kč'
+    )
+
+    expect(refundMatchedItem).toMatchObject({
+      documentBankRelation: 'Potvrzená pravděpodobná vazba mezi dokladem a příchozí bankovní platbou.'
+    })
+    expect(refundMatchedItem?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+        reference: '5125144501',
+        dueDate: '2026-03-25',
+        ibanHint: '8888997777/2010'
+      }),
+      bank: expect.objectContaining({
+        supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+        reference: 'Vrácení přeplatku VS 5125144501',
+        amount: '3 804,00 Kč'
+      })
+    })
+
+    expect(result.reviewSections.expenseUnmatchedInflows.some((item) =>
+      item.expenseComparison?.bank?.reference === 'Vrácení přeplatku VS 5125144501'
+      || item.title.includes('3 804,00 Kč')
+    )).toBe(false)
+  })
+
   it('keeps bare integer CZK outgoing bank values in correct major-unit scaling on the browser upload expense path', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
 
@@ -5128,6 +5197,13 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
     '24.03.2026 10:15;24.03.2026 10:17;5599955956/5500;CZ6508000000192000145399;Dobrá Energie s.r.o.;-18450,00;CZK;VS 2026034501 Dodávka elektřiny',
     '25.03.2026 09:05;25.03.2026 09:07;5599955956/5500;000000-2222333344/0800;Dobrá Energie s.r.o.;2450,00;CZK;Vrácení přeplatku VS 2026039901'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndSparseDobraRefundDocument(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '25.03.2026 09:05;25.03.2026 09:07;5599955956/5500;000000-2222333344/0800;Dobrá Energie s.r.o.;3804,00;CZK;Vrácení přeplatku VS 5125144501'
   ].join('\n')
 }
 
