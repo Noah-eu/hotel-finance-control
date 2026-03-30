@@ -574,9 +574,93 @@ describe('buildUploadWebFlow', () => {
     expect(
       result.extractedRecords.some((file) =>
         file.fileName === 'Booking-invoice-March.pdf'
-        && file.extractedRecordIds.includes('invoice-record-1')
+        && file.extractedRecordIds.some((recordId) => recordId.startsWith('invoice-record:'))
       )
     ).toBe(true)
+  })
+
+  it('keeps Dobrá Energie and Lenner invoice identities isolated on the browser upload path while preserving the payout baseline', async () => {
+    const lennerInvoice = getRealInputFixture('invoice-document-czech-pdf')
+    const dobraInvoice = getRealInputFixture('invoice-document-dobra-energie-pdf')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', lennerInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('Dobra-Energie-2026-03.pdf', dobraInvoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-30T15:20:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'Lenner.pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice'
+      }),
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-2026-03.pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice'
+      })
+    ]))
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Lenner.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'Lenner Motors s.r.o.',
+          referenceNumber: '141260183'
+        })
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-2026-03.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'Dobrá Energie s.r.o.',
+          referenceNumber: 'DE-2026-03-4501',
+          dueDate: '2026-04-01',
+          totalAmountMinor: 1845000,
+          totalCurrency: 'CZK',
+          billingPeriod: '01.03.2026 - 31.03.2026',
+          finalStatus: 'parsed'
+        }),
+        requiredFieldsCheck: 'passed',
+        missingFields: []
+      })
+    )
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(result.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.extractedRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'Lenner.pdf',
+        extractedRecordIds: [expect.stringMatching(/^invoice-record:/)]
+      }),
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-2026-03.pdf',
+        extractedRecordIds: [expect.stringMatching(/^invoice-record:/)]
+      })
+    ]))
+    const supplierNames = [
+      ...result.reviewSections.expenseMatched,
+      ...result.reviewSections.expenseNeedsReview,
+      ...result.reviewSections.expenseUnmatchedDocuments
+    ].map((item) => item.expenseComparison?.document.supplierOrCounterparty)
+
+    expect(supplierNames).toContain('Lenner Motors s.r.o.')
+    expect(supplierNames).toContain('Dobrá Energie s.r.o.')
   })
 
   it('matches a parsed expense invoice to an outgoing bank candidate on the real browser upload path without changing the 16 / 2 payout baseline', async () => {

@@ -26,7 +26,7 @@ describe('DocumentRecordNormalizer', () => {
     expect(result.warnings).toEqual([])
     expect(result.transactions).toEqual([
       expect.objectContaining({
-        id: 'txn:document:invoice-record-1',
+        id: invoice.expectedNormalizedTransactions?.[0]?.id,
         source: 'invoice',
         direction: 'out',
         amountMinor: 1850000,
@@ -43,8 +43,8 @@ describe('DocumentRecordNormalizer', () => {
     ])
     expect(result.trace).toEqual([
       {
-        extractedRecordId: 'invoice-record-1',
-        transactionIds: ['txn:document:invoice-record-1']
+        extractedRecordId: invoice.expectedExtractedRecords[0]?.id,
+        transactionIds: [invoice.expectedNormalizedTransactions?.[0]?.id]
       },
       {
         extractedRecordId: 'receipt-record-1',

@@ -40,7 +40,7 @@ describe('support-document linking', () => {
     expect(result.supportedExpenseLinks).toHaveLength(1)
     expect(result.supportedExpenseLinks[0]).toMatchObject({
       expenseTransactionId: 'txn:bank:bank-expense-1',
-      supportTransactionId: 'txn:document:invoice-record-1'
+      supportTransactionId: getRealInputFixture('invoice-document').expectedNormalizedTransactions?.[0]?.id
     })
     expect(result.supportedExpenseLinks[0].reasons).toContain('amountExact:1850000')
     expect(result.exceptionCases.some((item) => item.ruleCode === 'missing_supporting_document')).toBe(false)

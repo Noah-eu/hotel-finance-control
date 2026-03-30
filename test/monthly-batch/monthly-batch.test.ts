@@ -46,7 +46,7 @@ describe('runMonthlyReconciliationBatch', () => {
       },
       {
         sourceDocumentId: invoice.sourceDocument.id,
-        extractedRecordIds: ['invoice-record-1'],
+        extractedRecordIds: [invoice.expectedExtractedRecords[0]!.id],
         extractedCount: 1
       }
     ])
@@ -929,7 +929,7 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.reconciliation.supportedExpenseLinks).toHaveLength(1)
     expect(result.reconciliation.supportedExpenseLinks[0]).toMatchObject({
       expenseTransactionId: 'txn:bank:raif-row-1',
-      supportTransactionId: 'txn:document:invoice-record-1'
+      supportTransactionId: invoice.expectedNormalizedTransactions?.[0]?.id
     })
     expect(result.report.exceptions.some((item) => item.ruleCode === 'missing_supporting_document')).toBe(false)
     expect(result.reconciliation.exceptionCases.some((item) => item.ruleCode === 'missing_supporting_document')).toBe(false)
@@ -1345,10 +1345,13 @@ describe('runMonthlyReconciliationBatch', () => {
         documentType: 'invoice',
         parserId: 'invoice',
         role: 'primary',
-        extractedRecordIds: ['invoice-record-1']
+        extractedRecordIds: [expect.stringMatching(/^invoice-record:/)]
       })
     ])
-    expect(result.batch.extractedRecords.map((record) => record.id)).toEqual(['booking-payout-1', 'invoice-record-1'])
+    expect(result.batch.extractedRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'booking-payout-1' }),
+      expect.objectContaining({ id: expect.stringMatching(/^invoice-record:/) })
+    ]))
     expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
       expect.objectContaining({
         payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310'

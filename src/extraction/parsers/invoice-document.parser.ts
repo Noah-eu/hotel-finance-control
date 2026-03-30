@@ -225,8 +225,10 @@ export class InvoiceDocumentParser {
       return []
     }
 
+    const recordId = buildInvoiceRecordId(input.sourceDocument.id)
+
     const record: ExtractedRecord = {
-      id: 'invoice-record-1',
+      id: recordId,
       sourceDocumentId: input.sourceDocument.id,
       recordType: 'invoice-document',
       extractedAt: input.extractedAt,
@@ -358,6 +360,7 @@ function buildInvoiceDocumentExtractionSummary(
     documentType: 'invoice',
     ...(extracted.supplier ? { issuerOrCounterparty: extracted.supplier } : {}),
     ...(extracted.customer ? { customer: extracted.customer } : {}),
+    ...(extracted.billingPeriod ? { billingPeriod: extracted.billingPeriod } : {}),
     ...(issueDate ? { issueDate } : {}),
     ...(taxableDate ? { taxableDate } : {}),
     ...(dueDate ? { dueDate } : {}),
@@ -416,6 +419,7 @@ function extractInvoiceDocumentDetails(input: {
   collectFieldSpecificPayableTotalCandidates(lines, debugStates)
   collectFieldSpecificVatCandidates(lines, debugStates)
   collectLineWindowInvoiceCandidates(lines, debugStates)
+  collectLeadingInvoicePartyCandidates(lines, debugStates)
   collectFallbackInvoiceCandidates(fields, content, debugStates)
 
   const textExtracted = {
@@ -433,9 +437,10 @@ function extractInvoiceDocumentDetails(input: {
     ibanValue: normalizeIbanValue(resolveInvoiceField('ibanHint', debugStates.ibanHint))
   }
   const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
+  const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields)
   const bookingEnrichedTextFields: InvoiceExtractedFields = {
     ...textExtracted,
-    invoiceNumber: textExtracted.invoiceNumber ?? bookingSupplementaryFields.invoiceNumber,
+    invoiceNumber: textExtracted.invoiceNumber ?? generalSupplementaryFields.invoiceNumber ?? bookingSupplementaryFields.invoiceNumber,
     supplier: textExtracted.supplier ?? bookingSupplementaryFields.supplier,
     issueDateRaw: textExtracted.issueDateRaw ?? bookingSupplementaryFields.issueDateRaw,
     dueDateRaw: textExtracted.dueDateRaw ?? bookingSupplementaryFields.dueDateRaw,
@@ -443,7 +448,7 @@ function extractInvoiceDocumentDetails(input: {
     paymentMethod: textExtracted.paymentMethod ?? bookingSupplementaryFields.paymentMethod,
     description: textExtracted.description ?? bookingSupplementaryFields.description,
     ibanValue: textExtracted.ibanValue ?? bookingSupplementaryFields.ibanValue,
-    billingPeriod: bookingSupplementaryFields.billingPeriod,
+    billingPeriod: generalSupplementaryFields.billingPeriod ?? bookingSupplementaryFields.billingPeriod,
     localTotalRaw: bookingSupplementaryFields.localTotalRaw,
     referenceHints: bookingSupplementaryFields.referenceHints
   }
@@ -965,6 +970,30 @@ function normalizeComparableMoneyValue(value: string | undefined): string | unde
   const money = safeParseDocumentMoney(value, 'Invoice comparable amount')
 
   return money ? `${money.amountMinor}:${money.currency}` : undefined
+}
+
+function buildInvoiceRecordId(sourceDocumentId: ExtractedRecord['sourceDocumentId']): ExtractedRecord['id'] {
+  return `invoice-record:${sourceDocumentId}` as ExtractedRecord['id']
+}
+
+function extractGeneralInvoiceSupplementaryFields(
+  content: string,
+  fields: Record<string, string>
+): Partial<InvoiceExtractedFields> {
+  const invoiceNumber = pickRequiredField(fields, FIELD_ALIASES.invoiceNumber)
+    ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*[:\-]?\s*([^\n]+)/iu,
+      /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*\n\s*([^\n]+)/iu,
+      /(?:^|\n)\s*(?:variabilní\s+symbol|variable\s+symbol|vs)\s*[:\-]?\s*([^\n]+)/iu
+    ])
+  const billingPeriod = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:obdob[íi]|billing\s+period|invoice\s+period|period)\s*[:\-]?\s*([^\n]+)/iu
+  ])
+
+  return {
+    ...(invoiceNumber ? { invoiceNumber } : {}),
+    ...(billingPeriod ? { billingPeriod } : {})
+  }
 }
 
 function extractBookingInvoiceSupplementaryFields(
@@ -2843,6 +2872,113 @@ function collectFallbackInvoiceCandidates(
   ], 'vatAmount')
 }
 
+function collectLeadingInvoicePartyCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  collectLeadingInvoicePartyCandidatesForField(lines, debugStates.issuerOrCounterparty, 'issuerOrCounterparty', [
+    'Dodavatel',
+    'Supplier',
+    'Vendor',
+    'From'
+  ])
+  collectLeadingInvoicePartyCandidatesForField(lines, debugStates.customer, 'customer', [
+    'Odběratel',
+    'Customer',
+    'Buyer'
+  ])
+}
+
+function collectLeadingInvoicePartyCandidatesForField(
+  lines: string[],
+  state: InvoiceFieldDebugState,
+  fieldKey: 'issuerOrCounterparty' | 'customer',
+  labelAliases: string[]
+): void {
+  const maxScanIndex = Math.min(lines.length, 24)
+
+  for (let index = 0; index < maxScanIndex; index += 1) {
+    const line = lines[index]!
+    if (!matchesAnyInvoiceLabel(line, labelAliases)) {
+      continue
+    }
+
+    const inlineCandidate = extractInlineInvoiceLabelValue(line, labelAliases)
+    recordInvoiceFieldAttempt(
+      state,
+      'grouped',
+      inlineCandidate,
+      'first-page-party-block',
+      `${line} => ${inlineCandidate ?? 'n/a'}`,
+      isValidInvoiceFieldValue(fieldKey, inlineCandidate)
+    )
+
+    for (const candidateLine of collectLeadingInvoicePartyWindowLines(lines, index + 1)) {
+      const candidate = stripTrailingNoise(candidateLine)
+      recordInvoiceFieldAttempt(
+        state,
+        'grouped',
+        candidate,
+        'first-page-party-block',
+        `${line} -> ${candidateLine}`,
+        isValidInvoiceFieldValue(fieldKey, candidate)
+      )
+
+      if (isValidInvoiceFieldValue(fieldKey, candidate)) {
+        break
+      }
+    }
+  }
+}
+
+function collectLeadingInvoicePartyWindowLines(lines: string[], startIndex: number): string[] {
+  const candidates: string[] = []
+
+  for (let index = startIndex; index < Math.min(lines.length, startIndex + 4); index += 1) {
+    const line = stripTrailingNoise(lines[index] ?? '')
+    if (!line) {
+      continue
+    }
+    if (matchesInvoicePartyBoundaryLine(line) || detectInvoiceSummaryFieldKey(line)) {
+      break
+    }
+    candidates.push(line)
+  }
+
+  return candidates
+}
+
+function matchesAnyInvoiceLabel(line: string, aliases: string[]): boolean {
+  const normalizedLine = normalizeLabelSearch(line)
+
+  return aliases.some((alias) => {
+    const normalizedAlias = normalizeLabelSearch(alias)
+    return normalizedLine === normalizedAlias
+      || normalizedLine.startsWith(`${normalizedAlias}:`)
+      || normalizedLine.startsWith(`${normalizedAlias} `)
+  })
+}
+
+function extractInlineInvoiceLabelValue(line: string, aliases: string[]): string | undefined {
+  for (const alias of aliases) {
+    const pattern = new RegExp(`^\\s*${escapeInvoiceRegex(alias)}\\s*[:\\-]?\\s*(.+)$`, 'iu')
+    const candidate = stripTrailingNoise(line.match(pattern)?.[1] ?? '')
+    if (candidate) {
+      return candidate
+    }
+  }
+
+  return undefined
+}
+
+function matchesInvoicePartyBoundaryLine(line: string): boolean {
+  return matchesAnyInvoiceLabel(line, ['Dodavatel', 'Supplier', 'Vendor', 'From', 'Odběratel', 'Customer', 'Buyer'])
+}
+
+function escapeInvoiceRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function resolveInvoiceField(
   fieldKey: InvoiceSummaryFieldKey,
   state: InvoiceFieldDebugState,
@@ -2884,10 +3020,6 @@ function selectPreferredInvoiceFieldCandidate(
     return undefined
   }
 
-  if (fieldKey !== 'totalAmount') {
-    return candidates[0]
-  }
-
   return [...candidates].sort((left, right) => {
     const priorityDelta = invoiceFieldCandidatePriority(fieldKey, right) - invoiceFieldCandidatePriority(fieldKey, left)
     if (priorityDelta !== 0) {
@@ -2906,29 +3038,88 @@ function invoiceFieldCandidatePriority(
   fieldKey: InvoiceSummaryFieldKey,
   candidate: InvoiceFieldCandidate
 ): number {
-  if (fieldKey !== 'totalAmount') {
-    return 0
-  }
+  switch (fieldKey) {
+    case 'referenceNumber': {
+      const looksLikeExplicitInvoiceNumber = /[A-Z]/i.test(candidate.value) || /[-/]/.test(candidate.value)
 
-  switch (candidate.rule) {
-    case 'field-specific-summary-total':
-      return 500
-    case 'structured-grouped-totals-block':
-      return 450
-    case 'vertical-structured-totals-block':
-      return 425
-    case 'vertical-grouped-block':
-      return 400
-    case 'field-specific-payable-total':
-      return 350
-    case 'direct-labeled-field':
-      return 250
-    case 'regex-total':
-      return 200
-    case 'line-window':
-      return 150
+      switch (candidate.rule) {
+        case 'anchored-header-window':
+          return looksLikeExplicitInvoiceNumber ? 400 : 250
+        case 'field-specific-reference-window':
+          return looksLikeExplicitInvoiceNumber ? 350 : 200
+        case 'field-specific-reference-label':
+          return looksLikeExplicitInvoiceNumber ? 325 : 175
+        case 'regex-invoice-number':
+        case 'direct-labeled-field':
+          return looksLikeExplicitInvoiceNumber ? 300 : 150
+        default:
+          return looksLikeExplicitInvoiceNumber ? 100 : 0
+      }
+    }
+    case 'totalAmount':
+      switch (candidate.rule) {
+        case 'field-specific-summary-total':
+          return 500
+        case 'structured-grouped-totals-block':
+          return 450
+        case 'vertical-structured-totals-block':
+          return 425
+        case 'vertical-grouped-block':
+          return 400
+        case 'field-specific-payable-total':
+          return 350
+        case 'direct-labeled-field':
+          return 250
+        case 'regex-total':
+          return 200
+        case 'line-window':
+          return 150
+        default:
+          return 100
+      }
+    case 'issuerOrCounterparty':
+    case 'customer':
+      switch (candidate.rule) {
+        case 'first-page-party-block':
+          return 400
+        case 'direct-labeled-field':
+          return 250
+        case 'regex-supplier':
+        case 'regex-customer':
+          return 200
+        default:
+          return 0
+      }
+    case 'paymentMethod':
+      switch (candidate.rule) {
+        case 'grouped-combined-date-payment-row':
+        case 'structured-combined-date-payment-row':
+        case 'field-specific-labeled-window':
+          return 350
+        case 'line-window':
+          return 250
+        case 'anchored-header-window':
+          return 100
+        default:
+          return 0
+      }
+    case 'issueDate':
+    case 'taxableDate':
+    case 'dueDate':
+      switch (candidate.rule) {
+        case 'grouped-combined-date-payment-row':
+        case 'structured-combined-date-payment-row':
+        case 'field-specific-labeled-window':
+          return 300
+        case 'line-window':
+          return 225
+        case 'anchored-header-window':
+          return 100
+        default:
+          return 0
+      }
     default:
-      return 100
+      return 0
   }
 }
 
@@ -3679,7 +3870,7 @@ function extractDateTokens(value: string): string[] {
 
 function looksLikeInvoiceIban(value: string): boolean {
   const iban = normalizeIbanValue(value)
-  return Boolean(iban && /^[A-Z]{2}\d{10,}$/.test(iban))
+  return Boolean(iban && iban.length >= 15 && /^[A-Z]{2}\d{10,}$/.test(iban))
 }
 
 function safeNormalizeDocumentDate(value: string | undefined, fieldName: string): string | undefined {

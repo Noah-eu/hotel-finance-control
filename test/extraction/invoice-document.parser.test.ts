@@ -29,7 +29,7 @@ describe('parseInvoiceDocument', () => {
 
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({
-      id: 'invoice-record-1',
+      id: fixture.expectedExtractedRecords[0]?.id,
       recordType: 'invoice-document',
       rawReference: 'INV-2026-332',
       data: {
@@ -81,7 +81,7 @@ describe('parseInvoiceDocument', () => {
     })
 
     expect(records[0]).toMatchObject({
-      id: 'invoice-record-1',
+      id: fixture.expectedExtractedRecords[0]?.id,
       rawReference: 'INV-2026-332',
       amountMinor: 18500,
       occurredAt: '2026-03-19',
@@ -373,6 +373,48 @@ describe('parseInvoiceDocument', () => {
       finalStatus: 'parsed',
       requiredFieldsCheck: 'passed',
       missingRequiredFields: []
+    })
+  })
+
+  it('parses readable Dobrá Energie invoice PDFs with the correct supplier identity and billing fields', () => {
+    const invoice = getRealInputFixture('invoice-document-dobra-energie-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-30T10:20:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-30T10:20:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      issuerOrCounterparty: 'Dobrá Energie s.r.o.',
+      customer: 'JOKELAND s.r.o.',
+      referenceNumber: 'DE-2026-03-4501',
+      issueDate: '2026-03-18',
+      taxableDate: '2026-03-18',
+      dueDate: '2026-04-01',
+      paymentMethod: 'Přev. příkaz',
+      totalAmountMinor: 1845000,
+      totalCurrency: 'CZK',
+      ibanHint: 'CZ6508000000192000145399',
+      billingPeriod: '01.03.2026 - 31.03.2026',
+      confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: [],
+      fieldExtractionDebug: expect.objectContaining({
+        issuerOrCounterparty: expect.objectContaining({
+          winnerRule: 'first-page-party-block',
+          winnerValue: 'Dobrá Energie s.r.o.'
+        })
+      })
     })
   })
 

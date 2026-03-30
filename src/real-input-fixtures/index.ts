@@ -16,6 +16,7 @@ export interface RealInputFixture {
   | 'invoice-document'
   | 'booking-invoice-pdf'
   | 'invoice-document-czech-pdf'
+  | 'invoice-document-dobra-energie-pdf'
   | 'invoice-document-czech-pdf-with-spd-qr'
   | 'invoice-document-scan-pdf-with-ocr-stub'
   | 'receipt-document'
@@ -1037,7 +1038,7 @@ export const realInputFixtures: RealInputFixture[] = [
     },
     expectedExtractedRecords: [
       extractedRecord({
-        id: 'invoice-record-1',
+        id: 'invoice-record:doc-invoice-2026-332',
         sourceDocumentId: 'doc-invoice-2026-332' as ExtractedRecord['sourceDocumentId'],
         recordType: 'invoice-document',
         rawReference: 'INV-2026-332',
@@ -1058,7 +1059,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:invoice-record:doc-invoice-2026-332' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'invoice',
         amountMinor: 1850000,
@@ -1068,7 +1069,7 @@ export const realInputFixtures: RealInputFixture[] = [
         counterparty: 'Laundry Supply s.r.o.',
         reference: 'INV-2026-332',
         invoiceNumber: 'INV-2026-332',
-        extractedRecordIds: ['invoice-record-1'],
+        extractedRecordIds: ['invoice-record:doc-invoice-2026-332'],
         sourceDocumentIds: ['doc-invoice-2026-332' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
@@ -1113,7 +1114,7 @@ export const realInputFixtures: RealInputFixture[] = [
     },
     expectedExtractedRecords: [
       extractedRecord({
-        id: 'invoice-record-1',
+        id: 'invoice-record:doc-booking-invoice-2026-03',
         sourceDocumentId: 'doc-booking-invoice-2026-03' as ExtractedRecord['sourceDocumentId'],
         recordType: 'invoice-document',
         rawReference: 'BOOK-INV-2026-03',
@@ -1139,7 +1140,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:invoice-record:doc-booking-invoice-2026-03' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'invoice',
         amountMinor: 145642,
@@ -1149,7 +1150,7 @@ export const realInputFixtures: RealInputFixture[] = [
         counterparty: 'Booking.com B.V.',
         reference: 'BOOK-INV-2026-03',
         invoiceNumber: 'BOOK-INV-2026-03',
-        extractedRecordIds: ['invoice-record-1'],
+        extractedRecordIds: ['invoice-record:doc-booking-invoice-2026-03'],
         sourceDocumentIds: ['doc-booking-invoice-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
@@ -1199,7 +1200,7 @@ export const realInputFixtures: RealInputFixture[] = [
     },
     expectedExtractedRecords: [
       extractedRecord({
-        id: 'invoice-record-1',
+        id: 'invoice-record:doc-invoice-lenner-141260183',
         sourceDocumentId: 'doc-invoice-lenner-141260183' as ExtractedRecord['sourceDocumentId'],
         recordType: 'invoice-document',
         rawReference: '141260183',
@@ -1228,7 +1229,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:invoice-record:doc-invoice-lenner-141260183' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'invoice',
         amountMinor: 1262952,
@@ -1238,8 +1239,92 @@ export const realInputFixtures: RealInputFixture[] = [
         counterparty: 'Lenner Motors s.r.o.',
         reference: '141260183',
         invoiceNumber: '141260183',
-        extractedRecordIds: ['invoice-record-1'],
+        extractedRecordIds: ['invoice-record:doc-invoice-lenner-141260183'],
         sourceDocumentIds: ['doc-invoice-lenner-141260183' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-dobra-energie-pdf',
+    description: 'Readable Dobrá Energie supplier invoice PDF fixture for deterministic supplier identity extraction and browser intake coverage.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-dobra-energie-2026034501' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'Dobra-Energie-2026-03.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Faktura - daňový doklad',
+        'Dodavatel',
+        'Dobrá Energie s.r.o.',
+        'Nádražní 12',
+        '602 00 Brno',
+        'Odběratel',
+        'JOKELAND s.r.o.',
+        'Faktura číslo',
+        'DE-2026-03-4501',
+        'Variabilní symbol',
+        '2026034501',
+        'Datum vystavení',
+        '18.03.2026',
+        'Datum zdanitelného plnění',
+        '18.03.2026',
+        'Datum splatnosti',
+        '01.04.2026',
+        'Forma úhrady',
+        'Přev.příkaz',
+        'Období',
+        '01.03.2026 - 31.03.2026',
+        'IBAN:',
+        'CZ6508000000192000145399',
+        'Celkem k úhradě',
+        '18 450,00 Kč',
+        'Předmět plnění:',
+        'Dodávka elektřiny'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record:doc-invoice-dobra-energie-2026034501',
+        sourceDocumentId: 'doc-invoice-dobra-energie-2026034501' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: 'DE-2026-03-4501',
+        amountMinor: 1845000,
+        currency: 'CZK',
+        occurredAt: '2026-03-18',
+        data: {
+          sourceSystem: 'invoice',
+          invoiceNumber: 'DE-2026-03-4501',
+          supplier: 'Dobrá Energie s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          issueDate: '2026-03-18',
+          dueDate: '2026-04-01',
+          taxableDate: '2026-03-18',
+          amountMinor: 1845000,
+          currency: 'CZK',
+          paymentMethod: 'Přev. příkaz',
+          description: 'Dodávka elektřiny',
+          billingPeriod: '01.03.2026 - 31.03.2026',
+          ibanHint: 'CZ6508000000192000145399'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record:doc-invoice-dobra-energie-2026034501' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 1845000,
+        currency: 'CZK',
+        bookedAt: '2026-03-18',
+        accountId: 'document-expenses',
+        counterparty: 'Dobrá Energie s.r.o.',
+        reference: 'DE-2026-03-4501',
+        invoiceNumber: 'DE-2026-03-4501',
+        extractedRecordIds: ['invoice-record:doc-invoice-dobra-energie-2026034501'],
+        sourceDocumentIds: ['doc-invoice-dobra-energie-2026034501' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },
@@ -1286,7 +1371,7 @@ export const realInputFixtures: RealInputFixture[] = [
     },
     expectedExtractedRecords: [
       extractedRecord({
-        id: 'invoice-record-1',
+        id: 'invoice-record:doc-invoice-qr-141260183',
         sourceDocumentId: 'doc-invoice-qr-141260183' as ExtractedRecord['sourceDocumentId'],
         recordType: 'invoice-document',
         rawReference: '141260183',
@@ -1309,7 +1394,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:invoice-record:doc-invoice-qr-141260183' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'invoice',
         amountMinor: 1850000,
@@ -1319,7 +1404,7 @@ export const realInputFixtures: RealInputFixture[] = [
         counterparty: 'QR Hotel Supply s.r.o.',
         reference: '141260183',
         invoiceNumber: '141260183',
-        extractedRecordIds: ['invoice-record-1'],
+        extractedRecordIds: ['invoice-record:doc-invoice-qr-141260183'],
         sourceDocumentIds: ['doc-invoice-qr-141260183' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
@@ -1360,7 +1445,7 @@ export const realInputFixtures: RealInputFixture[] = [
     },
     expectedExtractedRecords: [
       extractedRecord({
-        id: 'invoice-record-1',
+        id: 'invoice-record:doc-invoice-ocr-2026-077',
         sourceDocumentId: 'doc-invoice-ocr-2026-077' as ExtractedRecord['sourceDocumentId'],
         recordType: 'invoice-document',
         rawReference: 'OCR-INV-2026-77',
@@ -1389,7 +1474,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:invoice-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:invoice-record:doc-invoice-ocr-2026-077' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'invoice',
         amountMinor: 650000,
@@ -1399,7 +1484,7 @@ export const realInputFixtures: RealInputFixture[] = [
         counterparty: 'Scan Laundry Supply s.r.o.',
         reference: 'OCR-INV-2026-77',
         invoiceNumber: 'OCR-INV-2026-77',
-        extractedRecordIds: ['invoice-record-1'],
+        extractedRecordIds: ['invoice-record:doc-invoice-ocr-2026-077'],
         sourceDocumentIds: ['doc-invoice-ocr-2026-077' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]

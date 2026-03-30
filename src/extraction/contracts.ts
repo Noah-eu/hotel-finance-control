@@ -23,6 +23,7 @@ export interface DeterministicDocumentExtractionSummary {
   documentType: SourceDocument['documentType']
   issuerOrCounterparty?: string
   customer?: string
+  billingPeriod?: string
   issueDate?: string
   taxableDate?: string
   paymentDate?: string
