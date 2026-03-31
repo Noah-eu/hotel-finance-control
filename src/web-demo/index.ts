@@ -685,6 +685,13 @@ ${showRuntimePayoutDiagnostics ? `
             <p class="hint">Po spuštění zde uvidíte build/runtime marker a finální payout projekci ze stejného state objektu, který používá summary i detailní payout sekce.</p>
           </div>
         </section>
+        <section id="runtime-workspace-merge-debug-section" class="card" data-runtime-phase="placeholder" hidden>
+          <h2>Diagnostika merge měsíčního workspace</h2>
+          <div id="runtime-workspace-merge-debug-content">
+            <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+            <p class="hint">Po spuštění zde uvidíte month key, persisted count, selected count, merged count, visible trace count a render source.</p>
+          </div>
+        </section>
       </section>
 
       <section id="control-detail-view" class="card detail-view" hidden>
@@ -874,6 +881,8 @@ ${showRuntimePayoutDiagnostics ? `
   const exportHandoffContent = document.getElementById('export-handoff-content');${runtimePayoutDiagnosticsBindings}${runtimeFileIntakeDiagnosticsBindings}
   const runtimePayoutProjectionDebugSection = document.getElementById('runtime-payout-projection-debug-section');
   const runtimePayoutProjectionDebugContent = document.getElementById('runtime-payout-projection-debug-content');
+  const runtimeWorkspaceMergeDebugSection = document.getElementById('runtime-workspace-merge-debug-section');
+  const runtimeWorkspaceMergeDebugContent = document.getElementById('runtime-workspace-merge-debug-content');
       const generatedAt = ${JSON.stringify(input.generatedAt)};
   const buildFingerprintVersion = ${JSON.stringify(buildFingerprintVersion)};
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
@@ -894,6 +903,7 @@ ${showRuntimePayoutDiagnostics ? `
       let expenseDetailControlsWired = false;
       let currentWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
+      let currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState({});
       const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
       const monthlyWorkspaceStorageKey = 'hotel-finance-control:monthly-browser-workspaces:v1';
 
@@ -961,6 +971,21 @@ ${showRuntimePayoutDiagnostics ? `
           String(record && record.encoding || ''),
           String(record && record.contentHash || '')
         ].join('::');
+      }
+
+      function buildWorkspaceRenderDebugState(input) {
+        return {
+          currentMonthKey: String(input && input.currentMonthKey || ''),
+          persistedWorkspaceFileCountBeforeRerun: Number(input && input.persistedWorkspaceFileCountBeforeRerun || 0),
+          selectedBatchFileCount: Number(input && input.selectedBatchFileCount || 0),
+          mergedFileCountUsedForRerun: Number(input && input.mergedFileCountUsedForRerun || 0),
+          visibleTraceFileCount: Number(input && input.visibleTraceFileCount || 0),
+          renderSource: String(input && input.renderSource || 'selectedFiles')
+        };
+      }
+
+      function setWorkspaceRenderDebugState(input) {
+        currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState(input);
       }
 
       function hashStringContent(value) {
@@ -1223,6 +1248,13 @@ ${showRuntimePayoutDiagnostics ? `
         return merged;
       }
 
+      function buildVisibleTraceFileCountFromState(state) {
+        const fileRoutes = Array.isArray(state && state.fileRoutes) ? state.fileRoutes : [];
+        const preparedFiles = Array.isArray(state && state.preparedFiles) ? state.preparedFiles : [];
+
+        return fileRoutes.length > 0 ? fileRoutes.length : preparedFiles.length;
+      }
+
       function buildRuntimeFileFromWorkspaceRecord(record) {
         const fileName = String(record && record.fileName || 'uploaded-file');
         const mimeType = String(record && record.mimeType || '');
@@ -1392,6 +1424,14 @@ ${showRuntimePayoutDiagnostics ? `
         }
 
         if (!workspace || !workspace.runtimeState) {
+          setWorkspaceRenderDebugState({
+            currentMonthKey: normalizedMonth,
+            persistedWorkspaceFileCountBeforeRerun: 0,
+            selectedBatchFileCount: 0,
+            mergedFileCountUsedForRerun: 0,
+            visibleTraceFileCount: 0,
+            renderSource: 'persistedWorkspace'
+          });
           currentWorkspaceFiles = [];
           currentExpenseReviewOverrides = [];
           renderInitialVisibleState();
@@ -1406,6 +1446,14 @@ ${showRuntimePayoutDiagnostics ? `
 
         currentWorkspaceFiles = Array.isArray(workspace.files) ? workspace.files.slice() : [];
         currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+        setWorkspaceRenderDebugState({
+          currentMonthKey: normalizedMonth,
+          persistedWorkspaceFileCountBeforeRerun: currentWorkspaceFiles.length,
+          selectedBatchFileCount: 0,
+          mergedFileCountUsedForRerun: currentWorkspaceFiles.length,
+          visibleTraceFileCount: currentWorkspaceFiles.length,
+          renderSource: 'persistedWorkspace'
+        });
         const visibleState = buildCompletedVisibleRuntimeState(workspace.runtimeState);
         applyVisibleRuntimeState(visibleState, 'completed');
         runtimeOutput.innerHTML = [
@@ -2421,6 +2469,47 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function renderInitialRuntimeFileIntakeDiagnostics() {
         runtimeFileIntakeDiagnosticsContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte browser intake handoff pro každý soubor a jeho finální render bucket.</p>';
+      }
+
+      function syncRuntimeWorkspaceMergeDebugVisibility() {
+        runtimeWorkspaceMergeDebugSection.hidden = !runtimeOperatorDebugMode;
+      }
+
+      function buildRuntimeWorkspaceMergeDebugMarkup(debugState) {
+        const state = buildWorkspaceRenderDebugState(debugState);
+
+        return [
+          '<p class="hint">Tento blok ukazuje, z jakého zdroje právě stránka bere viditelný trace souborů pro měsíc.</p>',
+          '<ul class="diagnostic-list">',
+          '<li><strong>Current month key:</strong> ' + escapeHtml(state.currentMonthKey || 'neuvedeno') + '</li>',
+          '<li><strong>Persisted workspace file count before rerun:</strong> ' + escapeHtml(String(state.persistedWorkspaceFileCountBeforeRerun)) + '</li>',
+          '<li><strong>Newly selected batch file count:</strong> ' + escapeHtml(String(state.selectedBatchFileCount)) + '</li>',
+          '<li><strong>Merged file count used for rerun:</strong> ' + escapeHtml(String(state.mergedFileCountUsedForRerun)) + '</li>',
+          '<li><strong>Visible trace file count:</strong> ' + escapeHtml(String(state.visibleTraceFileCount)) + '</li>',
+          '<li><strong>Render source:</strong> ' + escapeHtml(state.renderSource || 'selectedFiles') + '</li>',
+          '</ul>'
+        ].join('');
+      }
+
+      function syncRuntimeWorkspaceMergeDebugPhase(phase) {
+        runtimeWorkspaceMergeDebugSection.setAttribute('data-runtime-phase', phase);
+        syncRuntimeWorkspaceMergeDebugVisibility();
+      }
+
+      function renderCompletedRuntimeWorkspaceMergeDebug(debugState) {
+        runtimeWorkspaceMergeDebugContent.innerHTML = buildRuntimeWorkspaceMergeDebugMarkup(debugState);
+      }
+
+      function renderRunningRuntimeWorkspaceMergeDebug(debugState) {
+        runtimeWorkspaceMergeDebugContent.innerHTML = buildRuntimeWorkspaceMergeDebugMarkup(debugState);
+      }
+
+      function renderFailedRuntimeWorkspaceMergeDebug(debugState) {
+        runtimeWorkspaceMergeDebugContent.innerHTML = buildRuntimeWorkspaceMergeDebugMarkup(debugState) + '<p class="hint">Poslední běh selhal, proto zůstává vidět poslední známý merge snapshot.</p>';
+      }
+
+      function renderInitialRuntimeWorkspaceMergeDebug() {
+        runtimeWorkspaceMergeDebugContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte month key, persisted count, selected count, merged count, visible trace count a render source.</p>';
       }
 
       function syncRuntimePayoutProjectionDebugVisibility() {
@@ -3588,6 +3677,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimePayoutDiagnosticsPhase(phase);
         syncRuntimeFileIntakeDiagnosticsPhase(phase);
         syncRuntimePayoutProjectionDebugPhase(phase);
+        syncRuntimeWorkspaceMergeDebugPhase(phase);
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(visibleState.routingSummary?.uploadedFileCount ?? (visibleState.fileRoutes || []).length ?? (visibleState.preparedFiles || []).length);
@@ -3637,6 +3727,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderCompletedRuntimePayoutDiagnostics(visibleState);
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
+        const completedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
+          currentMonthKey: currentWorkspaceMonth || visibleState.monthLabel || '',
+          persistedWorkspaceFileCountBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileCountBeforeRerun,
+          selectedBatchFileCount: currentWorkspaceRenderDebug.selectedBatchFileCount,
+          mergedFileCountUsedForRerun: currentWorkspaceRenderDebug.mergedFileCountUsedForRerun || (Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.length : 0),
+          visibleTraceFileCount: buildVisibleTraceFileCountFromState(visibleState),
+          renderSource: currentWorkspaceRenderDebug.renderSource || 'mergedWorkspace'
+        });
+        setWorkspaceRenderDebugState(completedWorkspaceRenderDebug);
+        renderCompletedRuntimeWorkspaceMergeDebug(completedWorkspaceRenderDebug);
         currentExpenseReviewState = baseVisibleState;
         currentExportVisibleState = visibleState;
         if (phase === 'completed' && currentWorkspaceMonth) {
@@ -3646,6 +3746,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         if (runtimeOperatorDebugMode) {
           window.__hotelFinanceLastVisibleRuntimeState = visibleState;
           window.__hotelFinanceLastVisiblePayoutProjection = payoutProjection;
+          window.__hotelFinanceLastWorkspaceRenderDebug = completedWorkspaceRenderDebug;
           window.__hotelFinanceExpenseReviewOverrides = currentExpenseReviewOverrides.slice();
           window.__hotelFinanceExpenseReviewOverrideStorageKey = buildExpenseReviewOverrideStorageKey(baseVisibleState);
           window.__hotelFinanceMonthlyWorkspaceState = {
@@ -3675,6 +3776,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimePayoutDiagnosticsPhase('running');
         syncRuntimeFileIntakeDiagnosticsPhase('running');
         syncRuntimePayoutProjectionDebugPhase('running');
+        syncRuntimeWorkspaceMergeDebugPhase('running');
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(files.length);
@@ -3712,6 +3814,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderRunningRuntimePayoutDiagnostics();
         renderRunningRuntimeFileIntakeDiagnostics();
         renderRunningRuntimePayoutProjectionDebug();
+        renderRunningRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
         currentExportVisibleState = initialRuntimeState;
       }
 
@@ -3737,6 +3840,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimePayoutDiagnosticsPhase('failed');
         syncRuntimeFileIntakeDiagnosticsPhase('failed');
         syncRuntimePayoutProjectionDebugPhase('failed');
+        syncRuntimeWorkspaceMergeDebugPhase('failed');
 
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
@@ -3763,6 +3867,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderFailedRuntimePayoutDiagnostics();
         renderFailedRuntimeFileIntakeDiagnostics();
         renderFailedRuntimePayoutProjectionDebug();
+        renderFailedRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
         currentExportVisibleState = initialRuntimeState;
         if (buildFingerprint) {
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
@@ -3789,6 +3894,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimePayoutDiagnosticsPhase('placeholder');
         syncRuntimeFileIntakeDiagnosticsPhase('placeholder');
         syncRuntimePayoutProjectionDebugPhase('placeholder');
+        syncRuntimeWorkspaceMergeDebugPhase('placeholder');
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
         if (runtimeSummaryUploadedFiles) runtimeSummaryUploadedFiles.textContent = '0';
@@ -3824,6 +3930,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderInitialRuntimePayoutDiagnostics();
         renderInitialRuntimeFileIntakeDiagnostics();
         renderInitialRuntimePayoutProjectionDebug();
+        setWorkspaceRenderDebugState({});
+        renderInitialRuntimeWorkspaceMergeDebug();
         currentExpenseReviewState = initialRuntimeState;
         currentExportVisibleState = initialRuntimeState;
         currentExpenseReviewOverrides = [];
@@ -3848,6 +3956,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>běh právě probíhá</strong>. Původní ukázkový snapshot se teď nahrazuje skutečným výsledkem vybraných souborů.';
         const runningWorkspacePreviewFiles = buildRunningWorkflowFilesFromMonthWorkspace(existingWorkspace && existingWorkspace.files, files);
+        setWorkspaceRenderDebugState({
+          currentMonthKey: normalizedMonth,
+          persistedWorkspaceFileCountBeforeRerun: Array.isArray(existingWorkspace && existingWorkspace.files) ? existingWorkspace.files.length : 0,
+          selectedBatchFileCount: files.length,
+          mergedFileCountUsedForRerun: runningWorkspacePreviewFiles.length,
+          visibleTraceFileCount: runningWorkspacePreviewFiles.length,
+          renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles'
+        });
         renderRunningState(runningWorkspacePreviewFiles);
 
         if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
@@ -3867,6 +3983,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
           });
           const mergedWorkspaceFiles = mergeWorkspaceFiles(existingWorkspace && existingWorkspace.files, serializedFiles);
           const mergedRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(mergedWorkspaceFiles);
+          setWorkspaceRenderDebugState({
+            currentMonthKey: normalizedMonth,
+            persistedWorkspaceFileCountBeforeRerun: Array.isArray(existingWorkspace && existingWorkspace.files) ? existingWorkspace.files.length : 0,
+            selectedBatchFileCount: files.length,
+            mergedFileCountUsedForRerun: mergedWorkspaceFiles.length,
+            visibleTraceFileCount: mergedRunningWorkflowFiles.length,
+            renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles'
+          });
+          renderRunningRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
           const state = await browserRuntime.buildRuntimeState({
             files: mergedWorkspaceFiles.map((record) => buildRuntimeFileFromWorkspaceRecord(record)),
             month: normalizedMonth,

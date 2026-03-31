@@ -2358,6 +2358,12 @@ describe('buildWebDemo', () => {
     expect(additive.preparedFilesContent.innerHTML).toContain('<strong>airbnb.csv</strong>')
     expect(additive.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
     expect(additive.preparedFilesContent.innerHTML).toContain('<strong>Pohyby_5599955956_202603191023.csv</strong>')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Current month key:</strong> 2026-03')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file count before rerun:</strong> 3')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Newly selected batch file count:</strong> 1')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file count:</strong> 4')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
 
     await additive.waitForWorkflowCompletion()
 
@@ -2381,6 +2387,19 @@ describe('buildWebDemo', () => {
     expect(additive.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
     expect(additiveState.reviewSummary.payoutBatchMatchCount).toBe(16)
     expect(additiveState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file count before rerun:</strong> 3')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file count:</strong> 4')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+
+    expect(additive.getLastWorkspaceRenderDebug()).toEqual({
+      currentMonthKey: '2026-03',
+      persistedWorkspaceFileCountBeforeRerun: 3,
+      selectedBatchFileCount: 1,
+      mergedFileCountUsedForRerun: 4,
+      visibleTraceFileCount: 4,
+      renderSource: 'mergedWorkspace'
+    })
 
     const duplicateReupload = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-30T19:12:00.000Z',
@@ -2405,7 +2424,15 @@ describe('buildWebDemo', () => {
     expect(duplicateState.reviewSummary.payoutBatchMatchCount).toBe(16)
     expect(duplicateState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
 
-    const reloaded = await duplicateReupload.reloadWithSameStorage()
+    const reloaded = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-30T19:13:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-same-month-additive-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      skipStart: true,
+      files: []
+    })
     const reloadedState = reloaded.getLastVisibleRuntimeState() as {
       runId: string
       fileRoutes: Array<{ fileName: string }>
@@ -2419,7 +2446,12 @@ describe('buildWebDemo', () => {
     expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>airbnb.csv</strong>')
     expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
     expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>Pohyby_5599955956_202603191023.csv</strong>')
-  })
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file count before rerun:</strong> 4')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Newly selected batch file count:</strong> 0')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file count:</strong> 4')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspace')
+  }, 15000)
 
   it('builds complete monthly Excel export from the restored current month workspace state', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
@@ -3116,6 +3148,8 @@ async function executeWebDemoMainWorkflow(input: {
   runtimeFileIntakeDiagnosticsContent: StubDomElement
   runtimePayoutProjectionDebugSection: StubDomElement
   runtimePayoutProjectionDebugContent: StubDomElement
+  runtimeWorkspaceMergeDebugSection: StubDomElement
+  runtimeWorkspaceMergeDebugContent: StubDomElement
   openExpenseReviewPage: () => StubDomElement
   openControlDetailPage: () => StubDomElement
   backToMainOverviewFromExpense: () => void
@@ -3146,6 +3180,7 @@ async function executeWebDemoMainWorkflow(input: {
   waitForWorkflowCompletion: () => Promise<void>
   reloadWithSameStorage: () => Promise<any>
   getLastVisibleRuntimeState: () => unknown
+  getLastWorkspaceRenderDebug: () => unknown
   lastVisibleRuntimeState?: unknown
   lastVisiblePayoutProjection?: unknown
 }> {
@@ -3185,6 +3220,7 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceBuildWorkspaceExcelExport?: unknown
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
+    __hotelFinanceLastWorkspaceRenderDebug?: unknown
     __hotelFinanceExpenseReviewOverrides?: unknown
     __hotelFinanceExpenseReviewOverrideStorageKey?: unknown
     __hotelFinanceLastExcelExport?: unknown
@@ -3306,6 +3342,8 @@ async function executeWebDemoMainWorkflow(input: {
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
     runtimePayoutProjectionDebugSection: elements['runtime-payout-projection-debug-section'],
     runtimePayoutProjectionDebugContent: elements['runtime-payout-projection-debug-content'],
+    runtimeWorkspaceMergeDebugSection: elements['runtime-workspace-merge-debug-section'],
+    runtimeWorkspaceMergeDebugContent: elements['runtime-workspace-merge-debug-content'],
     openExpenseReviewPage() {
       elements['open-expense-review-button'].listeners.click()
       return elements['expense-detail-view']
@@ -3393,6 +3431,9 @@ async function executeWebDemoMainWorkflow(input: {
     },
     getLastVisibleRuntimeState() {
       return windowObject.__hotelFinanceLastVisibleRuntimeState
+    },
+    getLastWorkspaceRenderDebug() {
+      return windowObject.__hotelFinanceLastWorkspaceRenderDebug
     },
     lastVisibleRuntimeState: windowObject.__hotelFinanceLastVisibleRuntimeState,
     lastVisiblePayoutProjection: windowObject.__hotelFinanceLastVisiblePayoutProjection
@@ -3518,7 +3559,9 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'runtime-file-intake-diagnostics-section',
     'runtime-file-intake-diagnostics-content',
     'runtime-payout-projection-debug-section',
-    'runtime-payout-projection-debug-content'
+    'runtime-payout-projection-debug-content',
+    'runtime-workspace-merge-debug-section',
+    'runtime-workspace-merge-debug-content'
   ]
 
   for (const id of ids) {

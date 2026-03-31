@@ -97,6 +97,7 @@ Steps `01` through `36` are complete.
 - Browser-selected monthly runs now yield progressively during workspace serialization, selected-file preparation, and uploaded-file classification/parsing so larger real upload sets keep moving without one long synchronous block.
 - The visible operator page now surfaces truthful in-progress browser workflow text from the first render through shared runtime progress callbacks instead of only showing a generic running placeholder.
 - Same-month additive browser uploads now keep previously uploaded files visible during reruns, rebuild the month workspace from the merged file set, preserve duplicate deduplication, and restore correctly after reload.
+- The real operator page now exposes debug-gated month-workspace diagnostics showing current month key, persisted/selected/merged counts, visible trace count, and render source so manual browser repros can distinguish selectedFiles, mergedWorkspace, and persistedWorkspace.
 - Focused regressions cover a larger mixed browser upload set, isolated unsupported/broken PDF handling, same-month additive workspace behavior, and visible progress before completion.
 
 ## Next step selection rule
