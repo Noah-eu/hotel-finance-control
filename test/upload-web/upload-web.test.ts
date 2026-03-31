@@ -338,15 +338,13 @@ describe('buildUploadWebFlow', () => {
   })
 
   it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
+    const fixture = getRealInputFixture('comgate-export-current-portal')
+
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
         createRuntimeFile(
           'Klientský portál export transakcí JOKELAND s.r.o..csv',
-          [
-            'paidAt,amountMinor,currency,reference,paymentPurpose,reservationId',
-            '2026-03-19,154000,CZK,CG-WEB-2001,website-reservation,WEB-2001',
-            '2026-03-19,4000,CZK,CG-PARK-2001,parking,PARK-2001'
-          ].join('\n')
+          fixture.rawInput.content
         )
       ],
       month: '2026-03',
@@ -366,6 +364,14 @@ describe('buildUploadWebFlow', () => {
         accountLabelCs: 'Comgate platební report'
       })
     ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Klientský portál export transakcí JOKELAND s.r.o..csv',
+        intakeStatus: 'parsed',
+        parserSupported: true,
+        sourceSystem: 'comgate'
+      })
+    )
     expect(result.reportSummary.normalizedTransactionCount).toBe(2)
     expect(result.reportTransactions).toHaveLength(2)
   })

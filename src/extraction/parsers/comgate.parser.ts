@@ -1,8 +1,8 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
   findMissingHeaders,
+  parseDelimitedContent,
   parseAmountMinor,
-  parseDelimitedRows,
   parseIsoDate
 } from './csv-utils'
 
@@ -12,7 +12,7 @@ export interface ParseComgateExportInput {
   extractedAt: string
 }
 
-const REQUIRED_HEADERS = [
+const LEGACY_REQUIRED_HEADERS = [
   'paidAt',
   'amountMinor',
   'currency',
@@ -21,59 +21,110 @@ const REQUIRED_HEADERS = [
   'reservationId'
 ]
 
+const CURRENT_PORTAL_REQUIRED_HEADERS = [
+  'payoutDate',
+  'amountMinor',
+  'currency'
+]
+
 const HEADER_ALIASES = {
   paidAt: ['paidAt', 'paid_at', 'paymentDate', 'datumPlatby', 'datum', 'datum zaplacení', 'datum úhrady'],
   amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'uhrazená částka', 'zaplacená částka'],
   currency: ['currency', 'mena', 'měna'],
-  reference: ['reference', 'paymentReference', 'transactionReference', 'variabilniSymbol', 'variabilní symbol', 'id transakce', 'transaction id'],
+  reference: ['reference', 'transactionReference', 'variabilniSymbol', 'variabilní symbol'],
   paymentPurpose: ['paymentPurpose', 'payment_purpose', 'purpose', 'ucelPlatby', 'účelPlatby', 'štítek', 'typ platby', 'payment label'],
-  reservationId: ['reservationId', 'reservation_id', 'reservation', 'orderId', 'číslo objednávky', 'order id', 'merchant id']
+  reservationId: ['reservationId', 'reservation_id', 'reservation', 'orderId', 'číslo objednávky', 'order id', 'merchant id'],
+  transactionId: ['transactionId', 'transaction_id', 'id transakce', 'transaction id', 'identifier'],
+  payoutDate: ['payoutDate', 'payout_date', 'datum vyplacení', 'datum výplaty'],
+  paymentReference: ['paymentReference', 'payment_reference', 'reference payment', 'reference platby'],
+  paymentType: ['paymentType', 'payment_type', 'typ transakce', 'typ platby']
 } satisfies Record<string, string[]>
+
+type ComgateParserVariant = 'legacy' | 'current-portal'
 
 export class ComgateParser {
   parse(input: ParseComgateExportInput): ExtractedRecord[] {
-    const rows = parseDelimitedRows(input.content, { canonicalHeaders: HEADER_ALIASES })
+    const parsed = parseDelimitedContent(input.content, { canonicalHeaders: HEADER_ALIASES })
+    const rows = parsed.rows
 
     if (rows.length === 0) {
       return []
     }
 
-    const missing = findMissingHeaders(rows, REQUIRED_HEADERS)
+    const parserVariant = detectComgateParserVariant(parsed.headers)
+    const missing = findMissingHeaders(
+      rows,
+      parserVariant === 'current-portal' ? CURRENT_PORTAL_REQUIRED_HEADERS : LEGACY_REQUIRED_HEADERS
+    )
+
     if (missing.length > 0) {
       throw new Error(`Comgate export is missing required columns: ${missing.join(', ')}`)
     }
 
-    return rows.map((row, index) => {
-      const recordId = `comgate-row-${index + 1}`
-      const paidAt = parseIsoDate(row.paidAt, 'Comgate paidAt')
-      const amountMinor = parseAmountMinor(row.amountMinor, 'Comgate amountMinor')
-      const currency = row.currency.trim().toUpperCase()
-      const reference = row.reference.trim()
-      const paymentPurpose = row.paymentPurpose.trim()
-      const reservationId = row.reservationId.trim()
-
-      return {
-        id: recordId,
-        sourceDocumentId: input.sourceDocument.id,
-        recordType: 'payout-line',
-        extractedAt: input.extractedAt,
-        rawReference: reference,
-        amountMinor,
-        currency,
-        occurredAt: paidAt,
-        data: {
-          platform: 'comgate',
-          bookedAt: paidAt,
-          amountMinor,
-          currency,
-          accountId: 'expected-payouts',
-          reference,
-          reservationId,
-          paymentPurpose
-        }
-      }
-    })
+    return rows.map((row, index) => buildComgateRecord(row, index, input, parserVariant))
   }
+}
+
+function detectComgateParserVariant(headers: string[]): ComgateParserVariant {
+  const headerSet = new Set(headers)
+
+  if (headerSet.has('payoutDate') && (headerSet.has('transactionId') || headerSet.has('paymentReference') || headerSet.has('paymentType'))) {
+    return 'current-portal'
+  }
+
+  return 'legacy'
+}
+
+function buildComgateRecord(
+  row: Record<string, string>,
+  index: number,
+  input: ParseComgateExportInput,
+  parserVariant: ComgateParserVariant
+): ExtractedRecord {
+  const recordId = `comgate-row-${index + 1}`
+  const paidAt = parseIsoDate(
+    parserVariant === 'current-portal' ? row.payoutDate : row.paidAt,
+    parserVariant === 'current-portal' ? 'Comgate payoutDate' : 'Comgate paidAt'
+  )
+  const amountMinor = parseAmountMinor(row.amountMinor, 'Comgate amountMinor')
+  const currency = row.currency.trim().toUpperCase()
+  const legacyReference = trimOptionalValue(row.reference)
+  const currentPaymentReference = trimOptionalValue(row.paymentReference)
+  const currentTransactionId = trimOptionalValue(row.transactionId)
+  const reference = parserVariant === 'current-portal'
+    ? currentPaymentReference
+    : legacyReference
+  const rawReference = reference ?? currentTransactionId
+  const paymentPurpose = trimOptionalValue(parserVariant === 'current-portal' ? row.paymentType : row.paymentPurpose)
+  const reservationId = parserVariant === 'legacy' ? trimOptionalValue(row.reservationId) : undefined
+
+  return {
+    id: recordId,
+    sourceDocumentId: input.sourceDocument.id,
+    recordType: 'payout-line',
+    extractedAt: input.extractedAt,
+    ...(rawReference ? { rawReference } : {}),
+    amountMinor,
+    currency,
+    occurredAt: paidAt,
+    data: {
+      platform: 'comgate',
+      bookedAt: paidAt,
+      amountMinor,
+      currency,
+      accountId: 'expected-payouts',
+      ...(reference ? { reference } : {}),
+      ...(reservationId ? { reservationId } : {}),
+      ...(paymentPurpose ? { paymentPurpose } : {}),
+      ...(currentTransactionId ? { transactionId: currentTransactionId } : {}),
+      comgateParserVariant: parserVariant
+    }
+  }
+}
+
+function trimOptionalValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim()
+  return normalized ? normalized : undefined
 }
 
 const defaultComgateParser = new ComgateParser()

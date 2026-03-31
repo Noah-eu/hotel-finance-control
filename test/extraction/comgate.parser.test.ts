@@ -19,6 +19,7 @@ describe('parseComgateExport', () => {
       rawReference: 'CG-RES-991',
       data: {
         platform: 'comgate',
+        comgateParserVariant: 'legacy',
         paymentPurpose: 'website-reservation',
         reservationId: 'WEB-RES-991'
       }
@@ -27,10 +28,33 @@ describe('parseComgateExport', () => {
       id: 'comgate-row-2',
       rawReference: 'CG-PARK-551',
       data: {
+        comgateParserVariant: 'legacy',
         paymentPurpose: 'parking',
         reservationId: 'PARK-551'
       }
     })
+  })
+
+  it('supports the current klientský portál Comgate export shape without failing on missing legacy reference and reservation columns', () => {
+    const fixture = getRealInputFixture('comgate-export-current-portal')
+
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-31T19:30:00.000Z'
+    })
+
+    expect(records).toEqual([
+      {
+        ...fixture.expectedExtractedRecords[0],
+        extractedAt: '2026-03-31T19:30:00.000Z'
+      },
+      {
+        ...fixture.expectedExtractedRecords[1],
+        extractedAt: '2026-03-31T19:30:00.000Z'
+      }
+    ])
+    expect(records[0]?.data).not.toHaveProperty('reservationId')
   })
 
   it('accepts richer Comgate client portal headers with explicit label and order linkage', () => {
@@ -99,6 +123,7 @@ describe('parseComgateExport', () => {
       occurredAt: '2026-03-15',
       rawReference: 'CG-RES-991',
       data: {
+        comgateParserVariant: 'legacy',
         paymentPurpose: 'website-reservation',
         reservationId: 'WEB-RES-991'
       }

@@ -14,6 +14,7 @@ describe('realInputFixtures', () => {
       'expedia-payout-export',
       'previo-reservation-export',
       'comgate-export',
+      'comgate-export-current-portal',
       'invoice-document',
       'booking-invoice-pdf',
       'invoice-document-czech-pdf',
