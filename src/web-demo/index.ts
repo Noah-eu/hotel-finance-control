@@ -2950,6 +2950,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
           file.parsedExchangeRate ? '<br /><span class="hint">Parser exchangeRate: ' + escapeHtml(file.parsedExchangeRate) + '</span>' : '',
           file.requiredFieldsCheck ? '<br /><span class="hint">Required fields check: ' + escapeHtml(file.requiredFieldsCheck) + '</span>' : '',
           Array.isArray(file.missingFields) ? '<br /><span class="hint">Missing fields: ' + escapeHtml(file.missingFields.length > 0 ? file.missingFields.join(', ') : 'žádné') + '</span>' : '',
+          Array.isArray(file.presentFields) ? '<br /><span class="hint">Present fields: ' + escapeHtml(file.presentFields.length > 0 ? file.presentFields.join(', ') : 'žádné') + '</span>' : '',
+          file.noExtractReason ? '<br /><span class="hint">No extract reason: ' + escapeHtml(file.noExtractReason) + '</span>' : '',
+          file.parsedSupplierOrCounterparty ? '<br /><span class="hint">Parsed supplier: ' + escapeHtml(file.parsedSupplierOrCounterparty) + '</span>' : '',
+          file.parsedReferenceNumber ? '<br /><span class="hint">Parsed referenceNumber: ' + escapeHtml(file.parsedReferenceNumber) + '</span>' : '',
+          file.parsedSettlementDirection ? '<br /><span class="hint">Parsed settlementDirection: ' + escapeHtml(file.parsedSettlementDirection) + '</span>' : '',
+          typeof file.parsedAmountMinor === 'number' && file.parsedAmountCurrency
+            ? '<br /><span class="hint">Parsed amount: ' + escapeHtml(buildAmountDisplay(file.parsedAmountMinor, file.parsedAmountCurrency)) + '</span>'
+            : '',
+          file.parsedDateCandidate ? '<br /><span class="hint">Parsed date candidate: ' + escapeHtml(file.parsedDateCandidate) + '</span>' : '',
+          file.parsedTargetBankAccountHint ? '<br /><span class="hint">Parsed targetBankAccountHint: ' + escapeHtml(file.parsedTargetBankAccountHint) + '</span>' : '',
           '<br /><span class="hint">Routování: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(String(file.role || 'primary')) + '</span>',
           '<br /><span class="hint">Finální bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
           '</li>'

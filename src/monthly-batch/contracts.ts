@@ -3,6 +3,7 @@ import type {
   AirbnbPayoutHeaderDiagnostics,
   DeterministicDocumentExtractionSummary
 } from '../extraction'
+import type { DocumentSettlementDirection } from '../domain'
 import type { ReconciliationContext, ReconciliationResult } from '../reconciliation'
 import type { ReconciliationReport } from '../reporting'
 
@@ -147,6 +148,15 @@ export interface UploadedMonthlyFileRoute {
     parsedExchangeRate?: string
     requiredFieldsCheck?: 'passed' | 'failed'
     missingFields?: string[]
+    presentFields?: string[]
+    noExtractReason?: 'missing-usable-date' | 'missing-usable-amount' | 'missing-usable-currency' | 'parser-returned-no-records'
+    parsedSupplierOrCounterparty?: string
+    parsedReferenceNumber?: string
+    parsedSettlementDirection?: DocumentSettlementDirection
+    parsedAmountMinor?: number
+    parsedAmountCurrency?: string
+    parsedDateCandidate?: string
+    parsedTargetBankAccountHint?: string
   }
   decision: UploadedMonthlyFileDecision
 }

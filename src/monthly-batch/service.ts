@@ -1,5 +1,6 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
+  type DeterministicDocumentExtractionSummary,
   inspectAirbnbPayoutHeaderDiagnostics,
   detectInvoiceDocumentKeywordHits,
   detectBookingPayoutStatementSignals,
@@ -103,6 +104,7 @@ export function ingestUploadedMonthlyFiles(input: {
     try {
       const parsed = parseImportedMonthlySourceFile(importedFile, input.reconciliationContext.requestedAt)
       parsedFiles.push(parsed)
+      const enrichedParseDiagnostics = mergeNoExtractParseDiagnostics(importedFile, parseDiagnostics, parsed.extractedRecords)
 
       if (routeIndex !== -1) {
         fileRoutes[routeIndex] = {
@@ -111,7 +113,7 @@ export function ingestUploadedMonthlyFiles(input: {
           intakeStatus: 'parsed',
           extractedCount: parsed.extractedRecords.length,
           extractedRecordIds: parsed.extractedRecords.map((record) => record.id),
-          parseDiagnostics,
+          parseDiagnostics: enrichedParseDiagnostics,
           reason: undefined,
           errorMessage: undefined
         }
@@ -205,6 +207,7 @@ export async function ingestUploadedMonthlyFilesProgressively(input: {
     try {
       const parsed = parseImportedMonthlySourceFile(importedFile, input.reconciliationContext.requestedAt)
       parsedFiles.push(parsed)
+      const enrichedParseDiagnostics = mergeNoExtractParseDiagnostics(importedFile, parseDiagnostics, parsed.extractedRecords)
 
       if (routeIndex !== -1) {
         fileRoutes[routeIndex] = {
@@ -213,7 +216,7 @@ export async function ingestUploadedMonthlyFilesProgressively(input: {
           intakeStatus: 'parsed',
           extractedCount: parsed.extractedRecords.length,
           extractedRecordIds: parsed.extractedRecords.map((record) => record.id),
-          parseDiagnostics,
+          parseDiagnostics: enrichedParseDiagnostics,
           reason: undefined,
           errorMessage: undefined
         }
@@ -364,7 +367,15 @@ function inspectUploadedFileParseDiagnostics(
     return {
       documentExtractionSummary: summary,
       requiredFieldsCheck: summary.requiredFieldsCheck,
-      missingFields: [...summary.missingRequiredFields]
+      missingFields: [...summary.missingRequiredFields],
+      presentFields: collectPresentDocumentSummaryFields(summary),
+      parsedSupplierOrCounterparty: summary.issuerOrCounterparty,
+      parsedReferenceNumber: summary.referenceNumber,
+      parsedSettlementDirection: summary.settlementDirection,
+      parsedAmountMinor: summary.totalAmountMinor,
+      parsedAmountCurrency: summary.totalCurrency,
+      parsedDateCandidate: summary.issueDate ?? summary.taxableDate ?? summary.dueDate,
+      parsedTargetBankAccountHint: summary.targetBankAccountHint
     }
   }
 
@@ -383,11 +394,103 @@ function inspectUploadedFileParseDiagnostics(
     return {
       documentExtractionSummary: summary,
       requiredFieldsCheck: summary.requiredFieldsCheck,
-      missingFields: [...summary.missingRequiredFields]
+      missingFields: [...summary.missingRequiredFields],
+      presentFields: collectPresentDocumentSummaryFields(summary),
+      parsedSupplierOrCounterparty: summary.issuerOrCounterparty,
+      parsedReferenceNumber: summary.referenceNumber,
+      parsedSettlementDirection: summary.settlementDirection,
+      parsedAmountMinor: summary.totalAmountMinor,
+      parsedAmountCurrency: summary.totalCurrency,
+      parsedDateCandidate: summary.paymentDate,
+      parsedTargetBankAccountHint: summary.targetBankAccountHint
     }
   }
 
   return undefined
+}
+
+function mergeNoExtractParseDiagnostics(
+  file: ImportedMonthlySourceFile,
+  parseDiagnostics: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['parseDiagnostics'] | undefined,
+  extractedRecords: ExtractedRecord[]
+): PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['parseDiagnostics'] | undefined {
+  if (extractedRecords.length > 0) {
+    return parseDiagnostics
+  }
+
+  if (file.sourceDocument.sourceSystem !== 'invoice' && file.sourceDocument.sourceSystem !== 'receipt') {
+    return parseDiagnostics
+  }
+
+  const summary = parseDiagnostics?.documentExtractionSummary
+  if (!summary) {
+    return {
+      ...parseDiagnostics,
+      noExtractReason: 'parser-returned-no-records'
+    }
+  }
+
+  const parsedDateCandidate = parseDiagnostics?.parsedDateCandidate
+    ?? summary.issueDate
+    ?? summary.taxableDate
+    ?? summary.paymentDate
+    ?? summary.dueDate
+  const parsedAmountMinor = parseDiagnostics?.parsedAmountMinor ?? summary.totalAmountMinor
+  const parsedAmountCurrency = parseDiagnostics?.parsedAmountCurrency ?? summary.totalCurrency
+  const noExtractReason = !parsedDateCandidate
+    ? 'missing-usable-date'
+    : typeof parsedAmountMinor !== 'number'
+      ? 'missing-usable-amount'
+      : !parsedAmountCurrency
+        ? 'missing-usable-currency'
+        : 'parser-returned-no-records'
+
+  return {
+    ...parseDiagnostics,
+    presentFields: parseDiagnostics?.presentFields ?? collectPresentDocumentSummaryFields(summary),
+    parsedSupplierOrCounterparty: parseDiagnostics?.parsedSupplierOrCounterparty ?? summary.issuerOrCounterparty,
+    parsedReferenceNumber: parseDiagnostics?.parsedReferenceNumber ?? summary.referenceNumber,
+    parsedSettlementDirection: parseDiagnostics?.parsedSettlementDirection ?? summary.settlementDirection,
+    parsedAmountMinor,
+    parsedAmountCurrency,
+    parsedDateCandidate,
+    parsedTargetBankAccountHint: parseDiagnostics?.parsedTargetBankAccountHint ?? summary.targetBankAccountHint,
+    noExtractReason
+  }
+}
+
+function collectPresentDocumentSummaryFields(summary: DeterministicDocumentExtractionSummary): string[] {
+  const presentFields: string[] = []
+
+  if (summary.referenceNumber) {
+    presentFields.push('referenceNumber')
+  }
+
+  if (summary.issuerOrCounterparty) {
+    presentFields.push('issuerOrCounterparty')
+  }
+
+  if (summary.issueDate || summary.taxableDate || summary.paymentDate) {
+    presentFields.push('issueDate')
+  }
+
+  if (summary.dueDate) {
+    presentFields.push('dueDate')
+  }
+
+  if (typeof summary.totalAmountMinor === 'number' && summary.totalCurrency) {
+    presentFields.push('totalAmount')
+  }
+
+  if (summary.settlementDirection) {
+    presentFields.push('settlementDirection')
+  }
+
+  if (summary.targetBankAccountHint) {
+    presentFields.push('targetBankAccountHint')
+  }
+
+  return presentFields
 }
 
 function parseImportedMonthlySourceFile(

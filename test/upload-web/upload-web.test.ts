@@ -1142,6 +1142,22 @@ describe('buildUploadWebFlow', () => {
       })
     })
 
+    const refundDiagnostic = result.runtimeAudit.fileIntakeDiagnostics.find((item) =>
+      item.fileName === 'Dobra-Energie-preplatek-3804-2026-03.pdf'
+    )
+
+    expect(refundDiagnostic?.noExtractReason).toBeUndefined()
+    expect(refundDiagnostic?.presentFields).toEqual(
+      expect.arrayContaining([
+        'referenceNumber',
+        'issuerOrCounterparty',
+        'dueDate',
+        'totalAmount',
+        'settlementDirection',
+        'targetBankAccountHint'
+      ])
+    )
+
     const expenseReviewPage = buildBrowserReviewScreen({
       files: [
         {
@@ -1536,6 +1552,65 @@ describe('buildUploadWebFlow', () => {
       })
     )
     expect(result.fileRoutes.some((file) => file.fileName === 'receipt-handwritten.pdf' && file.status === 'error')).toBe(false)
+  })
+
+  it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('sparse-refund-missing-date.pdf', [
+          'Faktura - daňový doklad',
+          'Dodavatel',
+          'Dobrá Energie s.r.o.',
+          'Variabilní symbol',
+          '5125144501',
+          'Přeplatek',
+          '3 804,00 Kč',
+          'Přeplatek bude připsán na Váš bankovní účet',
+          '8888997777/2010'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T16:30:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'sparse-refund-missing-date.pdf',
+        extractedCount: 0
+      })
+    ])
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'sparse-refund-missing-date.pdf',
+        requiredFieldsCheck: 'failed',
+        missingFields: ['issueDate', 'dueDate'],
+        presentFields: [
+          'referenceNumber',
+          'issuerOrCounterparty',
+          'totalAmount',
+          'settlementDirection',
+          'targetBankAccountHint'
+        ],
+        noExtractReason: 'missing-usable-date',
+        parsedSupplierOrCounterparty: 'Dobrá Energie s.r.o.',
+        parsedReferenceNumber: '5125144501',
+        parsedSettlementDirection: 'refund_incoming',
+        parsedAmountMinor: 380400,
+        parsedAmountCurrency: 'CZK',
+        parsedTargetBankAccountHint: '8888997777/2010',
+        textPreview: expect.stringContaining('Dobrá Energie s.r.o.'),
+        textTailPreview: expect.stringContaining('8888997777/2010'),
+        documentExtractionSummary: expect.objectContaining({
+          documentKind: 'invoice',
+          settlementDirection: 'refund_incoming',
+          referenceNumber: '5125144501',
+          totalAmountMinor: 380400,
+          targetBankAccountHint: '8888997777/2010',
+          finalStatus: 'needs_review'
+        })
+      })
+    )
   })
 
   it('keeps the real browser workbook upload path free of Buffer so XLSX ingestion stays browser-safe', async () => {

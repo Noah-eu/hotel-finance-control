@@ -183,6 +183,15 @@ export interface BrowserRuntimeUploadState {
       parsedExchangeRate?: string
       requiredFieldsCheck?: 'passed' | 'failed'
       missingFields?: string[]
+      presentFields?: string[]
+      noExtractReason?: 'missing-usable-date' | 'missing-usable-amount' | 'missing-usable-currency' | 'parser-returned-no-records'
+      parsedSupplierOrCounterparty?: string
+      parsedReferenceNumber?: string
+      parsedSettlementDirection?: import('../domain').DocumentSettlementDirection
+      parsedAmountMinor?: number
+      parsedAmountCurrency?: string
+      parsedDateCandidate?: string
+      parsedTargetBankAccountHint?: string
       sourceSystem: string
       documentType: string
       classificationBasis: string

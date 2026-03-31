@@ -2997,6 +2997,44 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: referenceNumber')
   })
 
+  it('shows no-extract diagnostics for a recognized sparse refund invoice PDF that stops before extracted-record emission', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T16:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-sparse-refund-no-extract',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('sparse-refund-missing-date.pdf', [
+          'Faktura - daňový doklad',
+          'Dodavatel',
+          'Dobrá Energie s.r.o.',
+          'Variabilní symbol',
+          '5125144501',
+          'Přeplatek',
+          '3 804,00 Kč',
+          'Přeplatek bude připsán na Váš bankovní účet',
+          '8888997777/2010'
+        ])
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('sparse-refund-missing-date.pdf')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text preview: Faktura - daňový doklad')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Text tail:')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Required fields check: failed')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: issueDate, dueDate')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Present fields: referenceNumber, issuerOrCounterparty, totalAmount, settlementDirection, targetBankAccountHint')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('No extract reason: missing-usable-date')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parsed supplier: Dobrá Energie s.r.o.')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parsed referenceNumber: 5125144501')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parsed settlementDirection: refund_incoming')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parsed amount: ')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Parsed targetBankAccountHint: 8888997777/2010')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: recognized supported · Rozpoznaný a zpracovaný zdroj')
+  })
+
   it('shows the compact Airbnb browser export variant as a supported structured upload and keeps the 5-file result free of ingest failures', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
