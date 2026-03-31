@@ -3077,6 +3077,31 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
+  it('shows current Comgate portal pipeline diagnostics only in debug mode and classifies the loss inside matching rather than normalization', async () => {
+    const comgate = getRealInputFixture('comgate-export-current-portal')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T18:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-portal-matching-diagnostics',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('Klientský portál export transakcí JOKELAND s.r.o..csv', comgate.rawInput.content),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603191023.csv', buildRbAggregatedComgatePortalSettlementContent())
+      ]
+    })
+
+    expect(rendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variants: current-portal')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate extracted records: 2')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate extracted kinds: parking (1), website-reservation (1)')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate normalized transactions: 2')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate matching input rows: 2')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate loss boundary: matching / amount-currency-filter')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('CG-WEB-2001')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('before=1')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('amount=0')
+  })
+
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
@@ -4375,6 +4400,13 @@ function buildRealUploadedRbContentWithGenericIncomingOnly(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '29.03.2026 12:00;29.03.2026 12:02;5599955956/5500;000000-4444555566/0100;Neznámý příjemce;2200,00;CZK;Příchozí platba bez vazby'
+  ].join('\n')
+}
+
+function buildRbAggregatedComgatePortalSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '19.03.2026 11:50;19.03.2026 11:52;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1580,00;CZK;Souhrnná výplata Comgate portal 2026-03-19'
   ].join('\n')
 }
 

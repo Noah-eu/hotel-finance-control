@@ -376,6 +376,74 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(2)
   })
 
+  it('shows current Comgate portal rows surviving normalization and entering matching input before failing on amount-based bank candidate filtering', async () => {
+    const fixture = getRealInputFixture('comgate-export-current-portal')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'Klientský portál export transakcí JOKELAND s.r.o..csv',
+          fixture.rawInput.content
+        ),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRbAggregatedComgatePortalSettlementContent()
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T18:00:00.000Z'
+    })
+
+    const comgateDiagnostic = result.runtimeAudit.fileIntakeDiagnostics.find((item) =>
+      item.fileName === 'Klientský portál export transakcí JOKELAND s.r.o..csv'
+    )
+
+    expect(comgateDiagnostic).toBeDefined()
+    expect(comgateDiagnostic?.comgatePipelineDiagnostics).toMatchObject({
+      parserVariants: ['current-portal'],
+      extractedRecordCount: 2,
+      extractedPaymentPurposeBreakdown: [
+        { kind: 'parking', count: 1 },
+        { kind: 'website-reservation', count: 1 }
+      ],
+      normalizedTransactionCount: 2,
+      normalizedKindBreakdown: [
+        { kind: 'comgate:default', count: 2 }
+      ],
+      matchingInputPayoutRowCount: 2,
+      payoutBatchCount: 2,
+      matchingDecisionCount: 2,
+      lossBoundary: 'matching',
+      lossStage: 'amount-currency-filter'
+    })
+    expect(comgateDiagnostic?.comgatePipelineDiagnostics?.payoutBatchSummaries).toEqual(expect.arrayContaining([
+      {
+        payoutBatchKey: 'comgate-batch:2026-03-19:CG-PARK-2001',
+        payoutReference: 'CG-PARK-2001',
+        expectedBankAmountMinor: 4000,
+        currency: 'CZK',
+        bankCandidateCountBeforeFiltering: 1,
+        bankCandidateCountAfterAmountCurrency: 0,
+        bankCandidateCountAfterDateWindow: 0,
+        bankCandidateCountAfterEvidenceFiltering: 0,
+        matched: false,
+        noMatchReason: 'noExactAmount'
+      },
+      {
+        payoutBatchKey: 'comgate-batch:2026-03-19:CG-WEB-2001',
+        payoutReference: 'CG-WEB-2001',
+        expectedBankAmountMinor: 154000,
+        currency: 'CZK',
+        bankCandidateCountBeforeFiltering: 1,
+        bankCandidateCountAfterAmountCurrency: 0,
+        bankCandidateCountAfterDateWindow: 0,
+        bankCandidateCountAfterEvidenceFiltering: 0,
+        matched: false,
+        noMatchReason: 'noExactAmount'
+      }
+    ]))
+  })
+
   it('keeps the real Airbnb plus bank payout outcome stable when extra monthly files are added and surfaces unsupported files safely', async () => {
     const invoice = getRealInputFixture('invoice-document')
 
@@ -6012,6 +6080,13 @@ function buildRealUploadedRbContentWithGenericIncomingOnly(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '29.03.2026 12:00;29.03.2026 12:02;5599955956/5500;000000-4444555566/0100;Neznámý příjemce;2200,00;CZK;Příchozí platba bez vazby'
+  ].join('\n')
+}
+
+function buildRbAggregatedComgatePortalSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '19.03.2026 11:50;19.03.2026 11:52;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1580,00;CZK;Souhrnná výplata Comgate portal 2026-03-19'
   ].join('\n')
 }
 

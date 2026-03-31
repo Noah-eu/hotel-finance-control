@@ -192,6 +192,45 @@ export interface BrowserRuntimeUploadState {
       parsedAmountCurrency?: string
       parsedDateCandidate?: string
       parsedTargetBankAccountHint?: string
+      comgatePipelineDiagnostics?: {
+        parserVariants: string[]
+        extractedRecordCount: number
+        extractedPaymentPurposeBreakdown: Array<{
+          kind: string
+          count: number
+        }>
+        normalizedTransactionCount: number
+        normalizedKindBreakdown: Array<{
+          kind: string
+          count: number
+        }>
+        matchingInputPayoutRowCount: number
+        payoutBatchCount: number
+        matchingDecisionCount: number
+        lossBoundary: 'no-loss' | 'extraction-to-normalization' | 'normalization-to-matching-input' | 'matching'
+        lossStage:
+        | 'not-applicable'
+        | 'normalizer-produced-no-transactions'
+        | 'workflow-plan-produced-no-payout-rows'
+        | 'no-payout-batch-decisions'
+        | 'no-bank-candidates'
+        | 'amount-currency-filter'
+        | 'date-window-filter'
+        | 'evidence-or-ambiguity-filter'
+        | 'matched'
+        payoutBatchSummaries: Array<{
+          payoutBatchKey: string
+          payoutReference: string
+          expectedBankAmountMinor: number
+          currency: string
+          bankCandidateCountBeforeFiltering: number
+          bankCandidateCountAfterAmountCurrency: number
+          bankCandidateCountAfterDateWindow: number
+          bankCandidateCountAfterEvidenceFiltering: number
+          matched: boolean
+          noMatchReason?: string
+        }>
+      }
       sourceSystem: string
       documentType: string
       classificationBasis: string

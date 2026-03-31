@@ -2960,10 +2960,52 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : '',
           file.parsedDateCandidate ? '<br /><span class="hint">Parsed date candidate: ' + escapeHtml(file.parsedDateCandidate) + '</span>' : '',
           file.parsedTargetBankAccountHint ? '<br /><span class="hint">Parsed targetBankAccountHint: ' + escapeHtml(file.parsedTargetBankAccountHint) + '</span>' : '',
+          buildComgatePipelineDiagnosticsMarkup(file),
           '<br /><span class="hint">Routování: ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType)) + ' · ' + escapeHtml(String(file.role || 'primary')) + '</span>',
           '<br /><span class="hint">Finální bucket: ' + escapeHtml(buildDebugOutcomeBucketLabel(file)) + ' · ' + escapeHtml(buildFileRouteOutcomeLabel(file)) + '</span>',
           '</li>'
         ].join('')).join('') + '</ul>';
+      }
+
+      function buildComgatePipelineDiagnosticsMarkup(file) {
+        const diagnostics = file && file.comgatePipelineDiagnostics;
+
+        if (!diagnostics) {
+          return '';
+        }
+
+        const variantLabel = Array.isArray(diagnostics.parserVariants) && diagnostics.parserVariants.length > 0
+          ? diagnostics.parserVariants.join(', ')
+          : 'unknown';
+        const extractedKinds = Array.isArray(diagnostics.extractedPaymentPurposeBreakdown) && diagnostics.extractedPaymentPurposeBreakdown.length > 0
+          ? diagnostics.extractedPaymentPurposeBreakdown.map((item) => String(item.kind) + ' (' + String(item.count) + ')').join(', ')
+          : 'žádné';
+        const normalizedKinds = Array.isArray(diagnostics.normalizedKindBreakdown) && diagnostics.normalizedKindBreakdown.length > 0
+          ? diagnostics.normalizedKindBreakdown.map((item) => String(item.kind) + ' (' + String(item.count) + ')').join(', ')
+          : 'žádné';
+        const batchSummaries = Array.isArray(diagnostics.payoutBatchSummaries) && diagnostics.payoutBatchSummaries.length > 0
+          ? diagnostics.payoutBatchSummaries.map((item) => [
+            escapeHtml(String(item.payoutReference || item.payoutBatchKey || 'n/a')),
+            escapeHtml(buildAmountDisplay(Number(item.expectedBankAmountMinor || 0), String(item.currency || 'CZK'))),
+            'before=' + escapeHtml(String(item.bankCandidateCountBeforeFiltering || 0)),
+            'amount=' + escapeHtml(String(item.bankCandidateCountAfterAmountCurrency || 0)),
+            'date=' + escapeHtml(String(item.bankCandidateCountAfterDateWindow || 0)),
+            'evidence=' + escapeHtml(String(item.bankCandidateCountAfterEvidenceFiltering || 0)),
+            item.matched ? 'matched' : escapeHtml(String(item.noMatchReason || 'unmatched'))
+          ].join(' · ')).join(' | ')
+          : 'žádné';
+
+        return [
+          '<br /><span class="hint">Comgate parser variants: ' + escapeHtml(variantLabel) + '</span>',
+          '<br /><span class="hint">Comgate extracted records: ' + escapeHtml(String(diagnostics.extractedRecordCount || 0)) + '</span>',
+          '<br /><span class="hint">Comgate extracted kinds: ' + escapeHtml(extractedKinds) + '</span>',
+          '<br /><span class="hint">Comgate normalized transactions: ' + escapeHtml(String(diagnostics.normalizedTransactionCount || 0)) + '</span>',
+          '<br /><span class="hint">Comgate normalized kinds: ' + escapeHtml(normalizedKinds) + '</span>',
+          '<br /><span class="hint">Comgate matching input rows: ' + escapeHtml(String(diagnostics.matchingInputPayoutRowCount || 0)) + '</span>',
+          '<br /><span class="hint">Comgate payout batches: ' + escapeHtml(String(diagnostics.payoutBatchCount || 0)) + ' · decisions ' + escapeHtml(String(diagnostics.matchingDecisionCount || 0)) + '</span>',
+          '<br /><span class="hint">Comgate loss boundary: ' + escapeHtml(String(diagnostics.lossBoundary || 'no-loss')) + ' / ' + escapeHtml(String(diagnostics.lossStage || 'not-applicable')) + '</span>',
+          '<br /><span class="hint">Comgate matching candidates: ' + batchSummaries + '</span>'
+        ].join('');
       }
 
       function syncRuntimeFileIntakeDiagnosticsPhase(phase) {

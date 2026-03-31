@@ -330,6 +330,10 @@ function buildRuntimeAudit(
   batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
   review: ReturnType<typeof buildReviewScreen>
 ): BrowserRuntimeUploadState['runtimeAudit'] {
+  const payoutDecisionTraces = inspectPayoutBatchBankDecisions({
+    payoutBatches: batch.reconciliation.workflowPlan?.payoutBatches ?? [],
+    bankTransactions: batch.reconciliation.normalizedTransactions
+  })
   const airbnbSourceDocumentIds = importedFiles
     .filter((file) => file.sourceDocument.sourceSystem === 'airbnb')
     .map((file) => file.sourceDocument.id)
@@ -381,6 +385,12 @@ function buildRuntimeAudit(
         route?.sourceDocumentId
       )
       const parseDiagnostics = route?.parseDiagnostics
+      const comgatePipelineDiagnostics = buildComgatePipelineDiagnostics(
+        batch,
+        route?.sourceDocumentId,
+        route?.sourceSystem,
+        payoutDecisionTraces
+      )
 
       return {
         fileName: file.name,
@@ -445,6 +455,7 @@ function buildRuntimeAudit(
         parsedAmountCurrency: parseDiagnostics?.parsedAmountCurrency,
         parsedDateCandidate: parseDiagnostics?.parsedDateCandidate,
         parsedTargetBankAccountHint: parseDiagnostics?.parsedTargetBankAccountHint,
+        comgatePipelineDiagnostics,
         sourceSystem: route?.sourceSystem ?? 'unknown',
         documentType: route?.documentType ?? 'other',
         classificationBasis: route?.classificationBasis ?? 'unknown',
@@ -454,6 +465,167 @@ function buildRuntimeAudit(
       }
     })
   }
+}
+
+function buildComgatePipelineDiagnostics(
+  batch: IngestionBatch,
+  sourceDocumentId: string | undefined,
+  sourceSystem: string | undefined,
+  payoutDecisionTraces: ReturnType<typeof inspectPayoutBatchBankDecisions>
+): BrowserRuntimeUploadState['runtimeAudit']['fileIntakeDiagnostics'][number]['comgatePipelineDiagnostics'] {
+  if (!sourceDocumentId || sourceSystem !== 'comgate') {
+    return undefined
+  }
+
+  const extractedRecords = batch.extractedRecords.filter((record) => record.sourceDocumentId === sourceDocumentId)
+  if (extractedRecords.length === 0) {
+    return undefined
+  }
+
+  const extractedRecordIds = new Set(extractedRecords.map((record) => record.id))
+  const normalizedSourceDocumentId = sourceDocumentId as IngestionBatch['reconciliation']['normalizedTransactions'][number]['sourceDocumentIds'][number]
+  const normalizedTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
+    transaction.sourceDocumentIds.includes(normalizedSourceDocumentId)
+    || transaction.extractedRecordIds.some((recordId) => extractedRecordIds.has(recordId))
+  )
+  const payoutRows = (batch.reconciliation.workflowPlan?.payoutRows ?? []).filter((row) =>
+    row.sourceDocumentId === sourceDocumentId
+  )
+  const payoutBatchKeys = [...new Set(payoutRows.map((row) => row.payoutBatchKey))]
+  const payoutBatchSummaries = payoutDecisionTraces
+    .filter((decision) => payoutBatchKeys.includes(decision.payoutBatchKey))
+    .map((decision) => ({
+      payoutBatchKey: decision.payoutBatchKey,
+      payoutReference: decision.payoutReference,
+      expectedBankAmountMinor: decision.expectedBankAmountMinor,
+      currency: decision.expectedBankCurrency,
+      bankCandidateCountBeforeFiltering: decision.bankCandidateCountBeforeFiltering,
+      bankCandidateCountAfterAmountCurrency: decision.bankCandidateCountAfterAmountCurrency,
+      bankCandidateCountAfterDateWindow: decision.bankCandidateCountAfterDateWindow,
+      bankCandidateCountAfterEvidenceFiltering: decision.bankCandidateCountAfterEvidenceFiltering,
+      matched: decision.matched,
+      noMatchReason: decision.noMatchReason
+    }))
+  const parserVariants = uniqueStrings(
+    extractedRecords.map((record) => optionalString(record.data.comgateParserVariant))
+  )
+  const extractedPaymentPurposeBreakdown = buildKindBreakdown(
+    extractedRecords.map((record) => optionalString(record.data.paymentPurpose) ?? 'unspecified')
+  )
+  const normalizedKindBreakdown = buildKindBreakdown(
+    normalizedTransactions.map((transaction) => {
+      const subtype = optionalString(transaction.subtype)
+      return subtype ? `${transaction.source}:${subtype}` : `${transaction.source}:default`
+    })
+  )
+  const lossClassification = classifyComgatePipelineLoss(normalizedTransactions.length, payoutRows.length, payoutBatchSummaries)
+
+  return {
+    parserVariants,
+    extractedRecordCount: extractedRecords.length,
+    extractedPaymentPurposeBreakdown,
+    normalizedTransactionCount: normalizedTransactions.length,
+    normalizedKindBreakdown,
+    matchingInputPayoutRowCount: payoutRows.length,
+    payoutBatchCount: payoutBatchKeys.length,
+    matchingDecisionCount: payoutBatchSummaries.length,
+    lossBoundary: lossClassification.lossBoundary,
+    lossStage: lossClassification.lossStage,
+    payoutBatchSummaries
+  }
+}
+
+function classifyComgatePipelineLoss(
+  normalizedTransactionCount: number,
+  payoutRowCount: number,
+  payoutBatchSummaries: Array<{
+    bankCandidateCountBeforeFiltering: number
+    bankCandidateCountAfterAmountCurrency: number
+    bankCandidateCountAfterDateWindow: number
+    bankCandidateCountAfterEvidenceFiltering: number
+    matched: boolean
+  }>
+): Pick<NonNullable<BrowserRuntimeUploadState['runtimeAudit']['fileIntakeDiagnostics'][number]['comgatePipelineDiagnostics']>, 'lossBoundary' | 'lossStage'> {
+  if (normalizedTransactionCount === 0) {
+    return {
+      lossBoundary: 'extraction-to-normalization',
+      lossStage: 'normalizer-produced-no-transactions'
+    }
+  }
+
+  if (payoutRowCount === 0) {
+    return {
+      lossBoundary: 'normalization-to-matching-input',
+      lossStage: 'workflow-plan-produced-no-payout-rows'
+    }
+  }
+
+  if (payoutBatchSummaries.length === 0) {
+    return {
+      lossBoundary: 'matching',
+      lossStage: 'no-payout-batch-decisions'
+    }
+  }
+
+  if (payoutBatchSummaries.every((summary) => summary.matched)) {
+    return {
+      lossBoundary: 'no-loss',
+      lossStage: 'matched'
+    }
+  }
+
+  if (payoutBatchSummaries.every((summary) => summary.bankCandidateCountBeforeFiltering === 0)) {
+    return {
+      lossBoundary: 'matching',
+      lossStage: 'no-bank-candidates'
+    }
+  }
+
+  if (payoutBatchSummaries.every((summary) => summary.bankCandidateCountAfterAmountCurrency === 0)) {
+    return {
+      lossBoundary: 'matching',
+      lossStage: 'amount-currency-filter'
+    }
+  }
+
+  if (payoutBatchSummaries.every((summary) => summary.bankCandidateCountAfterDateWindow === 0)) {
+    return {
+      lossBoundary: 'matching',
+      lossStage: 'date-window-filter'
+    }
+  }
+
+  if (payoutBatchSummaries.every((summary) => summary.bankCandidateCountAfterEvidenceFiltering === 0 || !summary.matched)) {
+    return {
+      lossBoundary: 'matching',
+      lossStage: 'evidence-or-ambiguity-filter'
+    }
+  }
+
+  return {
+    lossBoundary: 'no-loss',
+    lossStage: 'not-applicable'
+  }
+}
+
+function buildKindBreakdown(values: string[]): Array<{ kind: string, count: number }> {
+  const counts = new Map<string, number>()
+
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1)
+  }
+
+  return Array.from(counts.entries())
+    .map(([kind, count]) => ({ kind, count }))
+    .sort((left, right) => right.count - left.count || left.kind.localeCompare(right.kind))
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))))
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 }
 
 function buildFileIntakeTextPreview(textPreview: string | undefined, fallbackContent: string): string | undefined {
