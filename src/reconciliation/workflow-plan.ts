@@ -25,7 +25,7 @@ export function buildReconciliationWorkflowPlan(
 ): ReconciliationWorkflowPlan {
     const reservationSources = buildReservationSources(input.extractedRecords)
     const ancillaryRevenueSources = buildAncillaryRevenueSources(input.extractedRecords)
-    const payoutRows = buildPayoutRows(input.normalizedTransactions)
+    const payoutRows = buildPayoutRows(input.normalizedTransactions, input.extractedRecords)
     const payoutBatches = buildPayoutBatches(payoutRows)
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
     const reservationSettlementMatching = matchReservationSourcesToSettlements({
@@ -91,7 +91,12 @@ function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): Anci
         }))
 }
 
-function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpectation[] {
+function buildPayoutRows(
+    transactions: NormalizedTransaction[],
+    extractedRecords: ExtractedRecord[]
+): PayoutRowExpectation[] {
+    const extractedRecordsById = new Map(extractedRecords.map((record) => [record.id, record]))
+
     return transactions
         .filter(isPayoutPlanTransaction)
         .filter((transaction) => transaction.direction === 'in')
@@ -103,13 +108,7 @@ function buildPayoutRows(transactions: NormalizedTransaction[]): PayoutRowExpect
             reservationId: transaction.reservationId,
             payoutReference: transaction.reference ?? transaction.id,
             payoutDate: transaction.bookedAt,
-            payoutBatchKey:
-                transaction.bookingPayoutBatchKey
-                ?? buildGenericPayoutBatchKey(
-                    transaction.source,
-                    transaction.bookedAt,
-                    transaction.payoutBatchIdentity ?? transaction.reference ?? transaction.id
-                ),
+            payoutBatchKey: resolvePayoutBatchKey(transaction, extractedRecordsById),
             amountMinor: transaction.amountMinor,
             currency: transaction.currency,
             bankRoutingTarget: 'rb_bank_inflow',
@@ -305,6 +304,42 @@ function isExpenseDocumentTransaction(
 
 function buildGenericPayoutBatchKey(source: string, payoutDate: string, payoutReference: string): string {
     return `${source}-batch:${payoutDate}:${payoutReference.trim().toUpperCase()}`
+}
+
+function resolvePayoutBatchKey(
+    transaction: NormalizedTransaction,
+    extractedRecordsById: Map<string, ExtractedRecord>
+): string {
+    if (transaction.bookingPayoutBatchKey) {
+        return transaction.bookingPayoutBatchKey
+    }
+
+    if (isCurrentPortalComgateTransaction(transaction, extractedRecordsById)) {
+        return buildCurrentPortalComgateBatchKey(transaction.bookedAt, transaction.currency)
+    }
+
+    return buildGenericPayoutBatchKey(
+        transaction.source,
+        transaction.bookedAt,
+        transaction.payoutBatchIdentity ?? transaction.reference ?? transaction.id
+    )
+}
+
+function isCurrentPortalComgateTransaction(
+    transaction: NormalizedTransaction,
+    extractedRecordsById: Map<string, ExtractedRecord>
+): boolean {
+    if (transaction.source !== 'comgate') {
+        return false
+    }
+
+    return transaction.extractedRecordIds.some((recordId) =>
+        optionalString(extractedRecordsById.get(recordId)?.data.comgateParserVariant) === 'current-portal'
+    )
+}
+
+function buildCurrentPortalComgateBatchKey(payoutDate: string, currency: string): string {
+    return `comgate-batch:${payoutDate}:${currency.trim().toUpperCase()}`
 }
 
 function optionalString(value: unknown): string | undefined {

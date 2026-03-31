@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ExtractedRecord, NormalizedTransaction } from '../../src/domain'
-import { parseAirbnbPayoutExport } from '../../src/extraction'
+import { parseAirbnbPayoutExport, parseComgateExport } from '../../src/extraction'
+import { normalizeExtractedRecords } from '../../src/normalization'
 import { buildReconciliationWorkflowPlan, reconcileExtractedRecords } from '../../src/reconciliation'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
@@ -116,6 +117,144 @@ describe('buildReconciliationWorkflowPlan', () => {
                 rowIds: ['txn:payout:airbnb-payout-4'],
                 expectedTotalMinor: 705994,
                 currency: 'CZK'
+            })
+        ])
+    })
+
+    it('aggregates real Comgate current-portal rows into one settlement payout batch while leaving extracted and normalized rows unchanged', () => {
+        const fixture = getRealInputFixture('comgate-export-current-portal')
+        const extractedRecords = parseComgateExport({
+            sourceDocument: fixture.sourceDocument,
+            content: fixture.rawInput.content,
+            extractedAt: '2026-03-31T18:00:00.000Z'
+        })
+        const normalization = normalizeExtractedRecords({
+            extractedRecords,
+            runId: 'comgate-current-portal-batching',
+            requestedAt: '2026-03-31T18:00:00.000Z'
+        })
+
+        expect(extractedRecords).toEqual([
+            {
+                ...fixture.expectedExtractedRecords[0],
+                extractedAt: '2026-03-31T18:00:00.000Z'
+            },
+            {
+                ...fixture.expectedExtractedRecords[1],
+                extractedAt: '2026-03-31T18:00:00.000Z'
+            }
+        ])
+        expect(normalization.transactions).toEqual([
+            {
+                id: 'txn:payout:comgate-row-1',
+                direction: 'in',
+                source: 'comgate',
+                subtype: undefined,
+                amountMinor: 154000,
+                currency: 'CZK',
+                bookedAt: '2026-03-19',
+                accountId: 'expected-payouts',
+                reference: 'CG-WEB-2001',
+                reservationId: undefined,
+                bookingPayoutBatchKey: undefined,
+                payoutBatchIdentity: undefined,
+                payoutSupplementPaymentId: undefined,
+                payoutSupplementPayoutDate: undefined,
+                payoutSupplementPayoutTotalAmountMinor: undefined,
+                payoutSupplementPayoutTotalCurrency: undefined,
+                payoutSupplementLocalAmountMinor: undefined,
+                payoutSupplementLocalCurrency: undefined,
+                payoutSupplementIbanSuffix: undefined,
+                payoutSupplementExchangeRate: undefined,
+                payoutSupplementReferenceHints: undefined,
+                payoutSupplementSourceDocumentIds: undefined,
+                payoutSupplementReservationIds: undefined,
+                extractedRecordIds: ['comgate-row-1'],
+                sourceDocumentIds: ['doc-comgate-portal-2026-03']
+            },
+            {
+                id: 'txn:payout:comgate-row-2',
+                direction: 'in',
+                source: 'comgate',
+                subtype: undefined,
+                amountMinor: 4000,
+                currency: 'CZK',
+                bookedAt: '2026-03-19',
+                accountId: 'expected-payouts',
+                reference: 'CG-PARK-2001',
+                reservationId: undefined,
+                bookingPayoutBatchKey: undefined,
+                payoutBatchIdentity: undefined,
+                payoutSupplementPaymentId: undefined,
+                payoutSupplementPayoutDate: undefined,
+                payoutSupplementPayoutTotalAmountMinor: undefined,
+                payoutSupplementPayoutTotalCurrency: undefined,
+                payoutSupplementLocalAmountMinor: undefined,
+                payoutSupplementLocalCurrency: undefined,
+                payoutSupplementIbanSuffix: undefined,
+                payoutSupplementExchangeRate: undefined,
+                payoutSupplementReferenceHints: undefined,
+                payoutSupplementSourceDocumentIds: undefined,
+                payoutSupplementReservationIds: undefined,
+                extractedRecordIds: ['comgate-row-2'],
+                sourceDocumentIds: ['doc-comgate-portal-2026-03']
+            }
+        ])
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords,
+            normalizedTransactions: normalization.transactions,
+            requestedAt: '2026-03-31T18:00:00.000Z'
+        })
+
+        expect(plan.payoutRows).toHaveLength(2)
+        expect(plan.payoutRows.map((row) => row.payoutBatchKey)).toEqual([
+            'comgate-batch:2026-03-19:CZK',
+            'comgate-batch:2026-03-19:CZK'
+        ])
+        expect(plan.payoutBatches.length).toBeLessThan(plan.payoutRows.length)
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+                payoutDate: '2026-03-19',
+                currency: 'CZK',
+                rowIds: ['txn:payout:comgate-row-1', 'txn:payout:comgate-row-2'],
+                expectedTotalMinor: 158000
+            })
+        ])
+    })
+
+    it('keeps legacy Comgate payout batching unchanged at one batch per legacy payout reference', () => {
+        const fixture = getRealInputFixture('comgate-export')
+        const extractedRecords = parseComgateExport({
+            sourceDocument: fixture.sourceDocument,
+            content: fixture.rawInput.content,
+            extractedAt: '2026-03-31T18:00:00.000Z'
+        })
+        const normalization = normalizeExtractedRecords({
+            extractedRecords,
+            runId: 'comgate-legacy-batching',
+            requestedAt: '2026-03-31T18:00:00.000Z'
+        })
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords,
+            normalizedTransactions: normalization.transactions,
+            requestedAt: '2026-03-31T18:00:00.000Z'
+        })
+
+        expect(plan.payoutRows.map((row) => row.payoutBatchKey)).toEqual([
+            'comgate-batch:2026-03-15:CG-RES-991',
+            'comgate-batch:2026-03-16:CG-PARK-551'
+        ])
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-15:CG-RES-991',
+                expectedTotalMinor: 38000
+            }),
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-16:CG-PARK-551',
+                expectedTotalMinor: 4000
             })
         ])
     })

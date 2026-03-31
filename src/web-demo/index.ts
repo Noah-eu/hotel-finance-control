@@ -3038,6 +3038,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             item.matched ? 'matched' : escapeHtml(String(item.noMatchReason || 'unmatched'))
           ].join(' · ')).join(' | ')
           : 'žádné';
+        const currentPortalBatchTotalsPreview = Array.isArray(diagnostics.currentPortalBatchTotalsPreview) && diagnostics.currentPortalBatchTotalsPreview.length > 0
+          ? diagnostics.currentPortalBatchTotalsPreview.map((item) => [
+            escapeHtml(String(item.payoutBatchKey || 'n/a')),
+            escapeHtml(buildAmountDisplay(Number(item.expectedBankAmountMinor || 0), String(item.currency || 'CZK')))
+          ].join(' · ')).join(' | ')
+          : 'žádné';
 
         return [
           '<br /><span class="hint">Comgate parser variants: ' + escapeHtml(variantLabel) + '</span>',
@@ -3045,6 +3051,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Comgate extracted kinds: ' + escapeHtml(extractedKinds) + '</span>',
           '<br /><span class="hint">Comgate normalized transactions: ' + escapeHtml(String(diagnostics.normalizedTransactionCount || 0)) + '</span>',
           '<br /><span class="hint">Comgate normalized kinds: ' + escapeHtml(normalizedKinds) + '</span>',
+          typeof diagnostics.currentPortalRawRowCount === 'number' ? '<br /><span class="hint">Comgate current-portal raw rows: ' + escapeHtml(String(diagnostics.currentPortalRawRowCount)) + '</span>' : '',
+          typeof diagnostics.currentPortalPayoutBatchCount === 'number' ? '<br /><span class="hint">Comgate current-portal payout batches: ' + escapeHtml(String(diagnostics.currentPortalPayoutBatchCount)) + '</span>' : '',
+          Array.isArray(diagnostics.currentPortalBatchTotalsPreview) ? '<br /><span class="hint">Comgate current-portal batch totals: ' + currentPortalBatchTotalsPreview + '</span>' : '',
           '<br /><span class="hint">Comgate matching input rows: ' + escapeHtml(String(diagnostics.matchingInputPayoutRowCount || 0)) + '</span>',
           '<br /><span class="hint">Comgate payout batches: ' + escapeHtml(String(diagnostics.payoutBatchCount || 0)) + ' · decisions ' + escapeHtml(String(diagnostics.matchingDecisionCount || 0)) + '</span>',
           '<br /><span class="hint">Comgate loss boundary: ' + escapeHtml(String(diagnostics.lossBoundary || 'no-loss')) + ' / ' + escapeHtml(String(diagnostics.lossStage || 'not-applicable')) + '</span>',

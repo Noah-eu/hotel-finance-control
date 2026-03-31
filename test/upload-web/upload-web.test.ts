@@ -397,7 +397,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(2)
   })
 
-  it('shows current Comgate portal rows surviving normalization and entering matching input before failing on amount-based bank candidate filtering', async () => {
+  it('aggregates current Comgate portal rows into one settlement batch and reaches an exact-amount RB candidate before matcher handoff', async () => {
     const fixture = getRealInputFixture('comgate-export-current-portal')
 
     const result = await createBrowserRuntime().buildRuntimeState({
@@ -431,37 +431,47 @@ describe('buildUploadWebFlow', () => {
       normalizedKindBreakdown: [
         { kind: 'comgate:default', count: 2 }
       ],
+      currentPortalRawRowCount: 2,
+      currentPortalPayoutBatchCount: 1,
       matchingInputPayoutRowCount: 2,
-      payoutBatchCount: 2,
-      matchingDecisionCount: 2,
-      lossBoundary: 'matching',
-      lossStage: 'amount-currency-filter'
+      payoutBatchCount: 1,
+      matchingDecisionCount: 1,
+      lossBoundary: 'no-loss',
+      lossStage: 'matched'
     })
-    expect(comgateDiagnostic?.comgatePipelineDiagnostics?.payoutBatchSummaries).toEqual(expect.arrayContaining([
+    expect(comgateDiagnostic?.comgatePipelineDiagnostics?.currentPortalBatchTotalsPreview).toEqual([
       {
-        payoutBatchKey: 'comgate-batch:2026-03-19:CG-PARK-2001',
-        payoutReference: 'CG-PARK-2001',
-        expectedBankAmountMinor: 4000,
-        currency: 'CZK',
-        bankCandidateCountBeforeFiltering: 1,
-        bankCandidateCountAfterAmountCurrency: 0,
-        bankCandidateCountAfterDateWindow: 0,
-        bankCandidateCountAfterEvidenceFiltering: 0,
-        matched: false,
-        noMatchReason: 'noExactAmount'
-      },
-      {
-        payoutBatchKey: 'comgate-batch:2026-03-19:CG-WEB-2001',
-        payoutReference: 'CG-WEB-2001',
-        expectedBankAmountMinor: 154000,
-        currency: 'CZK',
-        bankCandidateCountBeforeFiltering: 1,
-        bankCandidateCountAfterAmountCurrency: 0,
-        bankCandidateCountAfterDateWindow: 0,
-        bankCandidateCountAfterEvidenceFiltering: 0,
-        matched: false,
-        noMatchReason: 'noExactAmount'
+        payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+        expectedBankAmountMinor: 158000,
+        currency: 'CZK'
       }
+    ])
+    expect(comgateDiagnostic?.comgatePipelineDiagnostics?.payoutBatchSummaries).toEqual([
+      {
+        payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+        payoutReference: 'CG-WEB-2001',
+        expectedBankAmountMinor: 158000,
+        currency: 'CZK',
+        bankCandidateCountBeforeFiltering: 1,
+        bankCandidateCountAfterAmountCurrency: 1,
+        bankCandidateCountAfterDateWindow: 1,
+        bankCandidateCountAfterEvidenceFiltering: 1,
+        matched: true,
+        noMatchReason: undefined
+      }
+    ])
+    expect(result.reconciliationSnapshot.payoutBatchDecisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+        expectedTotalMinor: 158000,
+        expectedBankAmountMinor: 158000,
+        exactAmountMatchExistsBeforeDateEvidence: true,
+        componentRowCount: 2,
+        componentRowAmountMinors: [154000, 4000],
+        bankCandidateCountAfterAmountCurrency: 1,
+        matched: true,
+        matchedBankTransactionId: expect.stringMatching(/^txn:bank:/)
+      })
     ]))
   })
 

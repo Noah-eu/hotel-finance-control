@@ -215,6 +215,13 @@ export interface BrowserRuntimeUploadState {
           kind: string
           count: number
         }>
+        currentPortalRawRowCount?: number
+        currentPortalPayoutBatchCount?: number
+        currentPortalBatchTotalsPreview?: Array<{
+          payoutBatchKey: string
+          expectedBankAmountMinor: number
+          currency: string
+        }>
         matchingInputPayoutRowCount: number
         payoutBatchCount: number
         matchingDecisionCount: number

@@ -516,6 +516,13 @@ function buildComgatePipelineDiagnostics(
   const parserVariants = uniqueStrings(
     extractedRecords.map((record) => optionalString(record.data.comgateParserVariant))
   )
+  const currentPortalBatchTotalsPreview = parserVariants.includes('current-portal')
+    ? payoutBatchSummaries.map((summary) => ({
+      payoutBatchKey: summary.payoutBatchKey,
+      expectedBankAmountMinor: summary.expectedBankAmountMinor,
+      currency: summary.currency
+    }))
+    : undefined
   const extractedPaymentPurposeBreakdown = buildKindBreakdown(
     extractedRecords.map((record) => optionalString(record.data.paymentPurpose) ?? 'unspecified')
   )
@@ -533,6 +540,9 @@ function buildComgatePipelineDiagnostics(
     extractedPaymentPurposeBreakdown,
     normalizedTransactionCount: normalizedTransactions.length,
     normalizedKindBreakdown,
+    currentPortalRawRowCount: parserVariants.includes('current-portal') ? payoutRows.length : undefined,
+    currentPortalPayoutBatchCount: parserVariants.includes('current-portal') ? payoutBatchKeys.length : undefined,
+    currentPortalBatchTotalsPreview,
     matchingInputPayoutRowCount: payoutRows.length,
     payoutBatchCount: payoutBatchKeys.length,
     matchingDecisionCount: payoutBatchSummaries.length,
