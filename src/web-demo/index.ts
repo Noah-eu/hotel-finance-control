@@ -903,9 +903,28 @@ ${showRuntimePayoutDiagnostics ? `
       let expenseDetailControlsWired = false;
       let currentWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
-      let currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState({});
       const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
       const monthlyWorkspaceStorageKey = 'hotel-finance-control:monthly-browser-workspaces:v1';
+      const monthlyWorkspaceIndexedDbName = 'hotel-finance-control';
+      const monthlyWorkspaceIndexedDbStoreName = 'monthly-browser-workspaces';
+      let currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState({});
+      let currentWorkspacePersistencePromise = Promise.resolve({
+        status: 'not-applicable',
+        backendName: 'none',
+        storageKeyUsed: monthlyWorkspaceStorageKey,
+        saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+        saveAttempted: false,
+        errorMessage: ''
+      });
+      let currentWorkspacePersistenceState = {
+        status: 'not-applicable',
+        backendName: 'none',
+        storageKeyUsed: '',
+        saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+        saveAttempted: false,
+        errorMessage: ''
+      };
+      let monthlyWorkspacePersistenceBackendPromise;
 
       function getExpenseReviewOverrideStorage() {
         try {
@@ -915,53 +934,326 @@ ${showRuntimePayoutDiagnostics ? `
         }
       }
 
+      function normalizeWorkspaceMonths(months) {
+        return Array.from(new Set((Array.isArray(months) ? months : [])
+          .map((month) => String(month || ''))
+          .filter(Boolean)))
+          .sort();
+      }
+
       function loadMonthlyWorkspaceStore() {
         const storage = getExpenseReviewOverrideStorage();
 
         if (!storage) {
-          return { lastUsedMonth: '', workspaces: {} };
+          return { lastUsedMonth: '', workspaceMonths: [], workspaces: {} };
         }
 
         try {
           const rawValue = storage.getItem(monthlyWorkspaceStorageKey);
 
           if (!rawValue) {
-            return { lastUsedMonth: '', workspaces: {} };
+            return { lastUsedMonth: '', workspaceMonths: [], workspaces: {} };
           }
 
           const parsed = JSON.parse(rawValue);
+          const legacyWorkspaces = parsed && typeof parsed.workspaces === 'object' && parsed.workspaces
+            ? parsed.workspaces
+            : {};
+          const workspaceMonths = normalizeWorkspaceMonths(
+            Array.isArray(parsed && parsed.workspaceMonths)
+              ? parsed.workspaceMonths
+              : Object.keys(legacyWorkspaces)
+          );
 
           return {
             lastUsedMonth: parsed && typeof parsed.lastUsedMonth === 'string' ? parsed.lastUsedMonth : '',
-            workspaces: parsed && typeof parsed.workspaces === 'object' && parsed.workspaces
-              ? parsed.workspaces
-              : {}
+            workspaceMonths,
+            workspaces: legacyWorkspaces
           };
         } catch {
-          return { lastUsedMonth: '', workspaces: {} };
+          return { lastUsedMonth: '', workspaceMonths: [], workspaces: {} };
         }
       }
 
-      function saveMonthlyWorkspaceStore(store) {
+      function saveMonthlyWorkspaceStore(store, options) {
         const storage = getExpenseReviewOverrideStorage();
+        const includeWorkspaces = Boolean(options && options.includeWorkspaces);
+        const workspaceMonths = normalizeWorkspaceMonths(
+          store && Array.isArray(store.workspaceMonths)
+            ? store.workspaceMonths
+            : Object.keys(store && typeof store.workspaces === 'object' && store.workspaces ? store.workspaces : {})
+        );
 
         if (!storage) {
           return;
         }
 
         try {
-          storage.setItem(monthlyWorkspaceStorageKey, JSON.stringify({
+          const payload = {
             lastUsedMonth: typeof store && typeof store.lastUsedMonth === 'string' ? store.lastUsedMonth : '',
-            workspaces: store && typeof store.workspaces === 'object' && store.workspaces ? store.workspaces : {}
-          }));
+            workspaceMonths
+          };
+
+          if (includeWorkspaces) {
+            payload.workspaces = store && typeof store.workspaces === 'object' && store.workspaces ? store.workspaces : {};
+          }
+
+          storage.setItem(monthlyWorkspaceStorageKey, JSON.stringify(payload));
         } catch {
           // Browser workspace persistence is best-effort only.
         }
       }
 
       function pickFallbackWorkspaceMonth(workspaces) {
-        const months = Object.keys(workspaces || {}).filter(Boolean).sort();
+        const months = normalizeWorkspaceMonths(Array.isArray(workspaces) ? workspaces : Object.keys(workspaces || {}));
         return months.length > 0 ? months[months.length - 1] : '';
+      }
+
+      function getLegacyMonthWorkspaceFromStore(store, month) {
+        const normalizedMonth = String(month || '');
+
+        return normalizedMonth && store && store.workspaces && store.workspaces[normalizedMonth]
+          ? store.workspaces[normalizedMonth]
+          : undefined;
+      }
+
+      function buildWorkspacePersistenceStorageKey(backendName, month) {
+        const normalizedBackend = String(backendName || 'none');
+        const normalizedMonth = String(month || '');
+
+        if (normalizedBackend === 'indexedDb') {
+          return 'indexeddb://' + monthlyWorkspaceIndexedDbName + '/' + monthlyWorkspaceIndexedDbStoreName + '/' + normalizedMonth;
+        }
+
+        if (normalizedBackend === 'legacyLocalStorage') {
+          return monthlyWorkspaceStorageKey + '::' + normalizedMonth;
+        }
+
+        if (normalizedBackend === 'none') {
+          return monthlyWorkspaceStorageKey;
+        }
+
+        return normalizedBackend + '://' + normalizedMonth;
+      }
+
+      function runIndexedDbRequest(request) {
+        return new Promise((resolve, reject) => {
+          if (!request) {
+            resolve(undefined);
+            return;
+          }
+
+          request.onsuccess = () => {
+            resolve(request.result);
+          };
+          request.onerror = () => {
+            reject(request.error || new Error('IndexedDB request failed.'));
+          };
+        });
+      }
+
+      function openMonthlyWorkspaceIndexedDb() {
+        if (monthlyWorkspacePersistenceBackendPromise) {
+          return monthlyWorkspacePersistenceBackendPromise;
+        }
+
+        monthlyWorkspacePersistenceBackendPromise = new Promise((resolve) => {
+          const injectedBackend = window && window.__hotelFinanceMonthlyWorkspacePersistence;
+
+          if (injectedBackend
+            && typeof injectedBackend.loadWorkspace === 'function'
+            && typeof injectedBackend.saveWorkspace === 'function'
+            && typeof injectedBackend.deleteWorkspace === 'function'
+            && typeof injectedBackend.listMonths === 'function') {
+            resolve({
+              backendName: String(injectedBackend.backendName || 'indexedDb'),
+              async loadWorkspace(month) {
+                return injectedBackend.loadWorkspace(String(month || ''));
+              },
+              async saveWorkspace(workspace) {
+                return injectedBackend.saveWorkspace(workspace);
+              },
+              async deleteWorkspace(month) {
+                return injectedBackend.deleteWorkspace(String(month || ''));
+              },
+              async listMonths() {
+                return injectedBackend.listMonths();
+              }
+            });
+            return;
+          }
+
+          if (!(window && window.indexedDB && typeof window.indexedDB.open === 'function')) {
+            resolve(undefined);
+            return;
+          }
+
+          try {
+            const request = window.indexedDB.open(monthlyWorkspaceIndexedDbName, 1);
+
+            request.onupgradeneeded = () => {
+              const database = request.result;
+
+              if (!database.objectStoreNames.contains(monthlyWorkspaceIndexedDbStoreName)) {
+                database.createObjectStore(monthlyWorkspaceIndexedDbStoreName, { keyPath: 'month' });
+              }
+            };
+
+            request.onsuccess = () => {
+              const database = request.result;
+
+              resolve({
+                backendName: 'indexedDb',
+                async loadWorkspace(month) {
+                  const normalizedMonth = String(month || '');
+
+                  if (!normalizedMonth) {
+                    return undefined;
+                  }
+
+                  return new Promise((innerResolve, innerReject) => {
+                    try {
+                      const transaction = database.transaction(monthlyWorkspaceIndexedDbStoreName, 'readonly');
+                      const store = transaction.objectStore(monthlyWorkspaceIndexedDbStoreName);
+                      const readRequest = store.get(normalizedMonth);
+
+                      readRequest.onsuccess = () => {
+                        const result = readRequest.result;
+                        innerResolve(result && result.workspace ? result.workspace : result);
+                      };
+                      readRequest.onerror = () => {
+                        innerReject(readRequest.error || new Error('IndexedDB workspace load failed.'));
+                      };
+                    } catch (error) {
+                      innerReject(error);
+                    }
+                  });
+                },
+                async saveWorkspace(workspace) {
+                  return new Promise((innerResolve, innerReject) => {
+                    try {
+                      const transaction = database.transaction(monthlyWorkspaceIndexedDbStoreName, 'readwrite');
+                      const store = transaction.objectStore(monthlyWorkspaceIndexedDbStoreName);
+                      store.put({
+                        month: String(workspace && workspace.month || ''),
+                        workspace
+                      });
+                      transaction.oncomplete = () => {
+                        innerResolve(undefined);
+                      };
+                      transaction.onerror = () => {
+                        innerReject(transaction.error || new Error('IndexedDB workspace save failed.'));
+                      };
+                    } catch (error) {
+                      innerReject(error);
+                    }
+                  });
+                },
+                async deleteWorkspace(month) {
+                  const normalizedMonth = String(month || '');
+
+                  if (!normalizedMonth) {
+                    return false;
+                  }
+
+                  return new Promise((innerResolve, innerReject) => {
+                    try {
+                      const transaction = database.transaction(monthlyWorkspaceIndexedDbStoreName, 'readwrite');
+                      const store = transaction.objectStore(monthlyWorkspaceIndexedDbStoreName);
+                      const deleteRequest = store.delete(normalizedMonth);
+
+                      deleteRequest.onsuccess = () => {
+                        innerResolve(true);
+                      };
+                      deleteRequest.onerror = () => {
+                        innerReject(deleteRequest.error || new Error('IndexedDB workspace delete failed.'));
+                      };
+                    } catch (error) {
+                      innerReject(error);
+                    }
+                  });
+                },
+                async listMonths() {
+                  return new Promise((innerResolve, innerReject) => {
+                    try {
+                      const transaction = database.transaction(monthlyWorkspaceIndexedDbStoreName, 'readonly');
+                      const store = transaction.objectStore(monthlyWorkspaceIndexedDbStoreName);
+
+                      if (typeof store.getAllKeys === 'function') {
+                        const keysRequest = store.getAllKeys();
+
+                        keysRequest.onsuccess = () => {
+                          innerResolve(normalizeWorkspaceMonths(keysRequest.result || []));
+                        };
+                        keysRequest.onerror = () => {
+                          innerReject(keysRequest.error || new Error('IndexedDB workspace month listing failed.'));
+                        };
+                        return;
+                      }
+
+                      const months = [];
+                      const cursorRequest = store.openCursor();
+
+                      cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+
+                        if (!cursor) {
+                          innerResolve(normalizeWorkspaceMonths(months));
+                          return;
+                        }
+
+                        months.push(String(cursor.key || ''));
+                        cursor.continue();
+                      };
+                      cursorRequest.onerror = () => {
+                        innerReject(cursorRequest.error || new Error('IndexedDB workspace cursor failed.'));
+                      };
+                    } catch (error) {
+                      innerReject(error);
+                    }
+                  });
+                }
+              });
+            };
+
+            request.onerror = () => {
+              resolve(undefined);
+            };
+          } catch {
+            resolve(undefined);
+          }
+        });
+
+        return monthlyWorkspacePersistenceBackendPromise;
+      }
+
+      function buildWorkspacePersistenceState(input) {
+        return {
+          status: String(input && input.status || 'not-applicable'),
+          backendName: String(input && input.backendName || 'none'),
+          storageKeyUsed: String(input && input.storageKeyUsed || monthlyWorkspaceStorageKey),
+          saveCompletedBeforeRerunInputAssembly: String(input && input.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
+          saveAttempted: Boolean(input && input.saveAttempted),
+          errorMessage: String(input && input.errorMessage || '')
+        };
+      }
+
+      async function awaitCurrentWorkspacePersistence() {
+        try {
+          const result = await currentWorkspacePersistencePromise;
+          currentWorkspacePersistenceState = buildWorkspacePersistenceState(result);
+          return currentWorkspacePersistenceState;
+        } catch (error) {
+          currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+            status: 'failed',
+            backendName: currentWorkspacePersistenceState.backendName || 'none',
+            storageKeyUsed: currentWorkspacePersistenceState.storageKeyUsed || monthlyWorkspaceStorageKey,
+            saveCompletedBeforeRerunInputAssembly: 'no',
+            saveAttempted: true,
+            errorMessage: error instanceof Error ? error.message : String(error)
+          });
+          return currentWorkspacePersistenceState;
+        }
       }
 
       function buildWorkspaceFileId(record) {
@@ -980,7 +1272,14 @@ ${showRuntimePayoutDiagnostics ? `
           selectedBatchFileCount: Number(input && input.selectedBatchFileCount || 0),
           mergedFileCountUsedForRerun: Number(input && input.mergedFileCountUsedForRerun || 0),
           visibleTraceFileCount: Number(input && input.visibleTraceFileCount || 0),
-          renderSource: String(input && input.renderSource || 'selectedFiles')
+          renderSource: String(input && input.renderSource || 'selectedFiles'),
+          workspacePersistenceBackend: String(input && input.workspacePersistenceBackend || 'none'),
+          storageKeyUsed: String(input && input.storageKeyUsed || monthlyWorkspaceStorageKey),
+          saveCompletedBeforeRerunInputAssembly: String(input && input.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
+          lastSaveStatus: String(input && input.lastSaveStatus || 'not-applicable'),
+          mergedFileSample: Array.isArray(input && input.mergedFileSample)
+            ? input.mergedFileSample.slice(0, 5).map((item) => String(item || ''))
+            : []
         };
       }
 
@@ -1214,6 +1513,20 @@ ${showRuntimePayoutDiagnostics ? `
           }));
       }
 
+      function buildWorkspaceDebugSampleFromWorkspaceRecords(records) {
+        return (Array.isArray(records) ? records : [])
+          .filter((record) => record && record.fileName)
+          .slice(0, 5)
+          .map((record) => String(record.fileName || ''));
+      }
+
+      function buildWorkspaceDebugSampleFromRuntimeFiles(files) {
+        return (Array.isArray(files) ? files : [])
+          .filter((file) => file && file.name)
+          .slice(0, 5)
+          .map((file) => String(file.name || ''));
+      }
+
       function buildRunningWorkflowFilesFromMonthWorkspace(existingFiles, selectedFiles) {
         const merged = [];
         const seenKeys = new Set();
@@ -1364,35 +1677,191 @@ ${showRuntimePayoutDiagnostics ? `
         }
       }
 
-      function persistCurrentMonthWorkspace() {
+      function queueCurrentMonthWorkspacePersistence() {
         const normalizedMonth = String(currentWorkspaceMonth || monthInput && monthInput.value || '');
 
         if (!normalizedMonth) {
-          return;
+          currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+            status: 'not-applicable',
+            backendName: 'none',
+            storageKeyUsed: monthlyWorkspaceStorageKey,
+            saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+            saveAttempted: false,
+            errorMessage: ''
+          });
+          currentWorkspacePersistencePromise = Promise.resolve(currentWorkspacePersistenceState);
+          window.__hotelFinanceLastWorkspacePersistencePromise = currentWorkspacePersistencePromise;
+          return currentWorkspacePersistencePromise;
         }
 
-        const store = loadMonthlyWorkspaceStore();
-        store.lastUsedMonth = normalizedMonth;
-        store.workspaces[normalizedMonth] = {
+        const workspaceSnapshot = {
           month: normalizedMonth,
           savedAt: new Date().toISOString(),
           files: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.slice() : [],
           runtimeState: cloneWorkspaceRuntimeState(currentExpenseReviewState),
           expenseReviewOverrides: sanitizeExpenseReviewOverridesForStorage(currentExpenseReviewOverrides)
         };
-        saveMonthlyWorkspaceStore(store);
+
+        currentWorkspacePersistencePromise = (async () => {
+          const backend = await openMonthlyWorkspaceIndexedDb();
+          const metadataStore = loadMonthlyWorkspaceStore();
+          const backendName = backend ? String(backend.backendName || 'indexedDb') : 'legacyLocalStorage';
+          const storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+
+          if (backend) {
+            await backend.saveWorkspace(workspaceSnapshot);
+            const availableMonths = normalizeWorkspaceMonths((metadataStore.workspaceMonths || []).concat([normalizedMonth]));
+            saveMonthlyWorkspaceStore({
+              lastUsedMonth: normalizedMonth,
+              workspaceMonths: availableMonths,
+              workspaces: metadataStore.workspaces
+            }, { includeWorkspaces: false });
+          } else {
+            metadataStore.lastUsedMonth = normalizedMonth;
+            metadataStore.workspaceMonths = normalizeWorkspaceMonths((metadataStore.workspaceMonths || []).concat([normalizedMonth]));
+            metadataStore.workspaces[normalizedMonth] = workspaceSnapshot;
+            saveMonthlyWorkspaceStore(metadataStore, { includeWorkspaces: true });
+          }
+
+          currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+            status: 'saved',
+            backendName,
+            storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: 'yes',
+            saveAttempted: true,
+            errorMessage: ''
+          });
+
+          const completedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
+            ...currentWorkspaceRenderDebug,
+            workspacePersistenceBackend: backendName,
+            storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: 'yes',
+            lastSaveStatus: 'saved',
+            mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(workspaceSnapshot.files)
+          });
+          setWorkspaceRenderDebugState(completedWorkspaceRenderDebug);
+
+          if (currentVisibleRuntimePhase === 'completed') {
+            renderCompletedRuntimeWorkspaceMergeDebug(completedWorkspaceRenderDebug);
+          }
+
+          if (runtimeOperatorDebugMode) {
+            window.__hotelFinanceLastWorkspaceRenderDebug = completedWorkspaceRenderDebug;
+          }
+
+          return currentWorkspacePersistenceState;
+        })().catch((error) => {
+          const backendName = currentWorkspacePersistenceState.backendName || 'indexedDb';
+          const failedState = buildWorkspacePersistenceState({
+            status: 'failed',
+            backendName,
+            storageKeyUsed: buildWorkspacePersistenceStorageKey(backendName, normalizedMonth),
+            saveCompletedBeforeRerunInputAssembly: 'no',
+            saveAttempted: true,
+            errorMessage: error instanceof Error ? error.message : String(error)
+          });
+          currentWorkspacePersistenceState = failedState;
+
+          const failedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
+            ...currentWorkspaceRenderDebug,
+            workspacePersistenceBackend: failedState.backendName,
+            storageKeyUsed: failedState.storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: failedState.saveCompletedBeforeRerunInputAssembly,
+            lastSaveStatus: failedState.errorMessage
+              ? 'failed: ' + failedState.errorMessage
+              : 'failed',
+            mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(workspaceSnapshot.files)
+          });
+          setWorkspaceRenderDebugState(failedWorkspaceRenderDebug);
+
+          if (currentVisibleRuntimePhase === 'completed') {
+            renderCompletedRuntimeWorkspaceMergeDebug(failedWorkspaceRenderDebug);
+          }
+
+          if (runtimeOperatorDebugMode) {
+            window.__hotelFinanceLastWorkspaceRenderDebug = failedWorkspaceRenderDebug;
+          }
+
+          return failedState;
+        });
+
+        window.__hotelFinanceLastWorkspacePersistencePromise = currentWorkspacePersistencePromise;
+
+        return currentWorkspacePersistencePromise;
       }
 
-      function loadMonthWorkspace(month) {
+      async function loadMonthWorkspace(month) {
         const normalizedMonth = String(month || '');
         const store = loadMonthlyWorkspaceStore();
+        const backend = await openMonthlyWorkspaceIndexedDb();
+        let workspace;
+        let backendName = 'none';
+        let storageKeyUsed = buildWorkspacePersistenceStorageKey('none', normalizedMonth);
+        let migratedFromLegacy = false;
 
-        return normalizedMonth && store.workspaces && store.workspaces[normalizedMonth]
-          ? store.workspaces[normalizedMonth]
-          : undefined;
+        if (!normalizedMonth) {
+          return {
+            workspace: undefined,
+            loadState: buildWorkspacePersistenceState({
+              status: 'not-applicable',
+              backendName,
+              storageKeyUsed,
+              saveCompletedBeforeRerunInputAssembly: currentWorkspacePersistenceState.saveCompletedBeforeRerunInputAssembly || 'not-applicable',
+              saveAttempted: currentWorkspacePersistenceState.saveAttempted,
+              errorMessage: ''
+            })
+          };
+        }
+
+        if (backend) {
+          workspace = await backend.loadWorkspace(normalizedMonth);
+          if (workspace) {
+            backendName = String(backend.backendName || 'indexedDb');
+            storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+          }
+        }
+
+        if (!workspace) {
+          const legacyWorkspace = getLegacyMonthWorkspaceFromStore(store, normalizedMonth);
+
+          if (legacyWorkspace) {
+            workspace = legacyWorkspace;
+            backendName = 'legacyLocalStorage';
+            storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+
+            if (backend) {
+              await backend.saveWorkspace(legacyWorkspace);
+              saveMonthlyWorkspaceStore({
+                lastUsedMonth: store.lastUsedMonth,
+                workspaceMonths: normalizeWorkspaceMonths((store.workspaceMonths || []).concat(Object.keys(store.workspaces || {}))),
+                workspaces: {}
+              }, { includeWorkspaces: false });
+              backendName = String(backend.backendName || 'indexedDb');
+              storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+              migratedFromLegacy = true;
+            }
+          }
+        }
+
+        const loadState = buildWorkspacePersistenceState({
+          status: workspace ? 'loaded' : 'missing',
+          backendName,
+          storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspacePersistenceState.status === 'saved'
+            ? 'yes'
+            : currentWorkspacePersistenceState.status === 'failed'
+              ? 'no'
+              : 'not-applicable',
+          saveAttempted: currentWorkspacePersistenceState.saveAttempted,
+          errorMessage: migratedFromLegacy ? 'migrated-from-legacy-localstorage' : ''
+        });
+
+        currentWorkspacePersistenceState = loadState;
+        return { workspace, loadState };
       }
 
-      function clearMonthWorkspace(month) {
+      async function clearMonthWorkspace(month) {
         const normalizedMonth = String(month || '');
 
         if (!normalizedMonth) {
@@ -1401,21 +1870,45 @@ ${showRuntimePayoutDiagnostics ? `
 
         const store = loadMonthlyWorkspaceStore();
 
-        if (!store.workspaces || !store.workspaces[normalizedMonth]) {
-          return false;
+        let deleted = false;
+        const backend = await openMonthlyWorkspaceIndexedDb();
+
+        if (backend) {
+          deleted = Boolean(await backend.deleteWorkspace(normalizedMonth));
         }
 
-        delete store.workspaces[normalizedMonth];
-        if (store.lastUsedMonth === normalizedMonth) {
-          store.lastUsedMonth = pickFallbackWorkspaceMonth(store.workspaces);
+        if (store.workspaces && store.workspaces[normalizedMonth]) {
+          delete store.workspaces[normalizedMonth];
+          deleted = true;
         }
-        saveMonthlyWorkspaceStore(store);
-        return true;
+
+        const remainingMonths = normalizeWorkspaceMonths((store.workspaceMonths || []).filter((monthKey) => monthKey !== normalizedMonth));
+
+        saveMonthlyWorkspaceStore({
+          lastUsedMonth: store.lastUsedMonth === normalizedMonth
+            ? pickFallbackWorkspaceMonth(remainingMonths)
+            : store.lastUsedMonth,
+          workspaceMonths: remainingMonths,
+          workspaces: {}
+        }, { includeWorkspaces: false });
+
+        return deleted;
       }
 
-      function restoreWorkspaceForMonth(month, options) {
+      async function restoreWorkspaceForMonth(month, options) {
         const normalizedMonth = String(month || '');
-        const workspace = loadMonthWorkspace(normalizedMonth);
+        const loadedWorkspace = await loadMonthWorkspace(normalizedMonth);
+        const workspace = loadedWorkspace && loadedWorkspace.workspace;
+        const loadState = loadedWorkspace && loadedWorkspace.loadState
+          ? loadedWorkspace.loadState
+          : buildWorkspacePersistenceState({
+            status: 'missing',
+            backendName: 'none',
+            storageKeyUsed: buildWorkspacePersistenceStorageKey('none', normalizedMonth),
+            saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+            saveAttempted: false,
+            errorMessage: ''
+          });
 
         currentWorkspaceMonth = normalizedMonth;
 
@@ -1430,7 +1923,12 @@ ${showRuntimePayoutDiagnostics ? `
             selectedBatchFileCount: 0,
             mergedFileCountUsedForRerun: 0,
             visibleTraceFileCount: 0,
-            renderSource: 'persistedWorkspace'
+            renderSource: 'persistedWorkspace',
+            workspacePersistenceBackend: loadState.backendName,
+            storageKeyUsed: loadState.storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+            lastSaveStatus: loadState.status,
+            mergedFileSample: []
           });
           currentWorkspaceFiles = [];
           currentExpenseReviewOverrides = [];
@@ -1452,7 +1950,12 @@ ${showRuntimePayoutDiagnostics ? `
           selectedBatchFileCount: 0,
           mergedFileCountUsedForRerun: currentWorkspaceFiles.length,
           visibleTraceFileCount: currentWorkspaceFiles.length,
-          renderSource: 'persistedWorkspace'
+          renderSource: 'persistedWorkspace',
+          workspacePersistenceBackend: loadState.backendName,
+          storageKeyUsed: loadState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+          lastSaveStatus: loadState.status,
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
         });
         const visibleState = buildCompletedVisibleRuntimeState(workspace.runtimeState);
         applyVisibleRuntimeState(visibleState, 'completed');
@@ -1465,8 +1968,11 @@ ${showRuntimePayoutDiagnostics ? `
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>obnovený uložený workspace měsíce</strong>. Další upload do stejného měsíce doplní existující soubory místo úplného přepsání.';
 
         const store = loadMonthlyWorkspaceStore();
-        store.lastUsedMonth = normalizedMonth;
-        saveMonthlyWorkspaceStore(store);
+        saveMonthlyWorkspaceStore({
+          lastUsedMonth: normalizedMonth,
+          workspaceMonths: normalizeWorkspaceMonths((store.workspaceMonths || []).concat([normalizedMonth])),
+          workspaces: store.workspaces
+        }, { includeWorkspaces: false });
 
         if (!(options && options.preserveCurrentView)) {
           showOperatorView(resolveOperatorViewFromHash());
@@ -2477,6 +2983,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildRuntimeWorkspaceMergeDebugMarkup(debugState) {
         const state = buildWorkspaceRenderDebugState(debugState);
+        const mergedFileSampleMarkup = state.mergedFileSample.length === 0
+          ? 'žádné'
+          : state.mergedFileSample.map((item) => escapeHtml(item)).join(', ');
 
         return [
           '<p class="hint">Tento blok ukazuje, z jakého zdroje právě stránka bere viditelný trace souborů pro měsíc.</p>',
@@ -2487,6 +2996,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Merged file count used for rerun:</strong> ' + escapeHtml(String(state.mergedFileCountUsedForRerun)) + '</li>',
           '<li><strong>Visible trace file count:</strong> ' + escapeHtml(String(state.visibleTraceFileCount)) + '</li>',
           '<li><strong>Render source:</strong> ' + escapeHtml(state.renderSource || 'selectedFiles') + '</li>',
+          '<li><strong>Workspace storage backend:</strong> ' + escapeHtml(state.workspacePersistenceBackend || 'none') + '</li>',
+          '<li><strong>Storage key used for month workspace load/save:</strong> ' + escapeHtml(state.storageKeyUsed || monthlyWorkspaceStorageKey) + '</li>',
+          '<li><strong>Save happened before rerun input assembly:</strong> ' + escapeHtml(state.saveCompletedBeforeRerunInputAssembly || 'not-applicable') + '</li>',
+          '<li><strong>Last save status:</strong> ' + escapeHtml(state.lastSaveStatus || 'not-applicable') + '</li>',
+          '<li><strong>Merged file sample:</strong> ' + mergedFileSampleMarkup + '</li>',
           '</ul>'
         ].join('');
       }
@@ -3217,7 +3731,6 @@ ${showRuntimePayoutDiagnostics ? '' : `
           currentExpenseReviewOverrides.push(nextOverride);
         }
 
-        persistCurrentMonthWorkspace();
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
         showOperatorView('expense-detail');
       }
@@ -3232,7 +3745,6 @@ ${showRuntimePayoutDiagnostics ? '' : `
         currentExpenseReviewOverrides = currentExpenseReviewOverrides.filter((override) =>
           String(override && override.reviewItemId || '') !== normalizedReviewItemId
         );
-        persistCurrentMonthWorkspace();
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
         showOperatorView('expense-detail');
       }
@@ -3733,14 +4245,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
           selectedBatchFileCount: currentWorkspaceRenderDebug.selectedBatchFileCount,
           mergedFileCountUsedForRerun: currentWorkspaceRenderDebug.mergedFileCountUsedForRerun || (Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.length : 0),
           visibleTraceFileCount: buildVisibleTraceFileCountFromState(visibleState),
-          renderSource: currentWorkspaceRenderDebug.renderSource || 'mergedWorkspace'
+          renderSource: currentWorkspaceRenderDebug.renderSource || 'mergedWorkspace',
+          workspacePersistenceBackend: currentWorkspacePersistenceState.backendName,
+          storageKeyUsed: currentWorkspacePersistenceState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly,
+          lastSaveStatus: currentWorkspacePersistenceState.status || currentWorkspaceRenderDebug.lastSaveStatus,
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
         });
         setWorkspaceRenderDebugState(completedWorkspaceRenderDebug);
         renderCompletedRuntimeWorkspaceMergeDebug(completedWorkspaceRenderDebug);
         currentExpenseReviewState = baseVisibleState;
         currentExportVisibleState = visibleState;
         if (phase === 'completed' && currentWorkspaceMonth) {
-          persistCurrentMonthWorkspace();
+          void queueCurrentMonthWorkspacePersistence();
         }
 
         if (runtimeOperatorDebugMode) {
@@ -3941,12 +4458,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
       async function startMainWorkflow() {
         const files = Array.from(fileInput.files || []);
         const normalizedMonth = String(monthInput && monthInput.value || '');
-        const existingWorkspace = loadMonthWorkspace(normalizedMonth);
+        const persistenceStateBeforeRerun = await awaitCurrentWorkspacePersistence();
+        const loadedWorkspace = await loadMonthWorkspace(normalizedMonth);
+        const existingWorkspace = loadedWorkspace && loadedWorkspace.workspace;
+        const loadState = loadedWorkspace && loadedWorkspace.loadState
+          ? loadedWorkspace.loadState
+          : persistenceStateBeforeRerun;
         runtimeOutput.innerHTML = '<p class="hint">Spouštím browser/local workflow nad právě zvolenými soubory…</p>';
 
         if (files.length === 0) {
           if (existingWorkspace && existingWorkspace.runtimeState) {
-            restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
+            await restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
             return;
           }
 
@@ -3962,7 +4484,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
           selectedBatchFileCount: files.length,
           mergedFileCountUsedForRerun: runningWorkspacePreviewFiles.length,
           visibleTraceFileCount: runningWorkspacePreviewFiles.length,
-          renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles'
+          renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles',
+          workspacePersistenceBackend: loadState.backendName,
+          storageKeyUsed: loadState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+          lastSaveStatus: currentWorkspacePersistenceState.status,
+          mergedFileSample: buildWorkspaceDebugSampleFromRuntimeFiles(runningWorkspacePreviewFiles)
         });
         renderRunningState(runningWorkspacePreviewFiles);
 
@@ -3989,7 +4516,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             selectedBatchFileCount: files.length,
             mergedFileCountUsedForRerun: mergedWorkspaceFiles.length,
             visibleTraceFileCount: mergedRunningWorkflowFiles.length,
-            renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles'
+            renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles',
+            workspacePersistenceBackend: loadState.backendName,
+            storageKeyUsed: loadState.storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+            lastSaveStatus: currentWorkspacePersistenceState.status,
+            mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(mergedWorkspaceFiles)
           });
           renderRunningRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
           const state = await browserRuntime.buildRuntimeState({
@@ -4043,9 +4575,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           return;
         }
 
-        restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
+        window.__hotelFinanceLastWorkspaceRestorePromise = restoreWorkspaceForMonth(normalizedMonth, { preserveCurrentView: false });
       });
       clearMonthWorkspaceButton.addEventListener('click', () => {
+        window.__hotelFinanceLastWorkspaceClearPromise = (async () => {
         const normalizedMonth = String(monthInput && monthInput.value || '');
 
         if (!normalizedMonth) {
@@ -4053,7 +4586,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           return;
         }
 
-        if (!clearMonthWorkspace(normalizedMonth)) {
+        if (!(await clearMonthWorkspace(normalizedMonth))) {
           runtimeOutput.innerHTML = '<p class="hint">Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> zatím není uložený žádný workspace k vymazání.</p>';
           return;
         }
@@ -4064,6 +4597,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderInitialVisibleState();
         runtimeOutput.innerHTML = '<p class="hint">Workspace pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> byl vymazán. Ostatní měsíce zůstaly beze změny.</p>';
         showOperatorView('main-overview');
+        })();
       });
       openControlDetailButton.addEventListener('click', () => {
         showOperatorView('control-detail');
@@ -4084,7 +4618,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       if (initialWorkspaceStore.lastUsedMonth) {
         monthInput.value = initialWorkspaceStore.lastUsedMonth;
-        restoreWorkspaceForMonth(initialWorkspaceStore.lastUsedMonth, { preserveCurrentView: true });
+        window.__hotelFinanceInitialWorkspaceRestorePromise = restoreWorkspaceForMonth(initialWorkspaceStore.lastUsedMonth, { preserveCurrentView: true });
+      } else {
+        window.__hotelFinanceInitialWorkspaceRestorePromise = Promise.resolve(false);
       }
     </script>
   </body>

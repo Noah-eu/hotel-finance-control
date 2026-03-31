@@ -2168,12 +2168,14 @@ describe('buildWebDemo', () => {
   it('restores the last used month workspace with persisted manual expense confirmation after reload', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T16:10:00.000Z',
       month: '2026-03',
       outputDirName: 'test-web-demo-month-workspace-restore',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
@@ -2198,12 +2200,15 @@ describe('buildWebDemo', () => {
 
     rendered.confirmExpenseReviewItem(String(reviewItemId))
 
+    await rendered.awaitLastWorkspacePersistence()
+
     const restored = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T16:12:00.000Z',
       month: '',
       outputDirName: 'test-web-demo-month-workspace-restore-reload',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       skipStart: true,
       files: []
     })
@@ -2237,12 +2242,14 @@ describe('buildWebDemo', () => {
 
   it('appends uploads within the same month, deduplicates exact re-uploads, isolates months, and clears only the selected month workspace', async () => {
     const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
     const monthAFirst = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T16:20:00.000Z',
       month: '2026-03',
       outputDirName: 'test-web-demo-month-workspace-append-a1',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
         createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
@@ -2258,6 +2265,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-month-workspace-append-a2',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile(
@@ -2282,6 +2290,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-month-workspace-append-b',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv')
       ]
@@ -2291,15 +2300,15 @@ describe('buildWebDemo', () => {
     expect(monthBState.runId).toContain('2026-04')
     expect(monthBState.fileRoutes).toHaveLength(1)
 
-    monthB.changeMonth('2026-03')
+    await monthB.changeMonth('2026-03')
     const switchedBackState = monthB.getLastVisibleRuntimeState() as { fileRoutes: Array<{ fileName: string }>; runId: string }
     expect(switchedBackState.runId).toContain('2026-03')
     expect(switchedBackState.fileRoutes).toHaveLength(3)
 
-    monthB.clearCurrentMonthWorkspace()
+    await monthB.clearCurrentMonthWorkspace()
     expect(monthB.preparedFilesContent.innerHTML).not.toContain('Rozpoznáno souborů: 3')
 
-    monthB.changeMonth('2026-04')
+    await monthB.changeMonth('2026-04')
     const monthBAfterClear = monthB.getLastVisibleRuntimeState() as { fileRoutes: Array<{ fileName: string }>; runId: string }
     expect(monthBAfterClear.runId).toContain('2026-04')
     expect(monthBAfterClear.fileRoutes).toHaveLength(1)
@@ -2310,6 +2319,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-month-workspace-append-reload',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       skipStart: true,
       files: []
     })
@@ -2320,6 +2330,7 @@ describe('buildWebDemo', () => {
 
   it('keeps previously uploaded files visible and reruns the same month on the merged file set when RB is added later', async () => {
     const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
 
     await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-30T19:10:00.000Z',
@@ -2327,6 +2338,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-same-month-additive-initial',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
@@ -2340,6 +2352,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-same-month-additive-second',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       skipStart: true,
       files: [
         createDelayedWebDemoRuntimeArrayBufferTextFile(
@@ -2364,6 +2377,10 @@ describe('buildWebDemo', () => {
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file count:</strong> 4')
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Storage key used for month workspace load/save:</strong> indexeddb://hotel-finance-control/monthly-browser-workspaces/2026-03')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Save happened before rerun input assembly:</strong> yes')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file sample:</strong> booking35k.csv, airbnb.csv, Bookinng35k.pdf, Pohyby_5599955956_202603191023.csv')
 
     await additive.waitForWorkflowCompletion()
 
@@ -2391,6 +2408,8 @@ describe('buildWebDemo', () => {
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file count:</strong> 4')
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
+    expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Last save status:</strong> saved')
 
     expect(additive.getLastWorkspaceRenderDebug()).toEqual({
       currentMonthKey: '2026-03',
@@ -2398,7 +2417,17 @@ describe('buildWebDemo', () => {
       selectedBatchFileCount: 1,
       mergedFileCountUsedForRerun: 4,
       visibleTraceFileCount: 4,
-      renderSource: 'mergedWorkspace'
+      renderSource: 'mergedWorkspace',
+      workspacePersistenceBackend: 'indexedDb',
+      storageKeyUsed: 'indexeddb://hotel-finance-control/monthly-browser-workspaces/2026-03',
+      saveCompletedBeforeRerunInputAssembly: 'yes',
+      lastSaveStatus: 'saved',
+      mergedFileSample: [
+        'booking35k.csv',
+        'airbnb.csv',
+        'Bookinng35k.pdf',
+        'Pohyby_5599955956_202603191023.csv'
+      ]
     })
 
     const duplicateReupload = await executeWebDemoMainWorkflow({
@@ -2407,6 +2436,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-same-month-additive-duplicate',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile(
           'Pohyby_5599955956_202603191023.csv',
@@ -2430,6 +2460,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-same-month-additive-reload',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       skipStart: true,
       files: []
     })
@@ -2451,17 +2482,110 @@ describe('buildWebDemo', () => {
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file count:</strong> 4')
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspace')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Storage key used for month workspace load/save:</strong> indexeddb://hotel-finance-control/monthly-browser-workspaces/2026-03')
+  }, 15000)
+
+  it('keeps same-month merged reruns and reload restore working even when localStorage cannot hold full workspace payloads', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T08:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-same-month-indexeddb-fallback-initial',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      localStorageSetItemLimitBytes: 220,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    expect(workspacePersistenceState.has('2026-03')).toBe(true)
+    expect(storageState.get('hotel-finance-control:monthly-browser-workspaces:v1')).toContain('"workspaceMonths":["2026-03"]')
+    expect(storageState.get('hotel-finance-control:monthly-browser-workspaces:v1')).not.toContain('Bookinng35k.pdf')
+
+    rendered.setSelectedFiles([
+      createDelayedWebDemoRuntimeArrayBufferTextFile(
+        'Pohyby_5599955956_202603191023.csv',
+        buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+        5,
+        'text/csv'
+      )
+    ])
+    rendered.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file count before rerun:</strong> 3')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Newly selected batch file count:</strong> 1')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Save happened before rerun input assembly:</strong> yes')
+
+    await rendered.waitForWorkflowCompletion()
+
+    const rerunState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    expect(rerunState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rerunState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(rerunState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+
+    rendered.setSelectedFiles([
+      createWebDemoRuntimeArrayBufferTextFile(
+        'Pohyby_5599955956_202603191023.csv',
+        buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+        'text/csv'
+      )
+    ])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    const dedupedState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    expect(dedupedState.fileRoutes).toHaveLength(4)
+    expect(dedupedState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(dedupedState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    expect(reloadedState.fileRoutes).toHaveLength(4)
+    expect(reloadedState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(reloadedState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspace')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
   }, 15000)
 
   it('builds complete monthly Excel export from the restored current month workspace state', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
     await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T16:30:00.000Z',
       month: '2026-03',
       outputDirName: 'test-web-demo-month-workspace-export-source',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       files: [
         createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
         createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
@@ -2481,6 +2605,7 @@ describe('buildWebDemo', () => {
       outputDirName: 'test-web-demo-month-workspace-export-restored',
       locationSearch: '?debug=1',
       storageState,
+      workspacePersistenceState,
       skipStart: true,
       files: []
     })
@@ -3109,6 +3234,8 @@ async function executeWebDemoMainWorkflow(input: {
   locationHash?: string
   skipStart?: boolean
   storageState?: Map<string, string>
+  workspacePersistenceState?: Map<string, string>
+  localStorageSetItemLimitBytes?: number
   files: Array<{
     name: string
     type?: string
@@ -3154,8 +3281,8 @@ async function executeWebDemoMainWorkflow(input: {
   openControlDetailPage: () => StubDomElement
   backToMainOverviewFromExpense: () => void
   backToMainOverviewFromControl: () => void
-  changeMonth: (month: string) => void
-  clearCurrentMonthWorkspace: () => void
+  changeMonth: (month: string) => Promise<void>
+  clearCurrentMonthWorkspace: () => Promise<void>
   confirmExpenseReviewItem: (reviewItemId: string) => void
   rejectExpenseReviewItem: (reviewItemId: string) => void
   setExpenseDetailFilter: (
@@ -3176,6 +3303,13 @@ async function executeWebDemoMainWorkflow(input: {
   setWorkspaceExportPreset: (preset: 'complete' | 'review-needed' | 'matched-only') => void
   downloadWorkspaceExcelExport: () => void
   getLastExcelExport: () => unknown
+  setSelectedFiles: (files: Array<{
+    name: string
+    type?: string
+    text?: () => Promise<string>
+    arrayBuffer?: () => Promise<ArrayBuffer>
+  }>) => void
+  awaitLastWorkspacePersistence: () => Promise<void>
   startWorkflow: () => void
   waitForWorkflowCompletion: () => Promise<void>
   reloadWithSameStorage: () => Promise<any>
@@ -3200,6 +3334,8 @@ async function executeWebDemoMainWorkflow(input: {
   const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
   const storageState = input.storageState ?? new Map<string, string>()
+  const workspacePersistenceState = input.workspacePersistenceState ?? new Map<string, string>()
+  const localStorageSetItemLimitBytes = input.localStorageSetItemLimitBytes ?? Number.POSITIVE_INFINITY
   const windowObject: {
     location: { search: string; hash: string }
     localStorage: {
@@ -3224,6 +3360,17 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceExpenseReviewOverrides?: unknown
     __hotelFinanceExpenseReviewOverrideStorageKey?: unknown
     __hotelFinanceLastExcelExport?: unknown
+    __hotelFinanceMonthlyWorkspacePersistence?: {
+      backendName: string
+      loadWorkspace: (month: string) => Promise<unknown>
+      saveWorkspace: (workspace: unknown) => Promise<void>
+      deleteWorkspace: (month: string) => Promise<boolean>
+      listMonths: () => Promise<string[]>
+    }
+    __hotelFinanceInitialWorkspaceRestorePromise?: Promise<unknown>
+    __hotelFinanceLastWorkspaceRestorePromise?: Promise<unknown>
+    __hotelFinanceLastWorkspaceClearPromise?: Promise<unknown>
+    __hotelFinanceLastWorkspacePersistencePromise?: Promise<unknown>
   } = {
     location: {
       search: input.locationSearch ?? '',
@@ -3234,6 +3381,10 @@ async function executeWebDemoMainWorkflow(input: {
         return storageState.has(key) ? storageState.get(key)! : null
       },
       setItem(key: string, value: string) {
+        if (Buffer.byteLength(String(value), 'utf8') > localStorageSetItemLimitBytes) {
+          throw new Error('QuotaExceededError: localStorage limit exceeded in test harness.')
+        }
+
         storageState.set(key, String(value))
       },
       removeItem(key: string) {
@@ -3258,7 +3409,29 @@ async function executeWebDemoMainWorkflow(input: {
     TextEncoder,
     TextDecoder,
     setTimeout,
-    clearTimeout
+    clearTimeout,
+    __hotelFinanceMonthlyWorkspacePersistence: {
+      backendName: 'indexedDb',
+      async loadWorkspace(month: string) {
+        const rawValue = workspacePersistenceState.get(String(month))
+        return rawValue ? JSON.parse(rawValue) : undefined
+      },
+      async saveWorkspace(workspace: unknown) {
+        const month = String((workspace as { month?: string } | undefined)?.month ?? '')
+
+        if (!month) {
+          return
+        }
+
+        workspacePersistenceState.set(month, JSON.stringify(workspace))
+      },
+      async deleteWorkspace(month: string) {
+        return workspacePersistenceState.delete(String(month))
+      },
+      async listMonths() {
+        return Array.from(workspacePersistenceState.keys()).sort()
+      }
+    }
   }
 
   await loadBuiltWebDemoRuntimeModule(outputPath, result.runtimeAssetPath!, windowObject)
@@ -3282,15 +3455,35 @@ async function executeWebDemoMainWorkflow(input: {
     clearTimeout
   })
 
+  if (windowObject.__hotelFinanceInitialWorkspaceRestorePromise) {
+    await windowObject.__hotelFinanceInitialWorkspaceRestorePromise
+  }
+
   elements['monthly-files'].files = input.files
   elements['month-label'].value = input.month
+  let lastWorkflowStartPreparedFilesMarkup = ''
+  let lastWorkflowStartRuntimeOutputMarkup = ''
 
   async function waitForWorkflowCompletion() {
+    let observedIntermediateState = false
+
     for (let index = 0; index < 200; index += 1) {
+      const preparedFilesMarkup = elements['prepared-files-content'].innerHTML
+      const runtimeOutputMarkup = elements['runtime-output'].innerHTML
+      const completedMarkupDetected = preparedFilesMarkup.includes('Rozpoznáno souborů:')
+        || preparedFilesMarkup.includes('Runtime běh selhal.')
+      const markupChangedSinceStart = preparedFilesMarkup !== lastWorkflowStartPreparedFilesMarkup
+        || runtimeOutputMarkup !== lastWorkflowStartRuntimeOutputMarkup
+
+      if (markupChangedSinceStart) {
+        observedIntermediateState = true
+      }
+
       if (
-        elements['prepared-files-content'].innerHTML.includes('Rozpoznáno souborů:')
-        || elements['prepared-files-content'].innerHTML.includes('Runtime běh selhal.')
+        completedMarkupDetected
+        && (markupChangedSinceStart || observedIntermediateState)
       ) {
+        await awaitLastWorkspacePersistence()
         return
       }
 
@@ -3300,7 +3493,27 @@ async function executeWebDemoMainWorkflow(input: {
     throw new Error('Web demo workflow did not finish in time.')
   }
 
+  async function waitForLastRestore() {
+    if (windowObject.__hotelFinanceLastWorkspaceRestorePromise) {
+      await windowObject.__hotelFinanceLastWorkspaceRestorePromise
+    }
+  }
+
+  async function waitForLastClear() {
+    if (windowObject.__hotelFinanceLastWorkspaceClearPromise) {
+      await windowObject.__hotelFinanceLastWorkspaceClearPromise
+    }
+  }
+
+  async function awaitLastWorkspacePersistence() {
+    if (windowObject.__hotelFinanceLastWorkspacePersistencePromise) {
+      await windowObject.__hotelFinanceLastWorkspacePersistencePromise
+    }
+  }
+
   function startWorkflow() {
+    lastWorkflowStartPreparedFilesMarkup = elements['prepared-files-content'].innerHTML
+    lastWorkflowStartRuntimeOutputMarkup = elements['runtime-output'].innerHTML
     elements['prepare-upload'].listeners.click()
   }
 
@@ -3358,12 +3571,14 @@ async function executeWebDemoMainWorkflow(input: {
     backToMainOverviewFromControl() {
       elements['back-from-control-detail-button'].listeners.click()
     },
-    changeMonth(month: string) {
+    async changeMonth(month: string) {
       elements['month-label'].value = month
       elements['month-label'].listeners.change()
+      await waitForLastRestore()
     },
-    clearCurrentMonthWorkspace() {
+    async clearCurrentMonthWorkspace() {
       elements['clear-month-workspace-button'].listeners.click()
+      await waitForLastClear()
     },
     confirmExpenseReviewItem(reviewItemId: string) {
       elements[buildExpenseReviewActionElementId('confirm', reviewItemId)].listeners.click()
@@ -3419,12 +3634,23 @@ async function executeWebDemoMainWorkflow(input: {
     getLastExcelExport() {
       return windowObject.__hotelFinanceLastExcelExport
     },
+    setSelectedFiles(files) {
+      elements['monthly-files'].files = files
+    },
+    awaitLastWorkspacePersistence,
     startWorkflow,
     waitForWorkflowCompletion,
     async reloadWithSameStorage() {
+      await awaitLastWorkspacePersistence()
+
       return executeWebDemoMainWorkflow({
         ...input,
+        month: '',
+        skipStart: true,
+        files: [],
         storageState,
+        workspacePersistenceState,
+        localStorageSetItemLimitBytes,
         locationHash: windowObject.location.hash,
         locationSearch: windowObject.location.search
       })
