@@ -338,6 +338,34 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('keeps the Lenner matching amount on the full invoice total instead of the VAT base subtotal', () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-31T18:40:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 1262952,
+      currency: 'CZK',
+      occurredAt: '2026-03-11',
+      data: {
+        amountMinor: 1262952,
+        currency: 'CZK',
+        vatBaseAmountMinor: 1043762,
+        vatBaseCurrency: 'CZK',
+        vatAmountMinor: 219190,
+        vatCurrency: 'CZK'
+      }
+    })
+
+    expect(records[0]?.amountMinor).not.toBe(1043762)
+    expect((records[0]?.data as { amountMinor?: number }).amountMinor).not.toBe(1043762)
+  })
+
   it('parses Booking invoice PDFs as invoice documents and preserves local CZK payable totals when present', () => {
     const invoice = getRealInputFixture('booking-invoice-pdf')
 
