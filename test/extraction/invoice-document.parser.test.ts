@@ -518,6 +518,34 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('emits a usable sparse refund settlement record when the invoice arrives through the real binary PDF path', () => {
+    const invoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      binaryContentBase64: invoice.rawInput.binaryContentBase64,
+      extractedAt: '2026-03-31T16:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      recordType: 'invoice-document',
+      rawReference: '5125144501',
+      amountMinor: 380400,
+      currency: 'CZK',
+      occurredAt: '2026-03-26',
+      data: {
+        supplier: 'Dobrá Energie s.r.o.',
+        invoiceNumber: '5125144501',
+        variableSymbol: '5125144501',
+        settlementDirection: 'refund_incoming',
+        settlementAmountMinor: 380400,
+        targetBankAccountHint: '8888997777/2010'
+      }
+    })
+  })
+
   it('keeps grouped Czech invoice header/value blocks aligned when the value cells spill into following lines', () => {
     const content = [
       'Faktura - daňový doklad',

@@ -182,6 +182,8 @@ describe('realInputFixtures', () => {
         variableSymbol: '5125144501',
         supplier: 'Dobrá Energie s.r.o.',
         dueDate: '2026-03-26',
+        settlementAmountMinor: 380400,
+        settlementCurrency: 'CZK',
         targetBankAccountHint: '8888997777/2010'
       }
     })

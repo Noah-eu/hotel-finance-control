@@ -1190,6 +1190,71 @@ describe('buildUploadWebFlow', () => {
     )).toBe(false)
   })
 
+  it('keeps the sparse Dobrá refund invoice extracted on the exact minimal real browser path with only the Fio refund movement and the binary PDF upload', async () => {
+    const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithSparseDobraRefundIncoming(),
+          'text/csv'
+        ),
+        createRuntimePdfFile('Dobra-Energie-preplatek-3804-2026-03.pdf', refundInvoice.rawInput.binaryContentBase64!)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T16:00:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+        extractedCount: 1
+      }),
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+        extractedCount: 1,
+        extractedRecordIds: ['invoice-record:uploaded:invoice:2:dobra-energie-preplatek-3804-2026-03-pdf']
+      })
+    ])
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+          documentExtractionSummary: expect.objectContaining({
+            settlementDirection: 'refund_incoming',
+            referenceNumber: '5125144501',
+            totalAmountMinor: 380400,
+            targetBankAccountHint: '8888997777/2010'
+          })
+        })
+      ])
+    )
+
+    expect(result.reviewSections.expenseMatched).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          expenseComparison: expect.objectContaining({
+            document: expect.objectContaining({
+              supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+              reference: '5125144501',
+              amount: '3 804,00 Kč',
+              ibanHint: '8888997777/2010'
+            }),
+            bank: expect.objectContaining({
+              bankAccount: '8888997777/2010',
+              reference: 'Vrácení přeplatku VS 5125144501',
+              amount: '3 804,00 Kč'
+            })
+          })
+        })
+      ])
+    )
+
+    expect(result.reviewSections.expenseUnmatchedInflows).toEqual([])
+  })
+
   it('keeps bare integer CZK outgoing bank values in correct major-unit scaling on the browser upload expense path', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
 
