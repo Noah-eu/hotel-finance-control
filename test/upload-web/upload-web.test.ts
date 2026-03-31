@@ -707,7 +707,8 @@ describe('buildUploadWebFlow', () => {
           issuerOrCounterparty: 'Dobrá Energie s.r.o.',
           referenceNumber: 'DE-2026-03-4501',
           dueDate: '2026-04-01',
-          totalAmountMinor: 1845000,
+          totalAmountMinor: 712500,
+          summaryTotalAmountMinor: 6231803,
           totalCurrency: 'CZK',
           billingPeriod: '01.03.2026 - 31.03.2026',
           finalStatus: 'parsed'
@@ -855,7 +856,9 @@ describe('buildUploadWebFlow', () => {
         fileName: 'Dobra-Energie-2026-03.pdf',
         documentExtractionSummary: expect.objectContaining({
           settlementDirection: 'payable_outgoing',
-          referenceNumber: 'DE-2026-03-4501'
+          referenceNumber: 'DE-2026-03-4501',
+          totalAmountMinor: 712500,
+          summaryTotalAmountMinor: 6231803
         })
       })
     )
@@ -866,6 +869,8 @@ describe('buildUploadWebFlow', () => {
           settlementDirection: 'refund_incoming',
           referenceNumber: 'DE-RET-2026-03-9901',
           variableSymbol: '2026039901',
+          totalAmountMinor: 245000,
+          summaryTotalAmountMinor: 4985442,
           targetBankAccountHint: '5599955956/5500'
         })
       })
@@ -884,12 +889,14 @@ describe('buildUploadWebFlow', () => {
     expect(payableMatchedItem?.expenseComparison).toMatchObject({
       document: expect.objectContaining({
         supplierOrCounterparty: 'Dobrá Energie s.r.o.',
-        reference: 'DE-2026-03-4501'
+        reference: 'DE-2026-03-4501',
+        amount: '7 125,00 Kč',
+        summaryTotal: '62 318,03 Kč'
       }),
       bank: expect.objectContaining({
         supplierOrCounterparty: 'Dobrá Energie s.r.o.',
         reference: 'VS 2026034501 Dodávka elektřiny',
-        amount: '18 450,00 Kč'
+        amount: '7 125,00 Kč'
       })
     })
 
@@ -900,6 +907,8 @@ describe('buildUploadWebFlow', () => {
       document: expect.objectContaining({
         supplierOrCounterparty: 'Dobrá Energie s.r.o.',
         reference: 'DE-RET-2026-03-9901',
+        amount: '2 450,00 Kč',
+        summaryTotal: '49 854,42 Kč',
         ibanHint: '5599955956/5500'
       }),
       bank: expect.objectContaining({
@@ -5567,7 +5576,7 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
 function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndDobraSettlementDocuments(): string {
   return [
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
-    '24.03.2026 10:15;24.03.2026 10:17;5599955956/5500;CZ6508000000192000145399;Dobrá Energie s.r.o.;-18450,00;CZK;VS 2026034501 Dodávka elektřiny',
+    '24.03.2026 10:15;24.03.2026 10:17;5599955956/5500;CZ6508000000192000145399;Dobrá Energie s.r.o.;-7125,00;CZK;VS 2026034501 Dodávka elektřiny',
     '25.03.2026 09:05;25.03.2026 09:07;5599955956/5500;000000-2222333344/0800;Dobrá Energie s.r.o.;2450,00;CZK;Vrácení přeplatku VS 2026039901'
   ].join('\n')
 }

@@ -148,13 +148,14 @@ describe('realInputFixtures', () => {
     })
     expect(dobraInvoicePdf.expectedExtractedRecords[0]).toMatchObject({
       recordType: 'invoice-document',
-      amountMinor: 1845000,
+      amountMinor: 712500,
       data: {
         settlementDirection: 'payable_outgoing',
         invoiceNumber: 'DE-2026-03-4501',
         supplier: 'Dobrá Energie s.r.o.',
         customer: 'JOKELAND s.r.o.',
         dueDate: '2026-04-01',
+        summaryTotalAmountMinor: 6231803,
         billingPeriod: '01.03.2026 - 31.03.2026'
       }
     })
@@ -167,6 +168,7 @@ describe('realInputFixtures', () => {
         variableSymbol: '2026039901',
         supplier: 'Dobrá Energie s.r.o.',
         dueDate: '2026-03-25',
+        summaryTotalAmountMinor: 4985442,
         targetBankAccountHint: '5599955956/5500'
       }
     })
@@ -281,7 +283,7 @@ describe('realInputFixtures', () => {
     expect(dobraInvoicePdf.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'invoice',
       direction: 'out',
-      amountMinor: 1845000,
+      amountMinor: 712500,
       accountId: 'document-expenses',
       counterparty: 'Dobrá Energie s.r.o.',
       reference: 'DE-2026-03-4501'

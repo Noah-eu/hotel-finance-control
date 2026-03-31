@@ -33,6 +33,10 @@ export interface DeterministicDocumentExtractionSummary {
   paymentMethod?: string
   totalAmountMinor?: number
   totalCurrency?: string
+  settlementAmountMinor?: number
+  settlementCurrency?: string
+  summaryTotalAmountMinor?: number
+  summaryTotalCurrency?: string
   localAmountMinor?: number
   localCurrency?: string
   vatBaseAmountMinor?: number

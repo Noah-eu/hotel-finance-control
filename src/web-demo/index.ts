@@ -3293,7 +3293,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
               ['Číslo faktury / reference', side && side.reference],
               ['Datum vystavení', side && side.issueDate],
               ['Datum splatnosti', side && side.dueDate],
-              ['Částka', side && side.amount],
+              ['Částka k párování', side && side.amount],
+              ['Celkem na faktuře', side && side.summaryTotal],
               ['Měna', side && side.currency],
               ['IBAN hint', side && side.ibanHint]
             ]

@@ -402,8 +402,12 @@ describe('parseInvoiceDocument', () => {
       taxableDate: '2026-03-18',
       dueDate: '2026-04-01',
       paymentMethod: 'Přev. příkaz',
-      totalAmountMinor: 1845000,
+      totalAmountMinor: 712500,
       totalCurrency: 'CZK',
+      settlementAmountMinor: 712500,
+      settlementCurrency: 'CZK',
+      summaryTotalAmountMinor: 6231803,
+      summaryTotalCurrency: 'CZK',
       ibanHint: 'CZ6508000000192000145399',
       billingPeriod: '01.03.2026 - 31.03.2026',
       confidence: 'strong',
@@ -446,11 +450,36 @@ describe('parseInvoiceDocument', () => {
       dueDate: '2026-03-25',
       totalAmountMinor: 245000,
       totalCurrency: 'CZK',
+      settlementAmountMinor: 245000,
+      settlementCurrency: 'CZK',
+      summaryTotalAmountMinor: 4985442,
+      summaryTotalCurrency: 'CZK',
       targetBankAccountHint: '5599955956/5500',
       confidence: 'strong',
       finalStatus: 'parsed',
       requiredFieldsCheck: 'passed',
       missingRequiredFields: []
+    })
+  })
+
+  it('keeps invoice-wide totals separate from the settlement amount used for Dobrá payable bank matching', () => {
+    const invoice = getRealInputFixture('invoice-document-dobra-energie-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-31T08:10:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      amountMinor: 712500,
+      currency: 'CZK',
+      data: {
+        settlementAmountMinor: 712500,
+        settlementCurrency: 'CZK',
+        summaryTotalAmountMinor: 6231803,
+        summaryTotalCurrency: 'CZK'
+      }
     })
   })
 

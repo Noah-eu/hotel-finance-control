@@ -103,6 +103,8 @@ interface InvoiceDocumentExtractionDetails {
     dueDateRaw?: string
     taxableDateRaw?: string
     totalRaw?: string
+    settlementAmountRaw?: string
+    summaryTotalRaw?: string
     paymentMethod?: string
     description?: string
     vatBaseRaw?: string
@@ -252,6 +254,12 @@ export class InvoiceDocumentParser {
         ...(taxableDate ? { taxableDate } : {}),
         amountMinor: summary.totalAmountMinor,
         currency: summary.totalCurrency,
+        ...(typeof summary.settlementAmountMinor === 'number' && summary.settlementCurrency
+          ? { settlementAmountMinor: summary.settlementAmountMinor, settlementCurrency: summary.settlementCurrency }
+          : {}),
+        ...(typeof summary.summaryTotalAmountMinor === 'number' && summary.summaryTotalCurrency
+          ? { summaryTotalAmountMinor: summary.summaryTotalAmountMinor, summaryTotalCurrency: summary.summaryTotalCurrency }
+          : {}),
         ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
         ...(extracted.description ? { description: extracted.description } : {}),
         ...(extracted.billingPeriod ? { billingPeriod: extracted.billingPeriod } : {}),
@@ -316,6 +324,13 @@ function buildInvoiceDocumentExtractionSummary(
   const taxableDate = safeNormalizeDocumentDate(extracted.taxableDateRaw, 'Invoice taxable date')
   const dueDate = safeNormalizeDocumentDate(extracted.dueDateRaw, 'Invoice due date')
   const total = safeParseDocumentMoney(extracted.totalRaw, 'Invoice total')
+  const hasSettlementSpecificAmount = Boolean(extracted.settlementDirection || extracted.settlementAmountRaw?.trim())
+  const settlementTotal = hasSettlementSpecificAmount
+    ? safeParseDocumentMoney(extracted.settlementAmountRaw ?? extracted.totalRaw, 'Invoice settlement total')
+    : undefined
+  const summaryTotal = hasSettlementSpecificAmount
+    ? safeParseDocumentMoney(extracted.summaryTotalRaw, 'Invoice summary total')
+    : undefined
   const localTotal = safeParseDocumentMoney(extracted.localTotalRaw, 'Invoice local total')
   const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Invoice VAT base')
   const vat = safeParseDocumentMoney(extracted.vatRaw, 'Invoice VAT')
@@ -374,6 +389,8 @@ function buildInvoiceDocumentExtractionSummary(
     ...(dueDate ? { dueDate } : {}),
     ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
     ...(total ? { totalAmountMinor: total.amountMinor, totalCurrency: total.currency } : {}),
+    ...(settlementTotal ? { settlementAmountMinor: settlementTotal.amountMinor, settlementCurrency: settlementTotal.currency } : {}),
+    ...(summaryTotal ? { summaryTotalAmountMinor: summaryTotal.amountMinor, summaryTotalCurrency: summaryTotal.currency } : {}),
     ...(localTotal ? { localAmountMinor: localTotal.amountMinor, localCurrency: localTotal.currency } : {}),
     ...(vatBase ? { vatBaseAmountMinor: vatBase.amountMinor, vatBaseCurrency: vatBase.currency } : {}),
     ...(vat ? { vatAmountMinor: vat.amountMinor, vatCurrency: vat.currency } : {}),
@@ -448,6 +465,11 @@ function extractInvoiceDocumentDetails(input: {
   }
   const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
   const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields, lines)
+  const effectiveTotalRaw =
+    generalSupplementaryFields.settlementAmountRaw
+    ?? textExtracted.totalRaw
+    ?? generalSupplementaryFields.summaryTotalRaw
+    ?? bookingSupplementaryFields.totalRaw
   const referenceHints = uniqueInvoiceReferenceHints([
     ...(generalSupplementaryFields.referenceHints ?? []),
     ...(bookingSupplementaryFields.referenceHints ?? [])
@@ -462,7 +484,12 @@ function extractInvoiceDocumentDetails(input: {
     supplier: textExtracted.supplier ?? bookingSupplementaryFields.supplier,
     issueDateRaw: textExtracted.issueDateRaw ?? bookingSupplementaryFields.issueDateRaw,
     dueDateRaw: textExtracted.dueDateRaw ?? bookingSupplementaryFields.dueDateRaw,
-    totalRaw: textExtracted.totalRaw ?? generalSupplementaryFields.totalRaw ?? bookingSupplementaryFields.totalRaw,
+    totalRaw: effectiveTotalRaw,
+    settlementAmountRaw: generalSupplementaryFields.settlementAmountRaw,
+    summaryTotalRaw: selectInvoiceSummaryTotalRaw(
+      textExtracted.totalRaw ?? generalSupplementaryFields.summaryTotalRaw,
+      effectiveTotalRaw
+    ),
     paymentMethod: textExtracted.paymentMethod ?? bookingSupplementaryFields.paymentMethod,
     description: textExtracted.description ?? bookingSupplementaryFields.description,
     ibanValue: textExtracted.ibanValue ?? bookingSupplementaryFields.ibanValue,
@@ -993,6 +1020,35 @@ function normalizeComparableMoneyValue(value: string | undefined): string | unde
   return money ? `${money.amountMinor}:${money.currency}` : undefined
 }
 
+function selectInvoiceSummaryTotalRaw(
+  textTotalRaw: string | undefined,
+  effectiveTotalRaw: string | undefined
+): string | undefined {
+  if (!textTotalRaw?.trim()) {
+    return undefined
+  }
+
+  if (!effectiveTotalRaw?.trim()) {
+    return textTotalRaw
+  }
+
+  return invoiceMoneyValuesMatch(textTotalRaw, effectiveTotalRaw)
+    ? undefined
+    : textTotalRaw
+}
+
+function invoiceMoneyValuesMatch(left: string | undefined, right: string | undefined): boolean {
+  const leftMoney = safeParseDocumentMoney(left, 'Invoice money comparison left')
+  const rightMoney = safeParseDocumentMoney(right, 'Invoice money comparison right')
+
+  return Boolean(
+    leftMoney
+    && rightMoney
+    && leftMoney.amountMinor === rightMoney.amountMinor
+    && leftMoney.currency === rightMoney.currency
+  )
+}
+
 function buildInvoiceRecordId(sourceDocumentId: ExtractedRecord['sourceDocumentId']): ExtractedRecord['id'] {
   return `invoice-record:${sourceDocumentId}` as ExtractedRecord['id']
 }
@@ -1017,6 +1073,12 @@ function extractGeneralInvoiceSupplementaryFields(
     /(?:^|\n)\s*(?:obdob[íi]|billing\s+period|invoice\s+period|period)\s*[:\-]?\s*([^\n]+)/iu
   ])
   const settlementDetails = extractInvoiceSettlementSupplementaryFields(content, lines)
+  const summaryTotalRaw = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*celkem\s*[:\-]\s*([^\n]+)/iu,
+    /(?:^|\n)\s*celkem\s*\n\s*([^\n]+)/iu,
+    /(?:^|\n)\s*s\s*dph\s*[:\-]\s*([^\n]+)/iu,
+    /(?:^|\n)\s*s\s*dph\s*\n\s*([^\n]+)/iu
+  ])
   const referenceHints = uniqueInvoiceReferenceHints([invoiceNumber, variableSymbol])
 
   return {
@@ -1024,7 +1086,8 @@ function extractGeneralInvoiceSupplementaryFields(
     ...(billingPeriod ? { billingPeriod } : {}),
     ...(variableSymbol ? { variableSymbol } : {}),
     ...(settlementDetails.settlementDirection ? { settlementDirection: settlementDetails.settlementDirection } : {}),
-    ...(settlementDetails.totalRaw ? { totalRaw: settlementDetails.totalRaw } : {}),
+    ...(settlementDetails.settlementAmountRaw ? { settlementAmountRaw: settlementDetails.settlementAmountRaw } : {}),
+    ...(summaryTotalRaw ? { summaryTotalRaw } : {}),
     ...(settlementDetails.targetBankAccountHint ? { targetBankAccountHint: settlementDetails.targetBankAccountHint } : {}),
     ...(referenceHints.length > 0 ? { referenceHints } : {})
   }
@@ -1039,6 +1102,7 @@ function extractInvoiceSettlementSupplementaryFields(
     /(?:^|\n)\s*(?:přeplatek(?:\s+k\s+vrácen[íi])?|vratka|vrácen[áa]\s+částka|refund(?:\s+amount)?|overpayment)\s*[:\-]?\s*([^\n]+)/iu,
     /(?:^|\n)\s*(?:přeplatek(?:\s+k\s+vrácen[íi])?|vratka|vrácen[áa]\s+částka|refund(?:\s+amount)?|overpayment)\s*\n\s*([^\n]+)/iu
   ])
+  const payableAmountRaw = extractInvoicePayableSettlementAmountRaw(content, lines)
   const targetBankAccountHint = extractInvoiceSettlementTargetBankAccountHint(content, lines)
   const refundSignalScore =
     (refundAmountRaw ? 2 : 0)
@@ -1046,11 +1110,13 @@ function extractInvoiceSettlementSupplementaryFields(
     + (/(?:bude|budou)\s+přips[áa]n[yo]?\s+na\s+v[aá]š\s+bankovn[íi]\s+účet/iu.test(content) ? 3 : 0)
     + (/(?:^|\n)\s*(?:přeplatek|vratka|refund|overpayment)\b/imu.test(content) ? 2 : 0)
   const payableSignalScore =
-    (normalizedContent.includes('celkem k uhrade')
+    (payableAmountRaw ? 2 : 0)
+    + (normalizedContent.includes('celkem k uhrade')
       || normalizedContent.includes('k uhrade')
       || normalizedContent.includes('amount due')
       || normalizedContent.includes('total due')
       || normalizedContent.includes('k zaplaceni')
+      || normalizedContent.includes('nedoplatek')
       ? 2
       : 0)
   const settlementDirection: DocumentSettlementDirection | undefined = refundSignalScore >= 4
@@ -1058,12 +1124,58 @@ function extractInvoiceSettlementSupplementaryFields(
     : payableSignalScore >= 2
       ? 'payable_outgoing'
       : undefined
+  const settlementAmountRaw = settlementDirection === 'refund_incoming'
+    ? refundAmountRaw
+    : settlementDirection === 'payable_outgoing'
+      ? payableAmountRaw
+      : undefined
 
   return {
     ...(settlementDirection ? { settlementDirection } : {}),
-    ...(settlementDirection === 'refund_incoming' && refundAmountRaw ? { totalRaw: refundAmountRaw } : {}),
+    ...(settlementAmountRaw ? { settlementAmountRaw } : {}),
     ...(targetBankAccountHint ? { targetBankAccountHint } : {})
   }
+}
+
+function extractInvoicePayableSettlementAmountRaw(content: string, lines: string[]): string | undefined {
+  const regexCandidate = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|k\s+úhrad[ěe]|k\s+zaplacen[íi]|nedoplatek|amount\s+due|total\s+due)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|k\s+úhrad[ěe]|k\s+zaplacen[íi]|nedoplatek|amount\s+due|total\s+due)\s*\n\s*([^\n]+)/iu
+  ])
+
+  if (safeParseDocumentMoney(regexCandidate, 'Invoice payable settlement amount')) {
+    return regexCandidate
+  }
+
+  const payableLabelSpans = collectCompositePayableLabelSpans(lines)
+  const explicitPayableLabelSpans = payableLabelSpans.filter((span) => span.priority > 1)
+  const candidateSpans = explicitPayableLabelSpans.length > 0
+    ? explicitPayableLabelSpans
+    : payableLabelSpans
+
+  for (const span of candidateSpans) {
+    const sameLineCandidate = extractPayableMoneyCandidateFromLine(span.rawLabel)
+
+    if (safeParseDocumentMoney(sameLineCandidate, 'Invoice payable settlement amount')) {
+      return sameLineCandidate
+    }
+
+    for (let lookahead = 1; lookahead <= 4 && span.endIndex + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[span.endIndex + lookahead] ?? '')
+
+      if (lookahead > 1 && isInvoiceSectionBoundary(candidateLine)) {
+        break
+      }
+
+      const candidate = extractPayableMoneyCandidateFromLine(candidateLine)
+
+      if (safeParseDocumentMoney(candidate, 'Invoice payable settlement amount')) {
+        return candidate
+      }
+    }
+  }
+
+  return undefined
 }
 
 function extractInvoiceSettlementTargetBankAccountHint(

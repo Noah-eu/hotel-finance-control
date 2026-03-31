@@ -30,6 +30,7 @@ export interface ReviewExpenseComparisonSide {
   issueDate?: string
   dueDate?: string
   amount?: string
+  summaryTotal?: string
   currency?: string
   ibanHint?: string
   bookedAt?: string
@@ -1030,6 +1031,8 @@ function buildExpenseComparison(
   documentEntry: ExpenseDocumentReviewEntry,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined
 ): ReviewExpenseComparison {
+  const documentSummaryTotal = getExpenseDocumentSummaryTotal(documentEntry)
+
   return {
     variant: 'document-bank',
     leftLabel: 'Doklad',
@@ -1042,6 +1045,7 @@ function buildExpenseComparison(
       amount: typeof documentEntry.extractedRecord.amountMinor === 'number' && documentEntry.extractedRecord.currency
         ? formatAmountMinorCs(documentEntry.extractedRecord.amountMinor, documentEntry.extractedRecord.currency)
         : undefined,
+      summaryTotal: documentSummaryTotal,
       currency: documentEntry.extractedRecord.currency,
       ibanHint: getExpenseDocumentIbanHint(documentEntry)
     },
@@ -1191,6 +1195,25 @@ function buildExpenseEvidenceSummary(
     ),
     maybeEvidenceEntry('provenience', documentProvenance)
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
+}
+
+function getExpenseDocumentSummaryTotal(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
+  const data = documentEntry.extractedRecord.data as Record<string, unknown>
+  const amountMinor = typeof data.summaryTotalAmountMinor === 'number' ? data.summaryTotalAmountMinor : undefined
+  const currency = typeof data.summaryTotalCurrency === 'string' ? data.summaryTotalCurrency : undefined
+
+  if (typeof amountMinor !== 'number' || !currency) {
+    return undefined
+  }
+
+  if (
+    documentEntry.extractedRecord.amountMinor === amountMinor
+    && documentEntry.extractedRecord.currency === currency
+  ) {
+    return undefined
+  }
+
+  return formatAmountMinorCs(amountMinor, currency)
 }
 
 function buildExpenseOutflowEvidenceSummary(
