@@ -11,6 +11,7 @@ import {
   type BrowserUploadedMonthlyRunResult
 } from '../upload-web'
 import { getRealInputFixture } from '../real-input-fixtures'
+import { applyNodeRuntimeBuildInfoEnv, resolveNodeRuntimeBuildInfo } from '../shared/build-provenance.node'
 import { formatAmountMinorCs } from '../shared/money'
 
 export interface BuildWebDemoOptions {
@@ -68,12 +69,20 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
   if (options.outputPath) {
     const resolved = resolve(options.outputPath)
     mkdirSync(dirname(resolved), { recursive: true })
-    const [runtimeAssetPath] = await emitBrowserRuntimeAssets(resolved)
+    const [runtimeAssetPath] = await emitBrowserRuntimeAssets(resolved, { generatedAt })
+    const runtimeBuildInfo = resolveNodeRuntimeBuildInfo({
+      generatedAt,
+      runtimeModuleVersion: runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, ''),
+      rendererVersion: WEB_DEMO_RENDERER_MARKER,
+      payoutProjectionVersion: WEB_DEMO_PAYOUT_PROJECTION_MARKER
+    })
+    applyNodeRuntimeBuildInfoEnv(runtimeBuildInfo)
     const html = renderOperatorWebDemoHtml({
       generatedAt,
       uploadFlowHtml: uploadFlow.html,
       browserRun,
       runtimeAssetPath,
+      runtimeBuildInfo,
       debugMode
     })
     writeFileSync(resolved, html, 'utf8')
@@ -91,6 +100,12 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
     uploadFlowHtml: uploadFlow.html,
     browserRun,
     runtimeAssetPath: './browser-runtime.js',
+    runtimeBuildInfo: resolveNodeRuntimeBuildInfo({
+      generatedAt,
+      runtimeModuleVersion: 'browser-runtime',
+      rendererVersion: WEB_DEMO_RENDERER_MARKER,
+      payoutProjectionVersion: WEB_DEMO_PAYOUT_PROJECTION_MARKER
+    }),
     debugMode
   })
 
@@ -105,15 +120,24 @@ function renderOperatorWebDemoHtml(input: {
   uploadFlowHtml: string
   browserRun: BrowserUploadedMonthlyRunResult
   runtimeAssetPath: string
+  runtimeBuildInfo: {
+    gitCommitHash: string
+    gitCommitShortSha: string
+    buildTimestamp: string
+    buildBranch: string
+    buildSource: string
+    runtimeModuleVersion: string
+    rendererVersion?: string
+    payoutProjectionVersion?: string
+  }
   debugMode?: boolean
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
   const runtimeBuildInfo = {
-    gitCommitHash: resolveGitCommitHash(),
-    buildTimestamp: input.generatedAt,
-    runtimeModuleVersion: buildFingerprintVersion,
-    rendererVersion: WEB_DEMO_RENDERER_MARKER,
-    payoutProjectionVersion: WEB_DEMO_PAYOUT_PROJECTION_MARKER
+    ...input.runtimeBuildInfo,
+    runtimeModuleVersion: input.runtimeBuildInfo.runtimeModuleVersion || buildFingerprintVersion,
+    rendererVersion: input.runtimeBuildInfo.rendererVersion || WEB_DEMO_RENDERER_MARKER,
+    payoutProjectionVersion: input.runtimeBuildInfo.payoutProjectionVersion || WEB_DEMO_PAYOUT_PROJECTION_MARKER
   }
   const showRuntimePayoutDiagnostics = Boolean(input.debugMode)
   const buildExtractedRecordsMarkupFunction = input.debugMode
@@ -3159,7 +3183,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<ul class="diagnostic-list">',
           '<li><strong>Stav renderu:</strong> ' + escapeHtml(statusLabel) + '</li>',
           '<li><strong>Git commit:</strong> <code>' + escapeHtml(String(buildInfo.gitCommitHash || 'unknown')) + '</code></li>',
+          '<li><strong>Git short SHA:</strong> <code>' + escapeHtml(String(buildInfo.gitCommitShortSha || 'unknown')) + '</code></li>',
           '<li><strong>Build timestamp:</strong> <code>' + escapeHtml(String(buildInfo.buildTimestamp || generatedAt)) + '</code></li>',
+          '<li><strong>Build branch:</strong> <code>' + escapeHtml(String(buildInfo.buildBranch || 'unknown')) + '</code></li>',
+          '<li><strong>Build source:</strong> <code>' + escapeHtml(String(buildInfo.buildSource || 'runtime')) + '</code></li>',
           '<li><strong>Runtime module version:</strong> <code>' + escapeHtml(String(buildInfo.runtimeModuleVersion || buildFingerprintVersion)) + '</code></li>',
           '<li><strong>Renderer version:</strong> <code>' + escapeHtml(String(buildInfo.rendererVersion || ${JSON.stringify(WEB_DEMO_RENDERER_MARKER)})) + '</code></li>',
           '<li><strong>Payout projection version:</strong> <code>' + escapeHtml(String(buildInfo.payoutProjectionVersion || ${JSON.stringify(WEB_DEMO_PAYOUT_PROJECTION_MARKER)})) + '</code></li>',

@@ -16,6 +16,11 @@ import {
   type ReviewSectionItem
 } from '../review'
 import type { ReconciliationReport } from '../reporting'
+import {
+  applyNodeRuntimeBuildInfoEnv,
+  buildRuntimeBuildInfoBanner,
+  resolveNodeRuntimeBuildInfo
+} from '../shared/build-provenance.node'
 import { formatAmountMinorCs } from '../shared/money'
 import { emitBrowserRuntimeBundle } from './browser-bundle'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state'
@@ -63,6 +68,16 @@ export interface BrowserRuntimeUploadState {
   generatedAt: string
   runId: string
   monthLabel: string
+  runtimeBuildInfo: {
+    gitCommitHash: string
+    gitCommitShortSha: string
+    buildTimestamp: string
+    buildBranch: string
+    buildSource: string
+    runtimeModuleVersion: string
+    rendererVersion?: string
+    payoutProjectionVersion?: string
+  }
   reconciliationSnapshot: {
     sourceFunction: string
     objectPath: string
@@ -368,7 +383,18 @@ export function renderUploadWebFlowHtml(generatedAt: string): string {
 }
 
 export function buildBrowserRuntimeUploadState(input: BuildUploadedBatchPreviewInput): BrowserRuntimeUploadState {
-  return buildBrowserRuntimeUploadStateFromFiles(input)
+  const runtimeBuildInfo = resolveNodeRuntimeBuildInfo({
+    generatedAt: input.generatedAt,
+    runtimeModuleVersion: process.env.HOTEL_FINANCE_RUNTIME_MODULE_VERSION ?? 'browser-runtime-node',
+    rendererVersion: process.env.HOTEL_FINANCE_RENDERER_VERSION,
+    payoutProjectionVersion: process.env.HOTEL_FINANCE_PAYOUT_PROJECTION_VERSION
+  })
+  applyNodeRuntimeBuildInfoEnv(runtimeBuildInfo)
+
+  return buildBrowserRuntimeUploadStateFromFiles({
+    ...input,
+    runtimeBuildInfo
+  })
 }
 
 export interface BrowserRuntimeInputFile {
@@ -421,10 +447,19 @@ export function renderBrowserRuntimeClientBootstrap(runtimeAssetPath = './browse
     `
 }
 
-export async function emitBrowserRuntimeAssets(outputPath: string): Promise<string[]> {
-  const { runtimeAssetPath } = await emitBrowserRuntimeBundle(outputPath)
+export async function emitBrowserRuntimeAssets(outputPath: string, options: { generatedAt?: string } = {}): Promise<string[]> {
+  const runtimeBuildInfo = resolveNodeRuntimeBuildInfo({
+    generatedAt: options.generatedAt ?? process.env.HOTEL_FINANCE_BUILD_TIMESTAMP ?? new Date().toISOString(),
+    runtimeModuleVersion: 'browser-runtime',
+    rendererVersion: process.env.HOTEL_FINANCE_RENDERER_VERSION,
+    payoutProjectionVersion: process.env.HOTEL_FINANCE_PAYOUT_PROJECTION_VERSION
+  })
+  applyNodeRuntimeBuildInfoEnv(runtimeBuildInfo)
+  const rebuilt = await emitBrowserRuntimeBundle(outputPath, {
+    banner: buildRuntimeBuildInfoBanner(runtimeBuildInfo)
+  })
 
-  return [runtimeAssetPath]
+  return [rebuilt.runtimeAssetPath]
 }
 
 function renderUploadWebFlowHtmlInternal(generatedAt: string): string {

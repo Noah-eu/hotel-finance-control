@@ -101,6 +101,17 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportSummary.matchedGroupCount).toBeGreaterThan(0)
     expect(result.reportTransactions.length).toBeGreaterThan(0)
     expect(result.reviewSections.matched.length).toBeGreaterThan(0)
+    expect(result.runtimeBuildInfo).toEqual(expect.objectContaining({
+      gitCommitHash: expect.any(String),
+      gitCommitShortSha: expect.any(String),
+      buildTimestamp: '2026-03-19T10:00:00.000Z',
+      buildBranch: expect.any(String),
+      buildSource: expect.any(String),
+      runtimeModuleVersion: expect.any(String)
+    }))
+    expect(result.runtimeBuildInfo.gitCommitHash.length).toBeGreaterThan(0)
+    expect(result.runtimeBuildInfo.gitCommitShortSha.length).toBeGreaterThan(0)
+    expect(result.runtimeBuildInfo.buildSource.length).toBeGreaterThan(0)
     expect(result.runtimeAudit.payoutDiagnostics.workflowPayoutReferences.length).toBeGreaterThanOrEqual(0)
     expect(result.supportedExpenseLinks.length).toBeGreaterThanOrEqual(0)
     expect(result.exportFiles.map((file) => file.fileName)).toEqual([

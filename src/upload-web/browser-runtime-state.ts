@@ -10,6 +10,7 @@ import {
 } from '../monthly-batch'
 import { inspectPayoutBatchBankDecisions } from '../reconciliation'
 import { buildReviewScreen } from '../review'
+import { resolveRuntimeBuildInfo } from '../shared/build-provenance'
 import { formatAmountMinorCs } from '../shared/money'
 import type { BrowserRuntimeProgressUpdate, BrowserRuntimeUploadState } from './index.js'
 
@@ -19,6 +20,7 @@ export interface BuildBrowserRuntimeStateInput {
   files: UploadedMonthlyFile[]
   runId: string
   generatedAt: string
+  runtimeBuildInfo?: BrowserRuntimeUploadState['runtimeBuildInfo']
 }
 
 export function buildBrowserRuntimeUploadStateFromFiles(
@@ -96,6 +98,10 @@ function buildBrowserRuntimeUploadStateFromIngestion(
     generatedAt: input.generatedAt,
     runId: input.runId,
     monthLabel: deriveMonthLabel(input.runId),
+    runtimeBuildInfo: input.runtimeBuildInfo ?? resolveRuntimeBuildInfo({
+      generatedAt: input.generatedAt,
+      fallbackBuildSource: 'browser-runtime'
+    }),
     reconciliationSnapshot: buildReconciliationSnapshot(batch),
     routingSummary: {
       uploadedFileCount: ingestion.fileRoutes.length,

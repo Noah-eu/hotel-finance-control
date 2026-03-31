@@ -1,5 +1,6 @@
 import type { BrowserRuntimeInputFile, BrowserRuntimeProgressUpdate, BrowserRuntimeUploadState } from './index.js'
 import { buildBrowserRuntimeUploadStateFromFilesProgressively } from './browser-runtime-state.js'
+import { resolveRuntimeBuildInfo } from '../shared/build-provenance.js'
 import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
 import { detectUploadedMonthlyFileCapability } from '../monthly-batch/capabilities.js'
 import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
@@ -65,10 +66,27 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
   return buildBrowserRuntimeUploadStateFromFilesProgressively({
     files: uploadedFiles,
     runId: buildBrowserRuntimeRunId(input.month),
-    generatedAt: input.generatedAt
+    generatedAt: input.generatedAt,
+    runtimeBuildInfo: resolveRuntimeBuildInfo({
+      generatedAt: input.generatedAt,
+      runtimeModuleVersion: resolveLoadedRuntimeModuleVersion(),
+      fallbackBuildSource: 'browser-runtime'
+    })
   }, {
     onProgress: input.onProgress
   })
+}
+
+function resolveLoadedRuntimeModuleVersion(): string {
+  try {
+    const moduleUrl = typeof import.meta !== 'undefined' ? import.meta.url : ''
+    const normalizedUrl = String(moduleUrl || '')
+    const fileName = normalizedUrl.split('/').pop() ?? normalizedUrl
+
+    return fileName.replace(/\.js(?:\?.*)?$/, '') || 'browser-runtime'
+  } catch {
+    return 'browser-runtime'
+  }
 }
 
 export function createBrowserRuntime(): BrowserRuntimeBridge {

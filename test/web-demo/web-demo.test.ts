@@ -9,6 +9,7 @@ import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
 import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
+import { emitBrowserRuntimeAssets } from '../../src/upload-web'
 
 function collectRuntimePayoutDiagnosticDataFromState(state: Awaited<ReturnType<typeof buildBrowserRuntimeStateFromSelectedFiles>>) {
   const runtimeAudit = state.runtimeAudit.payoutDiagnostics
@@ -104,6 +105,7 @@ describe('buildWebDemo', () => {
     expect(runtimeAsset).not.toContain('estimateExtractedCount(')
     expect(runtimeAsset).not.toContain('buildReviewSections(')
     expect(runtimeAsset).not.toContain('buildSupportedExpenseLinks(')
+    expect(runtimeAsset).toContain('__HOTEL_FINANCE_BUILD_PROVENANCE__')
     expect(runtimeAsset).toContain('ingestUploadedMonthlyFiles')
     expect(runtimeAsset).toContain('buildReviewScreen')
     expect(runtimeAsset).toContain('buildExportArtifacts')
@@ -203,7 +205,9 @@ describe('buildWebDemo', () => {
       force: true
     })
 
-    const { runtimeAssetPath } = await emitBrowserRuntimeBundle(outputPath)
+    const [runtimeAssetPath] = await emitBrowserRuntimeAssets(outputPath, {
+      generatedAt: '2026-03-18T19:00:00.000Z'
+    })
     rmSync(resolve('dist/test-web-demo-bundler-reference'), {
       recursive: true,
       force: true
@@ -1570,7 +1574,10 @@ describe('buildWebDemo', () => {
 
     expect(rendered.runtimePayoutProjectionDebugSection.hidden).toBe(false)
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Git commit:</strong> <code>${gitCommitHash}</code>`)
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Git short SHA:</strong> <code>${gitCommitHash.slice(0, 7)}</code>`)
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Build timestamp:</strong> <code>${generatedAt}</code>`)
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Build branch:</strong> <code>main</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Build source:</strong> <code>local</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Runtime module version:</strong> <code>browser-runtime.')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Renderer version:</strong> <code>web-demo-operator-v3</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Payout projection version:</strong> <code>payout-projection-v4</code>')
