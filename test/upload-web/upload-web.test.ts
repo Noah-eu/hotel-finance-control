@@ -892,6 +892,86 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedOutflows).toEqual([])
   })
 
+  it('keeps Lenner matched on the full invoice total when a browser text layer exposes only a generic total label above the VAT base', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'raiffeisen-lenner.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '25.03.2026 11:24;25.03.2026 11:26;5599955956/5500;000000-1234567890/0800;Lenner Motors s.r.o.;-12629,52;CZK;Faktura 141260183'
+          ].join('\n'),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines(
+          'Lenner.pdf',
+          [
+            'Faktura - daňový doklad',
+            'Dodavatel',
+            'Lenner Motors s.r.o.',
+            'Odběratel',
+            'JOKELAND s.r.o.',
+            'Faktura číslo',
+            '141260183',
+            'Datum splatnosti',
+            '25.03.2026',
+            'Forma úhrady',
+            'Přev.příkaz',
+            'Datum vystavení',
+            '11.03.2026',
+            'Datum zdanitelného plnění',
+            '11.03.2026',
+            'Rozpis DPH',
+            'Celkem po zaokrouhlení',
+            'Základ DPH',
+            '10 437,62 Kč',
+            'DPH',
+            '2 191,90 Kč',
+            'S DPH',
+            '12 629,52 Kč'
+          ]
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T18:42:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Lenner.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'Lenner Motors s.r.o.',
+          referenceNumber: '141260183',
+          totalAmountMinor: 1262952,
+          vatBaseAmountMinor: 1043762,
+          totalCurrency: 'CZK'
+        })
+      })
+    )
+
+    expect(result.reviewSections.expenseMatched).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          expenseComparison: expect.objectContaining({
+            document: expect.objectContaining({
+              supplierOrCounterparty: 'Lenner Motors s.r.o.',
+              reference: '141260183',
+              amount: '12 629,52 Kč'
+            }),
+            bank: expect.objectContaining({
+              supplierOrCounterparty: 'Lenner Motors s.r.o.',
+              reference: 'Faktura 141260183',
+              amount: '12 629,52 Kč'
+            })
+          })
+        })
+      ])
+    )
+
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual([])
+    expect(result.reviewSections.expenseUnmatchedOutflows).toEqual([])
+  })
+
   it('keeps payable supplier invoices on the outgoing path and lets refund settlement invoices relate to incoming bank movements in browser review', async () => {
     const payableInvoice = getRealInputFixture('invoice-document-dobra-energie-pdf')
     const refundInvoice = getRealInputFixture('invoice-document-dobra-energie-refund-pdf')

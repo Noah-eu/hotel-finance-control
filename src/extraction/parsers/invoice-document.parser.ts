@@ -1109,14 +1109,10 @@ function extractInvoiceSettlementSupplementaryFields(
     + (targetBankAccountHint ? 2 : 0)
     + (/(?:bude|budou)\s+přips[áa]n[yo]?\s+na\s+v[aá]š\s+bankovn[íi]\s+účet/iu.test(content) ? 3 : 0)
     + (/(?:^|\n)\s*(?:přeplatek|vratka|refund|overpayment)\b/imu.test(content) ? 2 : 0)
+  const hasExplicitPayableSignal = hasExplicitInvoicePayableSettlementSignal(normalizedContent)
   const payableSignalScore =
-    (payableAmountRaw ? 2 : 0)
-    + (normalizedContent.includes('celkem k uhrade')
-      || normalizedContent.includes('k uhrade')
-      || normalizedContent.includes('amount due')
-      || normalizedContent.includes('total due')
-      || normalizedContent.includes('k zaplaceni')
-      || normalizedContent.includes('nedoplatek')
+    ((payableAmountRaw && hasExplicitPayableSignal) ? 2 : 0)
+    + (hasExplicitPayableSignal
       ? 2
       : 0)
   const settlementDirection: DocumentSettlementDirection | undefined = refundSignalScore >= 4
@@ -1135,6 +1131,15 @@ function extractInvoiceSettlementSupplementaryFields(
     ...(settlementAmountRaw ? { settlementAmountRaw } : {}),
     ...(targetBankAccountHint ? { targetBankAccountHint } : {})
   }
+}
+
+function hasExplicitInvoicePayableSettlementSignal(normalizedContent: string): boolean {
+  return normalizedContent.includes('celkem k uhrade')
+    || normalizedContent.includes('k uhrade')
+    || normalizedContent.includes('amount due')
+    || normalizedContent.includes('total due')
+    || normalizedContent.includes('k zaplaceni')
+    || normalizedContent.includes('nedoplatek')
 }
 
 function extractInvoicePayableSettlementAmountRaw(content: string, lines: string[]): string | undefined {

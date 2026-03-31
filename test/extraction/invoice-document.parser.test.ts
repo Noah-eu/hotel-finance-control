@@ -777,6 +777,75 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('keeps the Lenner matching amount on the full invoice total when only a generic total label is present above the VAT base', () => {
+    const content = [
+      'Faktura - daňový doklad',
+      'Dodavatel',
+      'Lenner Motors s.r.o.',
+      'Odběratel',
+      'JOKELAND s.r.o.',
+      'Faktura číslo',
+      '141260183',
+      'Datum splatnosti',
+      '25.03.2026',
+      'Forma úhrady',
+      'Přev.příkaz',
+      'Datum vystavení',
+      '11.03.2026',
+      'Datum zdanitelného plnění',
+      '11.03.2026',
+      'Rozpis DPH',
+      'Celkem po zaokrouhlení',
+      'Základ DPH',
+      '10 437,62 Kč',
+      'DPH',
+      '2 191,90 Kč',
+      'S DPH',
+      '12 629,52 Kč'
+    ].join('\n')
+
+    expect(inspectInvoiceDocumentExtractionSummary(content)).toMatchObject({
+      issuerOrCounterparty: 'Lenner Motors s.r.o.',
+      referenceNumber: '141260183',
+      totalAmountMinor: 1262952,
+      totalCurrency: 'CZK',
+      vatBaseAmountMinor: 1043762,
+      vatCurrency: 'CZK',
+      vatAmountMinor: 219190
+    })
+    expect(inspectInvoiceDocumentExtractionSummary(content)).not.toHaveProperty('settlementDirection')
+    expect(inspectInvoiceDocumentExtractionSummary(content)).not.toHaveProperty('settlementAmountMinor')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: {
+        id: 'invoice-lenner-generic-total-browser-shape' as never,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        fileName: 'Lenner.pdf',
+        uploadedAt: '2026-03-31T18:42:00.000Z'
+      },
+      content,
+      extractedAt: '2026-03-31T18:42:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 1262952,
+      currency: 'CZK',
+      rawReference: '141260183',
+      data: {
+        supplier: 'Lenner Motors s.r.o.',
+        invoiceNumber: '141260183',
+        amountMinor: 1262952,
+        currency: 'CZK',
+        vatBaseAmountMinor: 1043762,
+        vatBaseCurrency: 'CZK'
+      }
+    })
+    expect(records[0]?.data).not.toHaveProperty('settlementDirection')
+    expect(records[0]?.data).not.toHaveProperty('settlementAmountMinor')
+  })
+
   it('recovers Czech invoice payment fields from an embedded SPD / QR Platba payload when text fields are missing', () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf-with-spd-qr')
 
