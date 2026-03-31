@@ -546,6 +546,66 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('promotes an explicit sparse refund settlement cue into the emitted matching amount even when the refund amount line omits currency', () => {
+    const invoice = getRealInputFixture('invoice-document-dobra-energie-refund-sparse-pdf')
+
+    const content = [
+      'Faktura - daňový doklad',
+      'Dodavatel',
+      'Dobrá Energie s.r.o.',
+      'Odběratel',
+      'JOKELAND s.r.o.',
+      'Variabilní symbol',
+      '5125144501',
+      'Datum splatnosti',
+      '26.03.2026',
+      'Přeplatek -3 804,00',
+      'Přeplatek bude připsán na Váš bankovní účet',
+      '8888997777/2010',
+      'Předmět plnění:',
+      'Vyúčtování dodávky elektřiny za březen 2026'
+    ].join('\n')
+
+    expect(inspectInvoiceDocumentExtractionSummary(content)).toMatchObject({
+      settlementDirection: 'refund_incoming',
+      referenceNumber: '5125144501',
+      dueDate: '2026-03-26',
+      totalAmountMinor: 380400,
+      totalCurrency: 'CZK',
+      settlementAmountMinor: 380400,
+      settlementCurrency: 'CZK',
+      targetBankAccountHint: '8888997777/2010',
+      finalStatus: 'needs_review',
+      requiredFieldsCheck: 'failed',
+      missingRequiredFields: ['issueDate']
+    })
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content,
+      extractedAt: '2026-03-31T17:20:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      recordType: 'invoice-document',
+      rawReference: '5125144501',
+      amountMinor: 380400,
+      currency: 'CZK',
+      occurredAt: '2026-03-26',
+      data: {
+        supplier: 'Dobrá Energie s.r.o.',
+        invoiceNumber: '5125144501',
+        settlementDirection: 'refund_incoming',
+        amountMinor: 380400,
+        currency: 'CZK',
+        settlementAmountMinor: 380400,
+        settlementCurrency: 'CZK',
+        targetBankAccountHint: '8888997777/2010'
+      }
+    })
+  })
+
   it('keeps grouped Czech invoice header/value blocks aligned when the value cells spill into following lines', () => {
     const content = [
       'Faktura - daňový doklad',

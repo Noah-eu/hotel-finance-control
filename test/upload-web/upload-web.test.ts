@@ -1271,6 +1271,89 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedInflows).toEqual([])
   })
 
+  it('emits a sparse Dobrá refund record on the minimal browser path when the refund cue amount has no explicit currency token', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithSparseDobraRefundIncoming(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Dobra-Energie-preplatek-3804-2026-03.pdf', [
+          'Faktura - daňový doklad',
+          'Dodavatel',
+          'Dobrá Energie s.r.o.',
+          'Odběratel',
+          'JOKELAND s.r.o.',
+          'Variabilní symbol',
+          '5125144501',
+          'Datum splatnosti',
+          '26.03.2026',
+          'Přeplatek -3 804,00',
+          'Přeplatek bude připsán na Váš bankovní účet',
+          '8888997777/2010',
+          'Předmět plnění:',
+          'Vyúčtování dodávky elektřiny za březen 2026'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-31T17:25:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+        extractedCount: 1
+      }),
+      expect.objectContaining({
+        fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+        extractedCount: 1
+      })
+    ])
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Dobra-Energie-preplatek-3804-2026-03.pdf',
+          noExtractReason: undefined,
+          documentExtractionSummary: expect.objectContaining({
+            settlementDirection: 'refund_incoming',
+            referenceNumber: '5125144501',
+            dueDate: '2026-03-26',
+            totalAmountMinor: 380400,
+            totalCurrency: 'CZK',
+            settlementAmountMinor: 380400,
+            settlementCurrency: 'CZK',
+            targetBankAccountHint: '8888997777/2010'
+          })
+        })
+      ])
+    )
+
+    expect(result.reviewSections.expenseMatched).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          expenseComparison: expect.objectContaining({
+            document: expect.objectContaining({
+              supplierOrCounterparty: 'Dobrá Energie s.r.o.',
+              reference: '5125144501',
+              amount: '3 804,00 Kč',
+              dueDate: '2026-03-26',
+              ibanHint: '8888997777/2010'
+            }),
+            bank: expect.objectContaining({
+              bankAccount: '8888997777/2010',
+              reference: 'Vrácení přeplatku VS 5125144501',
+              amount: '3 804,00 Kč'
+            })
+          })
+        })
+      ])
+    )
+
+    expect(result.reviewSections.expenseUnmatchedInflows).toEqual([])
+  })
+
   it('keeps bare integer CZK outgoing bank values in correct major-unit scaling on the browser upload expense path', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
 

@@ -310,6 +310,19 @@ describe('realInputFixtures', () => {
       reference: '5125144501',
       targetBankAccountHint: '8888997777/2010'
     })
+    expect(dobraSparseRefundInvoicePdf.expectedExtractedRecords?.[0]).toMatchObject({
+      recordType: 'invoice-document',
+      rawReference: '5125144501',
+      amountMinor: 380400,
+      currency: 'CZK',
+      occurredAt: '2026-03-26',
+      data: {
+        settlementDirection: 'refund_incoming',
+        settlementAmountMinor: 380400,
+        settlementCurrency: 'CZK',
+        targetBankAccountHint: '8888997777/2010'
+      }
+    })
     expect(czechInvoicePdfWithQr.expectedNormalizedTransactions?.[0]).toMatchObject({
       source: 'invoice',
       amountMinor: 1850000,

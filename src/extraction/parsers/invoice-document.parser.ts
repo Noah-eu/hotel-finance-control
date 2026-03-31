@@ -323,13 +323,13 @@ function buildInvoiceDocumentExtractionSummary(
   const issueDate = safeNormalizeDocumentDate(extracted.issueDateRaw, 'Invoice issue date')
   const taxableDate = safeNormalizeDocumentDate(extracted.taxableDateRaw, 'Invoice taxable date')
   const dueDate = safeNormalizeDocumentDate(extracted.dueDateRaw, 'Invoice due date')
-  const total = safeParseDocumentMoney(extracted.totalRaw, 'Invoice total')
+  const total = parseInvoiceSummaryMoney(extracted.totalRaw, 'Invoice total')
   const hasSettlementSpecificAmount = Boolean(extracted.settlementDirection || extracted.settlementAmountRaw?.trim())
   const settlementTotal = hasSettlementSpecificAmount
-    ? safeParseDocumentMoney(extracted.settlementAmountRaw ?? extracted.totalRaw, 'Invoice settlement total')
+    ? parseInvoiceSummaryMoney(extracted.settlementAmountRaw ?? extracted.totalRaw, 'Invoice settlement total')
     : undefined
   const summaryTotal = hasSettlementSpecificAmount
-    ? safeParseDocumentMoney(extracted.summaryTotalRaw, 'Invoice summary total')
+    ? parseInvoiceSummaryMoney(extracted.summaryTotalRaw, 'Invoice summary total')
     : undefined
   const localTotal = safeParseDocumentMoney(extracted.localTotalRaw, 'Invoice local total')
   const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Invoice VAT base')
@@ -1599,7 +1599,7 @@ function collectMissingInvoiceFields(extracted: InvoiceExtractedFields): string[
       case 'Due date':
         return !extracted.dueDateRaw
       case 'Total':
-        return !safeParseDocumentMoney(extracted.totalRaw, 'Invoice total')
+        return !parseInvoiceSummaryMoney(extracted.totalRaw, 'Invoice total')
       default:
         return false
     }
@@ -1628,11 +1628,18 @@ function collectMissingInvoiceSummaryFields(extracted: InvoiceExtractedFields): 
     missing.push('dueDate')
   }
 
-  if (!safeParseDocumentMoney(extracted.totalRaw, 'Invoice total')) {
+  if (!parseInvoiceSummaryMoney(extracted.totalRaw, 'Invoice total')) {
     missing.push('totalAmount')
   }
 
   return missing
+}
+
+function parseInvoiceSummaryMoney(
+  value: string | undefined,
+  fieldName: string
+): ReturnType<typeof safeParseDocumentMoney> {
+  return safeParseDocumentMoney(normalizeDetectedMoneyValue(value), fieldName)
 }
 
 function stripTrailingNoise(value: string): string {
