@@ -1,6 +1,7 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import type {
   AirbnbPayoutHeaderDiagnostics,
+  ComgateHeaderDiagnostics,
   DeterministicDocumentExtractionSummary
 } from '../extraction'
 import type { DocumentSettlementDirection } from '../domain'
@@ -131,6 +132,7 @@ export interface UploadedMonthlyFileRoute {
   parseDiagnostics?: {
     documentExtractionSummary?: DeterministicDocumentExtractionSummary
     airbnbHeaderDiagnostics?: AirbnbPayoutHeaderDiagnostics
+    comgateHeaderDiagnostics?: ComgateHeaderDiagnostics
     parserExtractedPaymentId?: string
     parserExtractedPayoutDate?: string
     parserExtractedPayoutTotal?: string

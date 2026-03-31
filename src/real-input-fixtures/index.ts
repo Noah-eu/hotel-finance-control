@@ -1033,9 +1033,9 @@ export const realInputFixtures: RealInputFixture[] = [
     rawInput: {
       format: 'csv',
       content: [
-        'transactionId,payoutDate,amountMinor,currency,paymentReference,paymentType',
-        'CG-PORTAL-TRX-2001,2026-03-19,154000,CZK,CG-WEB-2001,website-reservation',
-        'CG-PORTAL-TRX-2002,2026-03-19,4000,CZK,CG-PARK-2001,parking'
+        '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby"',
+        '"CG-PORTAL-TRX-2001";"CG-WEB-2001";"18.03.2026 09:15";"18.03.2026 09:16";"19.03.2026";"guest@example.com";"CG-WEB-2001";"JOKELAND s.r.o.";"1540,00";"CZK";"website-reservation"',
+        '"CG-PORTAL-TRX-2002";"CG-PARK-2001";"18.03.2026 10:20";"18.03.2026 10:21";"19.03.2026";"parking@example.com";"CG-PARK-2001";"JOKELAND s.r.o.";"40,00";"CZK";"parking"'
       ].join('\n')
     },
     expectedExtractedRecords: [

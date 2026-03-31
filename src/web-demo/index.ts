@@ -2811,6 +2811,25 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
+      function buildComgateHeaderDiagnosticsMarkup(file) {
+        const diagnostics = file && file.comgateHeaderDiagnostics;
+
+        if (!diagnostics) {
+          return '';
+        }
+
+        return [
+          '<br /><span class="hint">Comgate parser variant: ' + escapeHtml(String(diagnostics.parserVariant || 'unknown')) + '</span>',
+          '<br /><span class="hint">Comgate detected delimiter: ' + escapeHtml(String(diagnostics.detectedDelimiter || 'n/a')) + '</span>',
+          '<br /><span class="hint">Comgate detected header row: ' + escapeHtml(String(diagnostics.rawHeaderRow || 'n/a')) + '</span>',
+          '<br /><span class="hint">Comgate raw headers: ' + escapeHtml(Array.isArray(diagnostics.rawHeaders) && diagnostics.rawHeaders.length > 0 ? diagnostics.rawHeaders.join(' | ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Comgate canonical headers: ' + escapeHtml(Array.isArray(diagnostics.canonicalHeaders) && diagnostics.canonicalHeaders.length > 0 ? diagnostics.canonicalHeaders.join(' | ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Comgate normalized header map: ' + escapeHtml(Array.isArray(diagnostics.normalizedHeaderMap) && diagnostics.normalizedHeaderMap.length > 0 ? diagnostics.normalizedHeaderMap.join(' | ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Comgate required canonical headers: ' + escapeHtml(Array.isArray(diagnostics.requiredCanonicalHeaders) && diagnostics.requiredCanonicalHeaders.length > 0 ? diagnostics.requiredCanonicalHeaders.join(', ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Comgate missing canonical headers: ' + escapeHtml(Array.isArray(diagnostics.missingCanonicalHeaders) && diagnostics.missingCanonicalHeaders.length > 0 ? diagnostics.missingCanonicalHeaders.join(', ') : 'žádné') + '</span>'
+        ].join('');
+      }
+
       function buildInvoiceRawBlockDebugMarkup(file) {
         const summary = file && file.documentExtractionSummary;
         const rawBlocks = summary && Array.isArray(summary.rawBlockDiscoveryDebug) ? summary.rawBlockDiscoveryDebug : [];
@@ -2956,6 +2975,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           buildDocumentOcrDebugMarkup(file),
           buildDocumentExtractionStagesMarkup(file),
           buildAirbnbHeaderDiagnosticsMarkup(file),
+          buildComgateHeaderDiagnosticsMarkup(file),
           buildInvoiceFieldExtractionDebugMarkup(file),
           file.parserExtractedPaymentId ? '<br /><span class="hint">parserExtracted.paymentId: ' + escapeHtml(file.parserExtractedPaymentId) + '</span>' : '',
           file.parserExtractedPayoutDate ? '<br /><span class="hint">parserExtracted.payoutDate: ' + escapeHtml(file.parserExtractedPayoutDate) + '</span>' : '',

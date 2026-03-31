@@ -24,7 +24,11 @@ import {
 import { formatAmountMinorCs } from '../shared/money'
 import { emitBrowserRuntimeBundle } from './browser-bundle'
 import { buildBrowserRuntimeUploadStateFromFiles } from './browser-runtime-state'
-import type { DeterministicDocumentExtractionSummary } from '../extraction'
+import type {
+  AirbnbPayoutHeaderDiagnostics,
+  ComgateHeaderDiagnostics,
+  DeterministicDocumentExtractionSummary
+} from '../extraction'
 export {
   buildBrowserRuntimeStateFromSelectedFiles,
   createBrowserRuntime,
@@ -171,16 +175,8 @@ export interface BrowserRuntimeUploadState {
       parserSupported: boolean
       decisionConfidence: 'none' | 'hint' | 'strong'
       documentExtractionSummary?: DeterministicDocumentExtractionSummary
-      airbnbHeaderDiagnostics?: {
-        parserVariant: 'structured-export' | 'real-mixed-export'
-        rawHeaderRow: string
-        normalizedHeaders: string[]
-        normalizedHeaderMap: string[]
-        requiredCanonicalHeaders: string[]
-        mappedCanonicalHeaders: Partial<Record<'payoutDate' | 'amountMinor' | 'currency' | 'payoutReference' | 'reservationId' | 'listingId', string>>
-        candidateSourceHeaders: string[]
-        missingCanonicalHeaders: string[]
-      }
+      airbnbHeaderDiagnostics?: AirbnbPayoutHeaderDiagnostics
+      comgateHeaderDiagnostics?: ComgateHeaderDiagnostics
       parserExtractedPaymentId?: string
       parserExtractedPayoutDate?: string
       parserExtractedPayoutTotal?: string

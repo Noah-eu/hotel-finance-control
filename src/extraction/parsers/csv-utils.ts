@@ -6,6 +6,7 @@ interface ParseDelimitedRowsOptions {
 
 export interface ParsedDelimitedContent {
   rawHeaderRow: string
+  detectedDelimiter: string
   headers: string[]
   headerColumns: Array<{
     rawHeader: string
@@ -49,7 +50,7 @@ export function parseDelimitedContent(
     .filter((line) => line.trim().length > 0)
 
   if (lines.length === 0) {
-    return { rawHeaderRow: '', headers: [], headerColumns: [], rows: [] }
+    return { rawHeaderRow: '', detectedDelimiter: ',', headers: [], headerColumns: [], rows: [] }
   }
 
   const delimiter = detectDelimiter(lines[0])
@@ -64,7 +65,7 @@ export function parseDelimitedContent(
     }, {})
   })
 
-  return { rawHeaderRow: lines[0], headers, headerColumns, rows }
+  return { rawHeaderRow: lines[0], detectedDelimiter: delimiter, headers, headerColumns, rows }
 }
 
 export function findMissingHeaders(

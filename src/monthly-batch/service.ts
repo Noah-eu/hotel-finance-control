@@ -2,6 +2,7 @@ import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
   type DeterministicDocumentExtractionSummary,
   inspectAirbnbPayoutHeaderDiagnostics,
+  inspectComgateHeaderDiagnostics,
   detectInvoiceDocumentKeywordHits,
   detectBookingPayoutStatementSignals,
   inspectBookingPayoutStatementExtractionSummary,
@@ -382,6 +383,12 @@ function inspectUploadedFileParseDiagnostics(
   if (file.sourceDocument.sourceSystem === 'airbnb') {
     return {
       airbnbHeaderDiagnostics: inspectAirbnbPayoutHeaderDiagnostics(file.content)
+    }
+  }
+
+  if (file.sourceDocument.sourceSystem === 'comgate') {
+    return {
+      comgateHeaderDiagnostics: inspectComgateHeaderDiagnostics(file.content)
     }
   }
 

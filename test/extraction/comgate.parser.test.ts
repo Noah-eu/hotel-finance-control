@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseComgateExport } from '../../src/extraction'
+import { inspectComgateHeaderDiagnostics, parseComgateExport } from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 
 describe('parseComgateExport', () => {
@@ -57,6 +57,21 @@ describe('parseComgateExport', () => {
     expect(records[0]?.data).not.toHaveProperty('reservationId')
   })
 
+  it('maps the real Czech browser current-portal header row to the current-portal variant with no missing canonical fields', () => {
+    const fixture = getRealInputFixture('comgate-export-current-portal')
+
+    const diagnostics = inspectComgateHeaderDiagnostics(fixture.rawInput.content)
+
+    expect(diagnostics).toMatchObject({
+      detectedDelimiter: ';',
+      parserVariant: 'current-portal',
+      rawHeaders: ['Comgate ID', 'ID od klienta', 'Datum založení', 'Datum zaplacení', 'Datum převodu', 'E-mail plátce', 'VS platby', 'Obchod', 'Cena', 'Měna', 'Typ platby'],
+      canonicalHeaders: ['transactionId', 'paymentReference', 'Datum založení', 'paidAt', 'payoutDate', 'E-mail plátce', 'paymentReference', 'Obchod', 'amountMinor', 'currency', 'paymentType'],
+      requiredCanonicalHeaders: ['payoutDate', 'amountMinor', 'currency'],
+      missingCanonicalHeaders: []
+    })
+  })
+
   it('accepts richer Comgate client portal headers with explicit label and order linkage', () => {
     const fixture = getRealInputFixture('comgate-export')
 
@@ -103,6 +118,19 @@ describe('parseComgateExport', () => {
         extractedAt: '2026-03-18T22:00:00.000Z'
       })
     ).toThrow('Comgate export is missing required columns')
+  })
+
+  it('preserves legacy Comgate parsing for the older reservation-linked export shape', () => {
+    const fixture = getRealInputFixture('comgate-export')
+
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-18T22:00:00.000Z'
+    })
+
+    expect(records.every((record) => record.data.comgateParserVariant === 'legacy')).toBe(true)
+    expect(records.map((record) => record.rawReference)).toEqual(['CG-RES-991', 'CG-PARK-551'])
   })
 
   it('accepts aliased Comgate headers and decimal amounts without misclassifying fields', () => {

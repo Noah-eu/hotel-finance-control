@@ -3098,6 +3098,11 @@ describe('buildWebDemo', () => {
     })
 
     expect(rendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variant: current-portal')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate detected delimiter: ;')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate raw headers: Comgate ID | ID od klienta | Datum založení | Datum zaplacení | Datum převodu')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate normalized header map: Comgate ID -&gt; transactionId | ID od klienta -&gt; paymentReference')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate missing canonical headers: žádné')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variants: current-portal')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate extracted records: 2')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate extracted kinds: parking (1), website-reservation (1)')

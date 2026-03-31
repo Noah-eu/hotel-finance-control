@@ -40,8 +40,15 @@ export type { ParseExpediaPayoutExportInput } from './parsers/expedia.parser'
 export { ExpediaPayoutParser, parseExpediaPayoutExport } from './parsers/expedia.parser'
 export type { ParsePrevioReservationExportInput } from './parsers/previo.parser'
 export { PrevioReservationParser, parsePrevioReservationExport } from './parsers/previo.parser'
-export type { ParseComgateExportInput } from './parsers/comgate.parser'
-export { ComgateParser, parseComgateExport } from './parsers/comgate.parser'
+export type {
+  ComgateHeaderDiagnostics,
+  ParseComgateExportInput
+} from './parsers/comgate.parser'
+export {
+  ComgateParser,
+  inspectComgateHeaderDiagnostics,
+  parseComgateExport
+} from './parsers/comgate.parser'
 export type { ParseInvoiceDocumentInput } from './parsers/invoice-document.parser'
 export {
   detectInvoiceDocumentKeywordHits,

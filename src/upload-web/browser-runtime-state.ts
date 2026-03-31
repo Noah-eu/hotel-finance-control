@@ -423,6 +423,7 @@ function buildRuntimeAudit(
         decisionConfidence: route?.decision.confidence ?? 'none',
         documentExtractionSummary: parseDiagnostics?.documentExtractionSummary,
         airbnbHeaderDiagnostics: parseDiagnostics?.airbnbHeaderDiagnostics,
+        comgateHeaderDiagnostics: parseDiagnostics?.comgateHeaderDiagnostics,
         parserExtractedPaymentId: parseDiagnostics?.parserExtractedPaymentId,
         parserExtractedPayoutDate: parseDiagnostics?.parserExtractedPayoutDate,
         parserExtractedPayoutTotal: parseDiagnostics?.parserExtractedPayoutTotal,

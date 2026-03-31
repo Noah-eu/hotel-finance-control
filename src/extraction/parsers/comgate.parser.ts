@@ -1,5 +1,6 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import {
+  type ParsedDelimitedContent,
   findMissingHeaders,
   parseDelimitedContent,
   parseAmountMinor,
@@ -29,18 +30,29 @@ const CURRENT_PORTAL_REQUIRED_HEADERS = [
 
 const HEADER_ALIASES = {
   paidAt: ['paidAt', 'paid_at', 'paymentDate', 'datumPlatby', 'datum', 'datum zaplacení', 'datum úhrady'],
-  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'uhrazená částka', 'zaplacená částka'],
+  amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'uhrazená částka', 'zaplacená částka', 'cena'],
   currency: ['currency', 'mena', 'měna'],
   reference: ['reference', 'transactionReference', 'variabilniSymbol', 'variabilní symbol'],
-  paymentPurpose: ['paymentPurpose', 'payment_purpose', 'purpose', 'ucelPlatby', 'účelPlatby', 'štítek', 'typ platby', 'payment label'],
+  paymentPurpose: ['paymentPurpose', 'payment_purpose', 'purpose', 'ucelPlatby', 'účelPlatby', 'štítek', 'payment label'],
   reservationId: ['reservationId', 'reservation_id', 'reservation', 'orderId', 'číslo objednávky', 'order id', 'merchant id'],
-  transactionId: ['transactionId', 'transaction_id', 'id transakce', 'transaction id', 'identifier'],
-  payoutDate: ['payoutDate', 'payout_date', 'datum vyplacení', 'datum výplaty'],
-  paymentReference: ['paymentReference', 'payment_reference', 'reference payment', 'reference platby'],
+  transactionId: ['transactionId', 'transaction_id', 'id transakce', 'transaction id', 'identifier', 'comgate id'],
+  payoutDate: ['payoutDate', 'payout_date', 'datum vyplacení', 'datum výplaty', 'datum převodu', 'datum prevodu'],
+  paymentReference: ['paymentReference', 'payment_reference', 'reference payment', 'reference platby', 'id od klienta', 'vs platby'],
   paymentType: ['paymentType', 'payment_type', 'typ transakce', 'typ platby']
 } satisfies Record<string, string[]>
 
-type ComgateParserVariant = 'legacy' | 'current-portal'
+export type ComgateParserVariant = 'legacy' | 'current-portal'
+
+export interface ComgateHeaderDiagnostics {
+  rawHeaderRow: string
+  detectedDelimiter: string
+  rawHeaders: string[]
+  normalizedHeaderMap: string[]
+  canonicalHeaders: string[]
+  parserVariant: ComgateParserVariant
+  requiredCanonicalHeaders: string[]
+  missingCanonicalHeaders: string[]
+}
 
 export class ComgateParser {
   parse(input: ParseComgateExportInput): ExtractedRecord[] {
@@ -73,6 +85,24 @@ function detectComgateParserVariant(headers: string[]): ComgateParserVariant {
   }
 
   return 'legacy'
+}
+
+function buildComgateHeaderDiagnostics(parsed: ParsedDelimitedContent): ComgateHeaderDiagnostics {
+  const parserVariant = detectComgateParserVariant(parsed.headers)
+  const requiredCanonicalHeaders = parserVariant === 'current-portal'
+    ? CURRENT_PORTAL_REQUIRED_HEADERS
+    : LEGACY_REQUIRED_HEADERS
+
+  return {
+    rawHeaderRow: parsed.rawHeaderRow,
+    detectedDelimiter: parsed.detectedDelimiter,
+    rawHeaders: parsed.headerColumns.map((column) => column.rawHeader),
+    normalizedHeaderMap: parsed.headerColumns.map((column) => `${column.rawHeader} -> ${column.normalizedHeader}`),
+    canonicalHeaders: [...parsed.headers],
+    parserVariant,
+    requiredCanonicalHeaders,
+    missingCanonicalHeaders: requiredCanonicalHeaders.filter((header) => !parsed.headers.includes(header))
+  }
 }
 
 function buildComgateRecord(
@@ -131,4 +161,8 @@ const defaultComgateParser = new ComgateParser()
 
 export function parseComgateExport(input: ParseComgateExportInput): ExtractedRecord[] {
   return defaultComgateParser.parse(input)
+}
+
+export function inspectComgateHeaderDiagnostics(content: string): ComgateHeaderDiagnostics {
+  return buildComgateHeaderDiagnostics(parseDelimitedContent(content, { canonicalHeaders: HEADER_ALIASES }))
 }

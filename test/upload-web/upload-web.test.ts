@@ -383,6 +383,16 @@ describe('buildUploadWebFlow', () => {
         sourceSystem: 'comgate'
       })
     )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'Klientský portál export transakcí JOKELAND s.r.o..csv',
+        comgateHeaderDiagnostics: expect.objectContaining({
+          detectedDelimiter: ';',
+          parserVariant: 'current-portal',
+          missingCanonicalHeaders: []
+        })
+      })
+    )
     expect(result.reportSummary.normalizedTransactionCount).toBe(2)
     expect(result.reportTransactions).toHaveLength(2)
   })
