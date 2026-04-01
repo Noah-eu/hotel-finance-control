@@ -949,6 +949,7 @@ ${showRuntimePayoutDiagnostics ? `
         errorMessage: ''
       };
       let monthlyWorkspacePersistenceBackendPromise;
+      let currentWorkspaceViewRequestToken = 0;
 
       function getExpenseReviewOverrideStorage() {
         try {
@@ -1920,6 +1921,7 @@ ${showRuntimePayoutDiagnostics ? `
       }
 
       async function restoreWorkspaceForMonth(month, options) {
+        const requestToken = ++currentWorkspaceViewRequestToken;
         const normalizedMonth = String(month || '');
         const loadedWorkspace = await loadMonthWorkspace(normalizedMonth);
         const workspace = loadedWorkspace && loadedWorkspace.workspace;
@@ -1933,6 +1935,10 @@ ${showRuntimePayoutDiagnostics ? `
             saveAttempted: false,
             errorMessage: ''
           });
+
+        if (requestToken !== currentWorkspaceViewRequestToken) {
+          return false;
+        }
 
         currentWorkspaceMonth = normalizedMonth;
 
@@ -4575,10 +4581,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       async function startMainWorkflow() {
+        const requestToken = ++currentWorkspaceViewRequestToken;
         const files = Array.from(fileInput.files || []);
         const normalizedMonth = String(monthInput && monthInput.value || '');
         const persistenceStateBeforeRerun = await awaitCurrentWorkspacePersistence();
+
+        if (requestToken !== currentWorkspaceViewRequestToken) {
+          return;
+        }
+
         const loadedWorkspace = await loadMonthWorkspace(normalizedMonth);
+
+        if (requestToken !== currentWorkspaceViewRequestToken) {
+          return;
+        }
+
         const existingWorkspace = loadedWorkspace && loadedWorkspace.workspace;
         const loadState = loadedWorkspace && loadedWorkspace.loadState
           ? loadedWorkspace.loadState
@@ -4627,6 +4644,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
           const serializedFiles = await serializeSelectedFilesForWorkspace(files, (progress) => {
             renderRunningWorkflowProgress(runningWorkspacePreviewFiles, progress);
           });
+
+          if (requestToken !== currentWorkspaceViewRequestToken) {
+            return;
+          }
+
           const mergedWorkspaceFiles = mergeWorkspaceFiles(existingWorkspace && existingWorkspace.files, serializedFiles);
           const mergedRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(mergedWorkspaceFiles);
           setWorkspaceRenderDebugState({
@@ -4651,6 +4673,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
               renderRunningWorkflowProgress(mergedRunningWorkflowFiles, progress);
             }
           });
+
+          if (requestToken !== currentWorkspaceViewRequestToken) {
+            return;
+          }
+
           const visibleState = buildCompletedVisibleRuntimeState(state);
           currentWorkspaceMonth = normalizedMonth;
           currentWorkspaceFiles = mergedWorkspaceFiles;
@@ -4698,6 +4725,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
       });
       clearMonthWorkspaceButton.addEventListener('click', () => {
         window.__hotelFinanceLastWorkspaceClearPromise = (async () => {
+        currentWorkspaceViewRequestToken += 1;
         const normalizedMonth = String(monthInput && monthInput.value || '');
 
         if (!normalizedMonth) {

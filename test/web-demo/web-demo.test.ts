@@ -2582,6 +2582,87 @@ describe('buildWebDemo', () => {
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
   }, 15000)
 
+  it('does not let a stale initial month restore overwrite a newer same-month merged rerun on the same page', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T09:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-same-page-stale-restore-seed',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T09:01:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-same-page-stale-restore-rerun',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      workspacePersistenceLoadDelaysMs: [200, 0],
+      awaitInitialRestore: false,
+      skipStart: true,
+      files: []
+    })
+
+    rendered.setSelectedFiles([
+      createWebDemoRuntimeArrayBufferTextFile(
+        'Pohyby_5599955956_202603191023.csv',
+        buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+        'text/csv'
+      )
+    ])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    let rerunState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    expect(rerunState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rerunState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(rerunState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+
+    await rendered.waitForInitialRestore()
+
+    rerunState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    expect(rerunState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rerunState.reviewSummary.payoutBatchMatchCount).toBe(16)
+    expect(rerunState.reviewSummary.unmatchedPayoutBatchCount).toBe(2)
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>booking35k.csv</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>airbnb.csv</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Bookinng35k.pdf</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Pohyby_5599955956_202603191023.csv</strong>')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Current month key:</strong> 2026-03')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file count before rerun:</strong> 3')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Newly selected batch file count:</strong> 1')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file count used for rerun:</strong> 4')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+  })
+
   it('builds complete monthly Excel export from the restored current month workspace state', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const storageState = new Map<string, string>()
@@ -3341,8 +3422,10 @@ async function executeWebDemoMainWorkflow(input: {
   locationSearch?: string
   locationHash?: string
   skipStart?: boolean
+  awaitInitialRestore?: boolean
   storageState?: Map<string, string>
   workspacePersistenceState?: Map<string, string>
+  workspacePersistenceLoadDelaysMs?: number[]
   localStorageSetItemLimitBytes?: number
   files: Array<{
     name: string
@@ -3421,6 +3504,7 @@ async function executeWebDemoMainWorkflow(input: {
   startWorkflow: () => void
   waitForWorkflowCompletion: () => Promise<void>
   reloadWithSameStorage: () => Promise<any>
+  waitForInitialRestore: () => Promise<void>
   getLastVisibleRuntimeState: () => unknown
   getLastWorkspaceRenderDebug: () => unknown
   lastVisibleRuntimeState?: unknown
@@ -3443,6 +3527,9 @@ async function executeWebDemoMainWorkflow(input: {
   const elements = createWebDemoDomStub()
   const storageState = input.storageState ?? new Map<string, string>()
   const workspacePersistenceState = input.workspacePersistenceState ?? new Map<string, string>()
+  const workspacePersistenceLoadDelaysMs = Array.isArray(input.workspacePersistenceLoadDelaysMs)
+    ? input.workspacePersistenceLoadDelaysMs.slice()
+    : []
   const localStorageSetItemLimitBytes = input.localStorageSetItemLimitBytes ?? Number.POSITIVE_INFINITY
   const windowObject: {
     location: { search: string; hash: string }
@@ -3521,6 +3608,12 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceMonthlyWorkspacePersistence: {
       backendName: 'indexedDb',
       async loadWorkspace(month: string) {
+        const delayMs = Number(workspacePersistenceLoadDelaysMs.shift() ?? 0)
+
+        if (delayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+        }
+
         const rawValue = workspacePersistenceState.get(String(month))
         return rawValue ? JSON.parse(rawValue) : undefined
       },
@@ -3563,7 +3656,7 @@ async function executeWebDemoMainWorkflow(input: {
     clearTimeout
   })
 
-  if (windowObject.__hotelFinanceInitialWorkspaceRestorePromise) {
+  if (input.awaitInitialRestore !== false && windowObject.__hotelFinanceInitialWorkspaceRestorePromise) {
     await windowObject.__hotelFinanceInitialWorkspaceRestorePromise
   }
 
@@ -3604,6 +3697,12 @@ async function executeWebDemoMainWorkflow(input: {
   async function waitForLastRestore() {
     if (windowObject.__hotelFinanceLastWorkspaceRestorePromise) {
       await windowObject.__hotelFinanceLastWorkspaceRestorePromise
+    }
+  }
+
+  async function waitForInitialRestore() {
+    if (windowObject.__hotelFinanceInitialWorkspaceRestorePromise) {
+      await windowObject.__hotelFinanceInitialWorkspaceRestorePromise
     }
   }
 
@@ -3748,6 +3847,7 @@ async function executeWebDemoMainWorkflow(input: {
     awaitLastWorkspacePersistence,
     startWorkflow,
     waitForWorkflowCompletion,
+    waitForInitialRestore,
     async reloadWithSameStorage() {
       await awaitLastWorkspacePersistence()
 
