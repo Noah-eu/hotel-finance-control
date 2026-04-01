@@ -4312,6 +4312,69 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Žádný vhodný kandidát v očekávaném datu payoutu')
   })
 
+  it('matches a realistic end-of-month Comgate payout batch to an RB inflow in the first three days of the next month and only exposes carryover metadata in debug mode', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-02T10:15:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-cross-month-carryover',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('Klientský portál export transakcí JOKELAND carryover.csv', buildCurrentPortalComgateCrossMonthCarryoverContent()),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202604021030.csv', buildRbComgateCrossMonthCarryoverSettlementContent())
+      ]
+    })
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      reconciliationSnapshot: {
+        matchedCount: number
+        unmatchedCount: number
+        payoutBatchDecisions: Array<{
+          payoutBatchKey: string
+          expectedBankAmountMinor: number
+          payoutDate: string
+          exactAmountMatchExistsBeforeDateEvidence: boolean
+          sameMonthExactAmountCandidateExists: boolean
+          crossMonthCarryoverCandidateExists: boolean
+          appliedComgateSameMonthLagRule: boolean
+          appliedComgateCrossMonthCarryoverRule: boolean
+          carryoverSourceMonth?: string
+          carryoverBankMonth?: string
+          carryoverDayDelta?: number
+          bankCandidateCountAfterAmountCurrency: number
+          bankCandidateCountAfterDateWindow: number
+          matched: boolean
+        }>
+      }
+    }
+    const decision = state.reconciliationSnapshot.payoutBatchDecisions.find((item) => item.payoutBatchKey === 'comgate-batch:2026-03-31:CZK')
+
+    expect(state.reconciliationSnapshot.matchedCount).toBe(1)
+    expect(state.reconciliationSnapshot.unmatchedCount).toBe(0)
+    expect(decision).toEqual(expect.objectContaining({
+      payoutBatchKey: 'comgate-batch:2026-03-31:CZK',
+      expectedBankAmountMinor: 605879,
+      payoutDate: '2026-03-31',
+      exactAmountMatchExistsBeforeDateEvidence: true,
+      sameMonthExactAmountCandidateExists: false,
+      crossMonthCarryoverCandidateExists: true,
+      appliedComgateSameMonthLagRule: false,
+      appliedComgateCrossMonthCarryoverRule: true,
+      carryoverSourceMonth: '2026-03',
+      carryoverBankMonth: '2026-04',
+      carryoverDayDelta: 2,
+      bankCandidateCountAfterAmountCurrency: 1,
+      bankCandidateCountAfterDateWindow: 1,
+      matched: true
+    }))
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Comgate payout dávka CG-CARRY-20260331-A')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('CG-CARRY-20260331-A')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('cross-month candidate existed ano')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('cross-month rule applied ano')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('source month 2026-03')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('bank month 2026-04')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('carryover day delta 2')
+  })
+
   it('shows the attached daily Comgate settlement CSV as a supported debug-only daily-settlement shape', async () => {
     const comgate = getRealInputFixture('comgate-daily-payout-export')
     const rendered = await executeWebDemoMainWorkflow({
@@ -5884,6 +5947,22 @@ function buildRbComgateSameMonthLagSettlementContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '30.03.2026 11:00;30.03.2026 11:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-27'
+  ].join('\n')
+}
+
+function buildCurrentPortalComgateCrossMonthCarryoverContent(): string {
+  return [
+    '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+    '"CG-CARRY-TRX-1";"CG-CARRY-20260331-A";"31.03.2026 08:15";"31.03.2026 08:16";"31.03.2026";"guest-a@example.com";"CG-CARRY-20260331-A";"JOKELAND s.r.o.";"2447,50";"CZK";"website-reservation";"0,00";"0,00";"23,99";"23,99"',
+    '"CG-CARRY-TRX-2";"CG-CARRY-20260331-B";"31.03.2026 09:20";"31.03.2026 09:21";"31.03.2026";"guest-b@example.com";"CG-CARRY-20260331-B";"JOKELAND s.r.o.";"3059,38";"CZK";"website-reservation";"0,00";"0,00";"29,98";"29,98"',
+    '"CG-CARRY-TRX-3";"CG-CARRY-20260331-C";"31.03.2026 10:10";"31.03.2026 10:11";"31.03.2026";"CG-CARRY-20260331-C";"CG-CARRY-20260331-C";"JOKELAND s.r.o.";"611,88";"CZK";"parking";"0,00";"0,00";"6,00";"6,00"'
+  ].join('\n')
+}
+
+function buildRbComgateCrossMonthCarryoverSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '02.04.2026 10:30;02.04.2026 10:31;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-31'
   ].join('\n')
 }
 

@@ -61,6 +61,11 @@ export interface PayoutBatchCandidateDiagnostic {
   dateDistanceDays: number
   strictDateEligible: boolean
   comgateSameMonthLagRuleApplied: boolean
+  comgateCrossMonthCarryoverRuleApplied: boolean
+  comgateCrossMonthCarryoverCandidate: boolean
+  comgateCrossMonthCarryoverDayDelta?: number
+  comgateCrossMonthCarryoverSourceMonth?: string
+  comgateCrossMonthCarryoverBankMonth?: string
 }
 
 export interface PayoutBatchNoMatchDiagnostic {
@@ -101,9 +106,14 @@ export interface PayoutBatchBankDecisionTrace {
   exactAmountMatchExistsBeforeDateEvidence: boolean
   sameCurrencyCandidateAmountMinors: number[]
   sameMonthExactAmountCandidateExists: boolean
+  crossMonthCarryoverCandidateExists: boolean
   rejectedOnlyByDateGate: boolean
   appliedComgateSameMonthLagRule: boolean
+  appliedComgateCrossMonthCarryoverRule: boolean
   wouldRejectOnStrictDateGate: boolean
+  carryoverSourceMonth?: string
+  carryoverBankMonth?: string
+  carryoverDayDelta?: number
   payoutDate: PayoutBatchExpectation['payoutDate']
   bankCandidateCountBeforeFiltering: number
   bankCandidateCountAfterAmountCurrency: number
