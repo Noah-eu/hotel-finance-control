@@ -2819,6 +2819,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return [
+          '<br /><span class="hint">Comgate detected file kind: ' + escapeHtml(String(diagnostics.detectedFileKind || 'unknown')) + '</span>',
           '<br /><span class="hint">Comgate parser variant: ' + escapeHtml(String(diagnostics.parserVariant || 'unknown')) + '</span>',
           '<br /><span class="hint">Comgate detected delimiter: ' + escapeHtml(String(diagnostics.detectedDelimiter || 'n/a')) + '</span>',
           '<br /><span class="hint">Comgate detected header row: ' + escapeHtml(String(diagnostics.rawHeaderRow || 'n/a')) + '</span>',
@@ -2826,7 +2827,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Comgate canonical headers: ' + escapeHtml(Array.isArray(diagnostics.canonicalHeaders) && diagnostics.canonicalHeaders.length > 0 ? diagnostics.canonicalHeaders.join(' | ') : 'žádné') + '</span>',
           '<br /><span class="hint">Comgate normalized header map: ' + escapeHtml(Array.isArray(diagnostics.normalizedHeaderMap) && diagnostics.normalizedHeaderMap.length > 0 ? diagnostics.normalizedHeaderMap.join(' | ') : 'žádné') + '</span>',
           '<br /><span class="hint">Comgate required canonical headers: ' + escapeHtml(Array.isArray(diagnostics.requiredCanonicalHeaders) && diagnostics.requiredCanonicalHeaders.length > 0 ? diagnostics.requiredCanonicalHeaders.join(', ') : 'žádné') + '</span>',
-          '<br /><span class="hint">Comgate missing canonical headers: ' + escapeHtml(Array.isArray(diagnostics.missingCanonicalHeaders) && diagnostics.missingCanonicalHeaders.length > 0 ? diagnostics.missingCanonicalHeaders.join(', ') : 'žádné') + '</span>'
+          '<br /><span class="hint">Comgate missing canonical headers: ' + escapeHtml(Array.isArray(diagnostics.missingCanonicalHeaders) && diagnostics.missingCanonicalHeaders.length > 0 ? diagnostics.missingCanonicalHeaders.join(', ') : 'žádné') + '</span>',
+          '<br /><span class="hint">Comgate explicit settlement total: ' + escapeHtml(buildDebugBooleanLabel(Boolean(diagnostics.containsExplicitSettlementTotal))) + '</span>'
         ].join('');
       }
 

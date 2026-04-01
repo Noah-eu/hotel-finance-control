@@ -1,7 +1,8 @@
 import { buildExportArtifactsFiles } from '../export/shared'
 import {
   detectBookingPayoutStatementKeywordHits,
-  detectInvoiceDocumentKeywordHits
+  detectInvoiceDocumentKeywordHits,
+  inspectComgateHeaderDiagnostics
 } from '../extraction'
 import {
   ingestUploadedMonthlyFiles,
@@ -394,11 +395,13 @@ function buildRuntimeAudit(
         route?.sourceDocumentId
       )
       const parseDiagnostics = route?.parseDiagnostics
+      const fallbackComgateHeaderDiagnostics = buildFallbackComgateHeaderDiagnostics(file.content, parseDiagnostics?.comgateHeaderDiagnostics)
       const comgatePipelineDiagnostics = buildComgatePipelineDiagnostics(
         batch,
         route?.sourceDocumentId,
         route?.sourceSystem,
-        payoutDecisionTraces
+        payoutDecisionTraces,
+        fallbackComgateHeaderDiagnostics
       )
 
       return {
@@ -426,7 +429,7 @@ function buildRuntimeAudit(
         decisionConfidence: route?.decision.confidence ?? 'none',
         documentExtractionSummary: parseDiagnostics?.documentExtractionSummary,
         airbnbHeaderDiagnostics: parseDiagnostics?.airbnbHeaderDiagnostics,
-        comgateHeaderDiagnostics: parseDiagnostics?.comgateHeaderDiagnostics,
+        comgateHeaderDiagnostics: parseDiagnostics?.comgateHeaderDiagnostics ?? fallbackComgateHeaderDiagnostics,
         parserExtractedPaymentId: parseDiagnostics?.parserExtractedPaymentId,
         parserExtractedPayoutDate: parseDiagnostics?.parserExtractedPayoutDate,
         parserExtractedPayoutTotal: parseDiagnostics?.parserExtractedPayoutTotal,
@@ -481,19 +484,37 @@ function buildComgatePipelineDiagnostics(
   batch: IngestionBatch,
   sourceDocumentId: string | undefined,
   sourceSystem: string | undefined,
-  payoutDecisionTraces: ReturnType<typeof inspectPayoutBatchBankDecisions>
+  payoutDecisionTraces: ReturnType<typeof inspectPayoutBatchBankDecisions>,
+  comgateHeaderDiagnostics?: BrowserRuntimeUploadState['runtimeAudit']['fileIntakeDiagnostics'][number]['comgateHeaderDiagnostics']
 ): BrowserRuntimeUploadState['runtimeAudit']['fileIntakeDiagnostics'][number]['comgatePipelineDiagnostics'] {
-  if (!sourceDocumentId || sourceSystem !== 'comgate') {
+  if ((!sourceDocumentId || sourceSystem !== 'comgate') && !comgateHeaderDiagnostics) {
     return undefined
   }
 
   const extractedRecords = batch.extractedRecords.filter((record) => record.sourceDocumentId === sourceDocumentId)
+  const normalizedSourceDocumentId = sourceDocumentId as IngestionBatch['reconciliation']['normalizedTransactions'][number]['sourceDocumentIds'][number]
+
   if (extractedRecords.length === 0) {
-    return undefined
+    if (!comgateHeaderDiagnostics || comgateHeaderDiagnostics.detectedFileKind === 'unknown') {
+      return undefined
+    }
+
+    return {
+      parserVariants: [],
+      extractedRecordCount: 0,
+      extractedPaymentPurposeBreakdown: [],
+      normalizedTransactionCount: 0,
+      normalizedKindBreakdown: [],
+      matchingInputPayoutRowCount: 0,
+      payoutBatchCount: 0,
+      matchingDecisionCount: 0,
+      lossBoundary: 'extraction-to-normalization',
+      lossStage: 'normalizer-produced-no-transactions',
+      payoutBatchSummaries: []
+    }
   }
 
   const extractedRecordIds = new Set(extractedRecords.map((record) => record.id))
-  const normalizedSourceDocumentId = sourceDocumentId as IngestionBatch['reconciliation']['normalizedTransactions'][number]['sourceDocumentIds'][number]
   const normalizedTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
     transaction.sourceDocumentIds.includes(normalizedSourceDocumentId)
     || transaction.extractedRecordIds.some((recordId) => extractedRecordIds.has(recordId))
@@ -558,6 +579,18 @@ function buildComgatePipelineDiagnostics(
     lossStage: lossClassification.lossStage,
     payoutBatchSummaries
   }
+}
+
+function buildFallbackComgateHeaderDiagnostics(
+  content: string,
+  existingDiagnostics?: BrowserRuntimeUploadState['runtimeAudit']['fileIntakeDiagnostics'][number]['comgateHeaderDiagnostics']
+): BrowserRuntimeUploadState['runtimeAudit']['fileIntakeDiagnostics'][number]['comgateHeaderDiagnostics'] | undefined {
+  if (existingDiagnostics) {
+    return existingDiagnostics
+  }
+
+  const diagnostics = inspectComgateHeaderDiagnostics(content)
+  return diagnostics.detectedFileKind === 'unknown' ? undefined : diagnostics
 }
 
 function classifyComgatePipelineLoss(

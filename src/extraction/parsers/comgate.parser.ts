@@ -47,15 +47,23 @@ const HEADER_ALIASES = {
 
 export type ComgateParserVariant = 'legacy' | 'current-portal'
 
+export type ComgateDetectedFileKind =
+  | 'legacy-guest-payments'
+  | 'current-portal-guest-payments'
+  | 'daily-settlement'
+  | 'unknown'
+
 export interface ComgateHeaderDiagnostics {
   rawHeaderRow: string
   detectedDelimiter: string
   rawHeaders: string[]
   normalizedHeaderMap: string[]
   canonicalHeaders: string[]
+  detectedFileKind: ComgateDetectedFileKind
   parserVariant: ComgateParserVariant
   requiredCanonicalHeaders: string[]
   missingCanonicalHeaders: string[]
+  containsExplicitSettlementTotal: boolean
 }
 
 export class ComgateParser {
@@ -93,6 +101,7 @@ function detectComgateParserVariant(headers: string[]): ComgateParserVariant {
 
 function buildComgateHeaderDiagnostics(parsed: ParsedDelimitedContent): ComgateHeaderDiagnostics {
   const parserVariant = detectComgateParserVariant(parsed.headers)
+  const detectedFileKind = detectComgateDetectedFileKind(parsed)
   const requiredCanonicalHeaders = parserVariant === 'current-portal'
     ? CURRENT_PORTAL_REQUIRED_HEADERS
     : LEGACY_REQUIRED_HEADERS
@@ -103,10 +112,85 @@ function buildComgateHeaderDiagnostics(parsed: ParsedDelimitedContent): ComgateH
     rawHeaders: parsed.headerColumns.map((column) => column.rawHeader),
     normalizedHeaderMap: parsed.headerColumns.map((column) => `${column.rawHeader} -> ${column.normalizedHeader}`),
     canonicalHeaders: [...parsed.headers],
+    detectedFileKind,
     parserVariant,
     requiredCanonicalHeaders,
-    missingCanonicalHeaders: requiredCanonicalHeaders.filter((header) => !parsed.headers.includes(header))
+    missingCanonicalHeaders: requiredCanonicalHeaders.filter((header) => !parsed.headers.includes(header)),
+    containsExplicitSettlementTotal: detectExplicitSettlementTotal(parsed)
   }
+}
+
+function detectComgateDetectedFileKind(parsed: ParsedDelimitedContent): ComgateDetectedFileKind {
+  if (isCurrentPortalComgateHeaders(parsed.headers)) {
+    return 'current-portal-guest-payments'
+  }
+
+  if (isDailySettlementComgateShape(parsed)) {
+    return 'daily-settlement'
+  }
+
+  if (isLegacyComgateHeaders(parsed.headers)) {
+    return 'legacy-guest-payments'
+  }
+
+  return 'unknown'
+}
+
+function isCurrentPortalComgateHeaders(headers: string[]): boolean {
+  const headerSet = new Set(headers)
+
+  return headerSet.has('payoutDate')
+    && (headerSet.has('transactionId') || headerSet.has('paymentReference') || headerSet.has('paymentType'))
+}
+
+function isLegacyComgateHeaders(headers: string[]): boolean {
+  const headerSet = new Set(headers)
+
+  return LEGACY_REQUIRED_HEADERS.every((header) => headerSet.has(header))
+}
+
+function isDailySettlementComgateShape(parsed: ParsedDelimitedContent): boolean {
+  const rawHeaders = parsed.headerColumns.map((column) => normalizeLooseHeader(column.rawHeader))
+
+  return rawHeaders.some((header) => header === 'merchant')
+    && rawHeaders.some((header) => header.includes('comgate'))
+    && rawHeaders.some((header) => header.includes('metoda'))
+    && rawHeaders.some((header) => header.includes('produkt'))
+    && rawHeaders.some((header) => header.includes('klienta'))
+    && rawHeaders.some((header) => header.includes('symbol'))
+    && rawHeaders.some((header) => header.includes('potvrzen'))
+    && rawHeaders.some((header) => header.includes('eved'))
+}
+
+function normalizeLooseHeader(value: string): string {
+  return value
+    .trim()
+    .replace(/^"|"$/g, '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+}
+
+function detectExplicitSettlementTotal(parsed: ParsedDelimitedContent): boolean {
+  if (!isDailySettlementComgateShape(parsed)) {
+    return false
+  }
+
+  const settlementHeader = parsed.headerColumns.find((column) => {
+    const normalized = normalizeLooseHeader(column.rawHeader)
+    return normalized.includes('eved')
+  })
+
+  if (!settlementHeader) {
+    return false
+  }
+
+  return parsed.rows.some((row) => {
+    const hasSummaryMarker = Object.values(row).some((value) => normalizeLooseHeader(value) === 'suma')
+    const settlementValue = row[settlementHeader.normalizedHeader]
+    return hasSummaryMarker && trimOptionalValue(settlementValue) !== undefined
+  })
 }
 
 function buildComgateRecord(

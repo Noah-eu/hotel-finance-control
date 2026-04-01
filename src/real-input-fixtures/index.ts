@@ -14,6 +14,7 @@ export interface RealInputFixture {
   | 'previo-reservation-export'
   | 'comgate-export'
   | 'comgate-export-current-portal'
+  | 'comgate-daily-payout-export'
   | 'invoice-document'
   | 'booking-invoice-pdf'
   | 'invoice-document-czech-pdf'
@@ -32,6 +33,7 @@ export interface RealInputFixture {
     binaryContentBase64?: string
   }
   expectedExtractedRecords: ExtractedRecord[]
+  expectedExtractionResult?: 'records' | 'none'
   expectedNormalizedTransactions?: NormalizedTransaction[]
 }
 
@@ -1084,6 +1086,28 @@ export const realInputFixtures: RealInputFixture[] = [
         }
       })
     ]
+  },
+  {
+    key: 'comgate-daily-payout-export',
+    description: 'Comgate daily payout CSV shape with per-payment rows and an explicit settlement-total summary row.',
+    sourceDocument: sourceDocument({
+      id: 'doc-comgate-daily-payout-2026-03' as SourceDocument['id'],
+      sourceSystem: 'comgate',
+      documentType: 'payment_gateway_report',
+      fileName: 'vypis-2026-03-27_1816656820.csv'
+    }),
+    rawInput: {
+      format: 'csv',
+      content: [
+        '"Merchant";"ID ComGate";"Metoda";"Potvrzen� ��stka";"P�eveden� ��stka";"Produkt";"Variabiln� symbol p�evodu";"ID od klienta"',
+        '"499465";"JGSV-QK5O-DR7O";"Karta online";"2447,50";"2423,51";"";"1816656820";"108966761"',
+        '"499465";"BHOV-M0TY-LBQV";"Karta online";"3059,38";"3029,40";"";"1816656820";"108929843"',
+        '"499465";"5V2K-MLZM-ETAK";"Karta online";"611,88";"605,88";"";"1816656820";"108592573"',
+        '"suma";"";"";"6118,76";"6058,79";"";"";""'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [],
+    expectedExtractionResult: 'none'
   },
   {
     key: 'invoice-document',

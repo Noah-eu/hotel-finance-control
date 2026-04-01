@@ -15,6 +15,7 @@ describe('realInputFixtures', () => {
       'previo-reservation-export',
       'comgate-export',
       'comgate-export-current-portal',
+      'comgate-daily-payout-export',
       'invoice-document',
       'booking-invoice-pdf',
       'invoice-document-czech-pdf',
@@ -31,7 +32,11 @@ describe('realInputFixtures', () => {
       expect(
         fixture.rawInput.content.length > 0 || Boolean(fixture.rawInput.binaryContentBase64)
       ).toBe(true)
-      expect(fixture.expectedExtractedRecords.length).toBeGreaterThan(0)
+      if (fixture.expectedExtractionResult === 'none') {
+        expect(fixture.expectedExtractedRecords).toHaveLength(0)
+      } else {
+        expect(fixture.expectedExtractedRecords.length).toBeGreaterThan(0)
+      }
       expect(fixture.sourceDocument.fileName.length).toBeGreaterThan(0)
     }
   })

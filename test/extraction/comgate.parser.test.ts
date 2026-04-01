@@ -64,12 +64,37 @@ describe('parseComgateExport', () => {
 
     expect(diagnostics).toMatchObject({
       detectedDelimiter: ';',
+      detectedFileKind: 'current-portal-guest-payments',
       parserVariant: 'current-portal',
       rawHeaders: ['Comgate ID', 'ID od klienta', 'Datum založení', 'Datum zaplacení', 'Datum převodu', 'E-mail plátce', 'VS platby', 'Obchod', 'Cena', 'Měna', 'Typ platby', 'Mezibankovní poplatek', 'Poplatek asociace', 'Poplatek zpracovatel', 'Poplatek celkem'],
       canonicalHeaders: ['transactionId', 'paymentReference', 'Datum založení', 'paidAt', 'payoutDate', 'E-mail plátce', 'paymentReference', 'Obchod', 'amountMinor', 'currency', 'paymentType', 'interbankFeeMinor', 'associationFeeMinor', 'processorFeeMinor', 'totalFeeMinor'],
       requiredCanonicalHeaders: ['payoutDate', 'amountMinor', 'currency'],
-      missingCanonicalHeaders: []
+      missingCanonicalHeaders: [],
+      containsExplicitSettlementTotal: false
     })
+  })
+
+  it('reproduces the daily Comgate settlement CSV as a distinct settlement shape that is not the current-portal guest-payments variant', () => {
+    const fixture = getRealInputFixture('comgate-daily-payout-export')
+
+    const diagnostics = inspectComgateHeaderDiagnostics(fixture.rawInput.content)
+
+    expect(diagnostics).toMatchObject({
+      detectedDelimiter: ';',
+      detectedFileKind: 'daily-settlement',
+      parserVariant: 'legacy',
+      rawHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'ID od klienta'],
+      canonicalHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'paymentReference'],
+      containsExplicitSettlementTotal: true
+    })
+    expect(diagnostics.parserVariant).not.toBe('current-portal')
+    expect(() =>
+      parseComgateExport({
+        sourceDocument: fixture.sourceDocument,
+        content: fixture.rawInput.content,
+        extractedAt: '2026-04-01T08:00:00.000Z'
+      })
+    ).toThrow('Comgate export is missing required columns')
   })
 
   it('accepts richer Comgate client portal headers with explicit label and order linkage', () => {

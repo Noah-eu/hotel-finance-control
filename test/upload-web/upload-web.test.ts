@@ -397,6 +397,64 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(2)
   })
 
+  it('reproduces the attached daily Comgate settlement CSV as a distinct unsupported settlement source before parser handoff', async () => {
+    const fixture = getRealInputFixture('comgate-daily-payout-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          fixture.sourceDocument.fileName,
+          fixture.rawInput.content
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-01T08:10:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 1,
+      supportedFileCount: 0,
+      unsupportedFileCount: 1,
+      errorFileCount: 0
+    })
+    expect(result.preparedFiles).toHaveLength(0)
+    expect(result.extractedRecords).toHaveLength(0)
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        status: 'unsupported',
+        intakeStatus: 'unclassified',
+        sourceSystem: 'unknown',
+        documentType: 'other'
+      })
+    ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        sourceSystem: 'unknown',
+        documentType: 'other',
+        status: 'unsupported',
+        intakeStatus: 'unclassified',
+        comgateHeaderDiagnostics: expect.objectContaining({
+          detectedFileKind: 'daily-settlement',
+          parserVariant: 'legacy',
+          rawHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'ID od klienta'],
+          canonicalHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'paymentReference'],
+          containsExplicitSettlementTotal: true
+        }),
+        comgatePipelineDiagnostics: expect.objectContaining({
+          extractedRecordCount: 0,
+          normalizedTransactionCount: 0,
+          matchingInputPayoutRowCount: 0,
+          payoutBatchCount: 0,
+          matchingDecisionCount: 0,
+          lossBoundary: 'extraction-to-normalization',
+          lossStage: 'normalizer-produced-no-transactions'
+        })
+      })
+    )
+  })
+
   it('proves current Comgate portal gross-to-net delta is explained by aggregated fees and reaches an exact-amount RB candidate before matcher handoff', async () => {
     const fixture = getRealInputFixture('comgate-export-current-portal')
 
