@@ -2418,24 +2418,66 @@ describe('buildWebDemo', () => {
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
     expect(additive.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Last save status:</strong> saved')
 
-    expect(additive.getLastWorkspaceRenderDebug()).toEqual({
-      currentMonthKey: '2026-03',
-      persistedWorkspaceFileCountBeforeRerun: 3,
-      selectedBatchFileCount: 1,
-      mergedFileCountUsedForRerun: 4,
-      visibleTraceFileCount: 4,
-      renderSource: 'mergedWorkspace',
-      workspacePersistenceBackend: 'indexedDb',
-      storageKeyUsed: 'indexeddb://hotel-finance-control/monthly-browser-workspaces/2026-03',
-      saveCompletedBeforeRerunInputAssembly: 'yes',
-      lastSaveStatus: 'saved',
-      mergedFileSample: [
-        'booking35k.csv',
-        'airbnb.csv',
-        'Bookinng35k.pdf',
-        'Pohyby_5599955956_202603191023.csv'
-      ]
-    })
+    const additiveWorkspaceDebug = additive.getLastWorkspaceRenderDebug() as {
+      requestToken: number
+      restoreToken: number
+      restoreSource: string
+      currentMonthKey: string
+      selectedFileNames: string[]
+      persistedWorkspaceFileCountBeforeRerun: number
+      persistedWorkspaceFileNamesBeforeRerun: string[]
+      selectedBatchFileCount: number
+      mergedFileCountUsedForRerun: number
+      mergedFileNamesUsedForRerun: string[]
+      visibleTraceFileCount: number
+      visibleTraceFileNamesAfterRender: string[]
+      renderSource: string
+      workspacePersistenceBackend: string
+      storageKeyUsed: string
+      saveCompletedBeforeRerunInputAssembly: string
+      lastSaveStatus: string
+      mergedFileSample: string[]
+      checkpointLog: unknown[]
+    }
+
+    expect(additiveWorkspaceDebug.requestToken).toBe(2)
+    expect(additiveWorkspaceDebug.restoreToken).toBe(1)
+    expect(additiveWorkspaceDebug.restoreSource).toBe('persisted-workspace')
+    expect(additiveWorkspaceDebug.currentMonthKey).toBe('2026-03')
+    expect(additiveWorkspaceDebug.selectedFileNames).toEqual(['Pohyby_5599955956_202603191023.csv'])
+    expect(additiveWorkspaceDebug.persistedWorkspaceFileCountBeforeRerun).toBe(3)
+    expect(additiveWorkspaceDebug.persistedWorkspaceFileNamesBeforeRerun).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf'
+    ])
+    expect(additiveWorkspaceDebug.selectedBatchFileCount).toBe(1)
+    expect(additiveWorkspaceDebug.mergedFileCountUsedForRerun).toBe(4)
+    expect(additiveWorkspaceDebug.mergedFileNamesUsedForRerun).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(additiveWorkspaceDebug.visibleTraceFileCount).toBe(4)
+    expect(additiveWorkspaceDebug.visibleTraceFileNamesAfterRender).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(additiveWorkspaceDebug.renderSource).toBe('mergedWorkspace')
+    expect(additiveWorkspaceDebug.workspacePersistenceBackend).toBe('indexedDb')
+    expect(additiveWorkspaceDebug.storageKeyUsed).toBe('indexeddb://hotel-finance-control/monthly-browser-workspaces/2026-03')
+    expect(additiveWorkspaceDebug.saveCompletedBeforeRerunInputAssembly).toBe('yes')
+    expect(additiveWorkspaceDebug.lastSaveStatus).toBe('saved')
+    expect(additiveWorkspaceDebug.mergedFileSample).toEqual([
+      'booking35k.csv',
+      'airbnb.csv',
+      'Bookinng35k.pdf',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(Array.isArray(additiveWorkspaceDebug.checkpointLog)).toBe(true)
 
     const duplicateReupload = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-30T19:12:00.000Z',
@@ -2581,6 +2623,106 @@ describe('buildWebDemo', () => {
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspace')
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Workspace storage backend:</strong> indexedDb')
   }, 15000)
+
+  it('shows that the exact A-then-B same-month boundary keeps A in persisted read, merge input, and final visible state', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const fileA = createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv')
+    const fileB = createWebDemoRuntimeArrayBufferTextFile(
+      'Pohyby_5599955956_202603191023.csv',
+      buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+      'text/csv'
+    )
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T10:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-exact-boundary-a-then-b',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [fileA]
+    })
+
+    await rendered.awaitLastWorkspacePersistence()
+
+    const persistedWorkspaceAfterRun1 = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files?: Array<{ fileName?: string }>
+    }
+
+    expect((persistedWorkspaceAfterRun1.files || []).map((item) => item.fileName)).toEqual(['booking35k.csv'])
+
+    rendered.setSelectedFiles([fileB])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    const debugState = rendered.getLastWorkspaceRenderDebug() as {
+      checkpointLog: Array<{
+        phase: string
+        requestToken: number
+        selectedFileNames: string[]
+        persistedWorkspaceFileNamesBeforeRerun: string[]
+        mergedFileNamesUsedForRerun: string[]
+        visibleTraceFileNamesAfterRender: string[]
+      }>
+    }
+    const rerunRequestToken = Math.max(...debugState.checkpointLog.map((entry) => entry.requestToken || 0))
+    const rerunCheckpoints = debugState.checkpointLog.filter((entry) => entry.requestToken === rerunRequestToken)
+
+    const checkpointBeforeMerge = rerunCheckpoints.find((entry) => entry.phase === 'before-merge')
+    const checkpointAfterMerge = rerunCheckpoints.find((entry) => entry.phase === 'after-merge')
+    const checkpointAfterRender = rerunCheckpoints.find((entry) => entry.phase === 'after-render')
+
+    expect(checkpointBeforeMerge).toBeTruthy()
+    expect(checkpointAfterMerge).toBeTruthy()
+    expect(checkpointAfterRender).toBeTruthy()
+    expect(checkpointBeforeMerge?.selectedFileNames).toEqual(['Pohyby_5599955956_202603191023.csv'])
+    expect(checkpointBeforeMerge?.persistedWorkspaceFileNamesBeforeRerun).toEqual(['booking35k.csv'])
+    expect(checkpointBeforeMerge?.mergedFileNamesUsedForRerun).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(checkpointAfterMerge?.mergedFileNamesUsedForRerun).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+
+    const firstCheckpointLosingA = rerunCheckpoints.find((entry) => {
+      const relevantNames = entry.phase === 'after-render' || entry.phase === 'after-render-overwrite'
+        ? entry.visibleTraceFileNamesAfterRender
+        : entry.phase === 'before-merge'
+          ? entry.persistedWorkspaceFileNamesBeforeRerun.concat(entry.mergedFileNamesUsedForRerun)
+          : entry.mergedFileNamesUsedForRerun
+
+      return relevantNames.length > 0 && !relevantNames.includes('booking35k.csv')
+    })
+
+    if (firstCheckpointLosingA) {
+      throw new Error('File A lost at checkpoint: ' + firstCheckpointLosingA.phase)
+    }
+
+    const finalVisibleState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+    }
+
+    expect(finalVisibleState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(checkpointAfterRender?.visibleTraceFileNamesAfterRender).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Request/run token:</strong>')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Selected file names:</strong> Pohyby_5599955956_202603191023.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file names before rerun:</strong> booking35k.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Merged file names used for rerun:</strong> booking35k.csv, Pohyby_5599955956_202603191023.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Visible trace file names after render:</strong> booking35k.csv, Pohyby_5599955956_202603191023.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source marker:</strong> persisted + selected merge')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Checkpoint:</strong> before-merge')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Checkpoint:</strong> after-merge')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Checkpoint:</strong> after-render')
+  })
 
   it('does not let a stale initial month restore overwrite a newer same-month merged rerun on the same page', async () => {
     const storageState = new Map<string, string>()

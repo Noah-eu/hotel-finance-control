@@ -1292,11 +1292,26 @@ ${showRuntimePayoutDiagnostics ? `
 
       function buildWorkspaceRenderDebugState(input) {
         return {
+          requestToken: Number(input && input.requestToken || 0),
+          restoreToken: Number(input && input.restoreToken || 0),
+          restoreSource: String(input && input.restoreSource || 'not-applicable'),
           currentMonthKey: String(input && input.currentMonthKey || ''),
+          selectedFileNames: Array.isArray(input && input.selectedFileNames)
+            ? input.selectedFileNames.slice(0, 20).map((item) => String(item || ''))
+            : [],
           persistedWorkspaceFileCountBeforeRerun: Number(input && input.persistedWorkspaceFileCountBeforeRerun || 0),
+          persistedWorkspaceFileNamesBeforeRerun: Array.isArray(input && input.persistedWorkspaceFileNamesBeforeRerun)
+            ? input.persistedWorkspaceFileNamesBeforeRerun.slice(0, 20).map((item) => String(item || ''))
+            : [],
           selectedBatchFileCount: Number(input && input.selectedBatchFileCount || 0),
           mergedFileCountUsedForRerun: Number(input && input.mergedFileCountUsedForRerun || 0),
+          mergedFileNamesUsedForRerun: Array.isArray(input && input.mergedFileNamesUsedForRerun)
+            ? input.mergedFileNamesUsedForRerun.slice(0, 20).map((item) => String(item || ''))
+            : [],
           visibleTraceFileCount: Number(input && input.visibleTraceFileCount || 0),
+          visibleTraceFileNamesAfterRender: Array.isArray(input && input.visibleTraceFileNamesAfterRender)
+            ? input.visibleTraceFileNamesAfterRender.slice(0, 20).map((item) => String(item || ''))
+            : [],
           renderSource: String(input && input.renderSource || 'selectedFiles'),
           workspacePersistenceBackend: String(input && input.workspacePersistenceBackend || 'none'),
           storageKeyUsed: String(input && input.storageKeyUsed || monthlyWorkspaceStorageKey),
@@ -1304,12 +1319,93 @@ ${showRuntimePayoutDiagnostics ? `
           lastSaveStatus: String(input && input.lastSaveStatus || 'not-applicable'),
           mergedFileSample: Array.isArray(input && input.mergedFileSample)
             ? input.mergedFileSample.slice(0, 5).map((item) => String(item || ''))
+            : [],
+          checkpointLog: Array.isArray(input && input.checkpointLog)
+            ? input.checkpointLog.slice(-20).map((entry) => ({
+              phase: String(entry && entry.phase || 'unknown'),
+              requestToken: Number(entry && entry.requestToken || 0),
+              restoreToken: Number(entry && entry.restoreToken || 0),
+              restoreSource: String(entry && entry.restoreSource || 'not-applicable'),
+              currentMonthKey: String(entry && entry.currentMonthKey || ''),
+              workspacePersistenceBackend: String(entry && entry.workspacePersistenceBackend || 'none'),
+              storageKeyUsed: String(entry && entry.storageKeyUsed || monthlyWorkspaceStorageKey),
+              saveCompletedBeforeRerunInputAssembly: String(entry && entry.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
+              selectedFileNames: Array.isArray(entry && entry.selectedFileNames) ? entry.selectedFileNames.slice(0, 20).map((item) => String(item || '')) : [],
+              selectedBatchFileCount: Number(entry && entry.selectedBatchFileCount || 0),
+              persistedWorkspaceFileNamesBeforeRerun: Array.isArray(entry && entry.persistedWorkspaceFileNamesBeforeRerun) ? entry.persistedWorkspaceFileNamesBeforeRerun.slice(0, 20).map((item) => String(item || '')) : [],
+              persistedWorkspaceFileCountBeforeRerun: Number(entry && entry.persistedWorkspaceFileCountBeforeRerun || 0),
+              mergedFileNamesUsedForRerun: Array.isArray(entry && entry.mergedFileNamesUsedForRerun) ? entry.mergedFileNamesUsedForRerun.slice(0, 20).map((item) => String(item || '')) : [],
+              mergedFileCountUsedForRerun: Number(entry && entry.mergedFileCountUsedForRerun || 0),
+              visibleTraceFileNamesAfterRender: Array.isArray(entry && entry.visibleTraceFileNamesAfterRender) ? entry.visibleTraceFileNamesAfterRender.slice(0, 20).map((item) => String(item || '')) : [],
+              visibleTraceFileCount: Number(entry && entry.visibleTraceFileCount || 0),
+              renderSource: String(entry && entry.renderSource || 'selectedFiles')
+            }))
             : []
         };
       }
 
       function setWorkspaceRenderDebugState(input) {
         currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState(input);
+      }
+
+      function buildWorkspaceDebugNameList(items) {
+        return (Array.isArray(items) ? items : [])
+          .map((item) => String(item || ''))
+          .filter(Boolean)
+          .slice(0, 20);
+      }
+
+      function buildWorkspaceRenderSourceMarker(renderSource) {
+        if (renderSource === 'persistedWorkspace') {
+          return 'persisted workspace only';
+        }
+
+        if (renderSource === 'mergedWorkspace') {
+          return 'persisted + selected merge';
+        }
+
+        return 'selectedFiles only';
+      }
+
+      function buildVisibleTraceFileNamesFromState(state) {
+        const fileRoutes = Array.isArray(state && state.fileRoutes) ? state.fileRoutes : [];
+
+        if (fileRoutes.length > 0) {
+          return buildWorkspaceDebugNameList(fileRoutes.map((item) => String(item && item.fileName || '')));
+        }
+
+        const preparedFiles = Array.isArray(state && state.preparedFiles) ? state.preparedFiles : [];
+        return buildWorkspaceDebugNameList(preparedFiles.map((item) => String(item && item.fileName || '')));
+      }
+
+      function appendWorkspaceRenderDebugCheckpoint(input) {
+        const nextState = buildWorkspaceRenderDebugState({
+          ...currentWorkspaceRenderDebug,
+          ...input
+        });
+        const checkpoint = {
+          phase: String(input && input.phase || 'unknown'),
+          requestToken: nextState.requestToken,
+          restoreToken: nextState.restoreToken,
+          restoreSource: nextState.restoreSource,
+          currentMonthKey: nextState.currentMonthKey,
+          workspacePersistenceBackend: nextState.workspacePersistenceBackend,
+          storageKeyUsed: nextState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: nextState.saveCompletedBeforeRerunInputAssembly,
+          selectedFileNames: nextState.selectedFileNames.slice(),
+          selectedBatchFileCount: nextState.selectedBatchFileCount,
+          persistedWorkspaceFileNamesBeforeRerun: nextState.persistedWorkspaceFileNamesBeforeRerun.slice(),
+          persistedWorkspaceFileCountBeforeRerun: nextState.persistedWorkspaceFileCountBeforeRerun,
+          mergedFileNamesUsedForRerun: nextState.mergedFileNamesUsedForRerun.slice(),
+          mergedFileCountUsedForRerun: nextState.mergedFileCountUsedForRerun,
+          visibleTraceFileNamesAfterRender: nextState.visibleTraceFileNamesAfterRender.slice(),
+          visibleTraceFileCount: nextState.visibleTraceFileCount,
+          renderSource: nextState.renderSource
+        };
+
+        nextState.checkpointLog = currentWorkspaceRenderDebug.checkpointLog.concat([checkpoint]).slice(-20);
+        setWorkspaceRenderDebugState(nextState);
+        return currentWorkspaceRenderDebug;
       }
 
       function hashStringContent(value) {
@@ -1552,6 +1648,14 @@ ${showRuntimePayoutDiagnostics ? `
           .map((file) => String(file.name || ''));
       }
 
+      function buildWorkspaceDebugNamesFromRuntimeFiles(files) {
+        return buildWorkspaceDebugNameList((Array.isArray(files) ? files : []).map((file) => String(file && file.name || '')));
+      }
+
+      function buildWorkspaceDebugNamesFromWorkspaceRecords(records) {
+        return buildWorkspaceDebugNameList((Array.isArray(records) ? records : []).map((record) => String(record && record.fileName || '')));
+      }
+
       function buildRunningWorkflowFilesFromMonthWorkspace(existingFiles, selectedFiles) {
         const merged = [];
         const seenKeys = new Set();
@@ -1727,6 +1831,25 @@ ${showRuntimePayoutDiagnostics ? `
           expenseReviewOverrides: sanitizeExpenseReviewOverridesForStorage(currentExpenseReviewOverrides)
         };
 
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'before-save',
+          requestToken: currentWorkspaceViewRequestToken,
+          currentMonthKey: normalizedMonth,
+          selectedFileNames: currentWorkspaceRenderDebug.selectedFileNames,
+          selectedBatchFileCount: currentWorkspaceRenderDebug.selectedBatchFileCount,
+          persistedWorkspaceFileNamesBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileNamesBeforeRerun,
+          persistedWorkspaceFileCountBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileCountBeforeRerun,
+          mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(workspaceSnapshot.files),
+          mergedFileCountUsedForRerun: Array.isArray(workspaceSnapshot.files) ? workspaceSnapshot.files.length : 0,
+          visibleTraceFileNamesAfterRender: currentWorkspaceRenderDebug.visibleTraceFileNamesAfterRender,
+          visibleTraceFileCount: currentWorkspaceRenderDebug.visibleTraceFileCount,
+          renderSource: currentWorkspaceRenderDebug.renderSource,
+          workspacePersistenceBackend: currentWorkspaceRenderDebug.workspacePersistenceBackend,
+          storageKeyUsed: currentWorkspaceRenderDebug.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly,
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(workspaceSnapshot.files)
+        });
+
         currentWorkspacePersistencePromise = (async () => {
           const backend = await openMonthlyWorkspaceIndexedDb();
           const metadataStore = loadMonthlyWorkspaceStore();
@@ -1757,15 +1880,18 @@ ${showRuntimePayoutDiagnostics ? `
             errorMessage: ''
           });
 
-          const completedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
-            ...currentWorkspaceRenderDebug,
+          const completedWorkspaceRenderDebug = appendWorkspaceRenderDebugCheckpoint({
+            phase: 'after-save',
             workspacePersistenceBackend: backendName,
             storageKeyUsed,
             saveCompletedBeforeRerunInputAssembly: 'yes',
             lastSaveStatus: 'saved',
+            currentMonthKey: normalizedMonth,
+            requestToken: currentWorkspaceViewRequestToken,
+            mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(workspaceSnapshot.files),
+            mergedFileCountUsedForRerun: Array.isArray(workspaceSnapshot.files) ? workspaceSnapshot.files.length : 0,
             mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(workspaceSnapshot.files)
           });
-          setWorkspaceRenderDebugState(completedWorkspaceRenderDebug);
 
           if (currentVisibleRuntimePhase === 'completed') {
             renderCompletedRuntimeWorkspaceMergeDebug(completedWorkspaceRenderDebug);
@@ -1788,17 +1914,20 @@ ${showRuntimePayoutDiagnostics ? `
           });
           currentWorkspacePersistenceState = failedState;
 
-          const failedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
-            ...currentWorkspaceRenderDebug,
+          const failedWorkspaceRenderDebug = appendWorkspaceRenderDebugCheckpoint({
+            phase: 'after-save-failed',
             workspacePersistenceBackend: failedState.backendName,
             storageKeyUsed: failedState.storageKeyUsed,
             saveCompletedBeforeRerunInputAssembly: failedState.saveCompletedBeforeRerunInputAssembly,
             lastSaveStatus: failedState.errorMessage
               ? 'failed: ' + failedState.errorMessage
               : 'failed',
+            currentMonthKey: normalizedMonth,
+            requestToken: currentWorkspaceViewRequestToken,
+            mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(workspaceSnapshot.files),
+            mergedFileCountUsedForRerun: Array.isArray(workspaceSnapshot.files) ? workspaceSnapshot.files.length : 0,
             mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(workspaceSnapshot.files)
           });
-          setWorkspaceRenderDebugState(failedWorkspaceRenderDebug);
 
           if (currentVisibleRuntimePhase === 'completed') {
             renderCompletedRuntimeWorkspaceMergeDebug(failedWorkspaceRenderDebug);
@@ -1940,6 +2069,27 @@ ${showRuntimePayoutDiagnostics ? `
           return false;
         }
 
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: workspace && workspace.runtimeState ? 'restore-loaded' : 'restore-missing',
+          requestToken,
+          restoreToken: requestToken,
+          restoreSource: workspace && workspace.runtimeState ? 'persisted-workspace' : 'missing-workspace',
+          currentMonthKey: normalizedMonth,
+          workspacePersistenceBackend: loadState.backendName,
+          storageKeyUsed: loadState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+          selectedFileNames: currentWorkspaceRenderDebug.selectedFileNames,
+          selectedBatchFileCount: currentWorkspaceRenderDebug.selectedBatchFileCount,
+          persistedWorkspaceFileNamesBeforeRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(workspace && workspace.files),
+          persistedWorkspaceFileCountBeforeRerun: Array.isArray(workspace && workspace.files) ? workspace.files.length : 0,
+          mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(workspace && workspace.files),
+          mergedFileCountUsedForRerun: Array.isArray(workspace && workspace.files) ? workspace.files.length : 0,
+          visibleTraceFileNamesAfterRender: currentWorkspaceRenderDebug.visibleTraceFileNamesAfterRender,
+          visibleTraceFileCount: currentWorkspaceRenderDebug.visibleTraceFileCount,
+          renderSource: workspace && workspace.runtimeState ? 'persistedWorkspace' : 'selectedFiles',
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(workspace && workspace.files)
+        });
+
         currentWorkspaceMonth = normalizedMonth;
 
         if (monthInput) {
@@ -1948,11 +2098,18 @@ ${showRuntimePayoutDiagnostics ? `
 
         if (!workspace || !workspace.runtimeState) {
           setWorkspaceRenderDebugState({
+            requestToken,
+            restoreToken: requestToken,
+            restoreSource: 'missing-workspace',
             currentMonthKey: normalizedMonth,
+            selectedFileNames: [],
             persistedWorkspaceFileCountBeforeRerun: 0,
+            persistedWorkspaceFileNamesBeforeRerun: [],
             selectedBatchFileCount: 0,
             mergedFileCountUsedForRerun: 0,
+            mergedFileNamesUsedForRerun: [],
             visibleTraceFileCount: 0,
+            visibleTraceFileNamesAfterRender: [],
             renderSource: 'persistedWorkspace',
             workspacePersistenceBackend: loadState.backendName,
             storageKeyUsed: loadState.storageKeyUsed,
@@ -1975,11 +2132,18 @@ ${showRuntimePayoutDiagnostics ? `
         currentWorkspaceFiles = Array.isArray(workspace.files) ? workspace.files.slice() : [];
         currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
         setWorkspaceRenderDebugState({
+          requestToken,
+          restoreToken: requestToken,
+          restoreSource: 'persisted-workspace',
           currentMonthKey: normalizedMonth,
+          selectedFileNames: [],
           persistedWorkspaceFileCountBeforeRerun: currentWorkspaceFiles.length,
+          persistedWorkspaceFileNamesBeforeRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles),
           selectedBatchFileCount: 0,
           mergedFileCountUsedForRerun: currentWorkspaceFiles.length,
+          mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles),
           visibleTraceFileCount: currentWorkspaceFiles.length,
+          visibleTraceFileNamesAfterRender: buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles),
           renderSource: 'persistedWorkspace',
           workspacePersistenceBackend: loadState.backendName,
           storageKeyUsed: loadState.storageKeyUsed,
@@ -1989,6 +2153,26 @@ ${showRuntimePayoutDiagnostics ? `
         });
         const visibleState = buildCompletedVisibleRuntimeState(workspace.runtimeState);
         applyVisibleRuntimeState(visibleState, 'completed');
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'after-render-overwrite',
+          requestToken,
+          restoreToken: requestToken,
+          restoreSource: 'persisted-workspace',
+          currentMonthKey: normalizedMonth,
+          workspacePersistenceBackend: loadState.backendName,
+          storageKeyUsed: loadState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+          selectedFileNames: [],
+          selectedBatchFileCount: 0,
+          persistedWorkspaceFileNamesBeforeRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles),
+          persistedWorkspaceFileCountBeforeRerun: currentWorkspaceFiles.length,
+          mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles),
+          mergedFileCountUsedForRerun: currentWorkspaceFiles.length,
+          visibleTraceFileNamesAfterRender: buildVisibleTraceFileNamesFromState(visibleState),
+          visibleTraceFileCount: buildVisibleTraceFileCountFromState(visibleState),
+          renderSource: 'persistedWorkspace',
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
+        });
         runtimeOutput.innerHTML = [
           '<h3>Výsledek spuštěného browser workflow</h3>',
           '<p><strong>Obnovený měsíc:</strong> ' + escapeHtml(normalizedMonth) + '</p>',
@@ -3107,21 +3291,76 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const mergedFileSampleMarkup = state.mergedFileSample.length === 0
           ? 'žádné'
           : state.mergedFileSample.map((item) => escapeHtml(item)).join(', ');
+        const selectedFileNamesMarkup = state.selectedFileNames.length === 0
+          ? 'žádné'
+          : state.selectedFileNames.map((item) => escapeHtml(item)).join(', ');
+        const persistedFileNamesMarkup = state.persistedWorkspaceFileNamesBeforeRerun.length === 0
+          ? 'žádné'
+          : state.persistedWorkspaceFileNamesBeforeRerun.map((item) => escapeHtml(item)).join(', ');
+        const mergedFileNamesMarkup = state.mergedFileNamesUsedForRerun.length === 0
+          ? 'žádné'
+          : state.mergedFileNamesUsedForRerun.map((item) => escapeHtml(item)).join(', ');
+        const visibleTraceFileNamesMarkup = state.visibleTraceFileNamesAfterRender.length === 0
+          ? 'žádné'
+          : state.visibleTraceFileNamesAfterRender.map((item) => escapeHtml(item)).join(', ');
+        const checkpointLogMarkup = state.checkpointLog.length === 0
+          ? '<li><strong>Žádné checkpointy.</strong></li>'
+          : state.checkpointLog.map((checkpoint) => {
+            const checkpointSelectedNames = checkpoint.selectedFileNames.length === 0
+              ? 'žádné'
+              : checkpoint.selectedFileNames.map((item) => escapeHtml(item)).join(', ');
+            const checkpointPersistedNames = checkpoint.persistedWorkspaceFileNamesBeforeRerun.length === 0
+              ? 'žádné'
+              : checkpoint.persistedWorkspaceFileNamesBeforeRerun.map((item) => escapeHtml(item)).join(', ');
+            const checkpointMergedNames = checkpoint.mergedFileNamesUsedForRerun.length === 0
+              ? 'žádné'
+              : checkpoint.mergedFileNamesUsedForRerun.map((item) => escapeHtml(item)).join(', ');
+            const checkpointVisibleNames = checkpoint.visibleTraceFileNamesAfterRender.length === 0
+              ? 'žádné'
+              : checkpoint.visibleTraceFileNamesAfterRender.map((item) => escapeHtml(item)).join(', ');
+
+            return [
+              '<li>',
+              '<strong>Checkpoint:</strong> ' + escapeHtml(checkpoint.phase),
+              ' · <strong>request token:</strong> ' + escapeHtml(String(checkpoint.requestToken)),
+              ' · <strong>restore token:</strong> ' + escapeHtml(String(checkpoint.restoreToken || 0)),
+              ' · <strong>restore source:</strong> ' + escapeHtml(checkpoint.restoreSource || 'not-applicable'),
+              '<br /><strong>Month key:</strong> ' + escapeHtml(checkpoint.currentMonthKey || 'neuvedeno'),
+              '<br /><strong>Storage backend:</strong> ' + escapeHtml(checkpoint.workspacePersistenceBackend || 'none'),
+              '<br /><strong>Storage key:</strong> ' + escapeHtml(checkpoint.storageKeyUsed || monthlyWorkspaceStorageKey),
+              '<br /><strong>Selected files:</strong> ' + checkpointSelectedNames + ' (' + escapeHtml(String(checkpoint.selectedBatchFileCount)) + ')',
+              '<br /><strong>Persisted files before rerun:</strong> ' + checkpointPersistedNames + ' (' + escapeHtml(String(checkpoint.persistedWorkspaceFileCountBeforeRerun)) + ')',
+              '<br /><strong>Merged files used for rerun:</strong> ' + checkpointMergedNames + ' (' + escapeHtml(String(checkpoint.mergedFileCountUsedForRerun)) + ')',
+              '<br /><strong>Visible trace after render:</strong> ' + checkpointVisibleNames + ' (' + escapeHtml(String(checkpoint.visibleTraceFileCount)) + ')',
+              '<br /><strong>Save-before-rerun:</strong> ' + escapeHtml(checkpoint.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
+              '<br /><strong>Render source marker:</strong> ' + escapeHtml(buildWorkspaceRenderSourceMarker(checkpoint.renderSource)),
+              '</li>'
+            ].join('');
+          }).join('');
 
         return [
           '<p class="hint">Tento blok ukazuje, z jakého zdroje právě stránka bere viditelný trace souborů pro měsíc.</p>',
           '<ul class="diagnostic-list">',
+          '<li><strong>Request/run token:</strong> ' + escapeHtml(String(state.requestToken || 0)) + '</li>',
+          '<li><strong>Restore token:</strong> ' + escapeHtml(String(state.restoreToken || 0)) + '</li>',
+          '<li><strong>Restore source:</strong> ' + escapeHtml(state.restoreSource || 'not-applicable') + '</li>',
           '<li><strong>Current month key:</strong> ' + escapeHtml(state.currentMonthKey || 'neuvedeno') + '</li>',
+          '<li><strong>Selected file names:</strong> ' + selectedFileNamesMarkup + '</li>',
           '<li><strong>Persisted workspace file count before rerun:</strong> ' + escapeHtml(String(state.persistedWorkspaceFileCountBeforeRerun)) + '</li>',
+          '<li><strong>Persisted workspace file names before rerun:</strong> ' + persistedFileNamesMarkup + '</li>',
           '<li><strong>Newly selected batch file count:</strong> ' + escapeHtml(String(state.selectedBatchFileCount)) + '</li>',
           '<li><strong>Merged file count used for rerun:</strong> ' + escapeHtml(String(state.mergedFileCountUsedForRerun)) + '</li>',
+          '<li><strong>Merged file names used for rerun:</strong> ' + mergedFileNamesMarkup + '</li>',
           '<li><strong>Visible trace file count:</strong> ' + escapeHtml(String(state.visibleTraceFileCount)) + '</li>',
+          '<li><strong>Visible trace file names after render:</strong> ' + visibleTraceFileNamesMarkup + '</li>',
           '<li><strong>Render source:</strong> ' + escapeHtml(state.renderSource || 'selectedFiles') + '</li>',
+          '<li><strong>Render source marker:</strong> ' + escapeHtml(buildWorkspaceRenderSourceMarker(state.renderSource || 'selectedFiles')) + '</li>',
           '<li><strong>Workspace storage backend:</strong> ' + escapeHtml(state.workspacePersistenceBackend || 'none') + '</li>',
           '<li><strong>Storage key used for month workspace load/save:</strong> ' + escapeHtml(state.storageKeyUsed || monthlyWorkspaceStorageKey) + '</li>',
           '<li><strong>Save happened before rerun input assembly:</strong> ' + escapeHtml(state.saveCompletedBeforeRerunInputAssembly || 'not-applicable') + '</li>',
           '<li><strong>Last save status:</strong> ' + escapeHtml(state.lastSaveStatus || 'not-applicable') + '</li>',
           '<li><strong>Merged file sample:</strong> ' + mergedFileSampleMarkup + '</li>',
+          '<li><strong>Checkpoint log:</strong><ol>' + checkpointLogMarkup + '</ol></li>',
           '</ul>'
         ].join('');
       }
@@ -4365,20 +4604,33 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
         const completedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
+          requestToken: currentWorkspaceRenderDebug.requestToken,
+          restoreToken: currentWorkspaceRenderDebug.restoreToken,
+          restoreSource: currentWorkspaceRenderDebug.restoreSource,
           currentMonthKey: currentWorkspaceMonth || visibleState.monthLabel || '',
+          selectedFileNames: currentWorkspaceRenderDebug.selectedFileNames,
           persistedWorkspaceFileCountBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileCountBeforeRerun,
+          persistedWorkspaceFileNamesBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileNamesBeforeRerun,
           selectedBatchFileCount: currentWorkspaceRenderDebug.selectedBatchFileCount,
           mergedFileCountUsedForRerun: currentWorkspaceRenderDebug.mergedFileCountUsedForRerun || (Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.length : 0),
+          mergedFileNamesUsedForRerun: currentWorkspaceRenderDebug.mergedFileNamesUsedForRerun.length > 0
+            ? currentWorkspaceRenderDebug.mergedFileNamesUsedForRerun
+            : buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles),
           visibleTraceFileCount: buildVisibleTraceFileCountFromState(visibleState),
+          visibleTraceFileNamesAfterRender: buildVisibleTraceFileNamesFromState(visibleState),
           renderSource: currentWorkspaceRenderDebug.renderSource || 'mergedWorkspace',
           workspacePersistenceBackend: currentWorkspacePersistenceState.backendName,
           storageKeyUsed: currentWorkspacePersistenceState.storageKeyUsed,
           saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly,
           lastSaveStatus: currentWorkspacePersistenceState.status || currentWorkspaceRenderDebug.lastSaveStatus,
-          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles),
+          checkpointLog: currentWorkspaceRenderDebug.checkpointLog
         });
-        setWorkspaceRenderDebugState(completedWorkspaceRenderDebug);
-        renderCompletedRuntimeWorkspaceMergeDebug(completedWorkspaceRenderDebug);
+        const completedWorkspaceRenderDebugWithCheckpoint = appendWorkspaceRenderDebugCheckpoint({
+          ...completedWorkspaceRenderDebug,
+          phase: 'after-render'
+        });
+        renderCompletedRuntimeWorkspaceMergeDebug(completedWorkspaceRenderDebugWithCheckpoint);
         currentExpenseReviewState = baseVisibleState;
         currentExportVisibleState = visibleState;
         if (phase === 'completed' && currentWorkspaceMonth) {
@@ -4388,7 +4640,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         if (runtimeOperatorDebugMode) {
           window.__hotelFinanceLastVisibleRuntimeState = visibleState;
           window.__hotelFinanceLastVisiblePayoutProjection = payoutProjection;
-          window.__hotelFinanceLastWorkspaceRenderDebug = completedWorkspaceRenderDebug;
+          window.__hotelFinanceLastWorkspaceRenderDebug = completedWorkspaceRenderDebugWithCheckpoint;
           window.__hotelFinanceExpenseReviewOverrides = currentExpenseReviewOverrides.slice();
           window.__hotelFinanceExpenseReviewOverrideStorageKey = buildExpenseReviewOverrideStorageKey(baseVisibleState);
           window.__hotelFinanceMonthlyWorkspaceState = {
@@ -4584,6 +4836,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const requestToken = ++currentWorkspaceViewRequestToken;
         const files = Array.from(fileInput.files || []);
         const normalizedMonth = String(monthInput && monthInput.value || '');
+        const selectedFileNames = buildWorkspaceDebugNamesFromRuntimeFiles(files);
         const persistenceStateBeforeRerun = await awaitCurrentWorkspacePersistence();
 
         if (requestToken !== currentWorkspaceViewRequestToken) {
@@ -4600,6 +4853,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const loadState = loadedWorkspace && loadedWorkspace.loadState
           ? loadedWorkspace.loadState
           : persistenceStateBeforeRerun;
+        const persistedWorkspaceFileNames = buildWorkspaceDebugNamesFromWorkspaceRecords(existingWorkspace && existingWorkspace.files);
         runtimeOutput.innerHTML = '<p class="hint">Spouštím browser/local workflow nad právě zvolenými soubory…</p>';
 
         if (files.length === 0) {
@@ -4614,12 +4868,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>běh právě probíhá</strong>. Původní ukázkový snapshot se teď nahrazuje skutečným výsledkem vybraných souborů.';
         const runningWorkspacePreviewFiles = buildRunningWorkflowFilesFromMonthWorkspace(existingWorkspace && existingWorkspace.files, files);
-        setWorkspaceRenderDebugState({
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'before-merge',
+          requestToken,
           currentMonthKey: normalizedMonth,
+          selectedFileNames,
           persistedWorkspaceFileCountBeforeRerun: Array.isArray(existingWorkspace && existingWorkspace.files) ? existingWorkspace.files.length : 0,
+          persistedWorkspaceFileNamesBeforeRerun: persistedWorkspaceFileNames,
           selectedBatchFileCount: files.length,
           mergedFileCountUsedForRerun: runningWorkspacePreviewFiles.length,
+          mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromRuntimeFiles(runningWorkspacePreviewFiles),
           visibleTraceFileCount: runningWorkspacePreviewFiles.length,
+          visibleTraceFileNamesAfterRender: buildWorkspaceDebugNamesFromRuntimeFiles(runningWorkspacePreviewFiles),
           renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles',
           workspacePersistenceBackend: loadState.backendName,
           storageKeyUsed: loadState.storageKeyUsed,
@@ -4651,12 +4911,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
           const mergedWorkspaceFiles = mergeWorkspaceFiles(existingWorkspace && existingWorkspace.files, serializedFiles);
           const mergedRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(mergedWorkspaceFiles);
-          setWorkspaceRenderDebugState({
+          appendWorkspaceRenderDebugCheckpoint({
+            phase: 'after-merge',
+            requestToken,
             currentMonthKey: normalizedMonth,
+            selectedFileNames,
             persistedWorkspaceFileCountBeforeRerun: Array.isArray(existingWorkspace && existingWorkspace.files) ? existingWorkspace.files.length : 0,
+            persistedWorkspaceFileNamesBeforeRerun: persistedWorkspaceFileNames,
             selectedBatchFileCount: files.length,
             mergedFileCountUsedForRerun: mergedWorkspaceFiles.length,
+            mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(mergedWorkspaceFiles),
             visibleTraceFileCount: mergedRunningWorkflowFiles.length,
+            visibleTraceFileNamesAfterRender: buildWorkspaceDebugNamesFromRuntimeFiles(mergedRunningWorkflowFiles),
             renderSource: Array.isArray(existingWorkspace && existingWorkspace.files) && existingWorkspace.files.length > 0 ? 'mergedWorkspace' : 'selectedFiles',
             workspacePersistenceBackend: loadState.backendName,
             storageKeyUsed: loadState.storageKeyUsed,
