@@ -295,6 +295,31 @@ function renderOperatorWebDemoHtml(input: {
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
         gap: 16px;
       }
+      .month-field {
+        max-width: 17rem;
+      }
+      .month-input-shell {
+        width: min(100%, 15rem);
+        max-width: 100%;
+      }
+      .month-input-shell input[type="month"] {
+        width: 100%;
+        min-height: 48px;
+        padding-right: 46px;
+        box-sizing: border-box;
+      }
+      .month-input-shell input[type="month"]:focus-visible {
+        outline: 3px solid #9bbcff;
+        outline-offset: 2px;
+      }
+      .month-input-shell input[type="month"]::-webkit-calendar-picker-indicator {
+        padding: 10px;
+        margin: -10px;
+        cursor: pointer;
+      }
+      .month-input-shell input[type="month"]::-webkit-inner-spin-button {
+        display: none;
+      }
       .detail-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -615,9 +640,11 @@ ${input.debugMode ? `
             <input id="monthly-files" type="file" multiple />
             <p class="hint">Vyberte bankovní výpisy, OTA exporty, platební brány, faktury a účtenky za jeden měsíc.</p>
           </div>
-          <div>
+          <div class="month-field">
             <label for="month-label">Označení měsíce</label>
-            <input id="month-label" type="month" />
+            <div class="month-input-shell">
+              <input id="month-label" type="month" />
+            </div>
             <p class="hint">Např. <code>2026-03</code> pro březen 2026.</p>
             <p class="hint">Soubory i ruční rozhodnutí se ukládají zvlášť pro každý měsíc a další upload je do stejného měsíce přidává místo úplného přepsání.</p>
           </div>
@@ -5349,6 +5376,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         if (!normalizedMonth) {
           runtimeOutput.innerHTML = '<p class="hint">Nejprve vyberte měsíc, který chcete vymazat.</p>';
+          return;
+        }
+
+        const confirmationMessage = 'Opravdu chcete smazat uložený workspace pro měsíc ' + normalizedMonth + '?';
+        if (typeof window.confirm === 'function' && !window.confirm(confirmationMessage)) {
           return;
         }
 

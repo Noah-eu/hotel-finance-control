@@ -2981,6 +2981,58 @@ describe('buildWebDemo', () => {
     expect(finalState.fileRoutes.map((item) => item.fileName)).toEqual(['Pohyby_5599955956_202603191023.csv'])
   })
 
+  it('does not clear the selected month workspace when the operator cancels the delete confirmation', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:22:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-delete-cancel',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      confirmResponses: [false],
+      files: [createSelectedFilesRegressionFileA()]
+    })
+
+    await rendered.clearCurrentMonthWorkspace()
+
+    expect(rendered.getConfirmMessages()).toEqual([
+      'Opravdu chcete smazat uložený workspace pro měsíc 2026-03?'
+    ])
+    expect(workspacePersistenceState.has('2026-03')).toBe(true)
+
+    const visibleState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+    }
+    expect(visibleState.fileRoutes.map((item) => item.fileName)).toEqual(['booking35k.csv'])
+  })
+
+  it('clears the selected month workspace only after the operator confirms the delete action', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:23:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-delete-confirm',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      confirmResponses: [true],
+      files: [createSelectedFilesRegressionFileA()]
+    })
+
+    await rendered.clearCurrentMonthWorkspace()
+
+    expect(rendered.getConfirmMessages()).toEqual([
+      'Opravdu chcete smazat uložený workspace pro měsíc 2026-03?'
+    ])
+    expect(workspacePersistenceState.has('2026-03')).toBe(false)
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('Rozpoznáno souborů: 1')
+  })
+
   it('keeps different months isolated from the same-month invariant guard', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -3937,6 +3989,7 @@ async function executeWebDemoMainWorkflow(input: {
   outputDirName?: string
   locationSearch?: string
   locationHash?: string
+  confirmResponses?: boolean[]
   skipStart?: boolean
   awaitInitialRestore?: boolean
   storageState?: Map<string, string>
@@ -3984,6 +4037,7 @@ async function executeWebDemoMainWorkflow(input: {
   runtimePayoutProjectionDebugContent: StubDomElement
   runtimeWorkspaceMergeDebugSection: StubDomElement
   runtimeWorkspaceMergeDebugContent: StubDomElement
+  getConfirmMessages: () => string[]
   openExpenseReviewPage: () => StubDomElement
   openControlDetailPage: () => StubDomElement
   backToMainOverviewFromExpense: () => void
@@ -4052,9 +4106,12 @@ async function executeWebDemoMainWorkflow(input: {
   const workspacePersistenceLoadDelaysMs = Array.isArray(input.workspacePersistenceLoadDelaysMs)
     ? input.workspacePersistenceLoadDelaysMs.slice()
     : []
+  const confirmResponses = Array.isArray(input.confirmResponses) ? input.confirmResponses.slice() : []
+  const confirmMessages: string[] = []
   const localStorageSetItemLimitBytes = input.localStorageSetItemLimitBytes ?? Number.POSITIVE_INFINITY
   const windowObject: {
     location: { search: string; hash: string }
+    confirm: (message?: string) => boolean
     localStorage: {
       getItem: (key: string) => string | null
       setItem: (key: string, value: string) => void
@@ -4092,6 +4149,10 @@ async function executeWebDemoMainWorkflow(input: {
     location: {
       search: input.locationSearch ?? '',
       hash: input.locationHash ?? ''
+    },
+    confirm(message?: string) {
+      confirmMessages.push(String(message ?? ''))
+      return confirmResponses.length > 0 ? Boolean(confirmResponses.shift()) : true
     },
     localStorage: {
       getItem(key: string) {
@@ -4286,6 +4347,9 @@ async function executeWebDemoMainWorkflow(input: {
     runtimePayoutProjectionDebugContent: elements['runtime-payout-projection-debug-content'],
     runtimeWorkspaceMergeDebugSection: elements['runtime-workspace-merge-debug-section'],
     runtimeWorkspaceMergeDebugContent: elements['runtime-workspace-merge-debug-content'],
+    getConfirmMessages() {
+      return confirmMessages.slice()
+    },
     openExpenseReviewPage() {
       elements['open-expense-review-button'].listeners.click()
       return elements['expense-detail-view']
