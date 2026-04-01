@@ -509,6 +509,75 @@ function renderOperatorWebDemoHtml(input: {
         background: #fff1f3;
         color: #b42318;
       }
+      .manual-match-summary {
+        border: 1px solid #dce6f5;
+        background: #f8fafc;
+      }
+      .manual-match-summary[hidden] {
+        display: none;
+      }
+      .manual-match-summary-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .manual-match-summary-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .manual-match-summary-actions .secondary-button,
+      .manual-match-group button.secondary-button {
+        background: #eaf2ff;
+        color: #174ea6;
+      }
+      .manual-match-summary-actions .danger-button,
+      .manual-match-group .danger-button {
+        background: #fff1f3;
+        color: #b42318;
+      }
+      .manual-match-note-input {
+        width: 100%;
+        margin-top: 10px;
+      }
+      .manual-match-selection {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        color: #174ea6;
+        font-weight: 700;
+      }
+      .manual-match-selection input {
+        width: auto;
+        margin: 0;
+      }
+      .manual-match-groups {
+        display: grid;
+        gap: 12px;
+      }
+      .manual-match-group {
+        border: 1px solid #dce6f5;
+        border-radius: 12px;
+        background: #fbfdff;
+        padding: 14px 16px;
+      }
+      .manual-match-group-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .manual-match-group-meta {
+        color: #52627a;
+      }
+      .manual-match-group ul {
+        margin: 10px 0 0;
+      }
       .manual-audit {
         display: inline-block;
         margin-bottom: 10px;
@@ -781,6 +850,9 @@ ${showRuntimePayoutDiagnostics ? `
         <div id="control-detail-page-summary-content" class="detail-summary-block">
           <p class="hint">Po spuštění se zde zobrazí souhrn počtů pro payout dávky a kontrolní bucket sekce.</p>
         </div>
+        <div id="control-manual-match-summary" class="detail-summary-block manual-match-summary" hidden>
+          <p class="hint">Ruční spárování se zobrazí po výběru nespárovaných položek.</p>
+        </div>
         <section class="detail-panel detail-page-table">
           <h3>Náhled reportu</h3>
           <table>
@@ -796,6 +868,12 @@ ${showRuntimePayoutDiagnostics ? `
           </table>
         </section>
         <div class="detail-grid">
+          <section id="control-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Ručně spárováno</h3>
+            <div id="control-manual-matched-content">
+              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
+            </div>
+          </section>
           <section id="matched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Spárované Airbnb / OTA payout dávky</h3>
             <div id="matched-payout-batches-content">
@@ -838,6 +916,9 @@ ${showRuntimePayoutDiagnostics ? `
         <div id="expense-detail-summary-content" class="detail-summary-block">
           <p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a bankovní pohyby ke kontrole.</p>
         </div>
+        <div id="expense-manual-match-summary" class="detail-summary-block manual-match-summary" hidden>
+          <p class="hint">Ruční spárování se zobrazí po výběru nespárovaných položek.</p>
+        </div>
         <section class="expense-detail-toolbar">
           <div class="expense-filter-buttons" id="expense-detail-filter-buttons">
             <button id="expense-filter-all" type="button">Vše</button>
@@ -867,6 +948,12 @@ ${showRuntimePayoutDiagnostics ? `
           <p id="expense-detail-visible-count" class="expense-visible-count">Zobrazeno položek: 0</p>
         </section>
         <div class="detail-grid expense-detail-grid">
+          <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Ručně spárováno</h3>
+            <div id="expense-manual-matched-content">
+              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
+            </div>
+          </section>
           <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Spárované výdaje</h3>
             <div id="expense-matched-content">
@@ -926,6 +1013,9 @@ ${showRuntimePayoutDiagnostics ? `
   const controlDetailSummarySection = document.getElementById('control-detail-summary-section');
   const controlDetailLauncherSummaryContent = document.getElementById('control-detail-launcher-summary-content');
   const controlDetailPageSummaryContent = document.getElementById('control-detail-page-summary-content');
+  const controlManualMatchSummary = document.getElementById('control-manual-match-summary');
+  const controlManualMatchedSection = document.getElementById('control-manual-matched-section');
+  const controlManualMatchedContent = document.getElementById('control-manual-matched-content');
   const openControlDetailButton = document.getElementById('open-control-detail-button');
   const reportPreviewBody = document.getElementById('report-preview-body');
   const reservationSettlementOverviewSection = document.getElementById('reservation-settlement-overview-section');
@@ -948,6 +1038,9 @@ ${showRuntimePayoutDiagnostics ? `
   const expenseUnmatchedOutflowsContent = document.getElementById('expense-unmatched-outflows-content');
   const expenseUnmatchedInflowsSection = document.getElementById('expense-unmatched-inflows-section');
   const expenseUnmatchedInflowsContent = document.getElementById('expense-unmatched-inflows-content');
+  const expenseManualMatchSummary = document.getElementById('expense-manual-match-summary');
+  const expenseManualMatchedSection = document.getElementById('expense-manual-matched-section');
+  const expenseManualMatchedContent = document.getElementById('expense-manual-matched-content');
   const expenseReviewSummarySection = document.getElementById('expense-review-summary-section');
   const expenseReviewSummaryContent = document.getElementById('expense-review-summary-content');
   const expenseDetailSummaryContent = document.getElementById('expense-detail-summary-content');
@@ -974,6 +1067,10 @@ ${showRuntimePayoutDiagnostics ? `
       const runtimePayoutProjectionDebugMode = runtimeOperatorDebugMode;
       let currentExpenseReviewState = initialRuntimeState;
       let currentExpenseReviewOverrides = [];
+      let currentManualMatchGroups = [];
+      let currentSelectedManualMatchItemIds = [];
+      let currentManualMatchDraftNote = '';
+      let currentManualMatchConfirmMode = false;
       let currentExportVisibleState = initialRuntimeState;
       let currentExportPreset = 'complete';
       let currentExpenseDetailFilter = 'all';
@@ -982,6 +1079,7 @@ ${showRuntimePayoutDiagnostics ? `
       let currentVisibleRuntimePhase = 'placeholder';
       let expenseDetailControlsWired = false;
       let currentWorkspaceMonth = '';
+      let currentClearedWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
       let currentPendingSelectedFiles = [];
       let currentPendingSelectedFileNames = [];
@@ -992,6 +1090,7 @@ ${showRuntimePayoutDiagnostics ? `
       let currentSelectionInvariantGuardApplied = 'no';
       const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
       const monthlyWorkspaceStorageKey = 'hotel-finance-control:monthly-browser-workspaces:v1';
+      const monthlyWorkspaceDeletionMarkerPrefix = 'hotel-finance-control:monthly-browser-workspace-cleared:v1:';
       const monthlyWorkspaceIndexedDbName = 'hotel-finance-control';
       const monthlyWorkspaceIndexedDbStoreName = 'monthly-browser-workspaces';
       let currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState({});
@@ -1122,6 +1221,56 @@ ${showRuntimePayoutDiagnostics ? `
         }
 
         return normalizedBackend + '://' + normalizedMonth;
+      }
+
+      function buildWorkspaceDeletionMarkerStorageKey(month) {
+        return monthlyWorkspaceDeletionMarkerPrefix + String(month || '');
+      }
+
+      function getWorkspaceDeletionMarker(month) {
+        const normalizedMonth = String(month || '');
+        const storage = getExpenseReviewOverrideStorage();
+
+        if (!normalizedMonth || !storage || typeof storage.getItem !== 'function') {
+          return '';
+        }
+
+        try {
+          return String(storage.getItem(buildWorkspaceDeletionMarkerStorageKey(normalizedMonth)) || '');
+        } catch {
+          return '';
+        }
+      }
+
+      function setWorkspaceDeletionMarker(month, clearedAt) {
+        const normalizedMonth = String(month || '');
+        const normalizedClearedAt = String(clearedAt || '');
+        const storage = getExpenseReviewOverrideStorage();
+
+        if (!normalizedMonth || !normalizedClearedAt || !storage || typeof storage.setItem !== 'function') {
+          return;
+        }
+
+        try {
+          storage.setItem(buildWorkspaceDeletionMarkerStorageKey(normalizedMonth), normalizedClearedAt);
+        } catch {
+          // Browser workspace persistence is best-effort only.
+        }
+      }
+
+      function clearWorkspaceDeletionMarker(month) {
+        const normalizedMonth = String(month || '');
+        const storage = getExpenseReviewOverrideStorage();
+
+        if (!normalizedMonth || !storage || typeof storage.removeItem !== 'function') {
+          return;
+        }
+
+        try {
+          storage.removeItem(buildWorkspaceDeletionMarkerStorageKey(normalizedMonth));
+        } catch {
+          // Browser workspace persistence is best-effort only.
+        }
       }
 
       function runIndexedDbRequest(request) {
@@ -2100,6 +2249,32 @@ ${showRuntimePayoutDiagnostics ? `
           }));
       }
 
+      function sanitizeManualMatchGroupsForStorage(groups) {
+        return (Array.isArray(groups) ? groups : [])
+          .filter((group) =>
+            group
+            && typeof group.id === 'string'
+            && group.id
+            && typeof group.monthKey === 'string'
+            && group.monthKey
+            && Array.isArray(group.selectedReviewItemIds)
+            && group.selectedReviewItemIds.length > 0
+            && typeof group.createdAt === 'string'
+            && group.createdAt
+          )
+          .map((group) => ({
+            id: String(group.id),
+            monthKey: String(group.monthKey),
+            selectedReviewItemIds: Array.from(new Set(group.selectedReviewItemIds.map((itemId) => String(itemId || '')).filter(Boolean))),
+            createdAt: String(group.createdAt),
+            note: typeof group.note === 'string' && group.note.trim() ? group.note.trim() : null
+          }));
+      }
+
+      function sanitizeManualMatchSelectionIds(ids) {
+        return Array.from(new Set((Array.isArray(ids) ? ids : []).map((itemId) => String(itemId || '')).filter(Boolean)));
+      }
+
       function cloneWorkspaceRuntimeState(sourceState) {
         if (!sourceState) {
           return undefined;
@@ -2115,6 +2290,21 @@ ${showRuntimePayoutDiagnostics ? `
 
       function queueCurrentMonthWorkspacePersistence() {
         const normalizedMonth = String(currentWorkspaceMonth || monthInput && monthInput.value || '');
+        const persistenceRequestToken = currentWorkspaceViewRequestToken;
+
+        if (normalizedMonth && normalizedMonth === currentClearedWorkspaceMonth) {
+          currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+            status: 'not-applicable',
+            backendName: 'none',
+            storageKeyUsed: monthlyWorkspaceStorageKey,
+            saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+            saveAttempted: false,
+            errorMessage: ''
+          });
+          currentWorkspacePersistencePromise = Promise.resolve(currentWorkspacePersistenceState);
+          window.__hotelFinanceLastWorkspacePersistencePromise = currentWorkspacePersistencePromise;
+          return currentWorkspacePersistencePromise;
+        }
 
         if (!normalizedMonth) {
           currentWorkspacePersistenceState = buildWorkspacePersistenceState({
@@ -2135,7 +2325,8 @@ ${showRuntimePayoutDiagnostics ? `
           savedAt: new Date().toISOString(),
           files: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.slice() : [],
           runtimeState: cloneWorkspaceRuntimeState(currentExpenseReviewState),
-          expenseReviewOverrides: sanitizeExpenseReviewOverridesForStorage(currentExpenseReviewOverrides)
+          expenseReviewOverrides: sanitizeExpenseReviewOverridesForStorage(currentExpenseReviewOverrides),
+          manualMatchGroups: sanitizeManualMatchGroupsForStorage(currentManualMatchGroups)
         };
 
         appendWorkspaceRenderDebugCheckpoint({
@@ -2162,9 +2353,46 @@ ${showRuntimePayoutDiagnostics ? `
           const metadataStore = loadMonthlyWorkspaceStore();
           const backendName = backend ? String(backend.backendName || 'indexedDb') : 'legacyLocalStorage';
           const storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+          const deletionMarker = getWorkspaceDeletionMarker(normalizedMonth);
+
+          if (persistenceRequestToken !== currentWorkspaceViewRequestToken || normalizedMonth === currentClearedWorkspaceMonth) {
+            currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+              status: 'not-applicable',
+              backendName,
+              storageKeyUsed,
+              saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+              saveAttempted: false,
+              errorMessage: ''
+            });
+            return currentWorkspacePersistenceState;
+          }
+
+          if (deletionMarker) {
+            currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+              status: 'not-applicable',
+              backendName,
+              storageKeyUsed,
+              saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+              saveAttempted: false,
+              errorMessage: ''
+            });
+            return currentWorkspacePersistenceState;
+          }
 
           if (backend) {
             await backend.saveWorkspace(workspaceSnapshot);
+            if (getWorkspaceDeletionMarker(normalizedMonth)) {
+              await backend.deleteWorkspace(normalizedMonth);
+              currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+                status: 'not-applicable',
+                backendName,
+                storageKeyUsed,
+                saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+                saveAttempted: false,
+                errorMessage: ''
+              });
+              return currentWorkspacePersistenceState;
+            }
             const availableMonths = normalizeWorkspaceMonths((metadataStore.workspaceMonths || []).concat([normalizedMonth]));
             saveMonthlyWorkspaceStore({
               lastUsedMonth: normalizedMonth,
@@ -2175,6 +2403,19 @@ ${showRuntimePayoutDiagnostics ? `
             metadataStore.lastUsedMonth = normalizedMonth;
             metadataStore.workspaceMonths = normalizeWorkspaceMonths((metadataStore.workspaceMonths || []).concat([normalizedMonth]));
             metadataStore.workspaces[normalizedMonth] = workspaceSnapshot;
+            if (getWorkspaceDeletionMarker(normalizedMonth)) {
+              delete metadataStore.workspaces[normalizedMonth];
+              currentWorkspacePersistenceState = buildWorkspacePersistenceState({
+                status: 'not-applicable',
+                backendName,
+                storageKeyUsed,
+                saveCompletedBeforeRerunInputAssembly: 'not-applicable',
+                saveAttempted: false,
+                errorMessage: ''
+              });
+              saveMonthlyWorkspaceStore(metadataStore, { includeWorkspaces: true });
+              return currentWorkspacePersistenceState;
+            }
             saveMonthlyWorkspaceStore(metadataStore, { includeWorkspaces: true });
           }
 
@@ -2256,6 +2497,7 @@ ${showRuntimePayoutDiagnostics ? `
         const normalizedMonth = String(month || '');
         const store = loadMonthlyWorkspaceStore();
         const backend = await openMonthlyWorkspaceIndexedDb();
+        const deletionMarker = getWorkspaceDeletionMarker(normalizedMonth);
         let workspace;
         let backendName = 'none';
         let storageKeyUsed = buildWorkspacePersistenceStorageKey('none', normalizedMonth);
@@ -2283,15 +2525,21 @@ ${showRuntimePayoutDiagnostics ? `
           }
         }
 
+        if (workspace && deletionMarker) {
+          workspace = undefined;
+        }
+
         if (!workspace) {
           const legacyWorkspace = getLegacyMonthWorkspaceFromStore(store, normalizedMonth);
 
           if (legacyWorkspace) {
-            workspace = legacyWorkspace;
-            backendName = 'legacyLocalStorage';
-            storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+            if (!deletionMarker) {
+              workspace = legacyWorkspace;
+              backendName = 'legacyLocalStorage';
+              storageKeyUsed = buildWorkspacePersistenceStorageKey(backendName, normalizedMonth);
+            }
 
-            if (backend) {
+            if (workspace && backend) {
               await backend.saveWorkspace(legacyWorkspace);
               saveMonthlyWorkspaceStore({
                 lastUsedMonth: store.lastUsedMonth,
@@ -2329,6 +2577,8 @@ ${showRuntimePayoutDiagnostics ? `
           return false;
         }
 
+        setWorkspaceDeletionMarker(normalizedMonth, new Date().toISOString());
+
         const store = loadMonthlyWorkspaceStore();
 
         let deleted = false;
@@ -2359,6 +2609,7 @@ ${showRuntimePayoutDiagnostics ? `
       async function restoreWorkspaceForMonth(month, options) {
         const requestToken = ++currentWorkspaceViewRequestToken;
         const normalizedMonth = String(month || '');
+        currentClearedWorkspaceMonth = normalizedMonth === currentClearedWorkspaceMonth ? '' : currentClearedWorkspaceMonth;
         const loadedWorkspace = await loadMonthWorkspace(normalizedMonth);
         const workspace = loadedWorkspace && loadedWorkspace.workspace;
         const loadState = loadedWorkspace && loadedWorkspace.loadState
@@ -2432,6 +2683,10 @@ ${showRuntimePayoutDiagnostics ? `
           });
           currentWorkspaceFiles = [];
           currentExpenseReviewOverrides = [];
+          currentManualMatchGroups = [];
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
           renderInitialVisibleState();
           runtimeOutput.innerHTML = normalizedMonth
             ? '<p class="hint">Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> zatím není uložený žádný browser workspace.</p>'
@@ -2444,6 +2699,10 @@ ${showRuntimePayoutDiagnostics ? `
 
         currentWorkspaceFiles = Array.isArray(workspace.files) ? workspace.files.slice() : [];
         currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+        currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
+        currentSelectedManualMatchItemIds = [];
+        currentManualMatchDraftNote = '';
+        currentManualMatchConfirmMode = false;
         setWorkspaceRenderDebugState({
           requestToken,
           restoreToken: requestToken,
@@ -3907,7 +4166,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('')).join('');
       }
 
-      function buildUnmatchedReservationDetailsMarkup(state) {
+      function buildUnmatchedReservationDetailsMarkup(state, pageKey, bucketKey) {
         const items = (state.reviewSections && state.reviewSections.unmatchedReservationSettlements) || [];
 
         if (items.length === 0) {
@@ -3915,7 +4174,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return '<ul>' + items.map((item) =>
-          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          '<li>'
+          + '<strong>' + escapeHtml(item.title) + '</strong>'
+          + buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'unmatchedReservationSettlements', item)
+          + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
         ).join('') + '</ul>';
       }
 
@@ -3941,6 +4203,271 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ? '<br /><span class="hint"><strong>Ruční kontrola:</strong> ' + escapeHtml(String(item.operatorCheckHint)) + '</span>'
           : ''
         ].join('');
+      }
+
+      function isSelectableManualMatchBucket(bucketKey) {
+        return bucketKey === 'payoutBatchUnmatched'
+          || bucketKey === 'unmatchedReservationSettlements'
+          || bucketKey === 'expenseUnmatchedDocuments'
+          || bucketKey === 'expenseUnmatchedOutflows'
+          || bucketKey === 'expenseUnmatchedInflows';
+      }
+
+      function buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId) {
+        return 'manual-match-select-' + String(pageKey || 'page') + '-' + String(bucketKey || 'bucket') + '-' + encodeURIComponent(String(reviewItemId || '')).replace(/%/g, '_');
+      }
+
+      function buildManualMatchActionElementId(pageKey, action, groupOrItemId) {
+        return 'manual-match-' + String(pageKey || 'page') + '-' + String(action || 'action') + '-' + encodeURIComponent(String(groupOrItemId || 'global')).replace(/%/g, '_');
+      }
+
+      function buildManualMatchSelectionControlMarkup(pageKey, bucketKey, item) {
+        const reviewItemId = String(item && item.id || '');
+
+        if (!isSelectableManualMatchBucket(bucketKey) || !reviewItemId) {
+          return '';
+        }
+
+        return '<label class="manual-match-selection">'
+          + '<input id="' + escapeHtml(buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)) + '" type="checkbox"'
+          + (currentSelectedManualMatchItemIds.includes(reviewItemId) ? ' checked' : '')
+          + ' />'
+          + '<span>Vybrat pro ruční spárování</span>'
+          + '</label>';
+      }
+
+      function parseManualMatchAmountEntry(value) {
+        const match = String(value || '').match(/(-?[\d\s.]+,\d{2})\s*(Kč|CZK|EUR|€)/i);
+
+        if (!match) {
+          return undefined;
+        }
+
+        const amountText = String(match[1] || '').replace(/\s+/g, '').replace(/\./g, '').replace(',', '.');
+        const parsed = Number(amountText);
+
+        if (!Number.isFinite(parsed)) {
+          return undefined;
+        }
+
+        return {
+          amountMinor: Math.round(parsed * 100),
+          currency: /EUR|€/i.test(String(match[2] || '')) ? 'EUR' : 'CZK'
+        };
+      }
+
+      function getManualMatchItemAmount(item) {
+        const evidence = Array.isArray(item && item.evidenceSummary) ? item.evidenceSummary : [];
+        const amountEvidence = evidence.find((entry) => entry && entry.label === 'částka' && entry.value);
+
+        if (amountEvidence) {
+          return parseManualMatchAmountEntry(amountEvidence.value);
+        }
+
+        const comparison = item && item.expenseComparison ? item.expenseComparison : {};
+        const comparisonAmount = comparison.document && comparison.document.amount
+          ? parseManualMatchAmountEntry(comparison.document.amount)
+          : comparison.bank && comparison.bank.amount
+            ? parseManualMatchAmountEntry(comparison.bank.amount)
+            : undefined;
+
+        if (comparisonAmount) {
+          return comparisonAmount;
+        }
+
+        return parseManualMatchAmountEntry((item && item.detail) || '') || parseManualMatchAmountEntry((item && item.title) || '');
+      }
+
+      function buildManualMatchSelectionSummary(items) {
+        const normalizedItems = Array.isArray(items) ? items : [];
+        const parsedAmounts = normalizedItems.map((item) => getManualMatchItemAmount(item)).filter(Boolean);
+
+        if (normalizedItems.length === 0) {
+          return {
+            selectedCount: 0,
+            totalLabel: '',
+            totalComputable: false
+          };
+        }
+
+        if (parsedAmounts.length !== normalizedItems.length) {
+          return {
+            selectedCount: normalizedItems.length,
+            totalLabel: '',
+            totalComputable: false
+          };
+        }
+
+        const currencies = Array.from(new Set(parsedAmounts.map((entry) => entry.currency)));
+
+        if (currencies.length !== 1) {
+          return {
+            selectedCount: normalizedItems.length,
+            totalLabel: '',
+            totalComputable: false
+          };
+        }
+
+        return {
+          selectedCount: normalizedItems.length,
+          totalLabel: formatAmountMinorCs(parsedAmounts.reduce((sum, entry) => sum + entry.amountMinor, 0), currencies[0]),
+          totalComputable: true
+        };
+      }
+
+      function buildManualMatchItemLookup(sections) {
+        const lookup = new Map();
+        const normalizedSections = sections || {};
+
+        [
+          'payoutBatchUnmatched',
+          'unmatchedReservationSettlements',
+          'expenseUnmatchedDocuments',
+          'expenseUnmatchedOutflows',
+          'expenseUnmatchedInflows'
+        ].forEach((bucketKey) => {
+          const items = Array.isArray(normalizedSections[bucketKey]) ? normalizedSections[bucketKey] : [];
+
+          items.forEach((item) => {
+            if (item && item.id) {
+              lookup.set(String(item.id), item);
+            }
+          });
+        });
+
+        return lookup;
+      }
+
+      function buildEffectiveManualMatchProjection(sections, groups, monthKey) {
+        const normalizedSections = {
+          ...((sections && typeof sections === 'object') ? sections : {}),
+          payoutBatchUnmatched: Array.isArray(sections && sections.payoutBatchUnmatched) ? sections.payoutBatchUnmatched.slice() : [],
+          unmatchedReservationSettlements: Array.isArray(sections && sections.unmatchedReservationSettlements) ? sections.unmatchedReservationSettlements.slice() : [],
+          expenseUnmatchedDocuments: Array.isArray(sections && sections.expenseUnmatchedDocuments) ? sections.expenseUnmatchedDocuments.slice() : [],
+          expenseUnmatchedOutflows: Array.isArray(sections && sections.expenseUnmatchedOutflows) ? sections.expenseUnmatchedOutflows.slice() : [],
+          expenseUnmatchedInflows: Array.isArray(sections && sections.expenseUnmatchedInflows) ? sections.expenseUnmatchedInflows.slice() : []
+        };
+        const itemLookup = buildManualMatchItemLookup(normalizedSections);
+        const assignedReviewItemIds = new Set();
+        const projectedGroups = sanitizeManualMatchGroupsForStorage(groups)
+          .filter((group) => String(group.monthKey || '') === String(monthKey || ''))
+          .map((group) => {
+            const items = group.selectedReviewItemIds
+              .map((itemId) => {
+                const normalizedItemId = String(itemId || '');
+
+                if (!normalizedItemId || assignedReviewItemIds.has(normalizedItemId)) {
+                  return undefined;
+                }
+
+                const item = itemLookup.get(normalizedItemId);
+
+                if (!item) {
+                  return undefined;
+                }
+
+                assignedReviewItemIds.add(normalizedItemId);
+                return item;
+              })
+              .filter(Boolean);
+
+            return {
+              ...group,
+              items,
+              selectionSummary: buildManualMatchSelectionSummary(items)
+            };
+          })
+          .filter((group) => group.items.length > 0);
+        const hiddenReviewItemIds = new Set(projectedGroups.flatMap((group) => group.items.map((item) => String(item.id || ''))));
+
+        return {
+          reviewSections: {
+            ...normalizedSections,
+            payoutBatchUnmatched: normalizedSections.payoutBatchUnmatched.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || ''))),
+            unmatchedReservationSettlements: normalizedSections.unmatchedReservationSettlements.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || ''))),
+            expenseUnmatchedDocuments: normalizedSections.expenseUnmatchedDocuments.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || ''))),
+            expenseUnmatchedOutflows: normalizedSections.expenseUnmatchedOutflows.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || ''))),
+            expenseUnmatchedInflows: normalizedSections.expenseUnmatchedInflows.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || '')))
+          },
+          groups: projectedGroups,
+          hiddenReviewItemIds
+        };
+      }
+
+      function collectSelectedManualMatchItems(sections) {
+        const itemLookup = buildManualMatchItemLookup(sections);
+        const nextSelectedIds = currentSelectedManualMatchItemIds.filter((itemId) => itemLookup.has(String(itemId || '')));
+
+        if (nextSelectedIds.length !== currentSelectedManualMatchItemIds.length) {
+          currentSelectedManualMatchItemIds = nextSelectedIds;
+        }
+
+        if (currentSelectedManualMatchItemIds.length === 0) {
+          currentManualMatchConfirmMode = false;
+        }
+
+        return currentSelectedManualMatchItemIds.map((itemId) => itemLookup.get(String(itemId || ''))).filter(Boolean);
+      }
+
+      function toggleManualMatchSelection(reviewItemId) {
+        const normalizedReviewItemId = String(reviewItemId || '');
+
+        if (!normalizedReviewItemId) {
+          return;
+        }
+
+        if (currentSelectedManualMatchItemIds.includes(normalizedReviewItemId)) {
+          currentSelectedManualMatchItemIds = currentSelectedManualMatchItemIds.filter((itemId) => itemId !== normalizedReviewItemId);
+        } else {
+          currentSelectedManualMatchItemIds = sanitizeManualMatchSelectionIds(currentSelectedManualMatchItemIds.concat([normalizedReviewItemId]));
+        }
+
+        if (currentSelectedManualMatchItemIds.length === 0) {
+          currentManualMatchConfirmMode = false;
+          currentManualMatchDraftNote = '';
+        }
+
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+      }
+
+      function clearManualMatchSelection() {
+        currentSelectedManualMatchItemIds = [];
+        currentManualMatchDraftNote = '';
+        currentManualMatchConfirmMode = false;
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+      }
+
+      function createManualMatchGroupFromSelection(monthKey, sections) {
+        const normalizedMonthKey = String(monthKey || currentWorkspaceMonth || monthInput && monthInput.value || '');
+        const selectedItems = collectSelectedManualMatchItems(sections);
+
+        if (!normalizedMonthKey || selectedItems.length === 0) {
+          return;
+        }
+
+        currentManualMatchGroups.push({
+          id: 'manual-match-group:' + Date.now().toString(36) + ':' + Math.random().toString(36).slice(2, 8),
+          monthKey: normalizedMonthKey,
+          selectedReviewItemIds: selectedItems.map((item) => String(item.id || '')),
+          createdAt: new Date().toISOString(),
+          note: currentManualMatchDraftNote ? String(currentManualMatchDraftNote).trim() : null
+        });
+        currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(currentManualMatchGroups);
+        currentSelectedManualMatchItemIds = [];
+        currentManualMatchDraftNote = '';
+        currentManualMatchConfirmMode = false;
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+      }
+
+      function removeManualMatchGroup(groupId) {
+        const normalizedGroupId = String(groupId || '');
+
+        if (!normalizedGroupId) {
+          return;
+        }
+
+        currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(currentManualMatchGroups).filter((group) => String(group.id || '') !== normalizedGroupId);
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
       }
 
       function buildExpenseReviewSectionMarkup(items, emptyLabel, bucketKey) {
@@ -3980,6 +4507,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         return [
           '<article class="expense-item">',
+          buildManualMatchSelectionControlMarkup('expense', bucketKey, item),
           '<div class="expense-item-header">',
           '<div class="expense-item-title">' + escapeHtml(String((item && item.title) || 'Výdaj')) + '</div>',
           '<span class="status-badge ' + escapeHtml(badgeClass) + '">' + escapeHtml(matchStrength) + '</span>',
@@ -4647,6 +5175,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const normalizedState = state || initialRuntimeState;
         const payoutProjection = getVisiblePayoutProjection(normalizedState);
         const sections = normalizedState.reviewSections || {};
+        const manualMatchGroups = Array.isArray(normalizedState && normalizedState.manualMatchGroups) ? normalizedState.manualMatchGroups : [];
 
         if (phase === 'running') {
           return '<p class="hint">Detail kontrolních sekcí se právě připravuje ze stejného runtime běhu…</p>';
@@ -4668,8 +5197,170 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Hlavní ubytovací rezervace:</strong> ' + escapeHtml(String(((sections && sections.reservationSettlementOverview) || []).length)) + '</li>',
           '<li><strong>Doplňkové položky:</strong> ' + escapeHtml(String(((sections && sections.ancillarySettlementOverview) || []).length)) + '</li>',
           '<li><strong>Nespárované rezervace k úhradě:</strong> ' + escapeHtml(String(((sections && sections.unmatchedReservationSettlements) || []).length)) + '</li>',
+          '<li><strong>Ručně spárované skupiny:</strong> ' + escapeHtml(String(manualMatchGroups.length)) + '</li>',
           '</ul>'
         ].join('');
+      }
+
+      function buildManualMatchSummaryMarkup(pageKey, state) {
+        const normalizedState = state || initialRuntimeState;
+        const selectedItems = collectSelectedManualMatchItems(normalizedState.reviewSections);
+
+        if (selectedItems.length === 0) {
+          return '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
+        }
+
+        const selectionSummary = buildManualMatchSelectionSummary(selectedItems);
+        const totalMarkup = selectionSummary.totalComputable
+          ? '<p><strong>Součet:</strong> ' + escapeHtml(selectionSummary.totalLabel) + '</p>'
+          : '<p class="hint">Součet vybraných položek nejde bezpečně spočítat z aktuálně viditelných dat.</p>';
+
+        if (!currentManualMatchConfirmMode) {
+          return [
+            '<div class="manual-match-summary-row">',
+            '<div>',
+            '<p><strong>Vybráno položek:</strong> ' + escapeHtml(String(selectionSummary.selectedCount)) + '</p>',
+            totalMarkup,
+            '</div>',
+            '<div class="manual-match-summary-actions">',
+            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'review', 'selection')) + '" type="button">Ručně spárovat</button>',
+            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')) + '" type="button" class="secondary-button">Zrušit výběr</button>',
+            '</div>',
+            '</div>'
+          ].join('');
+        }
+
+        return [
+          '<p><strong>Potvrzení ručního spárování</strong></p>',
+          '<p><strong>Položek:</strong> ' + escapeHtml(String(selectionSummary.selectedCount)) + '</p>',
+          totalMarkup,
+          '<label for="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'note', 'selection')) + '">Krátká poznámka</label>',
+          '<input id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'note', 'selection')) + '" class="manual-match-note-input" type="text" maxlength="160" placeholder="Např. Jedna ruční vazba pro stejný celek" value="' + escapeHtml(currentManualMatchDraftNote || '') + '" />',
+          '<div class="manual-match-summary-actions">',
+          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection')) + '" type="button">Potvrdit vytvoření group</button>',
+          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'back', 'selection')) + '" type="button" class="secondary-button">Zpět</button>',
+          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')) + '" type="button" class="danger-button">Zrušit výběr</button>',
+          '</div>'
+        ].join('');
+      }
+
+      function buildManualMatchGroupMarkup(pageKey, groups) {
+        const normalizedGroups = Array.isArray(groups) ? groups : [];
+
+        if (normalizedGroups.length === 0) {
+          return '<p class="hint">Zatím nebyla vytvořená žádná ruční match group pro tento měsíc.</p>';
+        }
+
+        return '<div class="manual-match-groups">' + normalizedGroups.map((group) => {
+          const groupSummary = group.selectionSummary || buildManualMatchSelectionSummary(group.items || []);
+          const totalMarkup = groupSummary.totalComputable
+            ? '<span class="manual-match-group-meta"> · součet ' + escapeHtml(groupSummary.totalLabel) + '</span>'
+            : '';
+
+          return [
+            '<article class="manual-match-group">',
+            '<div class="manual-match-group-header">',
+            '<div>',
+            '<strong>Group ' + escapeHtml(String(group.id || 'bez-id')) + '</strong>',
+            '<div class="manual-match-group-meta">Položek ' + escapeHtml(String((group.items || []).length)) + totalMarkup + '</div>',
+            '<div class="manual-match-group-meta">Vytvořeno ' + escapeHtml(String(group.createdAt || 'neuvedeno')) + '</div>',
+            group.note ? '<div class="manual-match-group-meta">Poznámka: ' + escapeHtml(String(group.note)) + '</div>' : '',
+            '</div>',
+            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'remove-group', group.id)) + '" type="button" class="secondary-button">Zrušit ruční spárování</button>',
+            '</div>',
+            '<ul>' + (Array.isArray(group.items) ? group.items : []).map((item) =>
+              '<li><strong>' + escapeHtml(String(item && item.title || 'Položka')) + '</strong><br /><span class="hint">' + escapeHtml(String(item && item.detail || '')) + '</span></li>'
+            ).join('') + '</ul>',
+            '</article>'
+          ].join('');
+        }).join('') + '</div>';
+      }
+
+      function wireManualMatchSelectionControls(pageKey, buckets) {
+        (Array.isArray(buckets) ? buckets : []).forEach((bucket) => {
+          const bucketKey = String(bucket && bucket.key || '');
+          const items = Array.isArray(bucket && bucket.items) ? bucket.items : [];
+
+          items.forEach((item) => {
+            const reviewItemId = String(item && item.id || '');
+
+            if (!reviewItemId || !isSelectableManualMatchBucket(bucketKey)) {
+              return;
+            }
+
+            const element = document.getElementById(buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId));
+
+            if (!element || typeof element.addEventListener !== 'function') {
+              return;
+            }
+
+            element.checked = currentSelectedManualMatchItemIds.includes(reviewItemId);
+            element.addEventListener('change', () => {
+              toggleManualMatchSelection(reviewItemId);
+            });
+          });
+        });
+      }
+
+      function wireManualMatchSummaryControls(pageKey, state) {
+        const reviewButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'review', 'selection'));
+        const clearSelectionButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection'));
+        const backButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'back', 'selection'));
+        const confirmButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection'));
+        const noteInput = document.getElementById(buildManualMatchActionElementId(pageKey, 'note', 'selection'));
+        const groups = Array.isArray(state && state.manualMatchGroups) ? state.manualMatchGroups : [];
+
+        if (reviewButton && typeof reviewButton.addEventListener === 'function') {
+          reviewButton.addEventListener('click', () => {
+            currentManualMatchConfirmMode = true;
+            applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+            showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
+          });
+        }
+
+        if (clearSelectionButton && typeof clearSelectionButton.addEventListener === 'function') {
+          clearSelectionButton.addEventListener('click', () => {
+            clearManualMatchSelection();
+            showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
+          });
+        }
+
+        if (backButton && typeof backButton.addEventListener === 'function') {
+          backButton.addEventListener('click', () => {
+            currentManualMatchConfirmMode = false;
+            applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+            showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
+          });
+        }
+
+        if (noteInput) {
+          noteInput.value = currentManualMatchDraftNote;
+          if (typeof noteInput.addEventListener === 'function') {
+            noteInput.addEventListener('input', () => {
+              currentManualMatchDraftNote = String(noteInput.value || '');
+            });
+          }
+        }
+
+        if (confirmButton && typeof confirmButton.addEventListener === 'function') {
+          confirmButton.addEventListener('click', () => {
+            createManualMatchGroupFromSelection(String(state && state.monthLabel || currentWorkspaceMonth || ''), state && state.reviewSections);
+            showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
+          });
+        }
+
+        groups.forEach((group) => {
+          const removeButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'remove-group', group.id));
+
+          if (!removeButton || typeof removeButton.addEventListener !== 'function') {
+            return;
+          }
+
+          removeButton.addEventListener('click', () => {
+            removeManualMatchGroup(group.id);
+            showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
+          });
+        });
       }
 
       function showOperatorView(view) {
@@ -4725,13 +5416,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ).join('') + '</ul>';
       }
 
-      function buildPayoutBatchDetailMarkup(items) {
+      function buildPayoutBatchDetailMarkup(items, pageKey, bucketKey) {
         if (!items || items.length === 0) {
           return '<p class="hint">Žádné položky v této sekci.</p>';
         }
 
         return '<ul>' + items.map((item) =>
-          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          '<li>'
+          + '<strong>' + escapeHtml(item.title) + '</strong>'
+          + buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item)
+          + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
         ).join('') + '</ul>';
       }
 
@@ -4844,6 +5538,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             unmatchedPayoutBatchCount: payoutProjection.unmatchedCount
           },
           reviewSections: state.reviewSections || {},
+          manualMatchGroups: [],
           finalPayoutProjection: payoutProjection,
           reportTransactions: (state.reportTransactions || []).map((transaction) => ({
             ...transaction,
@@ -4877,12 +5572,40 @@ ${showRuntimePayoutDiagnostics ? '' : `
           baseVisibleState && baseVisibleState.reviewSections,
           currentExpenseReviewOverrides
         );
-        const visibleState = {
+        const expenseResolvedState = {
           ...baseVisibleState,
           reviewSections: {
             ...((baseVisibleState && baseVisibleState.reviewSections) || {}),
             ...effectiveExpenseSections
           }
+        };
+        const manualMatchProjection = buildEffectiveManualMatchProjection(
+          expenseResolvedState.reviewSections,
+          currentManualMatchGroups,
+          currentWorkspaceMonth || expenseResolvedState.monthLabel || ''
+        );
+        const adjustedPayoutProjection = collectVisiblePayoutProjection({
+          reviewSections: manualMatchProjection.reviewSections
+        });
+        const hiddenManualMatchItemCount = manualMatchProjection.hiddenReviewItemIds ? manualMatchProjection.hiddenReviewItemIds.size : 0;
+        const visibleState = {
+          ...expenseResolvedState,
+          reportSummary: {
+            ...((expenseResolvedState && expenseResolvedState.reportSummary) || {}),
+            payoutBatchMatchCount: adjustedPayoutProjection.matchedCount,
+            unmatchedPayoutBatchCount: adjustedPayoutProjection.unmatchedCount
+          },
+          reviewSummary: {
+            ...((expenseResolvedState && expenseResolvedState.reviewSummary) || {}),
+            exceptionCount: Math.max(0, Number((expenseResolvedState && expenseResolvedState.reviewSummary && expenseResolvedState.reviewSummary.exceptionCount) || 0) - hiddenManualMatchItemCount),
+            payoutBatchMatchCount: adjustedPayoutProjection.matchedCount,
+            unmatchedPayoutBatchCount: adjustedPayoutProjection.unmatchedCount
+          },
+          reviewSections: {
+            ...(manualMatchProjection.reviewSections || {})
+          },
+          manualMatchGroups: manualMatchProjection.groups,
+          finalPayoutProjection: adjustedPayoutProjection
         };
         const payoutProjection = getVisiblePayoutProjection(visibleState);
         const expenseReviewBuckets = buildExpenseReviewBuckets(visibleState.reviewSections);
@@ -4934,13 +5657,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(visibleState);
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
+          controlManualMatchSummary.hidden = false;
+          controlManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('control', visibleState);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
-  matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || []);
-  unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);
+        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || []);
+        matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
+        unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(expenseReviewBuckets, phase);
         expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
+          expenseManualMatchSummary.hidden = false;
+          expenseManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('expense', visibleState);
+          expenseManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('expense', visibleState.manualMatchGroups || []);
         if (expenseDetailVisibleCount) {
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(visibleExpenseBucketResult.visibleCount);
         }
@@ -4955,7 +5684,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
         wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || []);
         wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || []);
         wireExpenseReviewActionButtons('expenseUnmatchedInflows', (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || []);
-        unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);
+        wireManualMatchSelectionControls('control', [
+          { key: 'payoutBatchUnmatched', items: payoutProjection.unmatchedItems || [] },
+          { key: 'unmatchedReservationSettlements', items: (visibleState.reviewSections && visibleState.reviewSections.unmatchedReservationSettlements) || [] }
+        ]);
+        wireManualMatchSelectionControls('expense', [
+          { key: 'expenseUnmatchedDocuments', items: (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [] },
+          { key: 'expenseUnmatchedOutflows', items: (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [] },
+          { key: 'expenseUnmatchedInflows', items: (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [] }
+        ]);
+        wireManualMatchSummaryControls('control', visibleState);
+        wireManualMatchSummaryControls('expense', visibleState);
+        unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState, 'control', 'unmatchedReservationSettlements');
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
         wireExportControls();
         wireExpenseDetailControls();
@@ -5062,6 +5802,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
+        controlManualMatchSummary.hidden = false;
+        controlManualMatchSummary.innerHTML = '<p class="hint">Ruční spárování bude dostupné po dokončení běhu.</p>';
+        controlManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups se načtou po dokončení běhu.</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Report preview se právě nahrazuje runtime výsledkem…</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
@@ -5069,6 +5812,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'running');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů se právě připravuje ze stejného runtime běhu…</p>';
+        expenseManualMatchSummary.hidden = false;
+        expenseManualMatchSummary.innerHTML = '<p class="hint">Ruční spárování bude dostupné po dokončení běhu.</p>';
+        expenseManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups se načtou po dokončení běhu.</p>';
         if (expenseDetailVisibleCount) {
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: 0';
         }
@@ -5115,6 +5861,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
+        controlManualMatchSummary.hidden = false;
+        controlManualMatchSummary.innerHTML = '<p class="hint">Ruční spárování není k dispozici, protože runtime běh selhal.</p>';
+        controlManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups nejsou k dispozici, protože runtime běh selhal.</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Runtime běh selhal: ' + message + '</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
@@ -5122,6 +5871,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'failed');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů není k dispozici, protože runtime běh selhal.</p>';
+        expenseManualMatchSummary.hidden = false;
+        expenseManualMatchSummary.innerHTML = '<p class="hint">Ruční spárování není k dispozici, protože runtime běh selhal.</p>';
+        expenseManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups nejsou k dispozici, protože runtime běh selhal.</p>';
         if (expenseDetailVisibleCount) {
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: 0';
         }
@@ -5178,6 +5930,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
+        controlManualMatchSummary.hidden = false;
+        controlManualMatchSummary.innerHTML = '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
+        controlManualMatchedContent.innerHTML = '<p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr>';
         matchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.</p>';
         unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované payout dávky.</p>';
@@ -5185,6 +5940,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro doplňkové položky.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'placeholder');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a odchozí bankovní platby.</p>';
+        expenseManualMatchSummary.hidden = false;
+        expenseManualMatchSummary.innerHTML = '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
+        expenseManualMatchedContent.innerHTML = '<p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>';
         if (expenseDetailVisibleCount) {
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: 0';
         }
@@ -5204,12 +5962,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
         currentExpenseReviewState = initialRuntimeState;
         currentExportVisibleState = initialRuntimeState;
         currentExpenseReviewOverrides = [];
+        currentManualMatchGroups = [];
+        currentSelectedManualMatchItemIds = [];
+        currentManualMatchDraftNote = '';
+        currentManualMatchConfirmMode = false;
         currentVisibleRuntimePhase = 'placeholder';
       }
 
       async function startMainWorkflow() {
         const requestToken = ++currentWorkspaceViewRequestToken;
         const normalizedMonth = String(monthInput && monthInput.value || '');
+        currentClearedWorkspaceMonth = normalizedMonth === currentClearedWorkspaceMonth ? '' : currentClearedWorkspaceMonth;
+        if (normalizedMonth) {
+          clearWorkspaceDeletionMarker(normalizedMonth);
+        }
         const files = normalizedMonth && currentPendingSelectedMonthKey === normalizedMonth && currentPendingSelectedFiles.length > 0
           ? currentPendingSelectedFiles.slice()
           : Array.from(fileInput.files || []);
@@ -5350,6 +6116,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           currentWorkspaceMonth = normalizedMonth;
           currentWorkspaceFiles = mergedWorkspaceFiles;
           currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(existingWorkspace && existingWorkspace.expenseReviewOverrides);
+          currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(existingWorkspace && existingWorkspace.manualMatchGroups);
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
           applyVisibleRuntimeState(visibleState, 'completed');
           runtimeOutput.innerHTML = renderMainRuntimeState(visibleState);
         } catch (error) {
@@ -5425,6 +6195,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
       });
       clearMonthWorkspaceButton.addEventListener('click', () => {
         window.__hotelFinanceLastWorkspaceClearPromise = (async () => {
+        await awaitCurrentWorkspacePersistence();
         currentWorkspaceViewRequestToken += 1;
         const normalizedMonth = String(monthInput && monthInput.value || '');
 
@@ -5443,12 +6214,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
           return;
         }
 
+        currentClearedWorkspaceMonth = normalizedMonth;
         currentWorkspaceMonth = normalizedMonth;
         currentWorkspaceFiles = [];
         const previousPendingSelectedFileNames = currentPendingSelectedFileNames.slice();
         const previousPendingSelectedFileCount = previousPendingSelectedFileNames.length;
         resetPendingSelectedFiles('explicit-clear', normalizedMonth);
         currentExpenseReviewOverrides = [];
+        currentManualMatchGroups = [];
+        currentSelectedManualMatchItemIds = [];
+        currentManualMatchDraftNote = '';
+        currentManualMatchConfirmMode = false;
         renderInitialVisibleState();
         appendWorkspaceRenderDebugCheckpoint({
           phase: 'explicit-clear-reset',
@@ -5470,6 +6246,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           storageKeyUsed: currentWorkspaceRenderDebug.storageKeyUsed,
           saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly
         });
+        await clearMonthWorkspace(normalizedMonth);
         renderCompletedRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
         runtimeOutput.innerHTML = '<p class="hint">Workspace pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> byl vymazán. Ostatní měsíce zůstaly beze změny.</p>';
         showOperatorView('main-overview');

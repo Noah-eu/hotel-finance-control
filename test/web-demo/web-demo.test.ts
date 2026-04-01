@@ -795,8 +795,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="unmatched-payout-batches-section"')
     expect(result.html).toContain('id="unmatched-payout-batches-content"')
     expect(result.html).toContain('Nespárované payout dávky')
-    expect(result.html).toContain("matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || []);")
-    expect(result.html).toContain("unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || []);")
+    expect(result.html).toContain("matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');")
+    expect(result.html).toContain("unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');")
   })
 
   it('seeds the operator-facing snapshot from the real two-file Airbnb to RB uploaded path and keeps exact payout references visible', async () => {
@@ -1576,7 +1576,7 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Git commit:</strong> <code>${gitCommitHash}</code>`)
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Git short SHA:</strong> <code>${gitCommitHash.slice(0, 7)}</code>`)
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Build timestamp:</strong> <code>${generatedAt}</code>`)
-    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Build branch:</strong> <code>main</code>')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain(`Build branch:</strong> <code>${resolveCurrentGitBranchLabel()}</code>`)
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Build source:</strong> <code>local</code>')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Runtime module version:</strong> <code>browser-runtime.')
     expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Renderer version:</strong> <code>web-demo-operator-v3</code>')
@@ -2245,6 +2245,248 @@ describe('buildWebDemo', () => {
       .toBe(restored.expenseMatchedContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(restored.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(restored.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
+  it('creates one manual match group from multiple same-month unmatched payout items and removes them from the unmatched bucket', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-create',
+      locationSearch: '?debug=1',
+      files: createManualMatchPayoutWorkflowFiles()
+    })
+
+    rendered.openControlDetailPage()
+
+    const reservationsBefore = extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Nespárované rezervace k úhradě')
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        payoutBatchUnmatched: Array<{ id: string; title: string }>
+      }
+    }
+
+    expect(stateBefore.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+
+    for (const item of stateBefore.reviewSections.payoutBatchUnmatched) {
+      rendered.selectManualMatchItem('control', 'payoutBatchUnmatched', item.id)
+    }
+
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 2')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Vybrat pro ruční spárování')
+
+    rendered.openManualMatchConfirm('control')
+    rendered.confirmManualMatchGroup('control', 'Ruční celek pro dva payouty')
+
+    const stateAfter = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ id: string; note?: string | null; selectedReviewItemIds: string[] }>
+      reviewSections: {
+        payoutBatchUnmatched: Array<unknown>
+      }
+      reviewSummary: { unmatchedPayoutBatchCount: number }
+    }
+
+    expect(stateAfter.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+    expect(stateAfter.reviewSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(stateAfter.manualMatchGroups).toHaveLength(1)
+    expect(stateAfter.manualMatchGroups[0]?.selectedReviewItemIds).toHaveLength(2)
+    expect(stateAfter.manualMatchGroups[0]?.note).toBe('Ruční celek pro dva payouty')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Žádné položky v této sekci.')
+    expect(rendered.controlManualMatchedContent.innerHTML).toContain('Ruční celek pro dva payouty')
+    expect(rendered.controlManualMatchedContent.innerHTML).toContain(stateBefore.reviewSections.payoutBatchUnmatched[0]?.title)
+    expect(rendered.controlManualMatchedContent.innerHTML).toContain(stateBefore.reviewSections.payoutBatchUnmatched[1]?.title)
+    expect(extractSummaryCount(rendered.controlDetailPageSummaryContent.innerHTML, 'Nespárované rezervace k úhradě')).toBe(reservationsBefore)
+    expect(rendered.buildFingerprint.innerHTML).toContain('Payout matched: <strong>16</strong>')
+    expect(rendered.buildFingerprint.innerHTML).toContain('Payout unmatched: <strong>0</strong>')
+  })
+
+  it('keeps the manual match group after reload, isolates it by month, and deletes it on explicit month clear', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-reload-source',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createManualMatchPayoutWorkflowFiles()
+    })
+
+    rendered.openControlDetailPage()
+    const marchStateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        payoutBatchUnmatched: Array<{ id: string }>
+      }
+    }
+
+    for (const item of marchStateBefore.reviewSections.payoutBatchUnmatched) {
+      rendered.selectManualMatchItem('control', 'payoutBatchUnmatched', item.id)
+    }
+    rendered.openManualMatchConfirm('control')
+    rendered.confirmManualMatchGroup('control', 'Persistovaná ruční group')
+    await rendered.awaitLastWorkspacePersistence()
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openControlDetailPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      runId: string
+      manualMatchGroups: Array<{ id: string; note?: string | null }>
+      reviewSections: {
+        payoutBatchUnmatched: Array<unknown>
+      }
+    }
+
+    expect(reloadedState.runId).toContain('2026-03')
+    expect(reloadedState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+    expect(reloadedState.manualMatchGroups).toHaveLength(1)
+    expect(reloadedState.manualMatchGroups[0]?.note).toBe('Persistovaná ruční group')
+    expect(reloaded.controlManualMatchedContent.innerHTML).toContain('Persistovaná ruční group')
+
+    const april = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:11:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-manual-match-month-isolation',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv')
+      ]
+    })
+
+    april.openControlDetailPage()
+    const aprilState = april.getLastVisibleRuntimeState() as {
+      runId: string
+      manualMatchGroups: Array<unknown>
+    }
+
+    expect(aprilState.runId).toContain('2026-04')
+    expect(aprilState.manualMatchGroups).toEqual([])
+    expect(april.controlManualMatchedContent.innerHTML).toContain('Zatím nebyla vytvořená žádná ruční match group pro tento měsíc.')
+
+    await reloaded.clearCurrentMonthWorkspace()
+
+    const reloadedAfterClear = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:12:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-manual-match-reload-cleared',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: []
+    })
+
+    expect(reloadedAfterClear.getLastVisibleRuntimeState()).toMatchObject({ runId: expect.stringContaining('2026-04') })
+    await reloadedAfterClear.changeMonth('2026-03')
+    expect(reloadedAfterClear.controlManualMatchedContent.innerHTML).toContain('Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.')
+  })
+
+  it('undoes a manual match group and returns the items back into the original unmatched flow', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-undo',
+      locationSearch: '?debug=1',
+      files: createManualMatchPayoutWorkflowFiles()
+    })
+
+    rendered.openControlDetailPage()
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        payoutBatchUnmatched: Array<{ id: string; title: string }>
+      }
+    }
+
+    for (const item of stateBefore.reviewSections.payoutBatchUnmatched) {
+      rendered.selectManualMatchItem('control', 'payoutBatchUnmatched', item.id)
+    }
+    rendered.openManualMatchConfirm('control')
+    rendered.confirmManualMatchGroup('control', 'Dočasná group')
+
+    const createdState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ id: string }>
+      reviewSections: {
+        payoutBatchUnmatched: Array<unknown>
+      }
+    }
+
+    const groupId = createdState.manualMatchGroups[0]?.id
+    expect(groupId).toBeTruthy()
+    expect(createdState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+
+    rendered.removeManualMatchGroup('control', String(groupId))
+
+    const restoredState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+      reviewSections: {
+        payoutBatchUnmatched: Array<{ title: string }>
+      }
+    }
+
+    expect(restoredState.manualMatchGroups).toEqual([])
+    expect(restoredState.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain(stateBefore.reviewSections.payoutBatchUnmatched[0]?.title)
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain(stateBefore.reviewSections.payoutBatchUnmatched[1]?.title)
+  })
+
+  it('keeps same-month additive uploads from destroying an existing manual match group', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-additive-source',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createManualMatchPayoutWorkflowFiles()
+    })
+
+    rendered.openControlDetailPage()
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        payoutBatchUnmatched: Array<{ id: string }>
+      }
+    }
+
+    for (const item of stateBefore.reviewSections.payoutBatchUnmatched) {
+      rendered.selectManualMatchItem('control', 'payoutBatchUnmatched', item.id)
+    }
+    rendered.openManualMatchConfirm('control')
+    rendered.confirmManualMatchGroup('control', 'Přetrvá i po additive uploadu')
+    await rendered.awaitLastWorkspacePersistence()
+
+    const additive = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T13:31:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-additive-next',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    additive.openControlDetailPage()
+    const additiveState = additive.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      manualMatchGroups: Array<{ note?: string | null }>
+      reviewSections: {
+        payoutBatchUnmatched: Array<unknown>
+      }
+    }
+
+    expect(additiveState.fileRoutes).toHaveLength(5)
+    expect(additiveState.manualMatchGroups).toHaveLength(1)
+    expect(additiveState.manualMatchGroups[0]?.note).toBe('Přetrvá i po additive uploadu')
+    expect(additiveState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+    expect(additive.controlManualMatchedContent.innerHTML).toContain('Přetrvá i po additive uploadu')
+    expect(additive.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5')
   })
 
   it('appends uploads within the same month, deduplicates exact re-uploads, isolates months, and clears only the selected month workspace', async () => {
@@ -3941,8 +4183,8 @@ describe('buildWebDemo', () => {
 
     expect(result.html).toContain('id="unmatched-reservations-section"')
     expect(result.html).toContain('id="unmatched-reservations-content"')
-    expect(result.html).toContain('function buildUnmatchedReservationDetailsMarkup(state)')
-    expect(result.html).toContain('unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState);')
+    expect(result.html).toContain('function buildUnmatchedReservationDetailsMarkup(state, pageKey, bucketKey)')
+    expect(result.html).toContain("unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState, 'control', 'unmatchedReservationSettlements');")
     expect(result.html).toContain('Detail nespárovaných rezervací se právě načítá ze sdíleného runtime běhu…')
     expect(result.html).not.toContain('noCandidate')
   })
@@ -4007,6 +4249,7 @@ interface StubDomElement {
   hidden: boolean
   className: string
   value: string
+  checked?: boolean
   files: unknown[]
   href?: string
   download?: string
@@ -4050,8 +4293,12 @@ async function executeWebDemoMainWorkflow(input: {
   expenseDetailView: StubDomElement
   controlDetailLauncherSummaryContent: StubDomElement
   controlDetailPageSummaryContent: StubDomElement
+  controlManualMatchSummary: StubDomElement
+  controlManualMatchedContent: StubDomElement
   expenseReviewSummaryContent: StubDomElement
   expenseDetailSummaryContent: StubDomElement
+  expenseManualMatchSummary: StubDomElement
+  expenseManualMatchedContent: StubDomElement
   expenseDetailSearchInput: StubDomElement
   expenseDetailSortSelect: StubDomElement
   expenseDetailVisibleCount: StubDomElement
@@ -4084,6 +4331,11 @@ async function executeWebDemoMainWorkflow(input: {
   backToMainOverviewFromControl: () => void
   changeMonth: (month: string) => Promise<void>
   clearCurrentMonthWorkspace: () => Promise<void>
+  selectManualMatchItem: (pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) => void
+  openManualMatchConfirm: (pageKey: 'control' | 'expense') => void
+  confirmManualMatchGroup: (pageKey: 'control' | 'expense', note?: string) => void
+  clearManualMatchSelection: (pageKey: 'control' | 'expense') => void
+  removeManualMatchGroup: (pageKey: 'control' | 'expense', groupId: string) => void
   confirmExpenseReviewItem: (reviewItemId: string) => void
   rejectExpenseReviewItem: (reviewItemId: string) => void
   setExpenseDetailFilter: (
@@ -4383,8 +4635,12 @@ async function executeWebDemoMainWorkflow(input: {
     expenseDetailView: elements['expense-detail-view'],
     controlDetailLauncherSummaryContent: elements['control-detail-launcher-summary-content'],
     controlDetailPageSummaryContent: elements['control-detail-page-summary-content'],
+    controlManualMatchSummary: elements['control-manual-match-summary'],
+    controlManualMatchedContent: elements['control-manual-matched-content'],
     expenseReviewSummaryContent: elements['expense-review-summary-content'],
     expenseDetailSummaryContent: elements['expense-detail-summary-content'],
+    expenseManualMatchSummary: elements['expense-manual-match-summary'],
+    expenseManualMatchedContent: elements['expense-manual-matched-content'],
     expenseDetailSearchInput: elements['expense-detail-search'],
     expenseDetailSortSelect: elements['expense-detail-sort'],
     expenseDetailVisibleCount: elements['expense-detail-visible-count'],
@@ -4439,6 +4695,26 @@ async function executeWebDemoMainWorkflow(input: {
     async clearCurrentMonthWorkspace() {
       elements['clear-month-workspace-button'].listeners.click()
       await waitForLastClear()
+    },
+    selectManualMatchItem(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) {
+      elements[buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)].checked = true
+      elements[buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)].listeners.change()
+    },
+    openManualMatchConfirm(pageKey: 'control' | 'expense') {
+      elements[buildManualMatchActionElementId(pageKey, 'review', 'selection')].listeners.click()
+    },
+    confirmManualMatchGroup(pageKey: 'control' | 'expense', note = '') {
+      if (note) {
+        elements[buildManualMatchActionElementId(pageKey, 'note', 'selection')].value = note
+        elements[buildManualMatchActionElementId(pageKey, 'note', 'selection')].listeners.input()
+      }
+      elements[buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection')].listeners.click()
+    },
+    clearManualMatchSelection(pageKey: 'control' | 'expense') {
+      elements[buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')].listeners.click()
+    },
+    removeManualMatchGroup(pageKey: 'control' | 'expense', groupId: string) {
+      elements[buildManualMatchActionElementId(pageKey, 'remove-group', groupId)].listeners.click()
     },
     confirmExpenseReviewItem(reviewItemId: string) {
       elements[buildExpenseReviewActionElementId('confirm', reviewItemId)].listeners.click()
@@ -4510,7 +4786,7 @@ async function executeWebDemoMainWorkflow(input: {
 
       return executeWebDemoMainWorkflow({
         ...input,
-        month: '',
+        month: String(elements['month-label'].value || ''),
         skipStart: true,
         files: [],
         storageState,
@@ -4602,6 +4878,9 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'control-detail-summary-section',
     'control-detail-launcher-summary-content',
     'control-detail-page-summary-content',
+    'control-manual-match-summary',
+    'control-manual-matched-section',
+    'control-manual-matched-content',
     'open-control-detail-button',
     'back-from-control-detail-button',
     'report-preview-body',
@@ -4614,6 +4893,9 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'unmatched-payout-batches-section',
     'unmatched-payout-batches-content',
     'expense-detail-summary-content',
+    'expense-manual-match-summary',
+    'expense-manual-matched-section',
+    'expense-manual-matched-content',
     'expense-matched-section',
     'expense-matched-content',
     'expense-review-section',
@@ -4674,6 +4956,7 @@ function createStubDomElement(
     hidden: false,
     className: '',
     value: '',
+    checked: false,
     files: [],
     listeners: {},
     setAttribute() { },
@@ -4721,6 +5004,27 @@ function buildExpenseReviewActionElementId(action: 'confirm' | 'reject' | 'undo-
   return `expense-review-${action}-${encodeURIComponent(reviewItemId).replace(/%/g, '_')}`
 }
 
+function buildManualMatchSelectionElementId(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string): string {
+  return `manual-match-select-${pageKey}-${bucketKey}-${encodeURIComponent(reviewItemId).replace(/%/g, '_')}`
+}
+
+function buildManualMatchActionElementId(pageKey: 'control' | 'expense', action: string, groupOrItemId: string): string {
+  return `manual-match-${pageKey}-${action}-${encodeURIComponent(groupOrItemId).replace(/%/g, '_')}`
+}
+
+function createManualMatchPayoutWorkflowFiles() {
+  return [
+    createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+    createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+    createWebDemoRuntimeArrayBufferTextFile(
+      'Pohyby_5599955956_202603191023.csv',
+      buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+      'text/csv'
+    ),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+  ]
+}
+
 function resolveCurrentGitCommitHash(): string {
   try {
     const gitMetadataPath = resolve('.git')
@@ -4749,6 +5053,29 @@ function resolveCurrentGitCommitHash(): string {
     }
 
     return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+function resolveCurrentGitBranchLabel(): string {
+  try {
+    const gitMetadataPath = resolve('.git')
+    const gitDirectory = resolveGitDirectory(gitMetadataPath)
+    const headPath = resolve(gitDirectory, 'HEAD')
+
+    if (!existsSync(headPath)) {
+      return 'unknown'
+    }
+
+    const headContent = readFileSync(headPath, 'utf8').trim()
+
+    if (!headContent.startsWith('ref:')) {
+      return 'detached'
+    }
+
+    const branchName = headContent.replace(/^ref:\s*refs\/heads\//, '')
+    return branchName.split('/').filter(Boolean).pop() || branchName
   } catch {
     return 'unknown'
   }
