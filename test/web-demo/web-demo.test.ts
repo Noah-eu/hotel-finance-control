@@ -3947,6 +3947,41 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('noCandidate')
   })
 
+  it('renders a dedicated month picker trigger next to the month input in the operator form', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-04-01T12:10:00.000Z'
+    })
+
+    expect(result.html).toContain('id="month-picker-trigger-button"')
+    expect(result.html).toContain('class="secondary-button month-picker-trigger"')
+    expect(result.html).toContain('aria-label="Otevřít výběr měsíce"')
+  })
+
+  it('opens the month picker from the dedicated trigger via showPicker when available and falls back to focus plus click otherwise', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T12:11:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-month-picker-trigger',
+      skipStart: true,
+      files: []
+    })
+
+    rendered.clickMonthPickerTrigger()
+    expect(rendered.getMonthPickerInteractionCounts()).toEqual({
+      showPickerCalls: 1,
+      focusCalls: 0,
+      clickCalls: 0
+    })
+
+    rendered.setMonthPickerShowPickerAvailable(false)
+    rendered.clickMonthPickerTrigger()
+    expect(rendered.getMonthPickerInteractionCounts()).toEqual({
+      showPickerCalls: 1,
+      focusCalls: 1,
+      clickCalls: 1
+    })
+  })
+
   it('renders dedicated accommodation and ancillary settlement overview panels in the main browser UI', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T10:15:00.000Z'
@@ -3979,6 +4014,8 @@ interface StubDomElement {
   listeners: Record<string, () => void>
   setAttribute(name: string, value: string): void
   addEventListener(name: string, listener: () => void): void
+  focus?: () => void
+  showPicker?: () => void
   click?: () => void
 }
 
@@ -4038,6 +4075,9 @@ async function executeWebDemoMainWorkflow(input: {
   runtimeWorkspaceMergeDebugSection: StubDomElement
   runtimeWorkspaceMergeDebugContent: StubDomElement
   getConfirmMessages: () => string[]
+  clickMonthPickerTrigger: () => void
+  setMonthPickerShowPickerAvailable: (enabled: boolean) => void
+  getMonthPickerInteractionCounts: () => { showPickerCalls: number; focusCalls: number; clickCalls: number }
   openExpenseReviewPage: () => StubDomElement
   openControlDetailPage: () => StubDomElement
   backToMainOverviewFromExpense: () => void
@@ -4101,6 +4141,11 @@ async function executeWebDemoMainWorkflow(input: {
   const html = readFileSync(outputPath, 'utf8')
   const script = extractMainInlineWebDemoScript(html)
   const elements = createWebDemoDomStub()
+  const monthPickerInteractionCounts = {
+    showPickerCalls: 0,
+    focusCalls: 0,
+    clickCalls: 0
+  }
   const storageState = input.storageState ?? new Map<string, string>()
   const workspacePersistenceState = input.workspacePersistenceState ?? new Map<string, string>()
   const workspacePersistenceLoadDelaysMs = Array.isArray(input.workspacePersistenceLoadDelaysMs)
@@ -4108,6 +4153,21 @@ async function executeWebDemoMainWorkflow(input: {
     : []
   const confirmResponses = Array.isArray(input.confirmResponses) ? input.confirmResponses.slice() : []
   const confirmMessages: string[] = []
+  function setMonthPickerShowPickerAvailable(enabled: boolean) {
+    elements['month-label'].showPicker = enabled
+      ? () => {
+        monthPickerInteractionCounts.showPickerCalls += 1
+      }
+      : undefined
+  }
+
+  elements['month-label'].focus = () => {
+    monthPickerInteractionCounts.focusCalls += 1
+  }
+  elements['month-label'].click = () => {
+    monthPickerInteractionCounts.clickCalls += 1
+  }
+  setMonthPickerShowPickerAvailable(true)
   const localStorageSetItemLimitBytes = input.localStorageSetItemLimitBytes ?? Number.POSITIVE_INFINITY
   const windowObject: {
     location: { search: string; hash: string }
@@ -4350,6 +4410,13 @@ async function executeWebDemoMainWorkflow(input: {
     getConfirmMessages() {
       return confirmMessages.slice()
     },
+    clickMonthPickerTrigger() {
+      elements['month-picker-trigger-button'].listeners.click()
+    },
+    setMonthPickerShowPickerAvailable,
+    getMonthPickerInteractionCounts() {
+      return { ...monthPickerInteractionCounts }
+    },
     openExpenseReviewPage() {
       elements['open-expense-review-button'].listeners.click()
       return elements['expense-detail-view']
@@ -4515,6 +4582,7 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'app-shell',
     'monthly-files',
     'month-label',
+    'month-picker-trigger-button',
     'prepare-upload',
     'clear-month-workspace-button',
     'runtime-output',

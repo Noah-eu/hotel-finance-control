@@ -299,23 +299,50 @@ function renderOperatorWebDemoHtml(input: {
         max-width: 17rem;
       }
       .month-input-shell {
+        position: relative;
         width: min(100%, 15rem);
         max-width: 100%;
       }
       .month-input-shell input[type="month"] {
         width: 100%;
         min-height: 48px;
-        padding-right: 46px;
+        padding-right: 58px;
         box-sizing: border-box;
       }
       .month-input-shell input[type="month"]:focus-visible {
         outline: 3px solid #9bbcff;
         outline-offset: 2px;
       }
-      .month-input-shell input[type="month"]::-webkit-calendar-picker-indicator {
-        padding: 10px;
-        margin: -10px;
-        cursor: pointer;
+      .month-picker-trigger {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
+        padding: 0;
+        border-radius: 10px;
+        background: #eaf2ff;
+        color: #174ea6;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .month-picker-trigger:hover {
+        background: #dce9ff;
+      }
+      .month-picker-trigger:focus-visible {
+        outline: 3px solid #9bbcff;
+        outline-offset: 2px;
+      }
+      .month-picker-trigger::before {
+        content: "";
+        width: 18px;
+        height: 18px;
+        border: 2px solid currentColor;
+        border-radius: 4px;
+        box-sizing: border-box;
+        background: linear-gradient(to bottom, currentColor 0, currentColor 3px, transparent 3px, transparent 100%);
       }
       .month-input-shell input[type="month"]::-webkit-inner-spin-button {
         display: none;
@@ -644,6 +671,7 @@ ${input.debugMode ? `
             <label for="month-label">Označení měsíce</label>
             <div class="month-input-shell">
               <input id="month-label" type="month" />
+              <button id="month-picker-trigger-button" type="button" class="secondary-button month-picker-trigger" aria-label="Otevřít výběr měsíce"></button>
             </div>
             <p class="hint">Např. <code>2026-03</code> pro březen 2026.</p>
             <p class="hint">Soubory i ruční rozhodnutí se ukládají zvlášť pro každý měsíc a další upload je do stejného měsíce přidává místo úplného přepsání.</p>
@@ -878,6 +906,7 @@ ${showRuntimePayoutDiagnostics ? `
   const fileInput = document.getElementById('monthly-files');
   const appShell = document.getElementById('app-shell');
       const monthInput = document.getElementById('month-label');
+      const monthPickerTriggerButton = document.getElementById('month-picker-trigger-button');
       const button = document.getElementById('prepare-upload');
       const clearMonthWorkspaceButton = document.getElementById('clear-month-workspace-button');
       const runtimeOutput = document.getElementById('runtime-output');
@@ -5348,8 +5377,33 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return 'main-overview';
       }
 
+      function openMonthPicker() {
+        if (!monthInput) {
+          return;
+        }
+
+        if (typeof monthInput.showPicker === 'function') {
+          try {
+            monthInput.showPicker();
+            return;
+          } catch {
+          }
+        }
+
+        if (typeof monthInput.focus === 'function') {
+          monthInput.focus();
+        }
+
+        if (typeof monthInput.click === 'function') {
+          monthInput.click();
+        }
+      }
+
       button.addEventListener('click', () => {
         void startMainWorkflow();
+      });
+      monthPickerTriggerButton.addEventListener('click', () => {
+        openMonthPicker();
       });
       fileInput.addEventListener('change', () => {
         handleSelectedFilesInputChange();
