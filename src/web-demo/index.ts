@@ -927,6 +927,13 @@ ${showRuntimePayoutDiagnostics ? `
       let expenseDetailControlsWired = false;
       let currentWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
+      let currentPendingSelectedFiles = [];
+      let currentPendingSelectedFileNames = [];
+      let currentPendingSelectedMonthKey = '';
+      let currentFileSelectionEventToken = 0;
+      let currentExplicitSelectionResetMarker = 'none';
+      let currentSelectionInvariantWarning = 'none';
+      let currentSelectionInvariantGuardApplied = 'no';
       const expenseReviewOverrideStoragePrefix = 'hotel-finance-control:expense-review-overrides:';
       const monthlyWorkspaceStorageKey = 'hotel-finance-control:monthly-browser-workspaces:v1';
       const monthlyWorkspaceIndexedDbName = 'hotel-finance-control';
@@ -1292,6 +1299,32 @@ ${showRuntimePayoutDiagnostics ? `
 
       function buildWorkspaceRenderDebugState(input) {
         return {
+          explicitClearResetMarker: String(input && input.explicitClearResetMarker || 'none'),
+          invariantWarning: String(input && input.invariantWarning || 'none'),
+          invariantGuardApplied: String(input && input.invariantGuardApplied || 'no'),
+          fileSelectionEventToken: Number(input && input.fileSelectionEventToken || 0),
+          incomingBrowserFileListNames: Array.isArray(input && input.incomingBrowserFileListNames)
+            ? input.incomingBrowserFileListNames.slice(0, 20).map((item) => String(item || ''))
+            : [],
+          incomingBrowserFileListCount: Number(input && input.incomingBrowserFileListCount || 0),
+          previousPendingSelectedFileNames: Array.isArray(input && input.previousPendingSelectedFileNames)
+            ? input.previousPendingSelectedFileNames.slice(0, 20).map((item) => String(item || ''))
+            : [],
+          previousPendingSelectedFileCount: Number(input && input.previousPendingSelectedFileCount || 0),
+          nextPendingSelectedFileNames: Array.isArray(input && input.nextPendingSelectedFileNames)
+            ? input.nextPendingSelectedFileNames.slice(0, 20).map((item) => String(item || ''))
+            : [],
+          nextPendingSelectedFileCount: Number(input && input.nextPendingSelectedFileCount || 0),
+          appendVsReplaceDecision: String(input && input.appendVsReplaceDecision || 'not-applicable'),
+          dedupeKeyUsed: String(input && input.dedupeKeyUsed || 'not-applicable'),
+          visiblePendingFileNamesBeforeRun: Array.isArray(input && input.visiblePendingFileNamesBeforeRun)
+            ? input.visiblePendingFileNamesBeforeRun.slice(0, 20).map((item) => String(item || ''))
+            : [],
+          visiblePendingFileCountBeforeRun: Number(input && input.visiblePendingFileCountBeforeRun || 0),
+          selectedFileNamesHandedIntoRunAction: Array.isArray(input && input.selectedFileNamesHandedIntoRunAction)
+            ? input.selectedFileNamesHandedIntoRunAction.slice(0, 20).map((item) => String(item || ''))
+            : [],
+          selectedFileCountHandedIntoRunAction: Number(input && input.selectedFileCountHandedIntoRunAction || 0),
           requestToken: Number(input && input.requestToken || 0),
           restoreToken: Number(input && input.restoreToken || 0),
           restoreSource: String(input && input.restoreSource || 'not-applicable'),
@@ -1338,7 +1371,23 @@ ${showRuntimePayoutDiagnostics ? `
               mergedFileCountUsedForRerun: Number(entry && entry.mergedFileCountUsedForRerun || 0),
               visibleTraceFileNamesAfterRender: Array.isArray(entry && entry.visibleTraceFileNamesAfterRender) ? entry.visibleTraceFileNamesAfterRender.slice(0, 20).map((item) => String(item || '')) : [],
               visibleTraceFileCount: Number(entry && entry.visibleTraceFileCount || 0),
-              renderSource: String(entry && entry.renderSource || 'selectedFiles')
+              renderSource: String(entry && entry.renderSource || 'selectedFiles'),
+              explicitClearResetMarker: String(entry && entry.explicitClearResetMarker || 'none'),
+              invariantWarning: String(entry && entry.invariantWarning || 'none'),
+              invariantGuardApplied: String(entry && entry.invariantGuardApplied || 'no'),
+              fileSelectionEventToken: Number(entry && entry.fileSelectionEventToken || 0),
+              incomingBrowserFileListNames: Array.isArray(entry && entry.incomingBrowserFileListNames) ? entry.incomingBrowserFileListNames.slice(0, 20).map((item) => String(item || '')) : [],
+              incomingBrowserFileListCount: Number(entry && entry.incomingBrowserFileListCount || 0),
+              previousPendingSelectedFileNames: Array.isArray(entry && entry.previousPendingSelectedFileNames) ? entry.previousPendingSelectedFileNames.slice(0, 20).map((item) => String(item || '')) : [],
+              previousPendingSelectedFileCount: Number(entry && entry.previousPendingSelectedFileCount || 0),
+              nextPendingSelectedFileNames: Array.isArray(entry && entry.nextPendingSelectedFileNames) ? entry.nextPendingSelectedFileNames.slice(0, 20).map((item) => String(item || '')) : [],
+              nextPendingSelectedFileCount: Number(entry && entry.nextPendingSelectedFileCount || 0),
+              appendVsReplaceDecision: String(entry && entry.appendVsReplaceDecision || 'not-applicable'),
+              dedupeKeyUsed: String(entry && entry.dedupeKeyUsed || 'not-applicable'),
+              visiblePendingFileNamesBeforeRun: Array.isArray(entry && entry.visiblePendingFileNamesBeforeRun) ? entry.visiblePendingFileNamesBeforeRun.slice(0, 20).map((item) => String(item || '')) : [],
+              visiblePendingFileCountBeforeRun: Number(entry && entry.visiblePendingFileCountBeforeRun || 0),
+              selectedFileNamesHandedIntoRunAction: Array.isArray(entry && entry.selectedFileNamesHandedIntoRunAction) ? entry.selectedFileNamesHandedIntoRunAction.slice(0, 20).map((item) => String(item || '')) : [],
+              selectedFileCountHandedIntoRunAction: Number(entry && entry.selectedFileCountHandedIntoRunAction || 0)
             }))
             : []
         };
@@ -1400,11 +1449,32 @@ ${showRuntimePayoutDiagnostics ? `
           mergedFileCountUsedForRerun: nextState.mergedFileCountUsedForRerun,
           visibleTraceFileNamesAfterRender: nextState.visibleTraceFileNamesAfterRender.slice(),
           visibleTraceFileCount: nextState.visibleTraceFileCount,
-          renderSource: nextState.renderSource
+          renderSource: nextState.renderSource,
+          explicitClearResetMarker: nextState.explicitClearResetMarker,
+          invariantWarning: nextState.invariantWarning,
+          invariantGuardApplied: nextState.invariantGuardApplied,
+          fileSelectionEventToken: nextState.fileSelectionEventToken,
+          incomingBrowserFileListNames: nextState.incomingBrowserFileListNames.slice(),
+          incomingBrowserFileListCount: nextState.incomingBrowserFileListCount,
+          previousPendingSelectedFileNames: nextState.previousPendingSelectedFileNames.slice(),
+          previousPendingSelectedFileCount: nextState.previousPendingSelectedFileCount,
+          nextPendingSelectedFileNames: nextState.nextPendingSelectedFileNames.slice(),
+          nextPendingSelectedFileCount: nextState.nextPendingSelectedFileCount,
+          appendVsReplaceDecision: nextState.appendVsReplaceDecision,
+          dedupeKeyUsed: nextState.dedupeKeyUsed,
+          visiblePendingFileNamesBeforeRun: nextState.visiblePendingFileNamesBeforeRun.slice(),
+          visiblePendingFileCountBeforeRun: nextState.visiblePendingFileCountBeforeRun,
+          selectedFileNamesHandedIntoRunAction: nextState.selectedFileNamesHandedIntoRunAction.slice(),
+          selectedFileCountHandedIntoRunAction: nextState.selectedFileCountHandedIntoRunAction
         };
 
         nextState.checkpointLog = currentWorkspaceRenderDebug.checkpointLog.concat([checkpoint]).slice(-20);
         setWorkspaceRenderDebugState(nextState);
+
+        if (runtimeOperatorDebugMode) {
+          window.__hotelFinanceLastWorkspaceRenderDebug = currentWorkspaceRenderDebug;
+        }
+
         return currentWorkspaceRenderDebug;
       }
 
@@ -1654,6 +1724,187 @@ ${showRuntimePayoutDiagnostics ? `
 
       function buildWorkspaceDebugNamesFromWorkspaceRecords(records) {
         return buildWorkspaceDebugNameList((Array.isArray(records) ? records : []).map((record) => String(record && record.fileName || '')));
+      }
+
+      function buildWorkspaceSelectionDedupeKey(files) {
+        return buildWorkspaceDebugNameList((Array.isArray(files) ? files : []).map((file) => {
+          return String(file && file.name || '') + '::' + String(file && file.type || '');
+        })).join(' | ') || 'not-applicable';
+      }
+
+      function buildWorkspaceSelectionFileKey(file) {
+        return [
+          String(file && file.name || ''),
+          String(file && file.type || ''),
+          String(file && file.size || ''),
+          String(file && file.lastModified || '')
+        ].join('::');
+      }
+
+      function mergePendingSelectedFiles(existingFiles, incomingFiles) {
+        const merged = [];
+        const seenKeys = new Set();
+
+        (Array.isArray(existingFiles) ? existingFiles : []).forEach((file) => {
+          const key = buildWorkspaceSelectionFileKey(file);
+
+          if (!key || seenKeys.has(key)) {
+            return;
+          }
+
+          seenKeys.add(key);
+          merged.push(file);
+        });
+
+        (Array.isArray(incomingFiles) ? incomingFiles : []).forEach((file) => {
+          const key = buildWorkspaceSelectionFileKey(file);
+
+          if (!key || seenKeys.has(key)) {
+            return;
+          }
+
+          seenKeys.add(key);
+          merged.push(file);
+        });
+
+        return merged;
+      }
+
+      function resetPendingSelectedFiles(marker, monthKey) {
+        currentPendingSelectedFiles = [];
+        currentPendingSelectedFileNames = [];
+        currentPendingSelectedMonthKey = String(monthKey || '');
+        currentExplicitSelectionResetMarker = String(marker || 'none');
+        currentSelectionInvariantWarning = 'none';
+        currentSelectionInvariantGuardApplied = 'no';
+      }
+
+      function buildSameMonthSelectionInvariantWarning(normalizedMonth, previousNames, incomingNames, visibleNames) {
+        const priorVisibleSet = Array.isArray(visibleNames) ? visibleNames : [];
+        const priorPendingSet = Array.isArray(previousNames) ? previousNames : [];
+        const incomingSet = Array.isArray(incomingNames) ? incomingNames : [];
+        const referenceSet = priorPendingSet.length > 0 ? priorPendingSet : priorVisibleSet;
+
+        if (!normalizedMonth || currentExplicitSelectionResetMarker !== 'none' || referenceSet.length === 0 || incomingSet.length === 0) {
+          return '';
+        }
+
+        const missingNames = referenceSet.filter((name) => !incomingSet.includes(name));
+
+        if (missingNames.length === 0) {
+          return '';
+        }
+
+        return 'same-month selection shrink detected for ' + normalizedMonth + ': missing ' + missingNames.join(', ');
+      }
+
+      function resolveSelectionAppendVsReplaceDecision(previousNames, nextNames) {
+        const previous = Array.isArray(previousNames) ? previousNames : [];
+        const next = Array.isArray(nextNames) ? nextNames : [];
+
+        if (previous.length === 0 && next.length > 0) {
+          return 'initial-select';
+        }
+
+        if (previous.length > 0 && previous.every((name) => next.includes(name)) && next.length > previous.length) {
+          return 'append';
+        }
+
+        if (previous.length > 0 && next.length > 0 && !previous.every((name) => next.includes(name))) {
+          return 'replace';
+        }
+
+        if (previous.length > 0 && next.length === previous.length && previous.every((name, index) => name === next[index])) {
+          return 'no-change';
+        }
+
+        return 'dedupe-or-other';
+      }
+
+      function handleSelectedFilesInputChange() {
+        const eventToken = ++currentFileSelectionEventToken;
+        const normalizedMonth = String(monthInput && monthInput.value || currentWorkspaceMonth || '');
+        const incomingFiles = Array.from(fileInput.files || []);
+        const incomingNames = buildWorkspaceDebugNamesFromRuntimeFiles(incomingFiles);
+        const previousPendingFiles = normalizedMonth && currentPendingSelectedMonthKey === normalizedMonth
+          ? currentPendingSelectedFiles.slice()
+          : [];
+        const previousPendingNames = buildWorkspaceDebugNamesFromRuntimeFiles(previousPendingFiles);
+        const visibleSameMonthNames = normalizedMonth && currentWorkspaceMonth === normalizedMonth
+          ? buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles)
+          : [];
+        const invariantWarning = buildSameMonthSelectionInvariantWarning(normalizedMonth, previousPendingNames, incomingNames, visibleSameMonthNames);
+        const shouldPreserveUnion = Boolean(invariantWarning) && previousPendingFiles.length > 0;
+        const nextPendingFiles = shouldPreserveUnion
+          ? mergePendingSelectedFiles(previousPendingFiles, incomingFiles)
+          : incomingFiles.slice();
+        const nextPendingNames = buildWorkspaceDebugNamesFromRuntimeFiles(nextPendingFiles);
+        const dedupeKeyUsed = buildWorkspaceSelectionDedupeKey(incomingFiles);
+        const appendVsReplaceDecision = resolveSelectionAppendVsReplaceDecision(previousPendingNames, nextPendingNames);
+        const explicitClearResetMarker = currentExplicitSelectionResetMarker;
+        const invariantGuardApplied = shouldPreserveUnion ? 'union-preserved' : 'no';
+
+        currentPendingSelectedFiles = nextPendingFiles.slice();
+        currentPendingSelectedFileNames = nextPendingNames.slice();
+        currentPendingSelectedMonthKey = normalizedMonth;
+        currentSelectionInvariantWarning = invariantWarning || 'none';
+        currentSelectionInvariantGuardApplied = invariantGuardApplied;
+
+        if (invariantWarning && runtimeOperatorDebugMode && typeof console !== 'undefined' && console && typeof console.warn === 'function') {
+          console.warn('[hotel-finance-control] ' + invariantWarning);
+        }
+
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'on-file-input-change',
+          explicitClearResetMarker,
+          invariantWarning: invariantWarning || 'none',
+          invariantGuardApplied,
+          fileSelectionEventToken: eventToken,
+          incomingBrowserFileListNames: incomingNames,
+          incomingBrowserFileListCount: incomingFiles.length,
+          previousPendingSelectedFileNames: previousPendingNames,
+          previousPendingSelectedFileCount: previousPendingNames.length,
+          nextPendingSelectedFileNames: nextPendingNames,
+          nextPendingSelectedFileCount: nextPendingNames.length,
+          appendVsReplaceDecision,
+          dedupeKeyUsed,
+          visiblePendingFileNamesBeforeRun: nextPendingNames,
+          visiblePendingFileCountBeforeRun: nextPendingNames.length,
+          selectedFileNamesHandedIntoRunAction: currentWorkspaceRenderDebug.selectedFileNamesHandedIntoRunAction,
+          selectedFileCountHandedIntoRunAction: currentWorkspaceRenderDebug.selectedFileCountHandedIntoRunAction,
+          currentMonthKey: normalizedMonth,
+          workspacePersistenceBackend: currentWorkspaceRenderDebug.workspacePersistenceBackend,
+          storageKeyUsed: currentWorkspaceRenderDebug.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly,
+          renderSource: 'selectedFiles'
+        });
+
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'before-visible-pending-render',
+          explicitClearResetMarker,
+          invariantWarning: invariantWarning || 'none',
+          invariantGuardApplied,
+          fileSelectionEventToken: eventToken,
+          incomingBrowserFileListNames: incomingNames,
+          incomingBrowserFileListCount: incomingFiles.length,
+          previousPendingSelectedFileNames: previousPendingNames,
+          previousPendingSelectedFileCount: previousPendingNames.length,
+          nextPendingSelectedFileNames: nextPendingNames,
+          nextPendingSelectedFileCount: nextPendingNames.length,
+          appendVsReplaceDecision,
+          dedupeKeyUsed,
+          visiblePendingFileNamesBeforeRun: nextPendingNames,
+          visiblePendingFileCountBeforeRun: nextPendingNames.length,
+          currentMonthKey: normalizedMonth,
+          workspacePersistenceBackend: currentWorkspaceRenderDebug.workspacePersistenceBackend,
+          storageKeyUsed: currentWorkspaceRenderDebug.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly,
+          renderSource: 'selectedFiles'
+        });
+
+        currentExplicitSelectionResetMarker = 'none';
+
+        renderCompletedRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
       }
 
       function buildRunningWorkflowFilesFromMonthWorkspace(existingFiles, selectedFiles) {
@@ -2066,6 +2317,12 @@ ${showRuntimePayoutDiagnostics ? `
           });
 
         if (requestToken !== currentWorkspaceViewRequestToken) {
+          currentPendingSelectedFiles = [];
+          currentPendingSelectedFileNames = [];
+          currentPendingSelectedMonthKey = normalizedMonth;
+          currentExplicitSelectionResetMarker = 'none';
+          currentSelectionInvariantWarning = 'none';
+          currentSelectionInvariantGuardApplied = 'no';
           return false;
         }
 
@@ -3288,6 +3545,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildRuntimeWorkspaceMergeDebugMarkup(debugState) {
         const state = buildWorkspaceRenderDebugState(debugState);
+        const incomingFileListNamesMarkup = state.incomingBrowserFileListNames.length === 0
+          ? 'žádné'
+          : state.incomingBrowserFileListNames.map((item) => escapeHtml(item)).join(', ');
+        const previousPendingFileNamesMarkup = state.previousPendingSelectedFileNames.length === 0
+          ? 'žádné'
+          : state.previousPendingSelectedFileNames.map((item) => escapeHtml(item)).join(', ');
+        const nextPendingFileNamesMarkup = state.nextPendingSelectedFileNames.length === 0
+          ? 'žádné'
+          : state.nextPendingSelectedFileNames.map((item) => escapeHtml(item)).join(', ');
+        const visiblePendingFileNamesMarkup = state.visiblePendingFileNamesBeforeRun.length === 0
+          ? 'žádné'
+          : state.visiblePendingFileNamesBeforeRun.map((item) => escapeHtml(item)).join(', ');
+        const selectedFileNamesHandedIntoRunMarkup = state.selectedFileNamesHandedIntoRunAction.length === 0
+          ? 'žádné'
+          : state.selectedFileNamesHandedIntoRunAction.map((item) => escapeHtml(item)).join(', ');
         const mergedFileSampleMarkup = state.mergedFileSample.length === 0
           ? 'žádné'
           : state.mergedFileSample.map((item) => escapeHtml(item)).join(', ');
@@ -3328,6 +3600,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
               '<br /><strong>Month key:</strong> ' + escapeHtml(checkpoint.currentMonthKey || 'neuvedeno'),
               '<br /><strong>Storage backend:</strong> ' + escapeHtml(checkpoint.workspacePersistenceBackend || 'none'),
               '<br /><strong>Storage key:</strong> ' + escapeHtml(checkpoint.storageKeyUsed || monthlyWorkspaceStorageKey),
+              '<br /><strong>Selection event token:</strong> ' + escapeHtml(String(checkpoint.fileSelectionEventToken || 0)),
+              '<br /><strong>Explicit clear/reset marker:</strong> ' + escapeHtml(checkpoint.explicitClearResetMarker || 'none'),
+              '<br /><strong>Invariant warning:</strong> ' + escapeHtml(checkpoint.invariantWarning || 'none'),
+              '<br /><strong>Invariant guard applied:</strong> ' + escapeHtml(checkpoint.invariantGuardApplied || 'no'),
+              '<br /><strong>Incoming FileList:</strong> ' + (checkpoint.incomingBrowserFileListNames.length === 0 ? 'žádné' : checkpoint.incomingBrowserFileListNames.map((item) => escapeHtml(item)).join(', ')) + ' (' + escapeHtml(String(checkpoint.incomingBrowserFileListCount || 0)) + ')',
+              '<br /><strong>Previous pending:</strong> ' + (checkpoint.previousPendingSelectedFileNames.length === 0 ? 'žádné' : checkpoint.previousPendingSelectedFileNames.map((item) => escapeHtml(item)).join(', ')) + ' (' + escapeHtml(String(checkpoint.previousPendingSelectedFileCount || 0)) + ')',
+              '<br /><strong>Next pending:</strong> ' + (checkpoint.nextPendingSelectedFileNames.length === 0 ? 'žádné' : checkpoint.nextPendingSelectedFileNames.map((item) => escapeHtml(item)).join(', ')) + ' (' + escapeHtml(String(checkpoint.nextPendingSelectedFileCount || 0)) + ')',
+              '<br /><strong>Append vs replace:</strong> ' + escapeHtml(checkpoint.appendVsReplaceDecision || 'not-applicable'),
+              '<br /><strong>Dedupe key:</strong> ' + escapeHtml(checkpoint.dedupeKeyUsed || 'not-applicable'),
+              '<br /><strong>Visible pending before run:</strong> ' + (checkpoint.visiblePendingFileNamesBeforeRun.length === 0 ? 'žádné' : checkpoint.visiblePendingFileNamesBeforeRun.map((item) => escapeHtml(item)).join(', ')) + ' (' + escapeHtml(String(checkpoint.visiblePendingFileCountBeforeRun || 0)) + ')',
+              '<br /><strong>Selected files handed into run:</strong> ' + (checkpoint.selectedFileNamesHandedIntoRunAction.length === 0 ? 'žádné' : checkpoint.selectedFileNamesHandedIntoRunAction.map((item) => escapeHtml(item)).join(', ')) + ' (' + escapeHtml(String(checkpoint.selectedFileCountHandedIntoRunAction || 0)) + ')',
               '<br /><strong>Selected files:</strong> ' + checkpointSelectedNames + ' (' + escapeHtml(String(checkpoint.selectedBatchFileCount)) + ')',
               '<br /><strong>Persisted files before rerun:</strong> ' + checkpointPersistedNames + ' (' + escapeHtml(String(checkpoint.persistedWorkspaceFileCountBeforeRerun)) + ')',
               '<br /><strong>Merged files used for rerun:</strong> ' + checkpointMergedNames + ' (' + escapeHtml(String(checkpoint.mergedFileCountUsedForRerun)) + ')',
@@ -3344,6 +3627,22 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Request/run token:</strong> ' + escapeHtml(String(state.requestToken || 0)) + '</li>',
           '<li><strong>Restore token:</strong> ' + escapeHtml(String(state.restoreToken || 0)) + '</li>',
           '<li><strong>Restore source:</strong> ' + escapeHtml(state.restoreSource || 'not-applicable') + '</li>',
+          '<li><strong>File input change event token:</strong> ' + escapeHtml(String(state.fileSelectionEventToken || 0)) + '</li>',
+          '<li><strong>Explicit clear/reset marker:</strong> ' + escapeHtml(state.explicitClearResetMarker || 'none') + '</li>',
+          '<li><strong>Invariant warning:</strong> ' + escapeHtml(state.invariantWarning || 'none') + '</li>',
+          '<li><strong>Invariant guard applied:</strong> ' + escapeHtml(state.invariantGuardApplied || 'no') + '</li>',
+          '<li><strong>Incoming browser FileList names:</strong> ' + incomingFileListNamesMarkup + '</li>',
+          '<li><strong>Incoming browser FileList count:</strong> ' + escapeHtml(String(state.incomingBrowserFileListCount || 0)) + '</li>',
+          '<li><strong>Previous pending selected file names:</strong> ' + previousPendingFileNamesMarkup + '</li>',
+          '<li><strong>Previous pending selected count:</strong> ' + escapeHtml(String(state.previousPendingSelectedFileCount || 0)) + '</li>',
+          '<li><strong>Next pending selected file names after reducer/handler:</strong> ' + nextPendingFileNamesMarkup + '</li>',
+          '<li><strong>Next pending selected count:</strong> ' + escapeHtml(String(state.nextPendingSelectedFileCount || 0)) + '</li>',
+          '<li><strong>Append vs replace decision:</strong> ' + escapeHtml(state.appendVsReplaceDecision || 'not-applicable') + '</li>',
+          '<li><strong>Dedupe key used:</strong> ' + escapeHtml(state.dedupeKeyUsed || 'not-applicable') + '</li>',
+          '<li><strong>Visible pending file names before run:</strong> ' + visiblePendingFileNamesMarkup + '</li>',
+          '<li><strong>Visible pending count before run:</strong> ' + escapeHtml(String(state.visiblePendingFileCountBeforeRun || 0)) + '</li>',
+          '<li><strong>Selected file names handed into run action:</strong> ' + selectedFileNamesHandedIntoRunMarkup + '</li>',
+          '<li><strong>Selected file count handed into run action:</strong> ' + escapeHtml(String(state.selectedFileCountHandedIntoRunAction || 0)) + '</li>',
           '<li><strong>Current month key:</strong> ' + escapeHtml(state.currentMonthKey || 'neuvedeno') + '</li>',
           '<li><strong>Selected file names:</strong> ' + selectedFileNamesMarkup + '</li>',
           '<li><strong>Persisted workspace file count before rerun:</strong> ' + escapeHtml(String(state.persistedWorkspaceFileCountBeforeRerun)) + '</li>',
@@ -4608,6 +4907,22 @@ ${showRuntimePayoutDiagnostics ? '' : `
           restoreToken: currentWorkspaceRenderDebug.restoreToken,
           restoreSource: currentWorkspaceRenderDebug.restoreSource,
           currentMonthKey: currentWorkspaceMonth || visibleState.monthLabel || '',
+          explicitClearResetMarker: currentWorkspaceRenderDebug.explicitClearResetMarker,
+          invariantWarning: currentWorkspaceRenderDebug.invariantWarning,
+          invariantGuardApplied: currentWorkspaceRenderDebug.invariantGuardApplied,
+          fileSelectionEventToken: currentWorkspaceRenderDebug.fileSelectionEventToken,
+          incomingBrowserFileListNames: currentWorkspaceRenderDebug.incomingBrowserFileListNames,
+          incomingBrowserFileListCount: currentWorkspaceRenderDebug.incomingBrowserFileListCount,
+          previousPendingSelectedFileNames: currentWorkspaceRenderDebug.previousPendingSelectedFileNames,
+          previousPendingSelectedFileCount: currentWorkspaceRenderDebug.previousPendingSelectedFileCount,
+          nextPendingSelectedFileNames: currentWorkspaceRenderDebug.nextPendingSelectedFileNames,
+          nextPendingSelectedFileCount: currentWorkspaceRenderDebug.nextPendingSelectedFileCount,
+          appendVsReplaceDecision: currentWorkspaceRenderDebug.appendVsReplaceDecision,
+          dedupeKeyUsed: currentWorkspaceRenderDebug.dedupeKeyUsed,
+          visiblePendingFileNamesBeforeRun: currentWorkspaceRenderDebug.visiblePendingFileNamesBeforeRun,
+          visiblePendingFileCountBeforeRun: currentWorkspaceRenderDebug.visiblePendingFileCountBeforeRun,
+          selectedFileNamesHandedIntoRunAction: currentWorkspaceRenderDebug.selectedFileNamesHandedIntoRunAction,
+          selectedFileCountHandedIntoRunAction: currentWorkspaceRenderDebug.selectedFileCountHandedIntoRunAction,
           selectedFileNames: currentWorkspaceRenderDebug.selectedFileNames,
           persistedWorkspaceFileCountBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileCountBeforeRerun,
           persistedWorkspaceFileNamesBeforeRerun: currentWorkspaceRenderDebug.persistedWorkspaceFileNamesBeforeRerun,
@@ -4834,9 +5149,36 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       async function startMainWorkflow() {
         const requestToken = ++currentWorkspaceViewRequestToken;
-        const files = Array.from(fileInput.files || []);
         const normalizedMonth = String(monthInput && monthInput.value || '');
+        const files = normalizedMonth && currentPendingSelectedMonthKey === normalizedMonth && currentPendingSelectedFiles.length > 0
+          ? currentPendingSelectedFiles.slice()
+          : Array.from(fileInput.files || []);
         const selectedFileNames = buildWorkspaceDebugNamesFromRuntimeFiles(files);
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'run-action-handoff',
+          requestToken,
+          explicitClearResetMarker: currentExplicitSelectionResetMarker,
+          invariantWarning: currentSelectionInvariantWarning,
+          invariantGuardApplied: currentSelectionInvariantGuardApplied,
+          fileSelectionEventToken: currentFileSelectionEventToken,
+          incomingBrowserFileListNames: currentWorkspaceRenderDebug.incomingBrowserFileListNames,
+          incomingBrowserFileListCount: currentWorkspaceRenderDebug.incomingBrowserFileListCount,
+          previousPendingSelectedFileNames: currentWorkspaceRenderDebug.previousPendingSelectedFileNames,
+          previousPendingSelectedFileCount: currentWorkspaceRenderDebug.previousPendingSelectedFileCount,
+          nextPendingSelectedFileNames: currentWorkspaceRenderDebug.nextPendingSelectedFileNames,
+          nextPendingSelectedFileCount: currentWorkspaceRenderDebug.nextPendingSelectedFileCount,
+          appendVsReplaceDecision: currentWorkspaceRenderDebug.appendVsReplaceDecision,
+          dedupeKeyUsed: currentWorkspaceRenderDebug.dedupeKeyUsed,
+          visiblePendingFileNamesBeforeRun: currentPendingSelectedFileNames.slice(),
+          visiblePendingFileCountBeforeRun: currentPendingSelectedFileNames.length,
+          selectedFileNamesHandedIntoRunAction: selectedFileNames,
+          selectedFileCountHandedIntoRunAction: files.length,
+          currentMonthKey: normalizedMonth,
+          renderSource: 'selectedFiles',
+          workspacePersistenceBackend: currentWorkspaceRenderDebug.workspacePersistenceBackend,
+          storageKeyUsed: currentWorkspaceRenderDebug.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly
+        });
         const persistenceStateBeforeRerun = await awaitCurrentWorkspacePersistence();
 
         if (requestToken !== currentWorkspaceViewRequestToken) {
@@ -4978,8 +5320,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
       button.addEventListener('click', () => {
         void startMainWorkflow();
       });
+      fileInput.addEventListener('change', () => {
+        handleSelectedFilesInputChange();
+      });
       monthInput.addEventListener('change', () => {
         const normalizedMonth = String(monthInput && monthInput.value || '');
+
+        if (normalizedMonth !== currentPendingSelectedMonthKey) {
+          resetPendingSelectedFiles('month-change-reset', normalizedMonth);
+        }
 
         if (!normalizedMonth) {
           renderInitialVisibleState();
@@ -5006,8 +5355,32 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         currentWorkspaceMonth = normalizedMonth;
         currentWorkspaceFiles = [];
+        const previousPendingSelectedFileNames = currentPendingSelectedFileNames.slice();
+        const previousPendingSelectedFileCount = previousPendingSelectedFileNames.length;
+        resetPendingSelectedFiles('explicit-clear', normalizedMonth);
         currentExpenseReviewOverrides = [];
         renderInitialVisibleState();
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'explicit-clear-reset',
+          requestToken: currentWorkspaceViewRequestToken,
+          currentMonthKey: normalizedMonth,
+          explicitClearResetMarker: currentExplicitSelectionResetMarker,
+          invariantWarning: currentSelectionInvariantWarning,
+          invariantGuardApplied: currentSelectionInvariantGuardApplied,
+          previousPendingSelectedFileNames,
+          previousPendingSelectedFileCount,
+          nextPendingSelectedFileNames: [],
+          nextPendingSelectedFileCount: 0,
+          visiblePendingFileNamesBeforeRun: [],
+          visiblePendingFileCountBeforeRun: 0,
+          selectedFileNamesHandedIntoRunAction: [],
+          selectedFileCountHandedIntoRunAction: 0,
+          renderSource: 'persistedWorkspace',
+          workspacePersistenceBackend: currentWorkspaceRenderDebug.workspacePersistenceBackend,
+          storageKeyUsed: currentWorkspaceRenderDebug.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly
+        });
+        renderCompletedRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
         runtimeOutput.innerHTML = '<p class="hint">Workspace pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> byl vymazán. Ostatní měsíce zůstaly beze změny.</p>';
         showOperatorView('main-overview');
         })();

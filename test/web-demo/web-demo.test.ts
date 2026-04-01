@@ -2724,6 +2724,325 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Checkpoint:</strong> after-render')
   })
 
+  function createSelectedFilesRegressionFileA() {
+    return createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv')
+  }
+
+  function createSelectedFilesRegressionFileB() {
+    return createWebDemoRuntimeArrayBufferTextFile(
+      'Pohyby_5599955956_202603191023.csv',
+      buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+      'text/csv'
+    )
+  }
+
+  it('keeps the pending browser list as A + B when B is selected before the run starts', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-selection-only-a-then-b',
+      locationSearch: '?debug=1',
+      skipStart: true,
+      files: []
+    })
+
+    rendered.selectFiles([
+      createSelectedFilesRegressionFileA()
+    ])
+    rendered.selectFiles([
+      createSelectedFilesRegressionFileB()
+    ])
+
+    const debugState = rendered.getLastWorkspaceRenderDebug() as {
+      checkpointLog: Array<{
+        phase: string
+        currentMonthKey: string
+        explicitClearResetMarker: string
+        invariantGuardApplied: string
+        fileSelectionEventToken: number
+        incomingBrowserFileListNames: string[]
+        previousPendingSelectedFileNames: string[]
+        nextPendingSelectedFileNames: string[]
+        visiblePendingFileNamesBeforeRun: string[]
+      }>
+    }
+
+    const selectionCheckpoints = debugState.checkpointLog.filter((entry) => (entry.fileSelectionEventToken || 0) > 0)
+    const latestSelectionToken = Math.max(...selectionCheckpoints.map((entry) => entry.fileSelectionEventToken || 0))
+    const latestSelectionEntries = selectionCheckpoints.filter((entry) => entry.fileSelectionEventToken === latestSelectionToken)
+    const onFileInputChange = latestSelectionEntries.find((entry) => entry.phase === 'on-file-input-change')
+    const beforeVisiblePendingRender = latestSelectionEntries.find((entry) => entry.phase === 'before-visible-pending-render')
+
+    expect(onFileInputChange).toBeTruthy()
+    expect(beforeVisiblePendingRender).toBeTruthy()
+    expect(onFileInputChange?.currentMonthKey).toBe('2026-03')
+    expect(onFileInputChange?.explicitClearResetMarker).toBe('none')
+    expect(onFileInputChange?.invariantGuardApplied).toBe('union-preserved')
+    expect(onFileInputChange?.incomingBrowserFileListNames).toEqual(['Pohyby_5599955956_202603191023.csv'])
+    expect(onFileInputChange?.previousPendingSelectedFileNames).toEqual(['booking35k.csv'])
+    expect(onFileInputChange?.nextPendingSelectedFileNames).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+
+    expect(beforeVisiblePendingRender?.visiblePendingFileNamesBeforeRun).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Previous pending selected file names:</strong> booking35k.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Incoming browser FileList names:</strong> Pohyby_5599955956_202603191023.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Next pending selected file names after reducer/handler:</strong> booking35k.csv, Pohyby_5599955956_202603191023.csv')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Explicit clear/reset marker:</strong> none')
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Current month key:</strong> 2026-03')
+  })
+
+  it('keeps same-month visible state and run handoff as A + B when B is selected after running A', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-selection-run-a-then-b',
+      locationSearch: '?debug=1',
+      skipStart: true,
+      files: []
+    })
+
+    rendered.selectFiles([
+      createSelectedFilesRegressionFileA()
+    ])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    rendered.selectFiles([
+      createSelectedFilesRegressionFileB()
+    ])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    const debugState = rendered.getLastWorkspaceRenderDebug() as {
+      checkpointLog: Array<{
+        phase: string
+        fileSelectionEventToken: number
+        requestToken: number
+        invariantGuardApplied: string
+        nextPendingSelectedFileNames: string[]
+        visiblePendingFileNamesBeforeRun: string[]
+        selectedFileNamesHandedIntoRunAction: string[]
+      }>
+    }
+    const latestSelectionToken = Math.max(...debugState.checkpointLog.map((entry) => entry.fileSelectionEventToken || 0))
+    const latestSelectionEntries = debugState.checkpointLog.filter((entry) => entry.fileSelectionEventToken === latestSelectionToken)
+    const runActionHandoff = debugState.checkpointLog.filter((entry) => entry.phase === 'run-action-handoff').pop()
+
+    expect(latestSelectionEntries.find((entry) => entry.phase === 'on-file-input-change')?.invariantGuardApplied).toBe('union-preserved')
+    expect(latestSelectionEntries.find((entry) => entry.phase === 'before-visible-pending-render')?.visiblePendingFileNamesBeforeRun).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+
+    expect(runActionHandoff?.selectedFileNamesHandedIntoRunAction).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+
+    const finalVisibleState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+    }
+
+    expect(finalVisibleState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Selected file names handed into run action:</strong> booking35k.csv, Pohyby_5599955956_202603191023.csv')
+  })
+
+  it('keeps A after same-month run and reload', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-selection-reload-a-only',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [createSelectedFilesRegressionFileA()]
+    })
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      runId: string
+    }
+
+    expect(reloadedState.runId).toContain('2026-03')
+    expect(reloadedState.fileRoutes.map((item) => item.fileName)).toEqual(['booking35k.csv'])
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspace')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file names before rerun:</strong> booking35k.csv')
+  })
+
+  it('keeps A + B after same-month rerun and reload', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:15:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-selection-reload-a-then-b',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: []
+    })
+
+    rendered.selectFiles([createSelectedFilesRegressionFileA()])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    rendered.selectFiles([createSelectedFilesRegressionFileB()])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+    }
+
+    expect(reloadedState.fileRoutes.map((item) => item.fileName)).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Persisted workspace file names before rerun:</strong> booking35k.csv, Pohyby_5599955956_202603191023.csv')
+  })
+
+  it('clears the same-month selection and workspace only after explicit clear/reset', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-selection-explicit-clear',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: []
+    })
+
+    rendered.selectFiles([createSelectedFilesRegressionFileA()])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+    await rendered.clearCurrentMonthWorkspace()
+
+    const clearedDebugState = rendered.getLastWorkspaceRenderDebug() as {
+      explicitClearResetMarker: string
+      checkpointLog: Array<{
+        phase: string
+        explicitClearResetMarker: string
+        nextPendingSelectedFileNames: string[]
+      }>
+    }
+
+    expect(clearedDebugState.explicitClearResetMarker).toBe('explicit-clear')
+    expect(clearedDebugState.checkpointLog.filter((entry) => entry.phase === 'explicit-clear-reset').pop()).toEqual(
+      expect.objectContaining({
+        explicitClearResetMarker: 'explicit-clear',
+        nextPendingSelectedFileNames: []
+      })
+    )
+
+    rendered.selectFiles([createSelectedFilesRegressionFileB()])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    const finalState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+    }
+    const postClearDebugState = rendered.getLastWorkspaceRenderDebug() as {
+      checkpointLog: Array<{
+        phase: string
+        explicitClearResetMarker: string
+        nextPendingSelectedFileNames: string[]
+        invariantGuardApplied: string
+      }>
+    }
+    const latestSelectionToken = Math.max(...postClearDebugState.checkpointLog.map((entry) => (entry as { fileSelectionEventToken?: number }).fileSelectionEventToken || 0))
+    const onFileInputChange = postClearDebugState.checkpointLog.find((entry) => entry.phase === 'on-file-input-change' && (entry as { fileSelectionEventToken?: number }).fileSelectionEventToken === latestSelectionToken) as {
+      explicitClearResetMarker: string
+      nextPendingSelectedFileNames: string[]
+      invariantGuardApplied: string
+    } | undefined
+
+    expect(onFileInputChange?.explicitClearResetMarker).toBe('explicit-clear')
+    expect(onFileInputChange?.invariantGuardApplied).toBe('no')
+    expect(onFileInputChange?.nextPendingSelectedFileNames).toEqual(['Pohyby_5599955956_202603191023.csv'])
+    expect(finalState.fileRoutes.map((item) => item.fileName)).toEqual(['Pohyby_5599955956_202603191023.csv'])
+  })
+
+  it('keeps different months isolated from the same-month invariant guard', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T11:25:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-selection-different-month-isolation',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: []
+    })
+
+    rendered.selectFiles([createSelectedFilesRegressionFileA()])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    await rendered.changeMonth('2026-04')
+    rendered.selectFiles([createSelectedFilesRegressionFileB()])
+
+    const debugState = rendered.getLastWorkspaceRenderDebug() as {
+      checkpointLog: Array<{
+        phase: string
+        fileSelectionEventToken: number
+        previousPendingSelectedFileNames: string[]
+        nextPendingSelectedFileNames: string[]
+        invariantGuardApplied: string
+      }>
+    }
+    const latestSelectionToken = Math.max(...debugState.checkpointLog.map((entry) => entry.fileSelectionEventToken || 0))
+    const onFileInputChange = debugState.checkpointLog.find((entry) => entry.phase === 'on-file-input-change' && entry.fileSelectionEventToken === latestSelectionToken)
+
+    expect(onFileInputChange).toEqual(expect.objectContaining({
+      previousPendingSelectedFileNames: [],
+      nextPendingSelectedFileNames: ['Pohyby_5599955956_202603191023.csv'],
+      invariantGuardApplied: 'no'
+    }))
+
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+
+    const aprilState = rendered.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string }>
+    }
+
+    expect(aprilState.runId).toContain('2026-04')
+    expect(aprilState.fileRoutes.map((item) => item.fileName)).toEqual(['Pohyby_5599955956_202603191023.csv'])
+
+    await rendered.changeMonth('2026-03')
+
+    const marchState = rendered.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string }>
+    }
+
+    expect(marchState.runId).toContain('2026-03')
+    expect(marchState.fileRoutes.map((item) => item.fileName)).toEqual(['booking35k.csv'])
+  })
+
   it('does not let a stale initial month restore overwrite a newer same-month merged rerun on the same page', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -3642,6 +3961,12 @@ async function executeWebDemoMainWorkflow(input: {
     text?: () => Promise<string>
     arrayBuffer?: () => Promise<ArrayBuffer>
   }>) => void
+  selectFiles: (files: Array<{
+    name: string
+    type?: string
+    text?: () => Promise<string>
+    arrayBuffer?: () => Promise<ArrayBuffer>
+  }>) => void
   awaitLastWorkspacePersistence: () => Promise<void>
   startWorkflow: () => void
   waitForWorkflowCompletion: () => Promise<void>
@@ -3985,6 +4310,10 @@ async function executeWebDemoMainWorkflow(input: {
     },
     setSelectedFiles(files) {
       elements['monthly-files'].files = files
+    },
+    selectFiles(files) {
+      elements['monthly-files'].files = files
+      elements['monthly-files'].listeners.change()
     },
     awaitLastWorkspacePersistence,
     startWorkflow,
