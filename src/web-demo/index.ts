@@ -3725,6 +3725,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 + ' · matching source ' + escapeHtml(matchingSourceLabel)
                 + (decision.selectionMode ? ' · selection mode ' + escapeHtml(String(decision.selectionMode)) : '')
                 + ' · exact amount pre-date/evidence ' + escapeHtml(decision.exactAmountMatchExistsBeforeDateEvidence ? 'ano' : 'ne')
+                + ' · candidate existed ' + escapeHtml(decision.sameMonthExactAmountCandidateExists ? 'ano' : 'ne')
+                + ' · rejected only by date gate ' + escapeHtml(decision.rejectedOnlyByDateGate ? 'ano' : 'ne')
+                + ' · applied Comgate same-month lag rule ' + escapeHtml(decision.appliedComgateSameMonthLagRule ? 'ano' : 'ne')
+                + ' · would reject on strict date gate ' + escapeHtml(decision.wouldRejectOnStrictDateGate ? 'ano' : 'ne')
                 + (sameCurrencyAmountsLabel ? ' · same-currency bank amounts ' + escapeHtml(sameCurrencyAmountsLabel) : '')
                 + (typeof decision.nearestAmountDeltaMinor === 'number'
                   ? ' · nearest amount delta ' + escapeHtml(buildAmountDisplay(decision.nearestAmountDeltaMinor, decision.expectedBankCurrency || decision.currency || 'CZK'))

@@ -59,6 +59,8 @@ export interface PayoutBatchCandidateDiagnostic {
     | 'counterpartyClueMismatch'
   >
   dateDistanceDays: number
+  strictDateEligible: boolean
+  comgateSameMonthLagRuleApplied: boolean
 }
 
 export interface PayoutBatchNoMatchDiagnostic {
@@ -98,6 +100,10 @@ export interface PayoutBatchBankDecisionTrace {
   selectionMode?: 'eligible_candidate' | 'unique_exact_amount_fallback'
   exactAmountMatchExistsBeforeDateEvidence: boolean
   sameCurrencyCandidateAmountMinors: number[]
+  sameMonthExactAmountCandidateExists: boolean
+  rejectedOnlyByDateGate: boolean
+  appliedComgateSameMonthLagRule: boolean
+  wouldRejectOnStrictDateGate: boolean
   payoutDate: PayoutBatchExpectation['payoutDate']
   bankCandidateCountBeforeFiltering: number
   bankCandidateCountAfterAmountCurrency: number

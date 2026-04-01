@@ -3664,6 +3664,61 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('matched')
   })
 
+  it('proves the same-month Comgate lag browser case was only blocked by the strict date gate and now matches with the narrow 3-day rule', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-30T11:15:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-same-month-lag',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('Klientský portál export transakcí JOKELAND lag.csv', buildCurrentPortalComgateSameMonthLagContent()),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603301100.csv', buildRbComgateSameMonthLagSettlementContent())
+      ]
+    })
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      reconciliationSnapshot: {
+        matchedCount: number
+        unmatchedCount: number
+        payoutBatchDecisions: Array<{
+          payoutBatchKey: string
+          expectedBankAmountMinor: number
+          payoutDate: string
+          exactAmountMatchExistsBeforeDateEvidence: boolean
+          sameMonthExactAmountCandidateExists: boolean
+          rejectedOnlyByDateGate: boolean
+          appliedComgateSameMonthLagRule: boolean
+          wouldRejectOnStrictDateGate: boolean
+          bankCandidateCountAfterAmountCurrency: number
+          bankCandidateCountAfterDateWindow: number
+          matched: boolean
+        }>
+      }
+    }
+    const decision = state.reconciliationSnapshot.payoutBatchDecisions.find((item) => item.payoutBatchKey === 'comgate-batch:2026-03-27:CZK')
+
+    expect(state.reconciliationSnapshot.matchedCount).toBe(1)
+    expect(state.reconciliationSnapshot.unmatchedCount).toBe(0)
+    expect(decision).toEqual(expect.objectContaining({
+      payoutBatchKey: 'comgate-batch:2026-03-27:CZK',
+      expectedBankAmountMinor: 605879,
+      payoutDate: '2026-03-27',
+      exactAmountMatchExistsBeforeDateEvidence: true,
+      sameMonthExactAmountCandidateExists: true,
+      rejectedOnlyByDateGate: true,
+      appliedComgateSameMonthLagRule: true,
+      wouldRejectOnStrictDateGate: true,
+      bankCandidateCountAfterAmountCurrency: 1,
+      bankCandidateCountAfterDateWindow: 1,
+      matched: true
+    }))
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('candidate existed ano')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('rejected only by date gate ano')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('applied Comgate same-month lag rule ano')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('would reject on strict date gate ano')
+    expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Žádný vhodný kandidát v očekávaném datu payoutu')
+  })
+
   it('shows the attached daily Comgate settlement CSV as a supported debug-only daily-settlement shape', async () => {
     const comgate = getRealInputFixture('comgate-daily-payout-export')
     const rendered = await executeWebDemoMainWorkflow({
@@ -5023,6 +5078,22 @@ function buildRbAggregatedComgatePortalSettlementContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '19.03.2026 11:50;19.03.2026 11:52;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1580,00;CZK;Souhrnná výplata Comgate portal 2026-03-19'
+  ].join('\n')
+}
+
+function buildCurrentPortalComgateSameMonthLagContent(): string {
+  return [
+    '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+    '"CG-LAG-TRX-1";"CG-LAG-20260327-A";"26.03.2026 08:15";"26.03.2026 08:16";"27.03.2026";"guest-a@example.com";"CG-LAG-20260327-A";"JOKELAND s.r.o.";"2447,50";"CZK";"website-reservation";"0,00";"0,00";"23,99";"23,99"',
+    '"CG-LAG-TRX-2";"CG-LAG-20260327-B";"26.03.2026 09:20";"26.03.2026 09:21";"27.03.2026";"guest-b@example.com";"CG-LAG-20260327-B";"JOKELAND s.r.o.";"3059,38";"CZK";"website-reservation";"0,00";"0,00";"29,98";"29,98"',
+    '"CG-LAG-TRX-3";"CG-LAG-20260327-C";"26.03.2026 10:10";"26.03.2026 10:11";"27.03.2026";"guest-c@example.com";"CG-LAG-20260327-C";"JOKELAND s.r.o.";"611,88";"CZK";"parking";"0,00";"0,00";"6,00";"6,00"'
+  ].join('\n')
+}
+
+function buildRbComgateSameMonthLagSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '30.03.2026 11:00;30.03.2026 11:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-27'
   ].join('\n')
 }
 

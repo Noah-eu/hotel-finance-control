@@ -9,6 +9,7 @@ import type {
 const PAYOUT_BATCH_BANK_RULE_KEY = 'deterministic:payout-batch-bank:1to1:v1'
 const DEFAULT_MAX_DAY_DISTANCE = 2
 const AIRBNB_MAX_DAY_DISTANCE = 3
+const COMGATE_SAME_MONTH_POST_PAYOUT_MAX_DAY_LAG = 3
 
 const DATASET_PLATFORM_COUNTERPARTY_CLUES: Record<string, string[]> = {
     airbnb: ['citibank'],
@@ -86,14 +87,14 @@ export function matchPayoutBatchesToBank(
             amountMinor: bankExpectation.amountMinor,
             currency: bankExpectation.currency,
             confidence: reasons.includes('supplementPaymentIdAligned')
-              ? 0.995
-              : reasons.includes('supplementReferenceHintAligned')
-                ? 0.992
-              : reasons.includes('payoutReferenceAligned')
-                ? 0.99
-                : reasons.includes('counterpartyClueAligned')
-                  ? 0.97
-                  : 0.95,
+                ? 0.995
+                : reasons.includes('supplementReferenceHintAligned')
+                    ? 0.992
+                    : reasons.includes('payoutReferenceAligned')
+                        ? 0.99
+                        : reasons.includes('counterpartyClueAligned')
+                            ? 0.97
+                            : 0.95,
             ruleKey: PAYOUT_BATCH_BANK_RULE_KEY,
             matched: true,
             reasons,
@@ -141,6 +142,11 @@ export function inspectPayoutBatchBankDecisions(
             !candidate.rejectionReasons.includes('noExactAmount')
             && !candidate.rejectionReasons.includes('currencyMismatch')
         )
+        const sameMonthExactAmountCandidates = amountCurrencyCandidates.filter((candidate) =>
+            !candidate.rejectionReasons.includes('wrongBankRouting')
+            && candidate.clueLabels.includes('Comgate')
+            && isSameCalendarMonth(decision.batch.payoutDate, candidate.bookedAt)
+        )
         const dateWindowCandidates = amountCurrencyCandidates.filter((candidate) =>
             !candidate.rejectionReasons.includes('dateToleranceMiss')
         )
@@ -165,6 +171,10 @@ export function inspectPayoutBatchBankDecisions(
             selectionMode: decision.selectionMode,
             exactAmountMatchExistsBeforeDateEvidence: amountCurrencyCandidates.length > 0,
             sameCurrencyCandidateAmountMinors: uniqueSameCurrencyAmountMinors.slice(0, 8),
+            sameMonthExactAmountCandidateExists: sameMonthExactAmountCandidates.length > 0,
+            rejectedOnlyByDateGate: sameMonthExactAmountCandidates.some((candidate) => !candidate.strictDateEligible),
+            appliedComgateSameMonthLagRule: decision.allCandidates.some((candidate) => candidate.comgateSameMonthLagRuleApplied),
+            wouldRejectOnStrictDateGate: sameMonthExactAmountCandidates.some((candidate) => !candidate.strictDateEligible),
             payoutDate: decision.batch.payoutDate,
             bankCandidateCountBeforeFiltering: decision.allCandidates.length,
             bankCandidateCountAfterAmountCurrency: amountCurrencyCandidates.length,
@@ -198,21 +208,35 @@ function buildCandidateDiagnostic(
     const clueMatch = evaluateDatasetCounterpartyClues(batch, transaction)
     const evidenceMatch = evaluateBatchEvidence(batch, transaction)
     const bankExpectation = resolveBankMatchingExpectation(batch)
+    const amountExact = transaction.amountMinor === bankExpectation.amountMinor
+    const currencyExact = transaction.currency === bankExpectation.currency
+    const routingAllowed = matchesRouting(batch, transaction)
 
-    if (transaction.amountMinor !== bankExpectation.amountMinor) {
+    if (!amountExact) {
         rejectionReasons.push('noExactAmount')
     }
 
-    if (transaction.currency !== bankExpectation.currency) {
+    if (!currencyExact) {
         rejectionReasons.push('currencyMismatch')
     }
 
-    if (!matchesRouting(batch, transaction)) {
+    if (!routingAllowed) {
         rejectionReasons.push('wrongBankRouting')
     }
 
     const dateDistanceDays = calculateDayDistance(batch.payoutDate, transaction.bookedAt)
-    if (dateDistanceDays > resolveMaxDayDistance(batch)) {
+    const strictDateEligible = isWithinStrictDateTolerance(batch, transaction)
+    const comgateSameMonthLagRuleApplied = shouldApplyComgateSameMonthLagRule({
+        batch,
+        transaction,
+        amountExact,
+        currencyExact,
+        routingAllowed,
+        clueLabels: clueMatch.labels,
+        strictDateEligible
+    })
+
+    if (!strictDateEligible && !comgateSameMonthLagRuleApplied) {
         rejectionReasons.push('dateToleranceMiss')
     }
 
@@ -230,7 +254,9 @@ function buildCandidateDiagnostic(
         evidenceScore: evidenceMatch.score,
         evidenceLabels: evidenceMatch.labels,
         rejectionReasons,
-        dateDistanceDays
+        dateDistanceDays,
+        strictDateEligible,
+        comgateSameMonthLagRuleApplied
     }
 }
 
@@ -438,6 +464,15 @@ function resolveMaxDayDistance(batch: PayoutBatchExpectation): number {
     return DEFAULT_MAX_DAY_DISTANCE
 }
 
+function isWithinStrictDateTolerance(
+    batch: PayoutBatchExpectation,
+    transaction: NormalizedTransaction
+): boolean {
+    const dateDistanceDays = calculateDayDistance(batch.payoutDate, transaction.bookedAt)
+
+    return Number.isFinite(dateDistanceDays) && dateDistanceDays <= resolveMaxDayDistance(batch)
+}
+
 function normalizeIsoCalendarDate(value?: string): string | undefined {
     if (!value) {
         return undefined
@@ -451,6 +486,62 @@ function normalizeIsoCalendarDate(value?: string): string | undefined {
 
     const timestampMatch = /^(\d{4}-\d{2}-\d{2})[ T]/.exec(trimmed)
     return timestampMatch?.[1]
+}
+
+function calculateSignedDayDelta(left: string, right: string): number {
+    const normalizedLeft = normalizeIsoCalendarDate(left)
+    const normalizedRight = normalizeIsoCalendarDate(right)
+
+    if (!normalizedLeft || !normalizedRight) {
+        return Number.NaN
+    }
+
+    const leftDate = new Date(`${normalizedLeft}T00:00:00Z`)
+    const rightDate = new Date(`${normalizedRight}T00:00:00Z`)
+    return Math.round((rightDate.getTime() - leftDate.getTime()) / 86400000)
+}
+
+function isSameCalendarMonth(left?: string, right?: string): boolean {
+    const normalizedLeft = normalizeIsoCalendarDate(left)
+    const normalizedRight = normalizeIsoCalendarDate(right)
+
+    if (!normalizedLeft || !normalizedRight) {
+        return false
+    }
+
+    return normalizedLeft.slice(0, 7) === normalizedRight.slice(0, 7)
+}
+
+function shouldApplyComgateSameMonthLagRule(input: {
+    batch: PayoutBatchExpectation
+    transaction: NormalizedTransaction
+    amountExact: boolean
+    currencyExact: boolean
+    routingAllowed: boolean
+    clueLabels: string[]
+    strictDateEligible: boolean
+}): boolean {
+    const { batch, transaction, amountExact, currencyExact, routingAllowed, clueLabels, strictDateEligible } = input
+
+    if (
+        strictDateEligible
+        || batch.platform !== 'comgate'
+        || !amountExact
+        || !currencyExact
+        || !routingAllowed
+        || !clueLabels.includes('Comgate')
+    ) {
+        return false
+    }
+
+    if (!isSameCalendarMonth(batch.payoutDate, transaction.bookedAt)) {
+        return false
+    }
+
+    const signedDayDelta = calculateSignedDayDelta(batch.payoutDate, transaction.bookedAt)
+    return Number.isFinite(signedDayDelta)
+        && signedDayDelta >= 0
+        && signedDayDelta <= COMGATE_SAME_MONTH_POST_PAYOUT_MAX_DAY_LAG
 }
 
 function normalizeComparable(value?: string): string {

@@ -105,6 +105,10 @@ export interface BrowserRuntimeUploadState {
       selectionMode?: 'eligible_candidate' | 'unique_exact_amount_fallback'
       exactAmountMatchExistsBeforeDateEvidence: boolean
       sameCurrencyCandidateAmountMinors: number[]
+      sameMonthExactAmountCandidateExists: boolean
+      rejectedOnlyByDateGate: boolean
+      appliedComgateSameMonthLagRule: boolean
+      wouldRejectOnStrictDateGate: boolean
       nearestAmountDeltaMinor?: number
       componentRowCount: number
       componentRowAmountMinors: number[]

@@ -24,37 +24,51 @@ function bankTransaction(overrides: Partial<NormalizedTransaction>): NormalizedT
 }
 
 function bookingBatch(): PayoutBatchExpectation {
-  return {
-    payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
-    platform: 'booking',
+    return {
+        payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+        platform: 'booking',
         payoutReference: 'PAYOUT-BOOK-20260310',
         payoutDate: '2026-03-12',
         bankRoutingTarget: 'rb_bank_inflow',
         rowIds: ['txn:payout:booking-payout-1', 'txn:payout:booking-payout-2'],
         expectedTotalMinor: 125000,
-    currency: 'CZK'
-  }
+        currency: 'CZK'
+    }
 }
 
 function bookingBatchWithSupplement(
-  overrides: Partial<PayoutBatchExpectation> = {}
+    overrides: Partial<PayoutBatchExpectation> = {}
 ): PayoutBatchExpectation {
-  return {
-    ...bookingBatch(),
-    payoutSupplementPaymentId: '010638445054',
-    payoutSupplementPayoutDate: '2026-03-12',
-    payoutSupplementPayoutTotalAmountMinor: 145642,
-    payoutSupplementPayoutTotalCurrency: 'EUR',
-    payoutSupplementLocalAmountMinor: 3553012,
-    payoutSupplementLocalCurrency: 'CZK',
-    payoutSupplementIbanSuffix: '5956',
-    payoutSupplementReferenceHints: ['2206371'],
-    payoutSupplementSourceDocumentIds: [
-      'doc-booking-pdf-1' as unknown as NonNullable<PayoutBatchExpectation['payoutSupplementSourceDocumentIds']>[number]
-    ],
-    payoutSupplementReservationIds: ['RES-BOOK-8841'],
-    ...overrides
-  }
+    return {
+        ...bookingBatch(),
+        payoutSupplementPaymentId: '010638445054',
+        payoutSupplementPayoutDate: '2026-03-12',
+        payoutSupplementPayoutTotalAmountMinor: 145642,
+        payoutSupplementPayoutTotalCurrency: 'EUR',
+        payoutSupplementLocalAmountMinor: 3553012,
+        payoutSupplementLocalCurrency: 'CZK',
+        payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReferenceHints: ['2206371'],
+        payoutSupplementSourceDocumentIds: [
+            'doc-booking-pdf-1' as unknown as NonNullable<PayoutBatchExpectation['payoutSupplementSourceDocumentIds']>[number]
+        ],
+        payoutSupplementReservationIds: ['RES-BOOK-8841'],
+        ...overrides
+    }
+}
+
+function comgateBatch(overrides: Partial<PayoutBatchExpectation> = {}): PayoutBatchExpectation {
+    return {
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        platform: 'comgate',
+        payoutReference: '1816656820',
+        payoutDate: '2026-03-27',
+        bankRoutingTarget: 'rb_bank_inflow',
+        rowIds: ['txn:payout:comgate-row-1', 'txn:payout:comgate-row-2', 'txn:payout:comgate-row-3'],
+        expectedTotalMinor: 605879,
+        currency: 'CZK',
+        ...overrides
+    }
 }
 
 describe('matchPayoutBatchesToBank', () => {
@@ -434,6 +448,111 @@ describe('matchPayoutBatchesToBank', () => {
                 sameCurrencyCandidateAmountMinors: [98000, 97000],
                 bankCandidateCountAfterAmountCurrency: 1,
                 matched: true
+            })
+        ])
+    })
+
+    it('allows a same-month Comgate RB candidate three days after payout date when exact amount, routing, currency, and Comgate hint align', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [comgateBatch()],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:comgate-same-month-lag' as NormalizedTransaction['id'],
+                    amountMinor: 605879,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-30',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Comgate a.s.',
+                    reference: 'Souhrnná výplata Comgate 2026-03-27'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+                expectedBankAmountMinor: 605879,
+                expectedBankCurrency: 'CZK',
+                exactAmountMatchExistsBeforeDateEvidence: true,
+                sameMonthExactAmountCandidateExists: true,
+                rejectedOnlyByDateGate: true,
+                appliedComgateSameMonthLagRule: true,
+                wouldRejectOnStrictDateGate: true,
+                bankCandidateCountAfterAmountCurrency: 1,
+                bankCandidateCountAfterDateWindow: 1,
+                matched: true,
+                matchedBankTransactionId: 'txn:bank:comgate-same-month-lag'
+            })
+        ])
+    })
+
+    it('keeps non-Comgate date rules unchanged when the same three-day lag happens on Booking', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [{
+                ...bookingBatch(),
+                payoutDate: '2026-03-27',
+                payoutBatchKey: 'booking-batch:2026-03-27:PAYOUT-BOOK-20260327',
+                payoutReference: 'PAYOUT-BOOK-20260327'
+            }],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-three-day-lag' as NormalizedTransaction['id'],
+                    amountMinor: 125000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-30',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Booking BV',
+                    reference: 'PAYOUT-BOOK-20260327'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-27:PAYOUT-BOOK-20260327',
+                sameMonthExactAmountCandidateExists: false,
+                rejectedOnlyByDateGate: false,
+                appliedComgateSameMonthLagRule: false,
+                wouldRejectOnStrictDateGate: false,
+                bankCandidateCountAfterAmountCurrency: 1,
+                bankCandidateCountAfterDateWindow: 0,
+                matched: false,
+                noMatchReason: 'dateToleranceMiss'
+            })
+        ])
+    })
+
+    it('keeps cross-month Comgate carryover unmatched even when the lag is only three days', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [comgateBatch({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                payoutDate: '2026-03-31'
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:comgate-cross-month-lag' as NormalizedTransaction['id'],
+                    amountMinor: 605879,
+                    currency: 'CZK',
+                    bookedAt: '2026-04-03',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Comgate a.s.',
+                    reference: 'Souhrnná výplata Comgate 2026-03-31'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                exactAmountMatchExistsBeforeDateEvidence: true,
+                sameMonthExactAmountCandidateExists: false,
+                rejectedOnlyByDateGate: false,
+                appliedComgateSameMonthLagRule: false,
+                wouldRejectOnStrictDateGate: false,
+                bankCandidateCountAfterAmountCurrency: 1,
+                bankCandidateCountAfterDateWindow: 0,
+                matched: false,
+                noMatchReason: 'dateToleranceMiss'
             })
         ])
     })
