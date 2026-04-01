@@ -93,6 +93,9 @@ export interface BrowserRuntimeUploadState {
       payoutBatchKey: string
       platform: string
       expectedTotalMinor: number
+      grossTotalMinor?: number
+      feeTotalMinor?: number
+      netSettlementTotalMinor?: number
       documentTotalMinor?: number
       expectedBankAmountMinor: number
       currency: string
@@ -219,7 +222,9 @@ export interface BrowserRuntimeUploadState {
         currentPortalPayoutBatchCount?: number
         currentPortalBatchTotalsPreview?: Array<{
           payoutBatchKey: string
-          expectedBankAmountMinor: number
+          grossTotalMinor: number
+          feeTotalMinor: number
+          netSettlementTotalMinor: number
           currency: string
         }>
         matchingInputPayoutRowCount: number
@@ -239,6 +244,9 @@ export interface BrowserRuntimeUploadState {
         payoutBatchSummaries: Array<{
           payoutBatchKey: string
           payoutReference: string
+          grossTotalMinor?: number
+          feeTotalMinor?: number
+          netSettlementTotalMinor?: number
           expectedBankAmountMinor: number
           currency: string
           bankCandidateCountBeforeFiltering: number

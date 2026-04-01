@@ -397,7 +397,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(2)
   })
 
-  it('aggregates current Comgate portal rows into one settlement batch and reaches an exact-amount RB candidate before matcher handoff', async () => {
+  it('proves current Comgate portal gross-to-net delta is explained by aggregated fees and reaches an exact-amount RB candidate before matcher handoff', async () => {
     const fixture = getRealInputFixture('comgate-export-current-portal')
 
     const result = await createBrowserRuntime().buildRuntimeState({
@@ -442,7 +442,9 @@ describe('buildUploadWebFlow', () => {
     expect(comgateDiagnostic?.comgatePipelineDiagnostics?.currentPortalBatchTotalsPreview).toEqual([
       {
         payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
-        expectedBankAmountMinor: 158000,
+        grossTotalMinor: 159100,
+        feeTotalMinor: 1100,
+        netSettlementTotalMinor: 158000,
         currency: 'CZK'
       }
     ])
@@ -450,6 +452,9 @@ describe('buildUploadWebFlow', () => {
       {
         payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
         payoutReference: 'CG-WEB-2001',
+        grossTotalMinor: 159100,
+        feeTotalMinor: 1100,
+        netSettlementTotalMinor: 158000,
         expectedBankAmountMinor: 158000,
         currency: 'CZK',
         bankCandidateCountBeforeFiltering: 1,
@@ -460,19 +465,26 @@ describe('buildUploadWebFlow', () => {
         noMatchReason: undefined
       }
     ])
-    expect(result.reconciliationSnapshot.payoutBatchDecisions).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
-        expectedTotalMinor: 158000,
-        expectedBankAmountMinor: 158000,
-        exactAmountMatchExistsBeforeDateEvidence: true,
-        componentRowCount: 2,
-        componentRowAmountMinors: [154000, 4000],
-        bankCandidateCountAfterAmountCurrency: 1,
-        matched: true,
-        matchedBankTransactionId: expect.stringMatching(/^txn:bank:/)
-      })
-    ]))
+    const decision = result.reconciliationSnapshot.payoutBatchDecisions.find((item) =>
+      item.payoutBatchKey === 'comgate-batch:2026-03-19:CZK'
+    )
+
+    expect(decision).toMatchObject({
+      payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+      grossTotalMinor: 159100,
+      feeTotalMinor: 1100,
+      netSettlementTotalMinor: 158000,
+      expectedTotalMinor: 158000,
+      expectedBankAmountMinor: 158000,
+      exactAmountMatchExistsBeforeDateEvidence: true,
+      componentRowCount: 2,
+      componentRowAmountMinors: [154900, 4200],
+      bankCandidateCountAfterAmountCurrency: 1,
+      matched: true,
+      matchedBankTransactionId: expect.stringMatching(/^txn:bank:/)
+    })
+    expect(decision?.sameCurrencyCandidateAmountMinors[0]).toBe(158000)
+    expect((decision?.grossTotalMinor ?? 0) - (decision?.sameCurrencyCandidateAmountMinors[0] ?? 0)).toBe(decision?.feeTotalMinor)
   })
 
   it('keeps the real Airbnb plus bank payout outcome stable when extra monthly files are added and surfaces unsupported files safely', async () => {

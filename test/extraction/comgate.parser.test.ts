@@ -65,8 +65,8 @@ describe('parseComgateExport', () => {
     expect(diagnostics).toMatchObject({
       detectedDelimiter: ';',
       parserVariant: 'current-portal',
-      rawHeaders: ['Comgate ID', 'ID od klienta', 'Datum založení', 'Datum zaplacení', 'Datum převodu', 'E-mail plátce', 'VS platby', 'Obchod', 'Cena', 'Měna', 'Typ platby'],
-      canonicalHeaders: ['transactionId', 'paymentReference', 'Datum založení', 'paidAt', 'payoutDate', 'E-mail plátce', 'paymentReference', 'Obchod', 'amountMinor', 'currency', 'paymentType'],
+      rawHeaders: ['Comgate ID', 'ID od klienta', 'Datum založení', 'Datum zaplacení', 'Datum převodu', 'E-mail plátce', 'VS platby', 'Obchod', 'Cena', 'Měna', 'Typ platby', 'Mezibankovní poplatek', 'Poplatek asociace', 'Poplatek zpracovatel', 'Poplatek celkem'],
+      canonicalHeaders: ['transactionId', 'paymentReference', 'Datum založení', 'paidAt', 'payoutDate', 'E-mail plátce', 'paymentReference', 'Obchod', 'amountMinor', 'currency', 'paymentType', 'interbankFeeMinor', 'associationFeeMinor', 'processorFeeMinor', 'totalFeeMinor'],
       requiredCanonicalHeaders: ['payoutDate', 'amountMinor', 'currency'],
       missingCanonicalHeaders: []
     })

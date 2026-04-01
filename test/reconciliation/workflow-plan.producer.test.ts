@@ -150,7 +150,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                 direction: 'in',
                 source: 'comgate',
                 subtype: undefined,
-                amountMinor: 154000,
+                amountMinor: 154900,
                 currency: 'CZK',
                 bookedAt: '2026-03-19',
                 accountId: 'expected-payouts',
@@ -177,7 +177,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                 direction: 'in',
                 source: 'comgate',
                 subtype: undefined,
-                amountMinor: 4000,
+                amountMinor: 4200,
                 currency: 'CZK',
                 bookedAt: '2026-03-19',
                 accountId: 'expected-payouts',
@@ -208,9 +208,19 @@ describe('buildReconciliationWorkflowPlan', () => {
         })
 
         expect(plan.payoutRows).toHaveLength(2)
-        expect(plan.payoutRows.map((row) => row.payoutBatchKey)).toEqual([
-            'comgate-batch:2026-03-19:CZK',
-            'comgate-batch:2026-03-19:CZK'
+        expect(plan.payoutRows).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+                amountMinor: 154900,
+                totalFeeMinor: 900,
+                matchingAmountMinor: 154000
+            }),
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-19:CZK',
+                amountMinor: 4200,
+                totalFeeMinor: 200,
+                matchingAmountMinor: 4000
+            })
         ])
         expect(plan.payoutBatches.length).toBeLessThan(plan.payoutRows.length)
         expect(plan.payoutBatches).toEqual([
@@ -219,6 +229,9 @@ describe('buildReconciliationWorkflowPlan', () => {
                 payoutDate: '2026-03-19',
                 currency: 'CZK',
                 rowIds: ['txn:payout:comgate-row-1', 'txn:payout:comgate-row-2'],
+                grossTotalMinor: 159100,
+                feeTotalMinor: 1100,
+                netSettlementTotalMinor: 158000,
                 expectedTotalMinor: 158000
             })
         ])

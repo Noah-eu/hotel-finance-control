@@ -101,29 +101,38 @@ function buildPayoutRows(
         .filter(isPayoutPlanTransaction)
         .filter((transaction) => transaction.direction === 'in')
         .filter(shouldRemainPayoutPlanTransaction)
-        .map((transaction) => ({
-            rowId: transaction.id,
-            platform: transaction.source,
-            sourceDocumentId: transaction.sourceDocumentIds[0]!,
-            reservationId: transaction.reservationId,
-            payoutReference: transaction.reference ?? transaction.id,
-            payoutDate: transaction.bookedAt,
-            payoutBatchKey: resolvePayoutBatchKey(transaction, extractedRecordsById),
-            amountMinor: transaction.amountMinor,
-            currency: transaction.currency,
-            bankRoutingTarget: 'rb_bank_inflow',
-            payoutSupplementPaymentId: transaction.payoutSupplementPaymentId,
-            payoutSupplementPayoutDate: transaction.payoutSupplementPayoutDate,
-            payoutSupplementPayoutTotalAmountMinor: transaction.payoutSupplementPayoutTotalAmountMinor,
-            payoutSupplementPayoutTotalCurrency: transaction.payoutSupplementPayoutTotalCurrency,
-            payoutSupplementLocalAmountMinor: transaction.payoutSupplementLocalAmountMinor,
-            payoutSupplementLocalCurrency: transaction.payoutSupplementLocalCurrency,
-            payoutSupplementIbanSuffix: transaction.payoutSupplementIbanSuffix,
-            payoutSupplementExchangeRate: transaction.payoutSupplementExchangeRate,
-            payoutSupplementReferenceHints: transaction.payoutSupplementReferenceHints,
-            payoutSupplementSourceDocumentIds: transaction.payoutSupplementSourceDocumentIds,
-            payoutSupplementReservationIds: transaction.payoutSupplementReservationIds
-        }))
+        .map((transaction) => {
+            const totalFeeMinor = resolveCurrentPortalComgateTotalFeeMinor(transaction, extractedRecordsById)
+            const matchingAmountMinor = typeof totalFeeMinor === 'number'
+                ? transaction.amountMinor - totalFeeMinor
+                : transaction.amountMinor
+
+            return {
+                rowId: transaction.id,
+                platform: transaction.source,
+                sourceDocumentId: transaction.sourceDocumentIds[0]!,
+                reservationId: transaction.reservationId,
+                payoutReference: transaction.reference ?? transaction.id,
+                payoutDate: transaction.bookedAt,
+                payoutBatchKey: resolvePayoutBatchKey(transaction, extractedRecordsById),
+                amountMinor: transaction.amountMinor,
+                ...(typeof totalFeeMinor === 'number' ? { totalFeeMinor } : {}),
+                ...(matchingAmountMinor !== transaction.amountMinor ? { matchingAmountMinor } : {}),
+                currency: transaction.currency,
+                bankRoutingTarget: 'rb_bank_inflow',
+                payoutSupplementPaymentId: transaction.payoutSupplementPaymentId,
+                payoutSupplementPayoutDate: transaction.payoutSupplementPayoutDate,
+                payoutSupplementPayoutTotalAmountMinor: transaction.payoutSupplementPayoutTotalAmountMinor,
+                payoutSupplementPayoutTotalCurrency: transaction.payoutSupplementPayoutTotalCurrency,
+                payoutSupplementLocalAmountMinor: transaction.payoutSupplementLocalAmountMinor,
+                payoutSupplementLocalCurrency: transaction.payoutSupplementLocalCurrency,
+                payoutSupplementIbanSuffix: transaction.payoutSupplementIbanSuffix,
+                payoutSupplementExchangeRate: transaction.payoutSupplementExchangeRate,
+                payoutSupplementReferenceHints: transaction.payoutSupplementReferenceHints,
+                payoutSupplementSourceDocumentIds: transaction.payoutSupplementSourceDocumentIds,
+                payoutSupplementReservationIds: transaction.payoutSupplementReservationIds
+            }
+        })
 }
 
 function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectation[] {
@@ -135,41 +144,53 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
         grouped.set(row.payoutBatchKey, items)
     }
 
-    return Array.from(grouped.entries()).map(([payoutBatchKey, batchRows]) => ({
-        payoutBatchKey,
-        platform: batchRows[0]!.platform,
-        payoutReference: batchRows[0]!.payoutReference,
-        payoutDate: batchRows[0]!.payoutDate,
-        bankRoutingTarget: batchRows[0]!.bankRoutingTarget,
-        rowIds: batchRows.map((row) => row.rowId),
-        expectedTotalMinor: batchRows.reduce((sum, row) => sum + row.amountMinor, 0),
-        currency: batchRows[0]!.currency,
-        payoutSupplementPaymentId: firstDefined(batchRows.map((row) => row.payoutSupplementPaymentId)),
-        payoutSupplementPayoutDate: firstDefined(batchRows.map((row) => row.payoutSupplementPayoutDate)),
-        payoutSupplementPayoutTotalAmountMinor: firstDefined(
-            batchRows.map((row) => row.payoutSupplementPayoutTotalAmountMinor)
-        ),
-        payoutSupplementPayoutTotalCurrency: firstDefined(
-            batchRows.map((row) => row.payoutSupplementPayoutTotalCurrency)
-        ),
-        payoutSupplementLocalAmountMinor: firstDefined(
-            batchRows.map((row) => row.payoutSupplementLocalAmountMinor)
-        ),
-        payoutSupplementLocalCurrency: firstDefined(
-            batchRows.map((row) => row.payoutSupplementLocalCurrency)
-        ),
-        payoutSupplementIbanSuffix: firstDefined(batchRows.map((row) => row.payoutSupplementIbanSuffix)),
-        payoutSupplementExchangeRate: firstDefined(batchRows.map((row) => row.payoutSupplementExchangeRate)),
-        payoutSupplementReferenceHints: uniqueValues(
-            batchRows.flatMap((row) => row.payoutSupplementReferenceHints ?? [])
-        ),
-        payoutSupplementSourceDocumentIds: uniqueValues(
-            batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
-        ),
-        payoutSupplementReservationIds: uniqueValues(
-            batchRows.flatMap((row) => row.payoutSupplementReservationIds ?? [])
+    return Array.from(grouped.entries()).map(([payoutBatchKey, batchRows]) => {
+        const grossTotalMinor = batchRows.reduce((sum, row) => sum + row.amountMinor, 0)
+        const feeTotalMinor = batchRows.reduce((sum, row) => sum + (row.totalFeeMinor ?? 0), 0)
+        const netSettlementTotalMinor = batchRows.reduce(
+            (sum, row) => sum + (row.matchingAmountMinor ?? row.amountMinor),
+            0
         )
-    }))
+
+        return {
+            payoutBatchKey,
+            platform: batchRows[0]!.platform,
+            payoutReference: batchRows[0]!.payoutReference,
+            payoutDate: batchRows[0]!.payoutDate,
+            bankRoutingTarget: batchRows[0]!.bankRoutingTarget,
+            rowIds: batchRows.map((row) => row.rowId),
+            expectedTotalMinor: netSettlementTotalMinor,
+            ...(grossTotalMinor !== netSettlementTotalMinor ? { grossTotalMinor } : {}),
+            ...(feeTotalMinor > 0 ? { feeTotalMinor } : {}),
+            ...(grossTotalMinor !== netSettlementTotalMinor ? { netSettlementTotalMinor } : {}),
+            currency: batchRows[0]!.currency,
+            payoutSupplementPaymentId: firstDefined(batchRows.map((row) => row.payoutSupplementPaymentId)),
+            payoutSupplementPayoutDate: firstDefined(batchRows.map((row) => row.payoutSupplementPayoutDate)),
+            payoutSupplementPayoutTotalAmountMinor: firstDefined(
+                batchRows.map((row) => row.payoutSupplementPayoutTotalAmountMinor)
+            ),
+            payoutSupplementPayoutTotalCurrency: firstDefined(
+                batchRows.map((row) => row.payoutSupplementPayoutTotalCurrency)
+            ),
+            payoutSupplementLocalAmountMinor: firstDefined(
+                batchRows.map((row) => row.payoutSupplementLocalAmountMinor)
+            ),
+            payoutSupplementLocalCurrency: firstDefined(
+                batchRows.map((row) => row.payoutSupplementLocalCurrency)
+            ),
+            payoutSupplementIbanSuffix: firstDefined(batchRows.map((row) => row.payoutSupplementIbanSuffix)),
+            payoutSupplementExchangeRate: firstDefined(batchRows.map((row) => row.payoutSupplementExchangeRate)),
+            payoutSupplementReferenceHints: uniqueValues(
+                batchRows.flatMap((row) => row.payoutSupplementReferenceHints ?? [])
+            ),
+            payoutSupplementSourceDocumentIds: uniqueValues(
+                batchRows.flatMap((row) => row.payoutSupplementSourceDocumentIds ?? [])
+            ),
+            payoutSupplementReservationIds: uniqueValues(
+                batchRows.flatMap((row) => row.payoutSupplementReservationIds ?? [])
+            )
+        }
+    })
 }
 
 function buildDirectBankSettlements(
@@ -340,6 +361,25 @@ function isCurrentPortalComgateTransaction(
 
 function buildCurrentPortalComgateBatchKey(payoutDate: string, currency: string): string {
     return `comgate-batch:${payoutDate}:${currency.trim().toUpperCase()}`
+}
+
+function resolveCurrentPortalComgateTotalFeeMinor(
+    transaction: NormalizedTransaction,
+    extractedRecordsById: Map<string, ExtractedRecord>
+): number | undefined {
+    if (!isCurrentPortalComgateTransaction(transaction, extractedRecordsById)) {
+        return undefined
+    }
+
+    const fees = transaction.extractedRecordIds
+        .map((recordId) => extractedRecordsById.get(recordId)?.data.totalFeeMinor)
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+
+    if (fees.length === 0) {
+        return undefined
+    }
+
+    return fees.reduce((sum, value) => sum + value, 0)
 }
 
 function optionalString(value: unknown): string | undefined {

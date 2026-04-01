@@ -1023,7 +1023,7 @@ export const realInputFixtures: RealInputFixture[] = [
   },
   {
     key: 'comgate-export-current-portal',
-    description: 'Current Comgate klientský portál export transakcí CSV without reservation linkage columns.',
+    description: 'Current Comgate klientský portál export transakcí CSV with fee columns and without reservation linkage columns.',
     sourceDocument: sourceDocument({
       id: 'doc-comgate-portal-2026-03' as SourceDocument['id'],
       sourceSystem: 'comgate',
@@ -1033,9 +1033,9 @@ export const realInputFixtures: RealInputFixture[] = [
     rawInput: {
       format: 'csv',
       content: [
-        '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby"',
-        '"CG-PORTAL-TRX-2001";"CG-WEB-2001";"18.03.2026 09:15";"18.03.2026 09:16";"19.03.2026";"guest@example.com";"CG-WEB-2001";"JOKELAND s.r.o.";"1540,00";"CZK";"website-reservation"',
-        '"CG-PORTAL-TRX-2002";"CG-PARK-2001";"18.03.2026 10:20";"18.03.2026 10:21";"19.03.2026";"parking@example.com";"CG-PARK-2001";"JOKELAND s.r.o.";"40,00";"CZK";"parking"'
+        '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+        '"CG-PORTAL-TRX-2001";"CG-WEB-2001";"18.03.2026 09:15";"18.03.2026 09:16";"19.03.2026";"guest@example.com";"CG-WEB-2001";"JOKELAND s.r.o.";"1549,00";"CZK";"website-reservation";"0,00";"0,00";"9,00";"9,00"',
+        '"CG-PORTAL-TRX-2002";"CG-PARK-2001";"18.03.2026 10:20";"18.03.2026 10:21";"19.03.2026";"parking@example.com";"CG-PARK-2001";"JOKELAND s.r.o.";"42,00";"CZK";"parking";"0,00";"0,00";"2,00";"2,00"'
       ].join('\n')
     },
     expectedExtractedRecords: [
@@ -1044,15 +1044,17 @@ export const realInputFixtures: RealInputFixture[] = [
         sourceDocumentId: 'doc-comgate-portal-2026-03' as ExtractedRecord['sourceDocumentId'],
         recordType: 'payout-line',
         rawReference: 'CG-WEB-2001',
-        amountMinor: 154000,
+        amountMinor: 154900,
         currency: 'CZK',
         occurredAt: '2026-03-19',
         data: {
           platform: 'comgate',
           bookedAt: '2026-03-19',
-          amountMinor: 154000,
+          amountMinor: 154900,
           currency: 'CZK',
           accountId: 'expected-payouts',
+          totalFeeMinor: 900,
+          processorFeeMinor: 900,
           reference: 'CG-WEB-2001',
           paymentPurpose: 'website-reservation',
           transactionId: 'CG-PORTAL-TRX-2001',
@@ -1064,15 +1066,17 @@ export const realInputFixtures: RealInputFixture[] = [
         sourceDocumentId: 'doc-comgate-portal-2026-03' as ExtractedRecord['sourceDocumentId'],
         recordType: 'payout-line',
         rawReference: 'CG-PARK-2001',
-        amountMinor: 4000,
+        amountMinor: 4200,
         currency: 'CZK',
         occurredAt: '2026-03-19',
         data: {
           platform: 'comgate',
           bookedAt: '2026-03-19',
-          amountMinor: 4000,
+          amountMinor: 4200,
           currency: 'CZK',
           accountId: 'expected-payouts',
+          totalFeeMinor: 200,
+          processorFeeMinor: 200,
           reference: 'CG-PARK-2001',
           paymentPurpose: 'parking',
           transactionId: 'CG-PORTAL-TRX-2002',

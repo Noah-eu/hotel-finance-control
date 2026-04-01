@@ -3084,7 +3084,7 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
-  it('shows current Comgate portal settlement batching diagnostics only in debug mode before matcher handoff', async () => {
+  it('shows current Comgate portal net settlement diagnostics only in debug mode before matcher handoff', async () => {
     const comgate = getRealInputFixture('comgate-export-current-portal')
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-31T18:10:00.000Z',
@@ -3110,6 +3110,9 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate current-portal raw rows: 2')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate current-portal payout batches: 1')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate current-portal batch totals: comgate-batch:2026-03-19:CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('gross=1 591,00 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('fee=11,00 CZK')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('net=1 580,00 CZK')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate matching input rows: 2')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate payout batches: 1 · decisions 1')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate loss boundary: no-loss / matched')

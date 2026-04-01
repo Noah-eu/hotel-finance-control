@@ -86,6 +86,9 @@ export interface PayoutBatchBankDecisionTrace {
   payoutReference: PayoutBatchExpectation['payoutReference']
   platform: PayoutBatchExpectation['platform']
   expectedTotalMinor: PayoutBatchExpectation['expectedTotalMinor']
+  grossTotalMinor?: PayoutBatchExpectation['grossTotalMinor']
+  feeTotalMinor?: PayoutBatchExpectation['feeTotalMinor']
+  netSettlementTotalMinor?: PayoutBatchExpectation['netSettlementTotalMinor']
   documentTotalMinor?: number
   expectedBankAmountMinor: number
   currency: PayoutBatchExpectation['currency']

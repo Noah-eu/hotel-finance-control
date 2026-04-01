@@ -261,6 +261,9 @@ function buildPayoutBatchDecisionSnapshot(
       payoutBatchKey: decision.payoutBatchKey,
       platform: decision.platform,
       expectedTotalMinor: decision.expectedTotalMinor,
+      grossTotalMinor: decision.grossTotalMinor,
+      feeTotalMinor: decision.feeTotalMinor,
+      netSettlementTotalMinor: decision.netSettlementTotalMinor,
       documentTotalMinor: decision.documentTotalMinor,
       expectedBankAmountMinor: decision.expectedBankAmountMinor,
       currency: decision.currency,
@@ -504,6 +507,9 @@ function buildComgatePipelineDiagnostics(
     .map((decision) => ({
       payoutBatchKey: decision.payoutBatchKey,
       payoutReference: decision.payoutReference,
+      grossTotalMinor: decision.grossTotalMinor,
+      feeTotalMinor: decision.feeTotalMinor,
+      netSettlementTotalMinor: decision.netSettlementTotalMinor,
       expectedBankAmountMinor: decision.expectedBankAmountMinor,
       currency: decision.expectedBankCurrency,
       bankCandidateCountBeforeFiltering: decision.bankCandidateCountBeforeFiltering,
@@ -519,7 +525,9 @@ function buildComgatePipelineDiagnostics(
   const currentPortalBatchTotalsPreview = parserVariants.includes('current-portal')
     ? payoutBatchSummaries.map((summary) => ({
       payoutBatchKey: summary.payoutBatchKey,
-      expectedBankAmountMinor: summary.expectedBankAmountMinor,
+      grossTotalMinor: summary.grossTotalMinor ?? summary.expectedBankAmountMinor,
+      feeTotalMinor: summary.feeTotalMinor ?? 0,
+      netSettlementTotalMinor: summary.netSettlementTotalMinor ?? summary.expectedBankAmountMinor,
       currency: summary.currency
     }))
     : undefined

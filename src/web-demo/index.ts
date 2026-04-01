@@ -3041,7 +3041,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const currentPortalBatchTotalsPreview = Array.isArray(diagnostics.currentPortalBatchTotalsPreview) && diagnostics.currentPortalBatchTotalsPreview.length > 0
           ? diagnostics.currentPortalBatchTotalsPreview.map((item) => [
             escapeHtml(String(item.payoutBatchKey || 'n/a')),
-            escapeHtml(buildAmountDisplay(Number(item.expectedBankAmountMinor || 0), String(item.currency || 'CZK')))
+            'gross=' + escapeHtml(buildAmountDisplay(Number(item.grossTotalMinor || 0), String(item.currency || 'CZK'))),
+            'fee=' + escapeHtml(buildAmountDisplay(Number(item.feeTotalMinor || 0), String(item.currency || 'CZK'))),
+            'net=' + escapeHtml(buildAmountDisplay(Number(item.netSettlementTotalMinor || 0), String(item.currency || 'CZK')))
           ].join(' · ')).join(' | ')
           : 'žádné';
 

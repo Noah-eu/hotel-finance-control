@@ -171,6 +171,8 @@ export interface PayoutRowExpectation {
   payoutDate: ISODateString
   payoutBatchKey: string
   amountMinor: number
+  totalFeeMinor?: number
+  matchingAmountMinor?: number
   currency: CurrencyCode
   bankRoutingTarget: 'rb_bank_inflow'
   payoutSupplementPaymentId?: string
@@ -194,6 +196,9 @@ export interface PayoutBatchExpectation {
   bankRoutingTarget: 'rb_bank_inflow'
   rowIds: string[]
   expectedTotalMinor: number
+  grossTotalMinor?: number
+  feeTotalMinor?: number
+  netSettlementTotalMinor?: number
   currency: CurrencyCode
   payoutSupplementPaymentId?: string
   payoutSupplementPayoutDate?: ISODateString

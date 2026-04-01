@@ -32,6 +32,10 @@ const HEADER_ALIASES = {
   paidAt: ['paidAt', 'paid_at', 'paymentDate', 'datumPlatby', 'datum', 'datum zaplacení', 'datum úhrady'],
   amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'uhrazená částka', 'zaplacená částka', 'cena'],
   currency: ['currency', 'mena', 'měna'],
+  interbankFeeMinor: ['interbankFeeMinor', 'mezibankovní poplatek', 'mezibankovni poplatek'],
+  associationFeeMinor: ['associationFeeMinor', 'poplatek asociace'],
+  processorFeeMinor: ['processorFeeMinor', 'poplatek zpracovatel'],
+  totalFeeMinor: ['totalFeeMinor', 'poplatek celkem'],
   reference: ['reference', 'transactionReference', 'variabilniSymbol', 'variabilní symbol'],
   paymentPurpose: ['paymentPurpose', 'payment_purpose', 'purpose', 'ucelPlatby', 'účelPlatby', 'štítek', 'payment label'],
   reservationId: ['reservationId', 'reservation_id', 'reservation', 'orderId', 'číslo objednávky', 'order id', 'merchant id'],
@@ -118,6 +122,11 @@ function buildComgateRecord(
   )
   const amountMinor = parseAmountMinor(row.amountMinor, 'Comgate amountMinor')
   const currency = row.currency.trim().toUpperCase()
+  const interbankFeeMinor = parseOptionalAmountMinor(row.interbankFeeMinor, 'Comgate interbankFeeMinor')
+  const associationFeeMinor = parseOptionalAmountMinor(row.associationFeeMinor, 'Comgate associationFeeMinor')
+  const processorFeeMinor = parseOptionalAmountMinor(row.processorFeeMinor, 'Comgate processorFeeMinor')
+  const totalFeeMinor = parseOptionalAmountMinor(row.totalFeeMinor, 'Comgate totalFeeMinor')
+    ?? sumDefinedNumbers([interbankFeeMinor, associationFeeMinor, processorFeeMinor])
   const legacyReference = trimOptionalValue(row.reference)
   const currentPaymentReference = trimOptionalValue(row.paymentReference)
   const currentTransactionId = trimOptionalValue(row.transactionId)
@@ -143,6 +152,10 @@ function buildComgateRecord(
       amountMinor,
       currency,
       accountId: 'expected-payouts',
+      ...(typeof totalFeeMinor === 'number' && totalFeeMinor > 0 ? { totalFeeMinor } : {}),
+      ...(typeof interbankFeeMinor === 'number' && interbankFeeMinor > 0 ? { interbankFeeMinor } : {}),
+      ...(typeof associationFeeMinor === 'number' && associationFeeMinor > 0 ? { associationFeeMinor } : {}),
+      ...(typeof processorFeeMinor === 'number' && processorFeeMinor > 0 ? { processorFeeMinor } : {}),
       ...(reference ? { reference } : {}),
       ...(reservationId ? { reservationId } : {}),
       ...(paymentPurpose ? { paymentPurpose } : {}),
@@ -155,6 +168,24 @@ function buildComgateRecord(
 function trimOptionalValue(value: string | undefined): string | undefined {
   const normalized = value?.trim()
   return normalized ? normalized : undefined
+}
+
+function parseOptionalAmountMinor(value: string | undefined, fieldName: string): number | undefined {
+  const normalized = trimOptionalValue(value)
+  if (!normalized) {
+    return undefined
+  }
+
+  return parseAmountMinor(normalized, fieldName)
+}
+
+function sumDefinedNumbers(values: Array<number | undefined>): number | undefined {
+  const definedValues = values.filter((value): value is number => typeof value === 'number')
+  if (definedValues.length === 0) {
+    return undefined
+  }
+
+  return definedValues.reduce((sum, value) => sum + value, 0)
 }
 
 const defaultComgateParser = new ComgateParser()
