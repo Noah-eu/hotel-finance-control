@@ -397,7 +397,7 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions).toHaveLength(2)
   })
 
-  it('reproduces the attached daily Comgate settlement CSV as a distinct unsupported settlement source before parser handoff', async () => {
+  it('routes the attached daily Comgate settlement CSV into a supported daily-settlement Comgate parser branch', async () => {
     const fixture = getRealInputFixture('comgate-daily-payout-export')
 
     const result = await createBrowserRuntime().buildRuntimeState({
@@ -413,37 +413,54 @@ describe('buildUploadWebFlow', () => {
 
     expect(result.routingSummary).toEqual({
       uploadedFileCount: 1,
-      supportedFileCount: 0,
-      unsupportedFileCount: 1,
+      supportedFileCount: 1,
+      unsupportedFileCount: 0,
       errorFileCount: 0
     })
-    expect(result.preparedFiles).toHaveLength(0)
-    expect(result.extractedRecords).toHaveLength(0)
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        sourceSystem: 'comgate',
+        documentType: 'payment_gateway_report',
+        parserId: 'comgate'
+      })
+    ])
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        extractedCount: 3,
+        accountLabelCs: 'Comgate platební report'
+      })
+    ])
     expect(result.fileRoutes).toEqual([
       expect.objectContaining({
         fileName: 'vypis-2026-03-27_1816656820.csv',
-        status: 'unsupported',
-        intakeStatus: 'unclassified',
-        sourceSystem: 'unknown',
-        documentType: 'other'
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'comgate',
+        documentType: 'payment_gateway_report',
+        parserId: 'comgate'
       })
     ])
     expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
       expect.objectContaining({
         fileName: 'vypis-2026-03-27_1816656820.csv',
-        sourceSystem: 'unknown',
-        documentType: 'other',
-        status: 'unsupported',
-        intakeStatus: 'unclassified',
+        sourceSystem: 'comgate',
+        documentType: 'payment_gateway_report',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        parserSupported: true,
         comgateHeaderDiagnostics: expect.objectContaining({
           detectedFileKind: 'daily-settlement',
-          parserVariant: 'legacy',
+          parserVariant: 'daily-settlement',
           rawHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'ID od klienta'],
-          canonicalHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'paymentReference'],
-          containsExplicitSettlementTotal: true
+          canonicalHeaders: ['merchant', 'transactionId', 'paymentMethod', 'confirmedAmountMinor', 'transferredAmountMinor', 'product', 'transferReference', 'clientId'],
+          containsExplicitSettlementTotal: true,
+          explicitSettlementTotalMinor: 605879,
+          componentRowCount: 3
         }),
         comgatePipelineDiagnostics: expect.objectContaining({
-          extractedRecordCount: 0,
+          parserVariants: ['daily-settlement'],
+          extractedRecordCount: 3,
           normalizedTransactionCount: 0,
           matchingInputPayoutRowCount: 0,
           payoutBatchCount: 0,

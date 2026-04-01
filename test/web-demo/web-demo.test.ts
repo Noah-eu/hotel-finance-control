@@ -3122,7 +3122,7 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('matched')
   })
 
-  it('shows the attached daily Comgate settlement CSV as a distinct debug-only settlement shape while remaining unsupported today', async () => {
+  it('shows the attached daily Comgate settlement CSV as a supported debug-only daily-settlement shape', async () => {
     const comgate = getRealInputFixture('comgate-daily-payout-export')
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-01T08:15:00.000Z',
@@ -3135,17 +3135,16 @@ describe('buildWebDemo', () => {
 
     expect(rendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate detected file kind: daily-settlement')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variant: legacy')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variant: daily-settlement')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate raw headers: Merchant | ID ComGate | Metoda |')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('| Produkt |')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('| ID od klienta')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate canonical headers: Merchant | ID ComGate | Metoda |')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('| paymentReference')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate canonical headers: merchant | transactionId | paymentMethod | confirmedAmountMinor | transferredAmountMinor | product | transferReference | clientId')
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate explicit settlement total: ano')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variants: unknown')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate extracted records: 0')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: unknown / other / unknown')
-    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: unclassified')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate extracted records: 3')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variants: daily-settlement')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: comgate / payment_gateway_report / content')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: recognized supported')
   })
 
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {

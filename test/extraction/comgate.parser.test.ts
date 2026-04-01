@@ -78,23 +78,40 @@ describe('parseComgateExport', () => {
     const fixture = getRealInputFixture('comgate-daily-payout-export')
 
     const diagnostics = inspectComgateHeaderDiagnostics(fixture.rawInput.content)
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-04-01T08:00:00.000Z'
+    })
 
     expect(diagnostics).toMatchObject({
       detectedDelimiter: ';',
       detectedFileKind: 'daily-settlement',
-      parserVariant: 'legacy',
+      parserVariant: 'daily-settlement',
       rawHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'ID od klienta'],
-      canonicalHeaders: ['Merchant', 'ID ComGate', 'Metoda', 'Potvrzen� ��stka', 'P�eveden� ��stka', 'Produkt', 'Variabiln� symbol p�evodu', 'paymentReference'],
-      containsExplicitSettlementTotal: true
+      canonicalHeaders: ['merchant', 'transactionId', 'paymentMethod', 'confirmedAmountMinor', 'transferredAmountMinor', 'product', 'transferReference', 'clientId'],
+      requiredCanonicalHeaders: ['transactionId', 'confirmedAmountMinor', 'transferredAmountMinor', 'transferReference', 'clientId'],
+      missingCanonicalHeaders: [],
+      containsExplicitSettlementTotal: true,
+      explicitSettlementTotalMinor: 605879,
+      explicitSettlementGrossTotalMinor: 611876,
+      componentRowCount: 3
     })
     expect(diagnostics.parserVariant).not.toBe('current-portal')
-    expect(() =>
-      parseComgateExport({
-        sourceDocument: fixture.sourceDocument,
-        content: fixture.rawInput.content,
+    expect(records).toEqual([
+      {
+        ...fixture.expectedExtractedRecords[0],
         extractedAt: '2026-04-01T08:00:00.000Z'
-      })
-    ).toThrow('Comgate export is missing required columns')
+      },
+      {
+        ...fixture.expectedExtractedRecords[1],
+        extractedAt: '2026-04-01T08:00:00.000Z'
+      },
+      {
+        ...fixture.expectedExtractedRecords[2],
+        extractedAt: '2026-04-01T08:00:00.000Z'
+      }
+    ])
   })
 
   it('accepts richer Comgate client portal headers with explicit label and order linkage', () => {

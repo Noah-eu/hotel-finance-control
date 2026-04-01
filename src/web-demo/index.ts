@@ -2828,7 +2828,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<br /><span class="hint">Comgate normalized header map: ' + escapeHtml(Array.isArray(diagnostics.normalizedHeaderMap) && diagnostics.normalizedHeaderMap.length > 0 ? diagnostics.normalizedHeaderMap.join(' | ') : 'žádné') + '</span>',
           '<br /><span class="hint">Comgate required canonical headers: ' + escapeHtml(Array.isArray(diagnostics.requiredCanonicalHeaders) && diagnostics.requiredCanonicalHeaders.length > 0 ? diagnostics.requiredCanonicalHeaders.join(', ') : 'žádné') + '</span>',
           '<br /><span class="hint">Comgate missing canonical headers: ' + escapeHtml(Array.isArray(diagnostics.missingCanonicalHeaders) && diagnostics.missingCanonicalHeaders.length > 0 ? diagnostics.missingCanonicalHeaders.join(', ') : 'žádné') + '</span>',
-          '<br /><span class="hint">Comgate explicit settlement total: ' + escapeHtml(buildDebugBooleanLabel(Boolean(diagnostics.containsExplicitSettlementTotal))) + '</span>'
+          typeof diagnostics.componentRowCount === 'number'
+            ? '<br /><span class="hint">Comgate extracted component rows: ' + escapeHtml(String(diagnostics.componentRowCount)) + '</span>'
+            : '',
+          '<br /><span class="hint">Comgate explicit settlement total: ' + escapeHtml(buildDebugBooleanLabel(Boolean(diagnostics.containsExplicitSettlementTotal))) + '</span>',
+          typeof diagnostics.explicitSettlementTotalMinor === 'number'
+            ? '<br /><span class="hint">Comgate extracted settlement total: ' + escapeHtml(buildAmountDisplay(diagnostics.explicitSettlementTotalMinor, 'CZK')) + '</span>'
+            : ''
         ].join('');
       }
 

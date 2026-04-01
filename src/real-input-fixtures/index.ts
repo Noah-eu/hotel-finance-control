@@ -1106,8 +1106,74 @@ export const realInputFixtures: RealInputFixture[] = [
         '"suma";"";"";"6118,76";"6058,79";"";"";""'
       ].join('\n')
     },
-    expectedExtractedRecords: [],
-    expectedExtractionResult: 'none'
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'comgate-row-1',
+        sourceDocumentId: 'doc-comgate-daily-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'JGSV-QK5O-DR7O',
+        amountMinor: 242351,
+        data: {
+          platform: 'comgate',
+          accountId: 'expected-payouts',
+          amountMinor: 242351,
+          confirmedAmountMinor: 244750,
+          transferredAmountMinor: 242351,
+          reference: '1816656820',
+          transactionId: 'JGSV-QK5O-DR7O',
+          clientId: '108966761',
+          merchant: '499465',
+          paymentMethod: 'Karta online',
+          explicitSettlementTotalMinor: 605879,
+          explicitSettlementGrossTotalMinor: 611876,
+          comgateParserVariant: 'daily-settlement'
+        }
+      }),
+      extractedRecord({
+        id: 'comgate-row-2',
+        sourceDocumentId: 'doc-comgate-daily-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: 'BHOV-M0TY-LBQV',
+        amountMinor: 302940,
+        data: {
+          platform: 'comgate',
+          accountId: 'expected-payouts',
+          amountMinor: 302940,
+          confirmedAmountMinor: 305938,
+          transferredAmountMinor: 302940,
+          reference: '1816656820',
+          transactionId: 'BHOV-M0TY-LBQV',
+          clientId: '108929843',
+          merchant: '499465',
+          paymentMethod: 'Karta online',
+          explicitSettlementTotalMinor: 605879,
+          explicitSettlementGrossTotalMinor: 611876,
+          comgateParserVariant: 'daily-settlement'
+        }
+      }),
+      extractedRecord({
+        id: 'comgate-row-3',
+        sourceDocumentId: 'doc-comgate-daily-payout-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-line',
+        rawReference: '5V2K-MLZM-ETAK',
+        amountMinor: 60588,
+        data: {
+          platform: 'comgate',
+          accountId: 'expected-payouts',
+          amountMinor: 60588,
+          confirmedAmountMinor: 61188,
+          transferredAmountMinor: 60588,
+          reference: '1816656820',
+          transactionId: '5V2K-MLZM-ETAK',
+          clientId: '108592573',
+          merchant: '499465',
+          paymentMethod: 'Karta online',
+          explicitSettlementTotalMinor: 605879,
+          explicitSettlementGrossTotalMinor: 611876,
+          comgateParserVariant: 'daily-settlement'
+        }
+      })
+    ]
   },
   {
     key: 'invoice-document',

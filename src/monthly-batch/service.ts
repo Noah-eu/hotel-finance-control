@@ -1118,6 +1118,10 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     return 'bank'
   }
 
+  if (inspectComgateHeaderDiagnostics(content).detectedFileKind !== 'unknown') {
+    return 'comgate'
+  }
+
   if (matchesAnyHeaderSignature(normalizedHeaderSample, [
     'identifier;payoutdate;amountminor;currency;status;paymentmethod;merchant',
     'transactionid,payoutdate,amountminor,currency,paymentreference,paymenttype',
