@@ -572,6 +572,12 @@ function renderOperatorWebDemoHtml(input: {
         gap: 10px;
         margin-bottom: 8px;
       }
+      .manual-match-group-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+      }
       .manual-match-group-meta {
         color: #52627a;
       }
@@ -2267,6 +2273,7 @@ ${showRuntimePayoutDiagnostics ? `
             monthKey: String(group.monthKey),
             selectedReviewItemIds: Array.from(new Set(group.selectedReviewItemIds.map((itemId) => String(itemId || '')).filter(Boolean))),
             createdAt: String(group.createdAt),
+            updatedAt: typeof group.updatedAt === 'string' && group.updatedAt ? String(group.updatedAt) : undefined,
             note: typeof group.note === 'string' && group.note.trim() ? group.note.trim() : null
           }));
       }
@@ -4459,6 +4466,68 @@ ${showRuntimePayoutDiagnostics ? '' : `
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
       }
 
+      function extendManualMatchGroupFromSelection(groupId, monthKey, sections) {
+        const normalizedGroupId = String(groupId || '');
+        const normalizedMonthKey = String(monthKey || currentWorkspaceMonth || monthInput && monthInput.value || '');
+        const sanitizedGroups = sanitizeManualMatchGroupsForStorage(currentManualMatchGroups);
+        const targetGroupIndex = sanitizedGroups.findIndex((group) =>
+          String(group && group.id || '') === normalizedGroupId
+          && String(group && group.monthKey || '') === normalizedMonthKey
+        );
+
+        if (!normalizedGroupId || !normalizedMonthKey || targetGroupIndex < 0) {
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
+          applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+          return;
+        }
+
+        const selectedItems = collectSelectedManualMatchItems(sections);
+        const targetGroup = sanitizedGroups[targetGroupIndex];
+        const targetReviewItemIds = new Set((targetGroup && targetGroup.selectedReviewItemIds) || []);
+        const reviewItemIdsAssignedElsewhere = new Set(
+          sanitizedGroups
+            .filter((group, index) => index !== targetGroupIndex && String(group && group.monthKey || '') === normalizedMonthKey)
+            .flatMap((group) => Array.isArray(group && group.selectedReviewItemIds) ? group.selectedReviewItemIds : [])
+            .map((itemId) => String(itemId || ''))
+            .filter(Boolean)
+        );
+        const nextSelectedReviewItemIds = ((targetGroup && targetGroup.selectedReviewItemIds) || []).slice();
+
+        selectedItems.forEach((item) => {
+          const reviewItemId = String(item && item.id || '');
+
+          if (!reviewItemId || targetReviewItemIds.has(reviewItemId) || reviewItemIdsAssignedElsewhere.has(reviewItemId)) {
+            return;
+          }
+
+          targetReviewItemIds.add(reviewItemId);
+          nextSelectedReviewItemIds.push(reviewItemId);
+        });
+
+        currentSelectedManualMatchItemIds = [];
+        currentManualMatchDraftNote = '';
+        currentManualMatchConfirmMode = false;
+
+        if (nextSelectedReviewItemIds.length === ((targetGroup && targetGroup.selectedReviewItemIds) || []).length) {
+          applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+          return;
+        }
+
+        currentManualMatchGroups = sanitizedGroups.map((group, index) =>
+          index === targetGroupIndex
+            ? {
+                ...group,
+                selectedReviewItemIds: nextSelectedReviewItemIds,
+                updatedAt: new Date().toISOString()
+              }
+            : group
+        );
+        currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(currentManualMatchGroups);
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+      }
+
       function removeManualMatchGroup(groupId) {
         const normalizedGroupId = String(groupId || '');
 
@@ -5244,8 +5313,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
-      function buildManualMatchGroupMarkup(pageKey, groups) {
+      function buildManualMatchGroupMarkup(pageKey, groups, sections) {
         const normalizedGroups = Array.isArray(groups) ? groups : [];
+        const selectionSummary = buildManualMatchSelectionSummary(collectSelectedManualMatchItems(sections));
+        const hasAppendSelection = selectionSummary.selectedCount > 0;
 
         if (normalizedGroups.length === 0) {
           return '<p class="hint">Zatím nebyla vytvořená žádná ruční match group pro tento měsíc.</p>';
@@ -5264,9 +5335,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
             '<strong>Group ' + escapeHtml(String(group.id || 'bez-id')) + '</strong>',
             '<div class="manual-match-group-meta">Položek ' + escapeHtml(String((group.items || []).length)) + totalMarkup + '</div>',
             '<div class="manual-match-group-meta">Vytvořeno ' + escapeHtml(String(group.createdAt || 'neuvedeno')) + '</div>',
+            group.updatedAt ? '<div class="manual-match-group-meta">Naposledy rozšířeno ' + escapeHtml(String(group.updatedAt)) + '</div>' : '',
             group.note ? '<div class="manual-match-group-meta">Poznámka: ' + escapeHtml(String(group.note)) + '</div>' : '',
             '</div>',
+            '<div class="manual-match-group-actions">',
+            hasAppendSelection
+              ? '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'append-to-group', group.id)) + '" type="button">Přidat vybrané do této skupiny</button>'
+              : '',
             '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'remove-group', group.id)) + '" type="button" class="secondary-button">Zrušit ruční spárování</button>',
+            '</div>',
             '</div>',
             '<ul>' + (Array.isArray(group.items) ? group.items : []).map((item) =>
               '<li><strong>' + escapeHtml(String(item && item.title || 'Položka')) + '</strong><br /><span class="hint">' + escapeHtml(String(item && item.detail || '')) + '</span></li>'
@@ -5350,7 +5427,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         groups.forEach((group) => {
+          const appendButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'append-to-group', group.id));
           const removeButton = document.getElementById(buildManualMatchActionElementId(pageKey, 'remove-group', group.id));
+
+          if (appendButton && typeof appendButton.addEventListener === 'function') {
+            appendButton.addEventListener('click', () => {
+              extendManualMatchGroupFromSelection(
+                group.id,
+                String(state && state.monthLabel || currentWorkspaceMonth || ''),
+                currentExpenseReviewState && currentExpenseReviewState.reviewSections
+              );
+              showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
+            });
+          }
 
           if (!removeButton || typeof removeButton.addEventListener !== 'function') {
             return;
@@ -5660,7 +5749,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           controlManualMatchSummary.hidden = false;
           controlManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('control', visibleState);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
-        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || []);
+        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || [], visibleState.reviewSections);
         matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
         unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
@@ -5669,7 +5758,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
           expenseManualMatchSummary.hidden = false;
           expenseManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('expense', visibleState);
-          expenseManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('expense', visibleState.manualMatchGroups || []);
+          expenseManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('expense', visibleState.manualMatchGroups || [], visibleState.reviewSections);
         if (expenseDetailVisibleCount) {
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(visibleExpenseBucketResult.visibleCount);
         }
@@ -5758,6 +5847,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
           window.__hotelFinanceLastWorkspaceRenderDebug = completedWorkspaceRenderDebugWithCheckpoint;
           window.__hotelFinanceExpenseReviewOverrides = currentExpenseReviewOverrides.slice();
           window.__hotelFinanceExpenseReviewOverrideStorageKey = buildExpenseReviewOverrideStorageKey(baseVisibleState);
+          window.__hotelFinanceManualMatchDebug = {
+            setSelectedReviewItemIds(ids) {
+              currentSelectedManualMatchItemIds = sanitizeManualMatchSelectionIds(ids);
+              currentManualMatchConfirmMode = false;
+              currentManualMatchDraftNote = '';
+              applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+            },
+            extendGroup(groupId) {
+              extendManualMatchGroupFromSelection(
+                groupId,
+                String(currentWorkspaceMonth || baseVisibleState.monthLabel || ''),
+                currentExpenseReviewState && currentExpenseReviewState.reviewSections
+              );
+            }
+          };
           window.__hotelFinanceMonthlyWorkspaceState = {
             month: currentWorkspaceMonth,
             fileCount: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.length : 0
