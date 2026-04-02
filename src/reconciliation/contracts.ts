@@ -91,6 +91,7 @@ export interface PayoutBatchCandidateDiagnostic {
   dateDistanceDays: number
   strictDateEligible: boolean
   comgateSameMonthLagRuleApplied: boolean
+  comgatePreviousMonthCarryoverRuleApplied: boolean
 }
 
 export interface PayoutBatchNoMatchDiagnostic {
@@ -117,6 +118,8 @@ export interface PayoutBatchBankDecisionTrace {
   payoutBatchKey: PayoutBatchExpectation['payoutBatchKey']
   payoutReference: PayoutBatchExpectation['payoutReference']
   platform: PayoutBatchExpectation['platform']
+  fromPreviousMonth?: boolean
+  sourceMonthKey?: string
   expectedTotalMinor: PayoutBatchExpectation['expectedTotalMinor']
   grossTotalMinor?: PayoutBatchExpectation['grossTotalMinor']
   feeTotalMinor?: PayoutBatchExpectation['feeTotalMinor']
@@ -139,6 +142,16 @@ export interface PayoutBatchBankDecisionTrace {
   bankCandidateCountAfterAmountCurrency: number
   bankCandidateCountAfterDateWindow: number
   bankCandidateCountAfterEvidenceFiltering: number
+  carryoverCandidateExistsInMatcher: boolean
+  carryoverRejectedReason?:
+  | 'noInboundBankCandidate'
+  | 'noExactAmount'
+  | 'currencyMismatch'
+  | 'wrongBankRouting'
+  | 'counterpartyClueMismatch'
+  | 'sourceMonthKeyMismatch'
+  | 'notImmediateNextCalendarMonth'
+  | 'noEligibleCarryoverCandidate'
   matched: boolean
   matchedBankTransactionId?: NormalizedTransaction['id']
   noMatchReason?: PayoutBatchNoMatchDiagnostic['noMatchReason']

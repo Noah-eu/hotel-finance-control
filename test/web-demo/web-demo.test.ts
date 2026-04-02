@@ -5,7 +5,6 @@ import { runInNewContext } from 'node:vm'
 import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
-import type { PreviousMonthCarryoverSource } from '../../src/reconciliation'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
@@ -3578,6 +3577,7 @@ describe('buildWebDemo', () => {
   it('loads open previous-month Comgate payout carryover into the current month and matches the April RB inflow', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
+    const expectedCarryoverBatchKey = 'comgate-batch:2026-03-31:CZK'
 
     await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-31T23:10:00.000Z',
@@ -3606,21 +3606,32 @@ describe('buildWebDemo', () => {
     expect(persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot).toEqual(expect.objectContaining({
       sourceMonthKey: '2026-03'
     }))
-    expect(persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot?.payoutBatches?.map((item) => item.payoutBatchKey)).toContain('comgate-batch:2026-03-31:CZK')
+    if (!persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot?.payoutBatches?.some((item) => item.payoutBatchKey === expectedCarryoverBatchKey)) {
+      throw new Error('lost after previous-month persistence')
+    }
 
-    const aprilState = await buildBrowserRuntimeStateFromSelectedFiles({
+    const aprilRendered = await executeWebDemoMainWorkflow({
       files: [
         createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthCarryoverSettlementContent())
       ],
       month: '2026-04',
       generatedAt: '2026-04-03T09:00:00.000Z',
-      previousMonthCarryoverSource: persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot as unknown as PreviousMonthCarryoverSource
-    }) as {
+      outputDirName: 'test-web-demo-comgate-carryover-browser-april',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState
+    })
+
+    const aprilState = aprilRendered.getLastVisibleRuntimeState() as {
       carryoverDebug: {
         sourceMonthKey: string
         currentMonthKey: string
         loadedPayoutBatchCount: number
         loadedPayoutBatchKeysSample: string[]
+        matchingInputPayoutBatchCount: number
+        matchingInputPayoutBatchKeysSample: string[]
+        matcherCarryoverCandidateExists: boolean
+        matcherCarryoverRejectedReason?: string
         matchedCount: number
         unmatchedCount: number
       }
@@ -3629,16 +3640,66 @@ describe('buildWebDemo', () => {
         payoutBatchUnmatched: Array<{ title: string }>
       }
     }
+    const aprilRenderDebug = aprilRendered.getLastWorkspaceRenderDebug() as {
+      carryoverPreviousMonthKeyResolved: string
+      carryoverPreviousMonthWorkspaceFound: string
+      carryoverPreviousMonthUnmatchedPayoutBatchCount: number
+      carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: string[]
+      carryoverLoadedPayoutBatchCount: number
+      carryoverLoadedPayoutBatchIdsSample: string[]
+      carryoverMatchingInputPayoutBatchCount: number
+      carryoverMatchingInputPayoutBatchIdsSample: string[]
+    }
+
+    if (
+      aprilRenderDebug.carryoverPreviousMonthKeyResolved !== '2026-03'
+      || aprilRenderDebug.carryoverPreviousMonthWorkspaceFound !== 'ano'
+      || aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchCount !== 1
+      || !aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.includes(expectedCarryoverBatchKey)
+    ) {
+      throw new Error(`lost during previous-month load: ${JSON.stringify({
+        previousMonthKey: aprilRenderDebug.carryoverPreviousMonthKeyResolved,
+        currentMonthKey: aprilState.carryoverDebug.currentMonthKey,
+        previousMonthWorkspaceFound: aprilRenderDebug.carryoverPreviousMonthWorkspaceFound,
+        previousMonthUnmatchedComgatePayoutCount: aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchCount,
+        carryoverCountBeforeSourceBuilder: aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.length,
+        carryoverCountAfterSourceBuilder: aprilRenderDebug.carryoverLoadedPayoutBatchCount
+      })}`)
+    }
+
+    if (
+      aprilRenderDebug.carryoverLoadedPayoutBatchCount !== 1
+      || !aprilRenderDebug.carryoverLoadedPayoutBatchIdsSample.includes(expectedCarryoverBatchKey)
+      || aprilRenderDebug.carryoverMatchingInputPayoutBatchCount !== 1
+      || !aprilRenderDebug.carryoverMatchingInputPayoutBatchIdsSample.includes(expectedCarryoverBatchKey)
+      ||
+      aprilState.carryoverDebug.matchingInputPayoutBatchCount !== 1
+      || !aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample.includes(expectedCarryoverBatchKey)
+    ) {
+      throw new Error('lost before matching handoff')
+    }
+
+    if (
+      !aprilState.carryoverDebug.matcherCarryoverCandidateExists
+      || aprilState.carryoverDebug.matchedCount !== 1
+      || aprilState.carryoverDebug.unmatchedCount !== 0
+    ) {
+      throw new Error('lost inside matcher eligibility')
+    }
 
     expect(workspacePersistenceState.has('2026-03')).toBe(true)
     expect(aprilState.carryoverDebug).toEqual(expect.objectContaining({
       sourceMonthKey: '2026-03',
       currentMonthKey: '2026-04',
       loadedPayoutBatchCount: 1,
+      matchingInputPayoutBatchCount: 1,
+      matcherCarryoverCandidateExists: true,
       matchedCount: 1,
       unmatchedCount: 0
     }))
-    expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).toContain('comgate-batch:2026-03-31:CZK')
+    expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).toContain(expectedCarryoverBatchKey)
+    expect(aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample).toContain(expectedCarryoverBatchKey)
+    expect(aprilState.carryoverDebug.matcherCarryoverRejectedReason || '').toBe('')
     expect(aprilState.reviewSections.payoutBatchMatched.some((item) => item.title.includes('Comgate payout dávka'))).toBe(true)
     expect(aprilState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
   })
@@ -3716,11 +3777,15 @@ describe('buildWebDemo', () => {
 
     expect(rerunState.carryoverDebug).toEqual(expect.objectContaining({
       loadedPayoutBatchCount: 0,
+      matchingInputPayoutBatchCount: 0,
+      matcherCarryoverCandidateExists: false,
       matchedCount: 0,
       unmatchedCount: 0
     }))
     expect(rerunState.reviewSections.payoutBatchMatched).toHaveLength(0)
     expect(aprilRerun.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Loaded carryover payout batch count:</strong> 0')
+    expect(aprilRerun.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Previous month key resolved for carryover:</strong> 2026-03')
+    expect(aprilRerun.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Previous month workspace found:</strong> ne')
   })
 
   it('keeps different months isolated from the same-month invariant guard', async () => {

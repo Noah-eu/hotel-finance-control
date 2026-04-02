@@ -94,6 +94,8 @@ export interface BrowserRuntimeUploadState {
     payoutBatchDecisions: Array<{
       payoutBatchKey: string
       platform: string
+      fromPreviousMonth?: boolean
+      sourceMonthKey?: string
       expectedTotalMinor: number
       grossTotalMinor?: number
       feeTotalMinor?: number
@@ -111,6 +113,8 @@ export interface BrowserRuntimeUploadState {
       rejectedOnlyByDateGate: boolean
       appliedComgateSameMonthLagRule: boolean
       wouldRejectOnStrictDateGate: boolean
+      carryoverCandidateExistsInMatcher: boolean
+      carryoverRejectedReason?: string
       nearestAmountDeltaMinor?: number
       componentRowCount: number
       componentRowAmountMinors: number[]
@@ -149,6 +153,10 @@ export interface BrowserRuntimeUploadState {
     currentMonthKey: string
     loadedPayoutBatchCount: number
     loadedPayoutBatchKeysSample: string[]
+    matchingInputPayoutBatchCount: number
+    matchingInputPayoutBatchKeysSample: string[]
+    matcherCarryoverCandidateExists: boolean
+    matcherCarryoverRejectedReason?: string
     matchedCount: number
     unmatchedCount: number
   }

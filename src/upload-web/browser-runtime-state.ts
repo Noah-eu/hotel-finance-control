@@ -249,17 +249,28 @@ function buildCarryoverDebugState(
   batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
   input: BuildBrowserRuntimeStateInput
 ): BrowserRuntimeUploadState['carryoverDebug'] {
+  const matchingInputPayoutBatchKeys = Array.isArray(input.previousMonthCarryoverSource?.payoutBatches)
+    ? input.previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey)
+    : []
   const carryoverPayoutBatchKeys = new Set(
     (batch.reconciliation.workflowPlan?.payoutBatches ?? [])
       .filter((item) => item.fromPreviousMonth)
       .map((item) => item.payoutBatchKey)
   )
+  const carryoverDecision = inspectPayoutBatchBankDecisions({
+    payoutBatches: batch.reconciliation.workflowPlan?.payoutBatches ?? [],
+    bankTransactions: batch.reconciliation.normalizedTransactions
+  }).find((item) => item.fromPreviousMonth && item.platform === 'comgate')
 
   return {
     sourceMonthKey: input.previousMonthCarryoverSource?.sourceMonthKey,
     currentMonthKey: deriveMonthLabel(input.runId),
     loadedPayoutBatchCount: carryoverPayoutBatchKeys.size,
     loadedPayoutBatchKeysSample: Array.from(carryoverPayoutBatchKeys).slice(0, 5),
+    matchingInputPayoutBatchCount: matchingInputPayoutBatchKeys.length,
+    matchingInputPayoutBatchKeysSample: matchingInputPayoutBatchKeys.slice(0, 5),
+    matcherCarryoverCandidateExists: Boolean(carryoverDecision?.carryoverCandidateExistsInMatcher),
+    matcherCarryoverRejectedReason: carryoverDecision?.carryoverRejectedReason,
     matchedCount: (batch.reconciliation.payoutBatchMatches ?? []).filter((item) => carryoverPayoutBatchKeys.has(item.payoutBatchKey)).length,
     unmatchedCount: (batch.reconciliation.payoutBatchNoMatchDiagnostics ?? []).filter((item) => carryoverPayoutBatchKeys.has(item.payoutBatchKey)).length
   }
@@ -339,12 +350,16 @@ function buildPayoutBatchDecisionSnapshot(
       expectedBankCurrency: decision.expectedBankCurrency,
       matchingAmountSource: decision.matchingAmountSource,
       selectionMode: decision.selectionMode,
+      fromPreviousMonth: decision.fromPreviousMonth,
+      sourceMonthKey: decision.sourceMonthKey,
       exactAmountMatchExistsBeforeDateEvidence: decision.exactAmountMatchExistsBeforeDateEvidence,
       sameCurrencyCandidateAmountMinors: decision.sameCurrencyCandidateAmountMinors,
       sameMonthExactAmountCandidateExists: decision.sameMonthExactAmountCandidateExists,
       rejectedOnlyByDateGate: decision.rejectedOnlyByDateGate,
       appliedComgateSameMonthLagRule: decision.appliedComgateSameMonthLagRule,
       wouldRejectOnStrictDateGate: decision.wouldRejectOnStrictDateGate,
+      carryoverCandidateExistsInMatcher: decision.carryoverCandidateExistsInMatcher,
+      carryoverRejectedReason: decision.carryoverRejectedReason,
       nearestAmountDeltaMinor,
       componentRowCount: componentRows.length,
       componentRowAmountMinors: componentRows.map((row) => row.amountMinor),
