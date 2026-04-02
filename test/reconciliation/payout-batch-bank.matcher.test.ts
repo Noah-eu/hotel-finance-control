@@ -522,7 +522,7 @@ describe('matchPayoutBatchesToBank', () => {
         ])
     })
 
-    it('keeps cross-month Comgate carryover unmatched even when the lag is only three days', () => {
+    it('allows a Comgate payout batch to carry over into the first three calendar days of the next month when amount, currency, routing, and Comgate hint align', () => {
         const decisions = inspectPayoutBatchBankDecisions({
             payoutBatches: [comgateBatch({
                 payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
@@ -546,13 +546,118 @@ describe('matchPayoutBatchesToBank', () => {
                 payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
                 exactAmountMatchExistsBeforeDateEvidence: true,
                 sameMonthExactAmountCandidateExists: false,
+                crossMonthCarryoverCandidateExists: true,
                 rejectedOnlyByDateGate: false,
                 appliedComgateSameMonthLagRule: false,
+                appliedComgateCrossMonthCarryoverRule: true,
                 wouldRejectOnStrictDateGate: false,
+                carryoverSourceMonth: '2026-03',
+                carryoverBankMonth: '2026-04',
+                carryoverDayDelta: 3,
+                bankCandidateCountAfterAmountCurrency: 1,
+                bankCandidateCountAfterDateWindow: 1,
+                matched: true,
+                matchedBankTransactionId: 'txn:bank:comgate-cross-month-lag'
+            })
+        ])
+    })
+
+    it('keeps a Comgate payout batch unmatched when the next-month RB candidate lands outside the narrow carryover window', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [comgateBatch({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                payoutDate: '2026-03-31'
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:comgate-cross-month-day-4' as NormalizedTransaction['id'],
+                    amountMinor: 605879,
+                    currency: 'CZK',
+                    bookedAt: '2026-04-04',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Comgate a.s.',
+                    reference: 'Souhrnná výplata Comgate 2026-03-31'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                exactAmountMatchExistsBeforeDateEvidence: true,
+                crossMonthCarryoverCandidateExists: false,
+                appliedComgateCrossMonthCarryoverRule: false,
                 bankCandidateCountAfterAmountCurrency: 1,
                 bankCandidateCountAfterDateWindow: 0,
                 matched: false,
                 noMatchReason: 'dateToleranceMiss'
+            })
+        ])
+    })
+
+    it('does not start cross-month matching non-Comgate payout batches just because the next-month bank line has the same amount and expected clue', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [{
+                ...bookingBatch(),
+                payoutDate: '2026-03-31',
+                payoutBatchKey: 'booking-batch:2026-03-31:PAYOUT-BOOK-20260331',
+                payoutReference: 'PAYOUT-BOOK-20260331'
+            }],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-cross-month' as NormalizedTransaction['id'],
+                    amountMinor: 125000,
+                    currency: 'CZK',
+                    bookedAt: '2026-04-02',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Booking BV',
+                    reference: 'PAYOUT-BOOK-20260331'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-31:PAYOUT-BOOK-20260331',
+                crossMonthCarryoverCandidateExists: false,
+                appliedComgateCrossMonthCarryoverRule: false,
+                bankCandidateCountAfterAmountCurrency: 1,
+                bankCandidateCountAfterDateWindow: 0,
+                matched: false,
+                noMatchReason: 'dateToleranceMiss'
+            })
+        ])
+    })
+
+    it('does not apply cross-month carryover when no exact-amount Comgate candidate exists in the next month', () => {
+        const decisions = inspectPayoutBatchBankDecisions({
+            payoutBatches: [comgateBatch({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                payoutDate: '2026-03-31'
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:comgate-cross-month-wrong-amount' as NormalizedTransaction['id'],
+                    amountMinor: 605878,
+                    currency: 'CZK',
+                    bookedAt: '2026-04-02',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Comgate a.s.',
+                    reference: 'Souhrnná výplata Comgate 2026-03-31'
+                })
+            ]
+        })
+
+        expect(decisions).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                exactAmountMatchExistsBeforeDateEvidence: false,
+                crossMonthCarryoverCandidateExists: false,
+                appliedComgateCrossMonthCarryoverRule: false,
+                bankCandidateCountAfterAmountCurrency: 0,
+                bankCandidateCountAfterDateWindow: 0,
+                matched: false,
+                noMatchReason: 'noExactAmount'
             })
         ])
     })

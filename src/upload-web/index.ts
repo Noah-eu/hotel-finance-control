@@ -106,9 +106,14 @@ export interface BrowserRuntimeUploadState {
       exactAmountMatchExistsBeforeDateEvidence: boolean
       sameCurrencyCandidateAmountMinors: number[]
       sameMonthExactAmountCandidateExists: boolean
+      crossMonthCarryoverCandidateExists: boolean
       rejectedOnlyByDateGate: boolean
       appliedComgateSameMonthLagRule: boolean
+      appliedComgateCrossMonthCarryoverRule: boolean
       wouldRejectOnStrictDateGate: boolean
+      carryoverSourceMonth?: string
+      carryoverBankMonth?: string
+      carryoverDayDelta?: number
       nearestAmountDeltaMinor?: number
       componentRowCount: number
       componentRowAmountMinors: number[]
