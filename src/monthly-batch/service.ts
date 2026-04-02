@@ -9,6 +9,7 @@ import {
   inspectBookingPayoutStatementFieldCheck,
   inspectInvoiceDocumentExtractionSummary,
   inspectReceiptDocumentExtractionSummary,
+  looksLikeRaiffeisenbankGpcStatement,
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
@@ -532,7 +533,7 @@ function buildMonthlyBatchResultFromParsedFiles(
   }
 ): MonthlyBatchResult {
   const extractedRecords = applyPayoutSupplements(
-    parsedFiles.flatMap((file) => file.extractedRecords)
+    enrichParsedExtractedRecords(parsedFiles)
   )
   const reconciliation = reconcileExtractedRecords(
     {
@@ -560,6 +561,134 @@ function buildMonthlyBatchResultFromParsedFiles(
       ).length
     }))
   }
+}
+
+function enrichParsedExtractedRecords(parsedFiles: ParsedImportedMonthlySourceFile[]): ExtractedRecord[] {
+  return parsedFiles.flatMap((file) => {
+    const comgateDailySettlementBatchIdentity = resolveComgateDailySettlementBatchIdentity(
+      file.extractedRecords,
+      file.importedFile.sourceDocument
+    )
+
+    return file.extractedRecords.map((record) =>
+      enrichExtractedRecordForSharedMonthlyFlow(
+        record,
+        file.importedFile.sourceDocument,
+        comgateDailySettlementBatchIdentity
+      )
+    )
+  })
+}
+
+function enrichExtractedRecordForSharedMonthlyFlow(
+  record: ExtractedRecord,
+  sourceDocument: SourceDocument,
+  comgateDailySettlementBatchIdentity?: string
+): ExtractedRecord {
+  if (!isComgateDailySettlementPayoutRecord(record)) {
+    return record
+  }
+
+  const bookedAt = resolveComgateDailySettlementBookedAt(record, sourceDocument)
+  const currency = resolveComgateDailySettlementCurrency(record, sourceDocument)
+  const payoutBatchIdentity = typeof record.data.payoutBatchIdentity === 'string'
+    ? record.data.payoutBatchIdentity
+    : comgateDailySettlementBatchIdentity
+  const reference = payoutBatchIdentity
+    ?? (typeof record.data.reference === 'string' && record.data.reference.trim().length > 0
+      ? record.data.reference.trim()
+      : undefined)
+
+  return {
+    ...record,
+    ...(currency ? { currency } : {}),
+    ...(bookedAt ? { occurredAt: bookedAt } : {}),
+    data: {
+      ...record.data,
+      ...(bookedAt ? { bookedAt } : {}),
+      ...(currency ? { currency } : {}),
+      ...(reference ? { reference } : {}),
+      ...(payoutBatchIdentity ? { payoutBatchIdentity } : {})
+    }
+  }
+}
+
+function resolveComgateDailySettlementBatchIdentity(
+  records: ExtractedRecord[],
+  sourceDocument: SourceDocument
+): string | undefined {
+  const dailySettlementRecords = records.filter(isComgateDailySettlementPayoutRecord)
+  if (dailySettlementRecords.length === 0) {
+    return undefined
+  }
+
+  const uniqueRowReferences = [...new Set(dailySettlementRecords
+    .map((record) => typeof record.data.reference === 'string' ? record.data.reference.trim() : '')
+    .filter((value) => value.length > 0))]
+
+  if (uniqueRowReferences.length === 1) {
+    return uniqueRowReferences[0]
+  }
+
+  const fileNameReference = resolveComgateDailySettlementReferenceFromFileName(sourceDocument.fileName)
+  if (fileNameReference) {
+    return fileNameReference
+  }
+
+  const fileStem = sourceDocument.fileName.replace(/\.[^.]+$/, '').trim()
+  return fileStem || sourceDocument.id
+}
+
+function resolveComgateDailySettlementReferenceFromFileName(fileName: string): string | undefined {
+  const stem = fileName.replace(/\.[^.]+$/, '')
+  const trailingNumericToken = stem.match(/(?:^|[_-])(\d{6,})$/)
+  return trailingNumericToken?.[1]
+}
+
+function isComgateDailySettlementPayoutRecord(record: ExtractedRecord): boolean {
+  return record.recordType === 'payout-line'
+    && record.data.platform === 'comgate'
+    && record.data.comgateParserVariant === 'daily-settlement'
+}
+
+function resolveComgateDailySettlementBookedAt(
+  record: ExtractedRecord,
+  sourceDocument: SourceDocument
+): string | undefined {
+  if (typeof record.data.bookedAt === 'string' && record.data.bookedAt.trim().length > 0) {
+    return record.data.bookedAt.trim()
+  }
+
+  if (typeof record.occurredAt === 'string' && record.occurredAt.trim().length > 0) {
+    return record.occurredAt.trim()
+  }
+
+  const fileNameDate = sourceDocument.fileName.match(/(20\d{2}-\d{2}-\d{2})/)
+  if (fileNameDate?.[1]) {
+    return fileNameDate[1]
+  }
+
+  return sourceDocument.uploadedAt.slice(0, 10)
+}
+
+function resolveComgateDailySettlementCurrency(
+  record: ExtractedRecord,
+  sourceDocument: SourceDocument
+): string | undefined {
+  if (typeof record.data.currency === 'string' && record.data.currency.trim().length > 0) {
+    return record.data.currency.trim().toUpperCase()
+  }
+
+  if (typeof record.currency === 'string' && record.currency.trim().length > 0) {
+    return record.currency.trim().toUpperCase()
+  }
+
+  const metadataCurrency = sourceDocument.metadata?.currency
+  if (typeof metadataCurrency === 'string' && metadataCurrency.trim().length > 0) {
+    return metadataCurrency.trim().toUpperCase()
+  }
+
+  return 'CZK'
 }
 
 function selectParser(sourceDocument: SourceDocument, content: string): Parser {
@@ -612,6 +741,11 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
   const normalizedFileName = fileName.toLowerCase()
   const headerFields = getNormalizedHeaderFields(content)
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
+
+  if (looksLikeRaiffeisenbankGpcStatement(content, fileName)) {
+    return 'raiffeisenbank'
+  }
+
   const isCanonicalBankHeader = matchesAnyHeaderSignature(normalizedHeaderSample, [
     'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
   ])
@@ -1044,6 +1178,10 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
 function inferSourceSystemFromFileName(fileName: string): SourceDocument['sourceSystem'] {
   const normalizedFileName = fileName.toLowerCase()
 
+  if (normalizedFileName.endsWith('.gpc') && normalizedFileName.startsWith('vypis_')) {
+    return 'bank'
+  }
+
   if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
     return 'bank'
   }
@@ -1097,6 +1235,10 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   const headerFields = getNormalizedHeaderFields(content)
   const invoiceSummary = inspectInvoiceDocumentExtractionSummary(content)
   const receiptSummary = inspectReceiptDocumentExtractionSummary(content)
+
+  if (looksLikeRaiffeisenbankGpcStatement(content)) {
+    return 'bank'
+  }
 
   if (invoiceSummary.confidence === 'strong' || looksLikeInvoiceDocumentText(content)) {
     return 'invoice'

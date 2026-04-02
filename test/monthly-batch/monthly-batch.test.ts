@@ -102,6 +102,87 @@ describe('runMonthlyReconciliationBatch', () => {
     ).toThrow('No monthly batch parser configured')
   })
 
+  it('turns a Comgate daily settlement upload into one unmatched payout batch on the shared monthly flow', () => {
+    const comgateDaily = getRealInputFixture('comgate-daily-payout-export')
+
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: comgateDaily.sourceDocument,
+          content: comgateDaily.rawInput.content
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-comgate-daily-unmatched',
+        requestedAt: '2026-03-27T18:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-27T18:01:00.000Z'
+    })
+
+    expect(result.reconciliation.summary.normalizedTransactionCount).toBe(3)
+    expect(result.reconciliation.workflowPlan?.payoutRows).toHaveLength(3)
+    expect(result.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        platform: 'comgate',
+        payoutReference: '1816656820',
+        payoutDate: '2026-03-27',
+        expectedTotalMinor: 605879,
+        currency: 'CZK'
+      })
+    ])
+    expect(result.report.summary.payoutBatchMatchCount).toBe(0)
+    expect(result.report.summary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        payoutReference: '1816656820',
+        status: 'unmatched'
+      })
+    ])
+  })
+
+  it('does not create phantom payout batches when a single daily Comgate settlement has blank row references', () => {
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'doc-comgate-daily-no-row-reference' as never,
+            sourceSystem: 'comgate',
+            documentType: 'payment_gateway_report',
+            fileName: 'vypis-2026-03-27_1816656820.csv',
+            uploadedAt: '2026-03-27T18:00:00.000Z'
+          },
+          content: buildComgateDailySettlementCsv({
+            transferReference: '',
+            componentRows: [
+              { transactionId: 'JGSV-QK5O-DR7O', clientId: '108966761', confirmedAmountText: '2447,50', transferredAmountText: '2423,51' },
+              { transactionId: 'BHOV-M0TY-LBQV', clientId: '108929843', confirmedAmountText: '3059,38', transferredAmountText: '3029,40' },
+              { transactionId: '5V2K-MLZM-ETAK', clientId: '108592573', confirmedAmountText: '611,88', transferredAmountText: '605,88' }
+            ],
+            confirmedSettlementTotalText: '6118,76',
+            transferredSettlementTotalText: '6058,79'
+          })
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-comgate-daily-no-row-reference',
+        requestedAt: '2026-03-27T18:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-27T18:01:00.000Z'
+    })
+
+    expect(result.reconciliation.workflowPlan?.payoutRows).toHaveLength(3)
+    expect(result.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        payoutReference: '1816656820',
+        expectedTotalMinor: 605879
+      })
+    ])
+    expect(result.report.summary.unmatchedPayoutBatchCount).toBe(1)
+  })
+
   it('prepares uploaded files into shared imported monthly source files with traceable source documents', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const airbnb = getRealInputFixture('airbnb-payout-export')
@@ -196,6 +277,35 @@ describe('runMonthlyReconciliationBatch', () => {
       }
     ])
   })
+
+  function buildComgateDailySettlementCsv(input: {
+    transferReference: string
+    componentRows: Array<{
+      transactionId: string
+      clientId: string
+      confirmedAmountText: string
+      transferredAmountText: string
+    }>
+    confirmedSettlementTotalText: string
+    transferredSettlementTotalText: string
+  }): string {
+    const rows = input.componentRows.map((row) => [
+      '"499465"',
+      `"${row.transactionId}"`,
+      '"Karta online"',
+      `"${row.confirmedAmountText}"`,
+      `"${row.transferredAmountText}"`,
+      '""',
+      `"${input.transferReference}"`,
+      `"${row.clientId}"`
+    ].join(';'))
+
+    return [
+      '"Merchant";"ID ComGate";"Metoda";"Potvrzen� ��stka";"P�eveden� ��stka";"Produkt";"Variabiln� symbol p�evodu";"ID od klienta"',
+      ...rows,
+      `"suma";"";"";"${input.confirmedSettlementTotalText}";"${input.transferredSettlementTotalText}";"";"";""`
+    ].join('\n')
+  }
 
   it('infers shared uploaded source systems from deterministic CSV content even when filenames are generic', () => {
     const booking = getRealInputFixture('booking-payout-export')
@@ -500,6 +610,63 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.files.map((file) => file.extractedCount)).toEqual([6])
     expect(result.extractedRecords[0]?.id).toBe('raif-row-1')
     expect(result.extractedRecords[0]?.data.bankParserVariant).toBe('raiffeisenbank')
+  })
+
+  it('classifies the exact Raiffeisenbank GPC export shape as a supported bank statement', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: gpc.sourceDocument.fileName,
+        content: gpc.rawInput.content,
+        uploadedAt: '2026-03-20T10:05:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+  })
+
+  it('routes the exact Raiffeisenbank GPC export shape through the shared normalized bank flow', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: gpc.sourceDocument.fileName,
+        content: gpc.rawInput.content,
+        uploadedAt: '2026-03-20T10:06:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-raiffeisen-gpc-routing',
+        requestedAt: '2026-03-20T10:06:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-20T10:07:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([10])
+    expect(result.extractedRecords.every((record) => record.data.bankParserVariant === 'raiffeisenbank-gpc')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.some((transaction) => transaction.direction === 'in')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.some((transaction) => transaction.direction === 'out')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.every((transaction) => transaction.currency === 'CZK')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.every((transaction) => !transaction.bookedAt.startsWith('0000-00-'))).toBe(true)
+    expect(result.reconciliation.normalizedTransactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[0],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      }),
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[1],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      }),
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[2],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      })
+    ]))
   })
 
   it('routes the current 5599955956 file by its Fio-style header shape instead of by filename pattern assumptions', () => {

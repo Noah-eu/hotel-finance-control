@@ -223,4 +223,69 @@ describe('parseRaiffeisenbankStatement', () => {
       })
     ])
   })
+
+  it('parses the real Raiffeisenbank GPC sample excerpt with the correct fixed-width offsets for key rows', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(10)
+    expect(records[0]).toEqual({
+      ...fixture.expectedExtractedRecords[0],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[1]).toEqual({
+      ...fixture.expectedExtractedRecords[1],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[2]).toEqual({
+      ...fixture.expectedExtractedRecords[2],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[9]).toEqual({
+      ...fixture.expectedExtractedRecords[3],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[0]).toMatchObject({
+      id: 'raif-row-1',
+      occurredAt: '2026-02-01',
+      amountMinor: -192644,
+      currency: 'CZK',
+      rawReference: 'PK: 547872XXXXXX2805',
+      data: {
+        bankParserVariant: 'raiffeisenbank-gpc',
+        bankStatementSource: 'raiffeisenbank',
+        accountId: '5599955956',
+        counterparty: 'DEKUJEME, ROHLIK.CZ, Prague 8, CZE',
+        valueAt: '2026-01-31',
+        transactionType: 'Odchozí platba'
+      }
+    })
+  })
+
+  it('keeps the real Raiffeisenbank GPC sample excerpt within sane parser invariants', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(
+      fixture.rawInput.content.split('\n').filter((line) => line.startsWith('075')).length
+    )
+    expect(new Set(records.map((record) => record.id)).size).toBe(records.length)
+    expect(records.every((record) => /^\d{4}-\d{2}-\d{2}$/.test(record.occurredAt ?? ''))).toBe(true)
+    expect(records.every((record) => !record.occurredAt?.startsWith('0000-00-'))).toBe(true)
+    expect(records.every((record) => record.currency === 'CZK')).toBe(true)
+    expect(records.every((record) => !/^\d+$/.test(record.currency ?? ''))).toBe(true)
+    expect(records.every((record) => Number.isInteger(record.amountMinor))).toBe(true)
+    expect(records.some((record) => (record.amountMinor ?? 0) < 0)).toBe(true)
+    expect(records.some((record) => (record.amountMinor ?? 0) > 0)).toBe(true)
+  })
 })

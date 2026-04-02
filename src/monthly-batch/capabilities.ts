@@ -9,7 +9,8 @@ import {
   detectInvoiceDocumentKeywordHits,
   detectBookingPayoutStatementSignals,
   inspectInvoiceDocumentExtractionSummary,
-  inspectReceiptDocumentExtractionSummary
+  inspectReceiptDocumentExtractionSummary,
+  looksLikeRaiffeisenbankGpcStatement
 } from '../extraction'
 
 interface UploadedMonthlyFileCapabilityInput {
@@ -116,6 +117,16 @@ export function detectUploadedMonthlyFileCapability(
       'binary-upload',
       ...buildDocumentHintEvidence(documentHints)
     ])
+  }
+
+  if (looksLikeRaiffeisenbankGpcStatement(trimmedContent, fileName)) {
+    return buildCapability(
+      'structured_tabular',
+      'structured_csv',
+      documentHints,
+      'strong',
+      ['fixed-width-gpc-shape', ...buildDocumentHintEvidence(documentHints)]
+    )
   }
 
   if (looksLikeStructuredTabularContent(headerFields, trimmedContent)) {

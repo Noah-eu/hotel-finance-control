@@ -122,6 +122,45 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('builds a browser upload state from the exact Raiffeisenbank GPC export shape through the shared bank flow', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpc.sourceDocument.fileName,
+          content: gpc.rawInput.content,
+          uploadedAt: '2026-03-20T10:10:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-raiffeisen-gpc',
+      generatedAt: '2026-03-20T10:10:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(1)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_002.gpc',
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      classificationBasis: 'content'
+    })
+    expect(result.fileRoutes[0]).toMatchObject({
+      status: 'supported',
+      sourceSystem: 'bank',
+      parserId: 'raiffeisenbank'
+    })
+    expect(result.extractedRecords[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_002.gpc',
+      extractedCount: 10,
+      accountLabelCs: 'RB účet 5599955956',
+      parserDebugLabel: 'raiffeisenbank-gpc'
+    })
+    expect(result.reportTransactions.length).toBeGreaterThan(0)
+    expect(result.reportTransactions.every((item) => item.amount.includes('Kč'))).toBe(true)
+    expect(result.reviewSections.expenseUnmatchedInflows.length).toBeGreaterThan(0)
+    expect(result.reviewSections.expenseUnmatchedOutflows.length).toBeGreaterThan(0)
+  })
+
   it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
@@ -530,13 +569,155 @@ describe('buildUploadWebFlow', () => {
         comgatePipelineDiagnostics: expect.objectContaining({
           parserVariants: ['daily-settlement'],
           extractedRecordCount: 3,
-          normalizedTransactionCount: 0,
-          matchingInputPayoutRowCount: 0,
-          payoutBatchCount: 0,
-          matchingDecisionCount: 0,
-          lossBoundary: 'extraction-to-normalization',
-          lossStage: 'normalizer-produced-no-transactions'
+          normalizedTransactionCount: 3,
+          matchingInputPayoutRowCount: 3,
+          payoutBatchCount: 1,
+          matchingDecisionCount: 1,
+          lossBoundary: 'matching',
+          lossStage: 'no-bank-candidates'
         })
+      })
+    )
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched[0]?.title).toContain('Comgate payout dávka')
+  })
+
+  it('shows a matched payout batch for the mini browser scenario with one daily Comgate CSV and one RB statement', async () => {
+    const fixture = getRealInputFixture('comgate-daily-payout-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          fixture.sourceDocument.fileName,
+          fixture.rawInput.content
+        ),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603271815.csv',
+          buildRbComgateDailySettlementContent()
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-27T18:15:00.000Z'
+    })
+
+    expect(result.routingSummary.supportedFileCount).toBe(2)
+    expect(result.extractedRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        extractedCount: 3
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603271815.csv',
+        extractedCount: 1
+      })
+    ]))
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(1)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([])
+    expect(result.reviewSections.payoutBatchMatched[0]?.title).toContain('Comgate payout dávka')
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        comgatePipelineDiagnostics: expect.objectContaining({
+          parserVariants: ['daily-settlement'],
+          normalizedTransactionCount: 3,
+          matchingInputPayoutRowCount: 3,
+          payoutBatchCount: 1,
+          matchingDecisionCount: 1,
+          lossBoundary: 'no-loss',
+          lossStage: 'matched'
+        })
+      })
+    )
+  })
+
+  it('keeps the payout batch count equal to the real settlement count for a 22-file Comgate daily-only month', async () => {
+    const files = Array.from({ length: 22 }, (_, index) => {
+      const day = String(index + 1).padStart(2, '0')
+      const reference = `18166568${String(index + 20).padStart(2, '0')}`
+      const blankTransferReference = index < 10
+
+      return createRuntimeFile(
+        `vypis-2026-03-${day}_${reference}.csv`,
+        buildSyntheticComgateDailySettlementContent({
+          transferReference: blankTransferReference ? '' : reference,
+          componentRows: [
+            { transactionId: `CG-${day}-A`, clientId: `1089${day}01`, confirmedAmountText: '2447,50', transferredAmountText: '2423,51' },
+            { transactionId: `CG-${day}-B`, clientId: `1089${day}02`, confirmedAmountText: '3059,38', transferredAmountText: '3029,40' },
+            { transactionId: `CG-${day}-C`, clientId: `1089${day}03`, confirmedAmountText: '611,88', transferredAmountText: '605,88' }
+          ],
+          confirmedSettlementTotalText: '6118,76',
+          transferredSettlementTotalText: '6058,79'
+        })
+      )
+    })
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files,
+      month: '2026-03',
+      generatedAt: '2026-03-31T18:10:00.000Z'
+    })
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(22)
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(22)
+    expect(new Set(result.reconciliationSnapshot.unmatchedPayoutBatchKeys).size).toBe(22)
+    expect(result.reconciliationSnapshot.payoutBatchDecisions).toHaveLength(22)
+    expect(result.reconciliationSnapshot.payoutBatchDecisions.every((decision) => decision.componentRowCount === 3)).toBe(true)
+  })
+
+  it('matches a 42 269 Kč Comgate daily settlement batch to the corresponding RB inflow without leaving phantom batch fragments', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'vypis-2026-03-28_1816656999.csv',
+          buildSyntheticComgateDailySettlementContent({
+            transferReference: '',
+            componentRows: [
+              { transactionId: 'CG-42269-A', clientId: '109000001', confirmedAmountText: '18250,00', transferredAmountText: '18120,00' },
+              { transactionId: 'CG-42269-B', clientId: '109000002', confirmedAmountText: '14120,00', transferredAmountText: '14049,00' },
+              { transactionId: 'CG-42269-C', clientId: '109000003', confirmedAmountText: '10160,00', transferredAmountText: '10100,00' }
+            ],
+            confirmedSettlementTotalText: '42530,00',
+            transferredSettlementTotalText: '42269,00'
+          })
+        ),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603281910.csv',
+          buildRbComgateDailySettlementContent('42269,00', '28.03.2026', 'Souhrnná výplata Comgate 2026-03-28 / 1816656999')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-28T19:10:00.000Z'
+    })
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(1)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([])
+    expect(result.reconciliationSnapshot.matchedPayoutBatchKeys).toEqual([
+      'comgate-batch:2026-03-28:1816656999'
+    ])
+    expect(result.reconciliationSnapshot.payoutBatchDecisions).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-28:1816656999',
+        expectedBankAmountMinor: 4226900,
+        componentRowCount: 3,
+        matched: true,
+        matchedBankTransactionId: expect.any(String),
+        selectionMode: 'eligible_candidate'
+      })
+    ])
+    expect(result.reconciliationSnapshot.inboundBankTransactions).toContainEqual(
+      expect.objectContaining({
+        amountMinor: 4226900,
+        currency: 'CZK',
+        counterparty: 'Comgate a.s.'
       })
     )
   })
@@ -6305,6 +6486,46 @@ function buildRbAggregatedComgatePortalSettlementContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '19.03.2026 11:50;19.03.2026 11:52;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1580,00;CZK;Souhrnná výplata Comgate portal 2026-03-19'
+  ].join('\n')
+}
+
+function buildRbComgateDailySettlementContent(
+  amountText = '6058,79',
+  bookedAtDate = '27.03.2026',
+  reference = 'Souhrnná výplata Comgate 2026-03-27 / 1816656820'
+): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    `${bookedAtDate} 18:15;${bookedAtDate} 18:17;5599955956/5500;000000-1234567890/0100;Comgate a.s.;${amountText};CZK;${reference}`
+  ].join('\n')
+}
+
+function buildSyntheticComgateDailySettlementContent(input: {
+  transferReference: string
+  componentRows: Array<{
+    transactionId: string
+    clientId: string
+    confirmedAmountText: string
+    transferredAmountText: string
+  }>
+  confirmedSettlementTotalText: string
+  transferredSettlementTotalText: string
+}): string {
+  const rows = input.componentRows.map((row) => [
+    '"499465"',
+    `"${row.transactionId}"`,
+    '"Karta online"',
+    `"${row.confirmedAmountText}"`,
+    `"${row.transferredAmountText}"`,
+    '""',
+    `"${input.transferReference}"`,
+    `"${row.clientId}"`
+  ].join(';'))
+
+  return [
+    '"Merchant";"ID ComGate";"Metoda";"Potvrzen� ��stka";"P�eveden� ��stka";"Produkt";"Variabiln� symbol p�evodu";"ID od klienta"',
+    ...rows,
+    `"suma";"";"";"${input.confirmedSettlementTotalText}";"${input.transferredSettlementTotalText}";"";"";""`
   ].join('\n')
 }
 
