@@ -2876,6 +2876,80 @@ describe('buildWebDemo', () => {
     expect(reloadedState.fileRoutes).toHaveLength(1)
   })
 
+  it('keeps a generic Previo workbook upload classified as reservation source input across month workspace reload', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T18:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-workbook-reload-source',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())
+      ]
+    })
+
+    const initialState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string; sourceSystem: string; status: string; intakeStatus: string }>
+      preparedFiles: Array<{ fileName: string; sourceSystem: string; documentType: string }>
+      extractedRecords: Array<{ extractedCount: number }>
+    }
+
+    expect(initialState.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    ])
+    expect(initialState.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(initialState.extractedRecords).toEqual([
+      expect.objectContaining({
+        extractedCount: 1
+      })
+    ])
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>reservations-export-2026-03.xlsx</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.')
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string; sourceSystem: string; status: string; intakeStatus: string }>
+      preparedFiles: Array<{ fileName: string; sourceSystem: string; documentType: string }>
+    }
+
+    expect(reloadedState.runId).toContain('2026-03')
+    expect(reloadedState.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    ])
+    expect(reloadedState.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>reservations-export-2026-03.xlsx</strong>')
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
+  })
+
   it('keeps previously uploaded files visible and reruns the same month on the merged file set when RB is added later', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -5826,6 +5900,72 @@ function createWebDemoRuntimeFile(name: string, content: string) {
       return content
     }
   }
+}
+
+function createWebDemoRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
+  return {
+    name,
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      const binary = atob(binaryContentBase64)
+      const bytes = new Uint8Array(binary.length)
+
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
+
+      return bytes.buffer
+    }
+  }
+}
+
+function buildPrevioBrowserShapeWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const reservationSheet = XLSX.utils.aoa_to_sheet([
+    ['Seznam rezervací'],
+    [
+      'Vytvořeno',
+      'Termín od',
+      'Termín do',
+      'Nocí',
+      'Voucher',
+      'Počet hostů',
+      'Hosté',
+      'Check-In dokončen',
+      'Market kody',
+      'Firma',
+      'PP',
+      'Stav',
+      'Cena',
+      'Saldo',
+      'Pokoj'
+    ],
+    [
+      '13.03.2026 09:15',
+      '14.03.2026',
+      '16.03.2026',
+      '2',
+      'PREVIO-20260314',
+      '2',
+      'Jan Novak',
+      'Ano',
+      '',
+      'Acme Travel s.r.o.',
+      'direct-web',
+      'confirmed',
+      '420,00',
+      '30,00',
+      'A101'
+    ]
+  ])
+  XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Přehled rezervací'],
+    ['Počet rezervací', '1']
+  ]), 'Přehled rezervací')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }
 
 function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, type = 'text/plain') {

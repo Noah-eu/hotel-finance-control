@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
+import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
@@ -346,6 +347,74 @@ describe('buildUploadWebFlow', () => {
         accountLabelCs: 'Previo rezervační export'
       })
     ])
+  })
+
+  it('classifies and extracts the real Previo XLSX workbook shape even when the filename is generic', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:06:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 1,
+      supportedFileCount: 1,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export',
+        classificationBasis: 'binary-workbook'
+      })
+    ])
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        extractedCount: 1,
+        accountLabelCs: 'Previo rezervační export'
+      })
+    ])
+  })
+
+  it('keeps bank, OTA, Comgate, and the new Previo workbook intake supported in the same browser run', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const comgate = getRealInputFixture('comgate-export-current-portal')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64()),
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimeFile('Klientsky_portal_comgate_2026_03_31.csv', comgate.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:07:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fileName: 'reservations-export-2026-03.xlsx', sourceSystem: 'previo', status: 'supported' }),
+      expect.objectContaining({ fileName: 'booking35k.csv', sourceSystem: 'booking', status: 'supported' }),
+      expect.objectContaining({ fileName: 'Pohyby_5599955956_202603191023.csv', sourceSystem: 'bank', status: 'supported' }),
+      expect.objectContaining({ fileName: 'Klientsky_portal_comgate_2026_03_31.csv', sourceSystem: 'comgate', status: 'supported' })
+    ]))
   })
 
   it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
@@ -5545,6 +5614,53 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
       return bytes.buffer
     }
   }
+}
+
+function buildPrevioBrowserShapeWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const reservationSheet = XLSX.utils.aoa_to_sheet([
+    ['Seznam rezervací'],
+    [
+      'Vytvořeno',
+      'Termín od',
+      'Termín do',
+      'Nocí',
+      'Voucher',
+      'Počet hostů',
+      'Hosté',
+      'Check-In dokončen',
+      'Market kody',
+      'Firma',
+      'PP',
+      'Stav',
+      'Cena',
+      'Saldo',
+      'Pokoj'
+    ],
+    [
+      '13.03.2026 09:15',
+      '14.03.2026',
+      '16.03.2026',
+      '2',
+      'PREVIO-20260314',
+      '2',
+      'Jan Novak',
+      'Ano',
+      '',
+      'Acme Travel s.r.o.',
+      'direct-web',
+      'confirmed',
+      '420,00',
+      '30,00',
+      'A101'
+    ]
+  ])
+  XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Přehled rezervací'],
+    ['Počet rezervací', '1']
+  ]), 'Přehled rezervací')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }
 
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {
