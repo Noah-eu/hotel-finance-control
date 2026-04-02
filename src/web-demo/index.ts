@@ -972,12 +972,6 @@ ${showRuntimePayoutDiagnostics ? `
           <p id="expense-detail-visible-count" class="expense-visible-count">Zobrazeno položek: 0</p>
         </section>
         <div class="detail-grid expense-detail-grid">
-          <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
-            <h3>Ručně spárováno</h3>
-            <div id="expense-manual-matched-content">
-              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
-            </div>
-          </section>
           <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Spárované výdaje</h3>
             <div id="expense-matched-content">
@@ -1006,6 +1000,12 @@ ${showRuntimePayoutDiagnostics ? `
             <h3>Nespárované příchozí platby</h3>
             <div id="expense-unmatched-inflows-content">
               <p class="hint">Po spuštění se zde zobrazí nespárované příchozí platby.</p>
+            </div>
+          </section>
+          <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Ručně spárováno</h3>
+            <div id="expense-manual-matched-content">
+              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
             </div>
           </section>
         </div>
