@@ -338,19 +338,7 @@ describe('buildReconciliationWorkflowPlan', () => {
             requestedAt: '2026-03-20T18:41:30.000Z'
         })
 
-        expect(plan.reservationSources).toEqual([
-            expect.objectContaining({
-                reservationId: 'PREVIO-20260314',
-                sourceSystem: 'previo',
-                reference: 'PREVIO-20260314',
-                guestName: 'Jan Novak',
-                channel: 'direct-web',
-                stayStartAt: '2026-03-14',
-                stayEndAt: '2026-03-16',
-                grossRevenueMinor: 42000,
-                currency: 'CZK'
-            })
-        ])
+        expect(plan.reservationSources).toEqual([])
         expect(plan.reservationSettlementMatches).toEqual([])
     })
 

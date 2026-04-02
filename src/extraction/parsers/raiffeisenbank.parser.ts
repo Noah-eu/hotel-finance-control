@@ -318,7 +318,7 @@ function buildGpcReference(transaction: ParsedRaiffeisenbankGpcTransaction): str
 function parseGpcDirectionCode(value: string, fieldName: string): 'in' | 'out' {
   const normalized = value.trim()
 
-  if (normalized === '1') {
+  if (normalized === '1' || normalized === '4') {
     return 'out'
   }
 

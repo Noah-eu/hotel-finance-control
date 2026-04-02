@@ -43,7 +43,11 @@ export { AirbnbPayoutParser, inspectAirbnbPayoutHeaderDiagnostics, parseAirbnbPa
 export type { ParseExpediaPayoutExportInput } from './parsers/expedia.parser'
 export { ExpediaPayoutParser, parseExpediaPayoutExport } from './parsers/expedia.parser'
 export type { ParsePrevioReservationExportInput } from './parsers/previo.parser'
-export { PrevioReservationParser, parsePrevioReservationExport } from './parsers/previo.parser'
+export {
+  PrevioReservationParser,
+  detectPrevioReservationWorkbookSignature,
+  parsePrevioReservationExport
+} from './parsers/previo.parser'
 export type {
   ComgateHeaderDiagnostics,
   ParseComgateExportInput

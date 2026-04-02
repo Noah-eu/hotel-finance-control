@@ -14,6 +14,7 @@ import {
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
   parseComgateExport,
+  detectPrevioReservationWorkbookSignature,
   parseExpediaPayoutExport,
   parseFioStatement,
   parseInvoiceDocument,
@@ -1093,7 +1094,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
-  if (input.binaryContentBase64 && input.fileName.toLowerCase().includes('prehled_rezervaci')) {
+  if (input.binaryContentBase64 && detectPrevioReservationWorkbookSignature(input.binaryContentBase64)) {
     return {
       sourceSystem: 'previo',
       documentType: 'reservation_export',

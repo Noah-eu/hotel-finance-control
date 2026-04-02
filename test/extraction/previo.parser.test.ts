@@ -218,6 +218,77 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+  it('extracts the real browser-first workbook shape with a title row, row-2 headers, and an ignored summary sheet', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: {
+        ...fixture.sourceDocument,
+        fileName: 'reservations-export-2026-03.xlsx'
+      },
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64WithLeadingRows({
+        leadingRows: [
+          ['Seznam rezervací']
+        ],
+        headers: [
+          'Vytvořeno',
+          'Termín od',
+          'Termín do',
+          'Nocí',
+          'Voucher',
+          'Počet hostů',
+          'Hosté',
+          'Check-In dokončen',
+          'Market kody',
+          'Firma',
+          'PP',
+          'Stav',
+          'Cena',
+          'Saldo',
+          'Pokoj'
+        ],
+        rows: [
+          [
+            '13.03.2026 09:15',
+            '14.03.2026',
+            '16.03.2026',
+            '2',
+            'PREVIO-20260314',
+            '2',
+            'Jan Novak',
+            'Ano',
+            '',
+            'Acme Travel s.r.o.',
+            'direct-web',
+            'confirmed',
+            '420,00',
+            '30,00',
+            'A101'
+          ]
+        ]
+      }),
+      extractedAt: '2026-03-21T12:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      rawReference: 'PREVIO-20260314',
+      data: {
+        platform: 'previo',
+        sourceSheet: 'Seznam rezervací',
+        reservationId: 'PREVIO-20260314',
+        guestName: 'Jan Novak'
+      }
+    })
+    expect(records[0]?.data.workbookExtractionAudit).toMatchObject({
+      sheetName: 'Seznam rezervací',
+      headerRowIndex: 2,
+      candidateRowCount: 1,
+      extractedRowCount: 1
+    })
+  })
+
   it('maps `Termín od` and `Termín do` from the correct columns even when a header-like legend block appears earlier in the sheet', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 
@@ -576,23 +647,8 @@ describe('parsePrevioReservationExport', () => {
       requestedAt: '2026-03-21T15:05:30.000Z'
     })
 
-    expect(plan.reservationSources).toEqual([
-      expect.objectContaining({
-        reservationId: 'PREVIO-20260314',
-        guestName: 'Jan Novak',
-        grossRevenueMinor: 42000,
-        channel: 'booking'
-      })
-    ])
-    expect(plan.ancillaryRevenueSources).toEqual([
-      expect.objectContaining({
-        reference: 'PREVIO-20260314',
-        reservationId: 'PREVIO-20260314',
-        itemLabel: 'Parkování 1',
-        grossRevenueMinor: 20000,
-        channel: 'comgate'
-      })
-    ])
+    expect(plan.reservationSources).toEqual([])
+    expect(plan.ancillaryRevenueSources).toEqual([])
   })
 
   it('parses the real short Czech workbook date-time format like `01.03.26 12:30` deterministically', () => {

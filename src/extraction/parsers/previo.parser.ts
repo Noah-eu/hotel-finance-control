@@ -41,7 +41,23 @@ const HEADER_ALIASES = {
 } satisfies Record<string, string[]>
 
 const PREVIO_RESERVATION_WORKBOOK_SHEET = 'Seznam rezervací'
-const PREVIO_WORKBOOK_REQUIRED_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena'] as const
+const PREVIO_WORKBOOK_HEADER_COLUMNS = [
+  'Vytvořeno',
+  'Termín od',
+  'Termín do',
+  'Nocí',
+  'Voucher',
+  'Počet hostů',
+  'Hosté',
+  'Check-In dokončen',
+  'Market kody',
+  'Firma',
+  'PP',
+  'Stav',
+  'Cena',
+  'Saldo',
+  'Pokoj'
+] as const
 const PREVIO_WORKBOOK_TRACE_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'] as const
 type PrevioWorkbookRowKind = 'accommodation' | 'ancillary' | 'ignorable'
 
@@ -119,9 +135,22 @@ export class PrevioReservationParser {
   }
 }
 
+export function detectPrevioReservationWorkbookSignature(binaryContentBase64: string): boolean {
+  try {
+    const worksheet = readPrevioReservationWorkbookSheet(binaryContentBase64)
+
+    if (!worksheet) {
+      return false
+    }
+
+    return findWorkbookHeaderRowIndex(readWorksheetRows(worksheet)) !== -1
+  } catch {
+    return false
+  }
+}
+
 function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput): ExtractedRecord[] {
-  const workbook = XLSX.read(input.binaryContentBase64!, { type: 'base64', cellDates: false })
-  const worksheet = workbook.Sheets[PREVIO_RESERVATION_WORKBOOK_SHEET]
+  const worksheet = readPrevioReservationWorkbookSheet(input.binaryContentBase64!)
 
   if (!worksheet) {
     throw new Error(`Previo reservation workbook is missing required sheet: ${PREVIO_RESERVATION_WORKBOOK_SHEET}`)
@@ -172,6 +201,7 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
       data: {
         platform: 'previo',
         rowKind: kind,
+        settlementProjectionEligibility: 'intake_only',
         bookedAt: occurredAt,
         createdAt,
         stayStartAt,
@@ -210,12 +240,7 @@ function extractWorkbookReservationRows(worksheet: XLSX.WorkSheet): {
   headerColumnIndexes: Record<string, number>
   candidateRows: Array<Record<string, unknown>>
 } {
-  const sheetRows = XLSX.utils.sheet_to_json<Array<unknown>>(worksheet, {
-    header: 1,
-    defval: '',
-    raw: false,
-    blankrows: false
-  })
+  const sheetRows = readWorksheetRows(worksheet)
 
   const headerRowIndex = findWorkbookHeaderRowIndex(sheetRows)
   if (headerRowIndex === -1) {
@@ -249,7 +274,7 @@ function isWorkbookHeaderRowCandidate(rows: Array<Array<unknown>>, rowIndex: num
   const normalized = row.map((cell) => String(cell ?? '').trim())
   const nonEmpty = normalized.filter(Boolean)
 
-  if (!PREVIO_WORKBOOK_REQUIRED_COLUMNS.every((column) => nonEmpty.includes(column))) {
+  if (!PREVIO_WORKBOOK_HEADER_COLUMNS.every((column) => nonEmpty.includes(column))) {
     return false
   }
 
@@ -257,6 +282,20 @@ function isWorkbookHeaderRowCandidate(rows: Array<Array<unknown>>, rowIndex: num
   const nextRows = rows.slice(rowIndex + 1, rowIndex + 4)
 
   return nextRows.some((candidateRow) => isLikelyWorkbookReservationRow(candidateRow, headerColumnIndexes))
+}
+
+function readPrevioReservationWorkbookSheet(binaryContentBase64: string): XLSX.WorkSheet | undefined {
+  const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
+  return workbook.Sheets[PREVIO_RESERVATION_WORKBOOK_SHEET]
+}
+
+function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {
+  return XLSX.utils.sheet_to_json<Array<unknown>>(worksheet, {
+    header: 1,
+    defval: '',
+    raw: false,
+    blankrows: false
+  })
 }
 
 function indexWorkbookColumns(headers: string[]): Record<string, number> {

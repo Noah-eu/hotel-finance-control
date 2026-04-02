@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { runInNewContext } from 'node:vm'
+import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
@@ -158,6 +159,101 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions.every((item) => item.amount.includes('Kč'))).toBe(true)
     expect(result.reviewSections.expenseUnmatchedInflows.length).toBeGreaterThan(0)
     expect(result.reviewSections.expenseUnmatchedOutflows.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the exact direction-code-4 Raiffeisenbank GPC file on the supported bank path instead of ingest failure', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpc.sourceDocument.fileName,
+          content: gpc.rawInput.content,
+          uploadedAt: '2026-03-20T10:20:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-raiffeisen-gpc-direction-4',
+      generatedAt: '2026-03-20T10:20:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(1)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc',
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      classificationBasis: 'content'
+    })
+    expect(result.fileRoutes[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc',
+      status: 'supported',
+      sourceSystem: 'bank',
+      parserId: 'raiffeisenbank',
+      classificationBasis: 'content'
+    })
+    expect(result.extractedRecords[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc',
+      extractedCount: 5,
+      accountLabelCs: 'RB účet 5599955956',
+      parserDebugLabel: 'raiffeisenbank-gpc'
+    })
+    expect(result.fileRoutes.some((route) => route.status === 'error')).toBe(false)
+    expect(result.reportTransactions.every((item) => item.amount.includes('Kč'))).toBe(true)
+  })
+
+  it('keeps earlier RB GPC, RB CSV, and Fio browser bank uploads supported after the direction-code-4 fix', () => {
+    const gpcLegacy = getRealInputFixture('raiffeisenbank-gpc-statement')
+    const gpcDirection4 = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const fio = getRealInputFixture('fio-statement')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpcLegacy.sourceDocument.fileName,
+          content: gpcLegacy.rawInput.content,
+          uploadedAt: '2026-03-20T10:30:00.000Z'
+        },
+        {
+          name: gpcDirection4.sourceDocument.fileName,
+          content: gpcDirection4.rawInput.content,
+          uploadedAt: '2026-03-20T10:31:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-20T10:32:00.000Z'
+        },
+        {
+          name: fio.sourceDocument.fileName,
+          content: fio.rawInput.content,
+          uploadedAt: '2026-03-20T10:33:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-bank-regression-guard',
+      generatedAt: '2026-03-20T10:33:00.000Z'
+    })
+
+    expect(result.fileRoutes).toHaveLength(4)
+    expect(result.fileRoutes.every((route) => route.status === 'supported')).toBe(true)
+    expect(result.fileRoutes.map((route) => route.fileName)).toEqual([
+      'Vypis_5599955956_CZK_2026_002.gpc',
+      'Vypis_5599955956_CZK_2026_003.gpc',
+      'raiffeisen-2026-03.csv',
+      'fio-2026-03.csv'
+    ])
+    expect(result.extractedRecords.slice(0, 2).map((file) => file.parserDebugLabel)).toEqual([
+      'raiffeisenbank-gpc',
+      'raiffeisenbank-gpc'
+    ])
+    expect(result.extractedRecords.every((file) => file.extractedCount > 0)).toBe(true)
+    expect(result.extractedRecords[2]).toMatchObject({
+      fileName: 'raiffeisen-2026-03.csv',
+      parserDebugLabel: 'raiffeisenbank'
+    })
+    expect(result.extractedRecords[3]).toMatchObject({
+      fileName: 'fio-2026-03.csv',
+      extractedCount: expect.any(Number)
+    })
   })
 
   it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {
@@ -385,6 +481,74 @@ describe('buildUploadWebFlow', () => {
         accountLabelCs: 'Previo rezervační export'
       })
     ])
+  })
+
+  it('classifies and extracts the real Previo XLSX workbook shape even when the filename is generic', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:06:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 1,
+      supportedFileCount: 1,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export',
+        classificationBasis: 'binary-workbook'
+      })
+    ])
+    expect(result.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        extractedCount: 1,
+        accountLabelCs: 'Previo rezervační export'
+      })
+    ])
+  })
+
+  it('keeps bank, OTA, Comgate, and the new Previo workbook intake supported in the same browser run', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const comgate = getRealInputFixture('comgate-export-current-portal')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64()),
+        createRuntimeFile('booking35k.csv', booking.rawInput.content),
+        createRuntimeFile('Pohyby_5599955956_202603191023.csv', buildActualUploadedRbCitiContent()),
+        createRuntimeFile('Klientsky_portal_comgate_2026_03_31.csv', comgate.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:07:00.000Z'
+    })
+
+    expect(result.routingSummary).toEqual({
+      uploadedFileCount: 4,
+      supportedFileCount: 4,
+      unsupportedFileCount: 0,
+      errorFileCount: 0
+    })
+    expect(result.fileRoutes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fileName: 'reservations-export-2026-03.xlsx', sourceSystem: 'previo', status: 'supported' }),
+      expect.objectContaining({ fileName: 'booking35k.csv', sourceSystem: 'booking', status: 'supported' }),
+      expect.objectContaining({ fileName: 'Pohyby_5599955956_202603191023.csv', sourceSystem: 'bank', status: 'supported' }),
+      expect.objectContaining({ fileName: 'Klientsky_portal_comgate_2026_03_31.csv', sourceSystem: 'comgate', status: 'supported' })
+    ]))
   })
 
   it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
@@ -2596,7 +2760,7 @@ describe('buildUploadWebFlow', () => {
         accountId: '8888997777/2010'
       })
     ])
-    expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(1)
+    expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.payoutRows).toEqual([
       expect.objectContaining({
@@ -2618,14 +2782,7 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(batch.reconciliation.workflowPlan?.directBankSettlements).toEqual([])
     expect(batch.reconciliation.workflowPlan?.reservationSettlementMatches).toEqual([])
-    expect(batch.reconciliation.workflowPlan?.reservationSettlementNoMatches).toEqual([
-      expect.objectContaining({
-        reservationId: 'PREVIO-20260314',
-        reference: 'PREVIO-20260314',
-        noMatchReason: 'noCandidate',
-        candidateCount: 0
-      })
-    ])
+    expect(batch.reconciliation.workflowPlan?.reservationSettlementNoMatches).toEqual([])
     expect(batch.reconciliation.payoutBatchMatches).toEqual([])
     expect(batch.report.unmatchedPayoutBatches).toEqual([
       expect.objectContaining({
@@ -2678,16 +2835,9 @@ describe('buildUploadWebFlow', () => {
       })
     ])
     expect(state.reviewSections.matched).toHaveLength(0)
-    expect(state.reviewSections.unmatchedReservationSettlements).toHaveLength(1)
-    expect(state.reviewSections.unmatchedReservationSettlements[0]).toEqual(
-      expect.objectContaining({
-        title: 'Rezervace PREVIO-20260314',
-        detail: expect.stringContaining('Chybí deterministická vazba na odpovídající úhradu.')
-      })
-    )
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).toContain('Kanál: Přímá rezervace.')
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).toContain('Pobyt: 2026-03-14 – 2026-03-16.')
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).toContain('Částka: 420,00 CZK.')
+    expect(state.reviewSections.reservationSettlementOverview).toEqual([])
+    expect(state.reviewSections.ancillarySettlementOverview).toEqual([])
+    expect(state.reviewSections.unmatchedReservationSettlements).toEqual([])
     expect(state.reviewSections.unmatched).toHaveLength(4)
     expect(state.reviewSections.suspicious).toHaveLength(0)
     expect(state.reviewSections.missingDocuments).toHaveLength(0)
@@ -2699,7 +2849,6 @@ describe('buildUploadWebFlow', () => {
         detail: expect.stringContaining('Žádná bankovní položka se stejnou částkou.')
       })
     )
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
     expect(state.reportSummary.matchedGroupCount).toBe(batch.reconciliation.summary.matchedGroupCount)
     expect(batch.reconciliation.summary.matchedGroupCount).toBe(0)
     expect(batch.report.summary.unmatchedExpectedCount).toBe(1)
@@ -2842,12 +2991,11 @@ describe('buildUploadWebFlow', () => {
       outputPath
     })
 
-    expect(result.preview.review.unmatchedReservationSettlements).toHaveLength(1)
-    expect(result.html).toContain('Nespárované rezervace k úhradě')
-    expect(result.html).toContain('Rezervace PREVIO-20260314')
-    expect(result.html).toContain('Chybí deterministická vazba na odpovídající úhradu.')
-    expect(result.html).toContain('Kanál: Přímá rezervace.')
-    expect(result.html).not.toContain('noCandidate')
+    expect(result.preview.review.reservationSettlementOverview).toEqual([])
+    expect(result.preview.review.ancillarySettlementOverview).toEqual([])
+    expect(result.preview.review.unmatchedReservationSettlements).toEqual([])
+    expect(result.html).not.toContain('Rezervace PREVIO-20260314')
+    expect(result.html).not.toContain('Chybí deterministická vazba na odpovídající úhradu.')
   })
 
   it('carries additive business-facing reservation and ancillary settlement overviews in browser runtime state', async () => {
@@ -5726,6 +5874,53 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
       return bytes.buffer
     }
   }
+}
+
+function buildPrevioBrowserShapeWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const reservationSheet = XLSX.utils.aoa_to_sheet([
+    ['Seznam rezervací'],
+    [
+      'Vytvořeno',
+      'Termín od',
+      'Termín do',
+      'Nocí',
+      'Voucher',
+      'Počet hostů',
+      'Hosté',
+      'Check-In dokončen',
+      'Market kody',
+      'Firma',
+      'PP',
+      'Stav',
+      'Cena',
+      'Saldo',
+      'Pokoj'
+    ],
+    [
+      '13.03.2026 09:15',
+      '14.03.2026',
+      '16.03.2026',
+      '2',
+      'PREVIO-20260314',
+      '2',
+      'Jan Novak',
+      'Ano',
+      '',
+      'Acme Travel s.r.o.',
+      'direct-web',
+      'confirmed',
+      '420,00',
+      '30,00',
+      'A101'
+    ]
+  ])
+  XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Přehled rezervací'],
+    ['Počet rezervací', '1']
+  ]), 'Přehled rezervací')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }
 
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {

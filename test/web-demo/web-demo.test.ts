@@ -3129,6 +3129,96 @@ describe('buildWebDemo', () => {
     expect(reloadedState.fileRoutes).toHaveLength(1)
   })
 
+  it('keeps a generic Previo workbook upload classified as reservation source input across month workspace reload', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T18:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-workbook-reload-source',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())
+      ]
+    })
+
+    const initialState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string; sourceSystem: string; status: string; intakeStatus: string }>
+      preparedFiles: Array<{ fileName: string; sourceSystem: string; documentType: string }>
+      extractedRecords: Array<{ extractedCount: number }>
+      reviewSections: {
+        reservationSettlementOverview: unknown[]
+        ancillarySettlementOverview: unknown[]
+        unmatchedReservationSettlements: unknown[]
+      }
+    }
+
+    expect(initialState.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    ])
+    expect(initialState.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(initialState.extractedRecords).toEqual([
+      expect.objectContaining({
+        extractedCount: 1
+      })
+    ])
+    expect(initialState.reviewSections.reservationSettlementOverview).toEqual([])
+    expect(initialState.reviewSections.ancillarySettlementOverview).toEqual([])
+    expect(initialState.reviewSections.unmatchedReservationSettlements).toEqual([])
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>reservations-export-2026-03.xlsx</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('Soubor se nepodařilo jednoznačně přiřadit k podporovanému měsíčnímu zdroji.')
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string; sourceSystem: string; status: string; intakeStatus: string }>
+      preparedFiles: Array<{ fileName: string; sourceSystem: string; documentType: string }>
+      reviewSections: {
+        reservationSettlementOverview: unknown[]
+        ancillarySettlementOverview: unknown[]
+        unmatchedReservationSettlements: unknown[]
+      }
+    }
+
+    expect(reloadedState.runId).toContain('2026-03')
+    expect(reloadedState.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        status: 'supported',
+        intakeStatus: 'parsed'
+      })
+    ])
+    expect(reloadedState.preparedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'reservations-export-2026-03.xlsx',
+        sourceSystem: 'previo',
+        documentType: 'reservation_export'
+      })
+    ])
+    expect(reloadedState.reviewSections.reservationSettlementOverview).toEqual([])
+    expect(reloadedState.reviewSections.ancillarySettlementOverview).toEqual([])
+    expect(reloadedState.reviewSections.unmatchedReservationSettlements).toEqual([])
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>reservations-export-2026-03.xlsx</strong>')
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
+  })
+
   it('keeps previously uploaded files visible and reruns the same month on the merged file set when RB is added later', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -3827,22 +3917,38 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('Rozpoznáno souborů: 1')
   })
 
-  it('loads open previous-month Comgate payout carryover into the current month and matches the April RB inflow', async () => {
+  it('loads only the open unmatched previous-month Comgate payout batch into April while keeping March same-month results unchanged', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
+    const matchedMarchBatchKeys = [
+      'comgate-batch:2026-03-29:CZK',
+      'comgate-batch:2026-03-30:CZK'
+    ]
     const expectedCarryoverBatchKey = 'comgate-batch:2026-03-31:CZK'
 
-    await executeWebDemoMainWorkflow({
+    const marchRendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-31T23:10:00.000Z',
       month: '2026-03',
-      outputDirName: 'test-web-demo-comgate-carryover-source-march',
+      outputDirName: 'test-web-demo-comgate-carryover-source-mixed-march',
       locationSearch: '?debug=1',
       storageState,
       workspacePersistenceState,
       files: [
-        createWebDemoRuntimeFile('Klientsky_portal_comgate_2026_03_31.csv', buildCurrentPortalComgatePreviousMonthCarryoverContent())
+        createWebDemoRuntimeFile('Klientsky_portal_comgate_2026_03_mixed.csv', buildCurrentPortalComgatePreviousMonthMixedCarryoverContent()),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603301100.csv', buildRbComgatePreviousMonthMixedSettlementContent())
       ]
     })
+
+    const marchState = marchRendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        payoutBatchMatched: Array<{ title: string }>
+        payoutBatchUnmatched: Array<{ title: string }>
+      }
+    }
+
+    expect(marchState.reviewSections.payoutBatchMatched).toHaveLength(2)
+    expect(marchState.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(marchState.reviewSections.payoutBatchUnmatched[0]?.title || '').toContain('CG-CARRY-20260331-A')
 
     const persistedMarchWorkspace = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
       runtimeState?: {
@@ -3859,17 +3965,18 @@ describe('buildWebDemo', () => {
     expect(persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot).toEqual(expect.objectContaining({
       sourceMonthKey: '2026-03'
     }))
+    expect(persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot?.payoutBatches?.map((item) => item.payoutBatchKey)).toEqual([expectedCarryoverBatchKey])
     if (!persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot?.payoutBatches?.some((item) => item.payoutBatchKey === expectedCarryoverBatchKey)) {
       throw new Error('lost after previous-month persistence')
     }
 
     const aprilRendered = await executeWebDemoMainWorkflow({
       files: [
-        createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthCarryoverSettlementContent())
+        createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthUnmatchedSettlementContent())
       ],
       month: '2026-04',
       generatedAt: '2026-04-03T09:00:00.000Z',
-      outputDirName: 'test-web-demo-comgate-carryover-browser-april',
+      outputDirName: 'test-web-demo-comgate-carryover-browser-filtered-april',
       locationSearch: '?debug=1',
       storageState,
       workspacePersistenceState
@@ -3896,8 +4003,10 @@ describe('buildWebDemo', () => {
     const aprilRenderDebug = aprilRendered.getLastWorkspaceRenderDebug() as {
       carryoverPreviousMonthKeyResolved: string
       carryoverPreviousMonthWorkspaceFound: string
+      carryoverPreviousMonthMatchedPayoutBatchCount: number
       carryoverPreviousMonthUnmatchedPayoutBatchCount: number
       carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: string[]
+      carryoverPreviousMonthUnmatchedOnly: string
       carryoverLoadedPayoutBatchCount: number
       carryoverLoadedPayoutBatchIdsSample: string[]
       carryoverMatchingInputPayoutBatchCount: number
@@ -3907,14 +4016,18 @@ describe('buildWebDemo', () => {
     if (
       aprilRenderDebug.carryoverPreviousMonthKeyResolved !== '2026-03'
       || aprilRenderDebug.carryoverPreviousMonthWorkspaceFound !== 'ano'
+      || aprilRenderDebug.carryoverPreviousMonthMatchedPayoutBatchCount !== 2
       || aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchCount !== 1
+      || aprilRenderDebug.carryoverPreviousMonthUnmatchedOnly !== 'yes'
       || !aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.includes(expectedCarryoverBatchKey)
     ) {
       throw new Error(`lost during previous-month load: ${JSON.stringify({
         previousMonthKey: aprilRenderDebug.carryoverPreviousMonthKeyResolved,
         currentMonthKey: aprilState.carryoverDebug.currentMonthKey,
         previousMonthWorkspaceFound: aprilRenderDebug.carryoverPreviousMonthWorkspaceFound,
+        previousMonthMatchedComgatePayoutCount: aprilRenderDebug.carryoverPreviousMonthMatchedPayoutBatchCount,
         previousMonthUnmatchedComgatePayoutCount: aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchCount,
+        previousMonthUnmatchedOnly: aprilRenderDebug.carryoverPreviousMonthUnmatchedOnly,
         carryoverCountBeforeSourceBuilder: aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.length,
         carryoverCountAfterSourceBuilder: aprilRenderDebug.carryoverLoadedPayoutBatchCount
       })}`)
@@ -3930,6 +4043,13 @@ describe('buildWebDemo', () => {
       || !aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample.includes(expectedCarryoverBatchKey)
     ) {
       throw new Error('lost before matching handoff')
+    }
+
+    for (const matchedMarchBatchKey of matchedMarchBatchKeys) {
+      expect(aprilRenderDebug.carryoverLoadedPayoutBatchIdsSample).not.toContain(matchedMarchBatchKey)
+      expect(aprilRenderDebug.carryoverMatchingInputPayoutBatchIdsSample).not.toContain(matchedMarchBatchKey)
+      expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).not.toContain(matchedMarchBatchKey)
+      expect(aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample).not.toContain(matchedMarchBatchKey)
     }
 
     if (
@@ -3955,6 +4075,184 @@ describe('buildWebDemo', () => {
     expect(aprilState.carryoverDebug.matcherCarryoverRejectedReason || '').toBe('')
     expect(aprilState.reviewSections.payoutBatchMatched.some((item) => item.title.includes('Comgate payout dávka'))).toBe(true)
     expect(aprilState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+
+    const marchRestored = await aprilRendered.reloadWithSameStorage()
+    await marchRestored.changeMonth('2026-03')
+
+    const restoredMarchState = marchRestored.getLastVisibleRuntimeState() as {
+      reviewSummary: {
+        payoutBatchMatchCount: number
+        unmatchedPayoutBatchCount: number
+      }
+      reviewSections: {
+        payoutBatchMatched: Array<{ id: string; detail: string }>
+        payoutBatchUnmatched: Array<{ id: string }>
+      }
+    }
+    const restoredMatchedIds = restoredMarchState.reviewSections.payoutBatchMatched.map((item) => item.id)
+    const restoredUnmatchedIds = restoredMarchState.reviewSections.payoutBatchUnmatched.map((item) => item.id)
+    const restoredLaterResolvedItem = restoredMarchState.reviewSections.payoutBatchMatched.find(
+      (item) => item.id === `payout-batch-resolved-later:${expectedCarryoverBatchKey}`
+    )
+    const restoredDuplicateRepresentations = restoredMatchedIds
+      .concat(restoredUnmatchedIds)
+      .filter((itemId) => itemId.includes(expectedCarryoverBatchKey))
+
+    expect(restoredMarchState.reviewSummary.payoutBatchMatchCount).toBe(3)
+    expect(restoredMarchState.reviewSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(restoredMatchedIds).toContain(`payout-batch-resolved-later:${expectedCarryoverBatchKey}`)
+    expect(restoredUnmatchedIds).not.toContain(`payout-batch-unmatched:${expectedCarryoverBatchKey}`)
+    expect(restoredDuplicateRepresentations).toHaveLength(1)
+    expect(restoredLaterResolvedItem?.detail || '').toContain('2026-04')
+  })
+
+  it('filters matched and non-Comgate previous-month batches out of carryover even when the persisted snapshot is polluted', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const matchedMarchBatchKeys = [
+      'comgate-batch:2026-03-29:CZK',
+      'comgate-batch:2026-03-30:CZK'
+    ]
+    const expectedCarryoverBatchKey = 'comgate-batch:2026-03-31:CZK'
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T23:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-carryover-source-polluted-march',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeFile('Klientsky_portal_comgate_2026_03_mixed.csv', buildCurrentPortalComgatePreviousMonthMixedCarryoverContent()),
+        createWebDemoRuntimeFile('Pohyby_5599955956_202603301100.csv', buildRbComgatePreviousMonthMixedSettlementContent())
+      ]
+    })
+
+    const persistedMarchWorkspace = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      runtimeState?: {
+        carryoverSourceSnapshot?: {
+          sourceMonthKey?: string
+          payoutBatches?: Array<{
+            payoutBatchKey: string
+            platform: string
+            bankRoutingTarget?: string
+            payoutReference?: string
+            payoutDate?: string
+            postedDate?: string
+            grossAmount?: string
+            feeAmount?: string
+            netAmount?: string
+            currency?: string
+          }>
+        }
+        reconciliationSnapshot?: {
+          matchedPayoutBatchKeys?: string[]
+          unmatchedPayoutBatchKeys?: string[]
+        }
+      }
+    }
+
+    persistedMarchWorkspace.runtimeState = persistedMarchWorkspace.runtimeState || {}
+    persistedMarchWorkspace.runtimeState.carryoverSourceSnapshot = {
+      sourceMonthKey: '2026-03',
+      payoutBatches: [
+        {
+          payoutBatchKey: matchedMarchBatchKeys[0],
+          platform: 'comgate',
+          bankRoutingTarget: 'rb_bank_inflow',
+          payoutReference: 'CG-CARRY-20260329-A',
+          payoutDate: '2026-03-29',
+          postedDate: '2026-03-29',
+          grossAmount: '1000',
+          feeAmount: '10',
+          netAmount: '990',
+          currency: 'CZK'
+        },
+        {
+          payoutBatchKey: matchedMarchBatchKeys[1],
+          platform: 'comgate',
+          bankRoutingTarget: 'rb_bank_inflow',
+          payoutReference: 'CG-CARRY-20260330-A',
+          payoutDate: '2026-03-30',
+          postedDate: '2026-03-30',
+          grossAmount: '2000',
+          feeAmount: '20',
+          netAmount: '1980',
+          currency: 'CZK'
+        },
+        {
+          payoutBatchKey: expectedCarryoverBatchKey,
+          platform: 'comgate',
+          bankRoutingTarget: 'rb_bank_inflow',
+          payoutReference: 'CG-CARRY-20260331-A',
+          payoutDate: '2026-03-31',
+          postedDate: '2026-03-31',
+          grossAmount: '3000',
+          feeAmount: '30',
+          netAmount: '2970',
+          currency: 'CZK'
+        },
+        {
+          payoutBatchKey: 'booking-batch:2026-03-31:CZK',
+          platform: 'booking',
+          bankRoutingTarget: 'rb_bank_inflow',
+          payoutReference: 'BOOKING-20260331-A',
+          payoutDate: '2026-03-31',
+          postedDate: '2026-03-31',
+          grossAmount: '111',
+          feeAmount: '0',
+          netAmount: '111',
+          currency: 'CZK'
+        }
+      ]
+    }
+    workspacePersistenceState.set('2026-03', JSON.stringify(persistedMarchWorkspace))
+
+    const aprilRendered = await executeWebDemoMainWorkflow({
+      files: [
+        createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthUnmatchedSettlementContent())
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-03T09:00:00.000Z',
+      outputDirName: 'test-web-demo-comgate-carryover-browser-polluted-april',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState
+    })
+
+    const aprilState = aprilRendered.getLastVisibleRuntimeState() as {
+      carryoverDebug: {
+        loadedPayoutBatchCount: number
+        loadedPayoutBatchKeysSample: string[]
+        matchingInputPayoutBatchCount: number
+        matchingInputPayoutBatchKeysSample: string[]
+        matcherCarryoverCandidateExists: boolean
+        matchedCount: number
+        unmatchedCount: number
+      }
+    }
+    const aprilRenderDebug = aprilRendered.getLastWorkspaceRenderDebug() as {
+      carryoverPreviousMonthUnmatchedPayoutBatchCount: number
+      carryoverPreviousMonthUnmatchedOnly: string
+      carryoverLoadedPayoutBatchIdsSample: string[]
+      carryoverMatchingInputPayoutBatchIdsSample: string[]
+    }
+
+    expect(aprilRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchCount).toBe(1)
+    expect(aprilRenderDebug.carryoverPreviousMonthUnmatchedOnly).toBe('yes')
+    expect(aprilState.carryoverDebug.loadedPayoutBatchCount).toBe(1)
+    expect(aprilState.carryoverDebug.matchingInputPayoutBatchCount).toBe(1)
+    expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).toEqual([expectedCarryoverBatchKey])
+    expect(aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample).toEqual([expectedCarryoverBatchKey])
+    expect(aprilRenderDebug.carryoverLoadedPayoutBatchIdsSample).toEqual([expectedCarryoverBatchKey])
+    expect(aprilRenderDebug.carryoverMatchingInputPayoutBatchIdsSample).toEqual([expectedCarryoverBatchKey])
+    expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).not.toContain('booking-batch:2026-03-31:CZK')
+    expect(aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample).not.toContain('booking-batch:2026-03-31:CZK')
+
+    for (const matchedMarchBatchKey of matchedMarchBatchKeys) {
+      expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).not.toContain(matchedMarchBatchKey)
+      expect(aprilState.carryoverDebug.matchingInputPayoutBatchKeysSample).not.toContain(matchedMarchBatchKey)
+    }
   })
 
   it('keeps previous month persistence intact when clearing the current month and drops carryover only after deleting the source month', async () => {
@@ -5921,6 +6219,72 @@ function createWebDemoRuntimeFile(name: string, content: string) {
   }
 }
 
+function createWebDemoRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
+  return {
+    name,
+    async text() {
+      return ''
+    },
+    async arrayBuffer() {
+      const binary = atob(binaryContentBase64)
+      const bytes = new Uint8Array(binary.length)
+
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
+
+      return bytes.buffer
+    }
+  }
+}
+
+function buildPrevioBrowserShapeWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const reservationSheet = XLSX.utils.aoa_to_sheet([
+    ['Seznam rezervací'],
+    [
+      'Vytvořeno',
+      'Termín od',
+      'Termín do',
+      'Nocí',
+      'Voucher',
+      'Počet hostů',
+      'Hosté',
+      'Check-In dokončen',
+      'Market kody',
+      'Firma',
+      'PP',
+      'Stav',
+      'Cena',
+      'Saldo',
+      'Pokoj'
+    ],
+    [
+      '13.03.2026 09:15',
+      '14.03.2026',
+      '16.03.2026',
+      '2',
+      'PREVIO-20260314',
+      '2',
+      'Jan Novak',
+      'Ano',
+      '',
+      'Acme Travel s.r.o.',
+      'direct-web',
+      'confirmed',
+      '420,00',
+      '30,00',
+      'A101'
+    ]
+  ])
+  XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Přehled rezervací'],
+    ['Počet rezervací', '1']
+  ]), 'Přehled rezervací')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
 function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, type = 'text/plain') {
   return {
     name,
@@ -6390,10 +6754,34 @@ function buildCurrentPortalComgatePreviousMonthCarryoverContent(): string {
   ].join('\n')
 }
 
+function buildCurrentPortalComgatePreviousMonthMixedCarryoverContent(): string {
+  return [
+    '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+    '"CG-CARRY-MIX-TRX-1";"CG-CARRY-20260329-A";"29.03.2026 08:15";"29.03.2026 08:16";"29.03.2026";"guest-a@example.com";"CG-CARRY-20260329-A";"JOKELAND s.r.o.";"1000,00";"CZK";"website-reservation";"0,00";"0,00";"10,00";"10,00"',
+    '"CG-CARRY-MIX-TRX-2";"CG-CARRY-20260330-A";"30.03.2026 09:20";"30.03.2026 09:21";"30.03.2026";"guest-b@example.com";"CG-CARRY-20260330-A";"JOKELAND s.r.o.";"2000,00";"CZK";"website-reservation";"0,00";"0,00";"20,00";"20,00"',
+    '"CG-CARRY-MIX-TRX-3";"CG-CARRY-20260331-A";"31.03.2026 10:10";"31.03.2026 10:11";"31.03.2026";"guest-c@example.com";"CG-CARRY-20260331-A";"JOKELAND s.r.o.";"3000,00";"CZK";"parking";"0,00";"0,00";"30,00";"30,00"'
+  ].join('\n')
+}
+
 function buildRbComgatePreviousMonthCarryoverSettlementContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '03.04.2026 09:00;03.04.2026 09:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-31'
+  ].join('\n')
+}
+
+function buildRbComgatePreviousMonthMixedSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '29.03.2026 11:00;29.03.2026 11:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;990,00;CZK;Souhrnná výplata Comgate 2026-03-29',
+    '30.03.2026 11:00;30.03.2026 11:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1980,00;CZK;Souhrnná výplata Comgate 2026-03-30'
+  ].join('\n')
+}
+
+function buildRbComgatePreviousMonthUnmatchedSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '03.04.2026 09:00;03.04.2026 09:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;2970,00;CZK;Souhrnná výplata Comgate 2026-03-31'
   ].join('\n')
 }
 
