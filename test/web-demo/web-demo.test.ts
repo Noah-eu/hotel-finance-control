@@ -3831,6 +3831,35 @@ describe('buildWebDemo', () => {
     expect(aprilState.carryoverDebug.matcherCarryoverRejectedReason || '').toBe('')
     expect(aprilState.reviewSections.payoutBatchMatched.some((item) => item.title.includes('Comgate payout dávka'))).toBe(true)
     expect(aprilState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+
+    const marchRestored = await aprilRendered.reloadWithSameStorage()
+    await marchRestored.changeMonth('2026-03')
+
+    const restoredMarchState = marchRestored.getLastVisibleRuntimeState() as {
+      reviewSummary: {
+        payoutBatchMatchCount: number
+        unmatchedPayoutBatchCount: number
+      }
+      reviewSections: {
+        payoutBatchMatched: Array<{ id: string; detail: string }>
+        payoutBatchUnmatched: Array<{ id: string }>
+      }
+    }
+    const restoredMatchedIds = restoredMarchState.reviewSections.payoutBatchMatched.map((item) => item.id)
+    const restoredUnmatchedIds = restoredMarchState.reviewSections.payoutBatchUnmatched.map((item) => item.id)
+    const restoredLaterResolvedItem = restoredMarchState.reviewSections.payoutBatchMatched.find(
+      (item) => item.id === `payout-batch-resolved-later:${expectedCarryoverBatchKey}`
+    )
+    const restoredDuplicateRepresentations = restoredMatchedIds
+      .concat(restoredUnmatchedIds)
+      .filter((itemId) => itemId.includes(expectedCarryoverBatchKey))
+
+    expect(restoredMarchState.reviewSummary.payoutBatchMatchCount).toBe(3)
+    expect(restoredMarchState.reviewSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(restoredMatchedIds).toContain(`payout-batch-resolved-later:${expectedCarryoverBatchKey}`)
+    expect(restoredUnmatchedIds).not.toContain(`payout-batch-unmatched:${expectedCarryoverBatchKey}`)
+    expect(restoredDuplicateRepresentations).toHaveLength(1)
+    expect(restoredLaterResolvedItem?.detail || '').toContain('2026-04')
   })
 
   it('filters matched and non-Comgate previous-month batches out of carryover even when the persisted snapshot is polluted', async () => {
