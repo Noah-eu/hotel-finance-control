@@ -131,6 +131,7 @@ export function inspectPayoutBatchBankDecisions(
     input: MatchPayoutBatchesToBankInput
 ): PayoutBatchBankDecisionTrace[] {
     return buildBatchDecisions(input).map((decision) => {
+        const carryoverDebug = resolveCarryoverDecisionDebug(decision.batch, decision.allCandidates)
         const sameCurrencyCandidates = decision.allCandidates
             .filter((candidate) => candidate.currency === decision.bankExpectation.currency)
             .sort((left, right) =>
@@ -158,6 +159,8 @@ export function inspectPayoutBatchBankDecisions(
             payoutBatchKey: decision.batch.payoutBatchKey,
             payoutReference: decision.batch.payoutReference,
             platform: decision.batch.platform,
+            fromPreviousMonth: decision.batch.fromPreviousMonth,
+            sourceMonthKey: decision.batch.sourceMonthKey,
             expectedTotalMinor: decision.batch.expectedTotalMinor,
             grossTotalMinor: decision.batch.grossTotalMinor,
             feeTotalMinor: decision.batch.feeTotalMinor,
@@ -180,6 +183,8 @@ export function inspectPayoutBatchBankDecisions(
             bankCandidateCountAfterAmountCurrency: amountCurrencyCandidates.length,
             bankCandidateCountAfterDateWindow: dateWindowCandidates.length,
             bankCandidateCountAfterEvidenceFiltering: evidenceFilteredCandidates.length,
+            carryoverCandidateExistsInMatcher: carryoverDebug.carryoverCandidateExistsInMatcher,
+            carryoverRejectedReason: carryoverDebug.carryoverRejectedReason,
             matched: Boolean(decision.winner),
             matchedBankTransactionId: decision.winner?.bankTransactionId,
             noMatchReason: decision.winner
@@ -235,8 +240,17 @@ function buildCandidateDiagnostic(
         clueLabels: clueMatch.labels,
         strictDateEligible
     })
+    const comgatePreviousMonthCarryoverRuleApplied = shouldApplyComgatePreviousMonthCarryoverRule({
+        batch,
+        transaction,
+        amountExact,
+        currencyExact,
+        routingAllowed,
+        clueLabels: clueMatch.labels,
+        strictDateEligible
+    })
 
-    if (!strictDateEligible && !comgateSameMonthLagRuleApplied) {
+    if (!strictDateEligible && !comgateSameMonthLagRuleApplied && !comgatePreviousMonthCarryoverRuleApplied) {
         rejectionReasons.push('dateToleranceMiss')
     }
 
@@ -256,7 +270,89 @@ function buildCandidateDiagnostic(
         rejectionReasons,
         dateDistanceDays,
         strictDateEligible,
-        comgateSameMonthLagRuleApplied
+        comgateSameMonthLagRuleApplied,
+        comgatePreviousMonthCarryoverRuleApplied
+    }
+}
+
+function resolveCarryoverDecisionDebug(
+    batch: PayoutBatchExpectation,
+    diagnostics: PayoutBatchCandidateDiagnostic[]
+): Pick<PayoutBatchBankDecisionTrace, 'carryoverCandidateExistsInMatcher' | 'carryoverRejectedReason'> {
+    if (!batch.fromPreviousMonth || batch.platform !== 'comgate') {
+        return {
+            carryoverCandidateExistsInMatcher: false,
+            carryoverRejectedReason: undefined
+        }
+    }
+
+    if (diagnostics.length === 0) {
+        return {
+            carryoverCandidateExistsInMatcher: false,
+            carryoverRejectedReason: 'noInboundBankCandidate'
+        }
+    }
+
+    const exactAmountCandidates = diagnostics.filter((candidate) => !candidate.rejectionReasons.includes('noExactAmount'))
+    if (exactAmountCandidates.length === 0) {
+        return {
+            carryoverCandidateExistsInMatcher: false,
+            carryoverRejectedReason: 'noExactAmount'
+        }
+    }
+
+    const exactAmountCurrencyCandidates = exactAmountCandidates.filter((candidate) => !candidate.rejectionReasons.includes('currencyMismatch'))
+    if (exactAmountCurrencyCandidates.length === 0) {
+        return {
+            carryoverCandidateExistsInMatcher: false,
+            carryoverRejectedReason: 'currencyMismatch'
+        }
+    }
+
+    const exactAmountCurrencyRoutingCandidates = exactAmountCurrencyCandidates.filter((candidate) => !candidate.rejectionReasons.includes('wrongBankRouting'))
+    if (exactAmountCurrencyRoutingCandidates.length === 0) {
+        return {
+            carryoverCandidateExistsInMatcher: false,
+            carryoverRejectedReason: 'wrongBankRouting'
+        }
+    }
+
+    const clueAlignedCandidates = exactAmountCurrencyRoutingCandidates.filter((candidate) => candidate.clueLabels.includes('Comgate'))
+    if (clueAlignedCandidates.length === 0) {
+        return {
+            carryoverCandidateExistsInMatcher: true,
+            carryoverRejectedReason: 'counterpartyClueMismatch'
+        }
+    }
+
+    const sourceMonthKey = String(batch.sourceMonthKey ?? '')
+    if (!sourceMonthKey || sourceMonthKey !== normalizeIsoCalendarDate(batch.payoutDate)?.slice(0, 7)) {
+        return {
+            carryoverCandidateExistsInMatcher: true,
+            carryoverRejectedReason: 'sourceMonthKeyMismatch'
+        }
+    }
+
+    const immediateNextMonthCandidates = clueAlignedCandidates.filter((candidate) =>
+        isImmediateNextCalendarMonth(batch.payoutDate, candidate.bookedAt)
+    )
+    if (immediateNextMonthCandidates.length === 0) {
+        return {
+            carryoverCandidateExistsInMatcher: true,
+            carryoverRejectedReason: 'notImmediateNextCalendarMonth'
+        }
+    }
+
+    if (!immediateNextMonthCandidates.some((candidate) => candidate.comgatePreviousMonthCarryoverRuleApplied || candidate.strictDateEligible)) {
+        return {
+            carryoverCandidateExistsInMatcher: true,
+            carryoverRejectedReason: 'noEligibleCarryoverCandidate'
+        }
+    }
+
+    return {
+        carryoverCandidateExistsInMatcher: true,
+        carryoverRejectedReason: undefined
     }
 }
 
@@ -542,6 +638,64 @@ function shouldApplyComgateSameMonthLagRule(input: {
     return Number.isFinite(signedDayDelta)
         && signedDayDelta >= 0
         && signedDayDelta <= COMGATE_SAME_MONTH_POST_PAYOUT_MAX_DAY_LAG
+}
+
+function shouldApplyComgatePreviousMonthCarryoverRule(input: {
+    batch: PayoutBatchExpectation
+    transaction: NormalizedTransaction
+    amountExact: boolean
+    currencyExact: boolean
+    routingAllowed: boolean
+    clueLabels: string[]
+    strictDateEligible: boolean
+}): boolean {
+    const { batch, transaction, amountExact, currencyExact, routingAllowed, clueLabels, strictDateEligible } = input
+
+    if (
+        strictDateEligible
+        || batch.platform !== 'comgate'
+        || !batch.fromPreviousMonth
+        || !amountExact
+        || !currencyExact
+        || !routingAllowed
+        || !clueLabels.includes('Comgate')
+    ) {
+        return false
+    }
+
+    const sourceMonthKey = String(batch.sourceMonthKey ?? '')
+    if (!sourceMonthKey || sourceMonthKey !== normalizeIsoCalendarDate(batch.payoutDate)?.slice(0, 7)) {
+        return false
+    }
+
+    if (!isImmediateNextCalendarMonth(batch.payoutDate, transaction.bookedAt)) {
+        return false
+    }
+
+    const signedDayDelta = calculateSignedDayDelta(batch.payoutDate, transaction.bookedAt)
+    return Number.isFinite(signedDayDelta) && signedDayDelta >= 0
+}
+
+function isImmediateNextCalendarMonth(left?: string, right?: string): boolean {
+    const normalizedLeft = normalizeIsoCalendarDate(left)
+    const normalizedRight = normalizeIsoCalendarDate(right)
+
+    if (!normalizedLeft || !normalizedRight) {
+        return false
+    }
+
+    const [leftYear, leftMonth] = normalizedLeft.slice(0, 7).split('-').map((value) => Number(value))
+    const [rightYear, rightMonth] = normalizedRight.slice(0, 7).split('-').map((value) => Number(value))
+
+    if (!Number.isInteger(leftYear) || !Number.isInteger(leftMonth) || !Number.isInteger(rightYear) || !Number.isInteger(rightMonth)) {
+        return false
+    }
+
+    if (leftMonth === 12) {
+        return rightYear === leftYear + 1 && rightMonth === 1
+    }
+
+    return rightYear === leftYear && rightMonth === leftMonth + 1
 }
 
 function normalizeComparable(value?: string): string {

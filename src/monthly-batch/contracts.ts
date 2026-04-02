@@ -5,7 +5,11 @@ import type {
   DeterministicDocumentExtractionSummary
 } from '../extraction'
 import type { DocumentSettlementDirection } from '../domain'
-import type { ReconciliationContext, ReconciliationResult } from '../reconciliation'
+import type {
+  PreviousMonthCarryoverSource,
+  ReconciliationContext,
+  ReconciliationResult
+} from '../reconciliation'
 import type { ReconciliationReport } from '../reporting'
 
 export type UploadedMonthlyFileClassificationBasis =
@@ -172,7 +176,10 @@ export interface MonthlyBatchInput {
   files: ImportedMonthlySourceFile[]
   reconciliationContext: ReconciliationContext
   reportGeneratedAt: string
+  previousMonthCarryoverSource?: PreviousMonthCarryoverSource
 }
+
+export type { PreviousMonthCarryoverSource }
 
 export interface MonthlyBatchFileResult {
   sourceDocumentId: SourceDocument['id']

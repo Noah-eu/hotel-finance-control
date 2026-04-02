@@ -51,7 +51,8 @@ export class DefaultReconciliationService implements ReconciliationService {
     const workflowPlan = buildReconciliationWorkflowPlan({
       extractedRecords: input.extractedRecords,
       normalizedTransactions: normalization.transactions,
-      requestedAt: context.requestedAt
+      requestedAt: context.requestedAt,
+      previousMonthCarryoverSource: input.previousMonthCarryoverSource
     })
     const payoutBatchMatches = matchPayoutBatchesToBank({
       payoutBatches: workflowPlan.payoutBatches,

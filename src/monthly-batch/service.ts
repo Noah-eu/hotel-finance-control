@@ -89,6 +89,7 @@ export function ingestUploadedMonthlyFiles(input: {
   files: UploadedMonthlyFile[]
   reconciliationContext: MonthlyBatchInput['reconciliationContext']
   reportGeneratedAt: MonthlyBatchInput['reportGeneratedAt']
+  previousMonthCarryoverSource?: MonthlyBatchInput['previousMonthCarryoverSource']
 }): UploadedMonthlyIngestionResult {
   const prepared = prepareUploadedMonthlyBatchFiles(input.files)
   const fileRoutes = prepared.fileRoutes.map((file) => ({
@@ -139,7 +140,8 @@ export function ingestUploadedMonthlyFiles(input: {
   const parsedImportedFiles = parsedFiles.map((file) => file.importedFile)
   const batch = buildMonthlyBatchResultFromParsedFiles(parsedFiles, {
     reconciliationContext: input.reconciliationContext,
-    reportGeneratedAt: input.reportGeneratedAt
+    reportGeneratedAt: input.reportGeneratedAt,
+    previousMonthCarryoverSource: input.previousMonthCarryoverSource
   })
 
   return {
@@ -153,6 +155,7 @@ export async function ingestUploadedMonthlyFilesProgressively(input: {
   files: UploadedMonthlyFile[]
   reconciliationContext: MonthlyBatchInput['reconciliationContext']
   reportGeneratedAt: MonthlyBatchInput['reportGeneratedAt']
+  previousMonthCarryoverSource?: MonthlyBatchInput['previousMonthCarryoverSource']
 }, options: {
   onProgress?: (progress: UploadedMonthlyIngestionProgress) => void
   yieldEvery?: number
@@ -254,7 +257,8 @@ export async function ingestUploadedMonthlyFilesProgressively(input: {
   const parsedImportedFiles = parsedFiles.map((file) => file.importedFile)
   const batch = buildMonthlyBatchResultFromParsedFiles(parsedFiles, {
     reconciliationContext: input.reconciliationContext,
-    reportGeneratedAt: input.reportGeneratedAt
+    reportGeneratedAt: input.reportGeneratedAt,
+    previousMonthCarryoverSource: input.previousMonthCarryoverSource
   })
 
   return {
@@ -523,13 +527,17 @@ function buildMonthlyBatchResultFromParsedFiles(
   input: {
     reconciliationContext: MonthlyBatchInput['reconciliationContext']
     reportGeneratedAt: MonthlyBatchInput['reportGeneratedAt']
+    previousMonthCarryoverSource?: MonthlyBatchInput['previousMonthCarryoverSource']
   }
 ): MonthlyBatchResult {
   const extractedRecords = applyPayoutSupplements(
     parsedFiles.flatMap((file) => file.extractedRecords)
   )
   const reconciliation = reconcileExtractedRecords(
-    { extractedRecords },
+    {
+      extractedRecords,
+      previousMonthCarryoverSource: input.previousMonthCarryoverSource
+    },
     input.reconciliationContext
   )
   const report = buildReconciliationReport({

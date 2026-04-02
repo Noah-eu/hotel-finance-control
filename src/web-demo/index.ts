@@ -13,6 +13,7 @@ import {
 import { getRealInputFixture } from '../real-input-fixtures'
 import { applyNodeRuntimeBuildInfoEnv, resolveNodeRuntimeBuildInfo } from '../shared/build-provenance.node'
 import { formatAmountMinorCs } from '../shared/money'
+import { resolvePreviousMonthKey as resolvePreviousMonthKeyForBrowserFlow } from './month-key'
 
 export interface BuildWebDemoOptions {
   generatedAt?: string
@@ -133,6 +134,7 @@ function renderOperatorWebDemoHtml(input: {
   debugMode?: boolean
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
+  const resolvePreviousMonthKeyFunctionSource = resolvePreviousMonthKeyForBrowserFlow.toString()
   const runtimeBuildInfo = {
     ...input.runtimeBuildInfo,
     runtimeModuleVersion: input.runtimeBuildInfo.runtimeModuleVersion || buildFingerprintVersion,
@@ -182,6 +184,22 @@ function renderOperatorWebDemoHtml(input: {
         other: 0
       },
       inboundBankTransactions: []
+    },
+    carryoverSourceSnapshot: {
+      sourceMonthKey: '',
+      payoutBatches: []
+    },
+    carryoverDebug: {
+      sourceMonthKey: '',
+      currentMonthKey: '',
+      loadedPayoutBatchCount: 0,
+      loadedPayoutBatchKeysSample: [],
+      matchingInputPayoutBatchCount: 0,
+      matchingInputPayoutBatchKeysSample: [],
+      matcherCarryoverCandidateExists: false,
+      matcherCarryoverRejectedReason: '',
+      matchedCount: 0,
+      unmatchedCount: 0
     },
     preparedFiles: [],
     fileRoutes: [],
@@ -1561,6 +1579,27 @@ ${showRuntimePayoutDiagnostics ? `
           storageKeyUsed: String(input && input.storageKeyUsed || monthlyWorkspaceStorageKey),
           saveCompletedBeforeRerunInputAssembly: String(input && input.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
           lastSaveStatus: String(input && input.lastSaveStatus || 'not-applicable'),
+          carryoverPreviousMonthKeyResolved: String(input && input.carryoverPreviousMonthKeyResolved || ''),
+          carryoverPreviousMonthWorkspaceFound: String(input && input.carryoverPreviousMonthWorkspaceFound || 'ne'),
+          carryoverPreviousMonthUnmatchedPayoutBatchCount: Number(input && input.carryoverPreviousMonthUnmatchedPayoutBatchCount || 0),
+          carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: Array.isArray(input && input.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample)
+            ? input.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.slice(0, 5).map((item) => String(item || ''))
+            : [],
+          carryoverSourceMonth: String(input && input.carryoverSourceMonth || ''),
+          carryoverCurrentMonth: String(input && input.carryoverCurrentMonth || ''),
+          carryoverLoadedPayoutBatchCount: Number(input && input.carryoverLoadedPayoutBatchCount || 0),
+          carryoverLoadedPayoutBatchIdsSample: Array.isArray(input && input.carryoverLoadedPayoutBatchIdsSample)
+            ? input.carryoverLoadedPayoutBatchIdsSample.slice(0, 5).map((item) => String(item || ''))
+            : [],
+          carryoverMatchingInputPayoutBatchCount: Number(input && input.carryoverMatchingInputPayoutBatchCount || 0),
+          carryoverMatchingInputPayoutBatchIdsSample: Array.isArray(input && input.carryoverMatchingInputPayoutBatchIdsSample)
+            ? input.carryoverMatchingInputPayoutBatchIdsSample.slice(0, 5).map((item) => String(item || ''))
+            : [],
+          carryoverMatcherCandidateExisted: String(input && input.carryoverMatcherCandidateExisted || 'ne'),
+          carryoverMatcherRejectedReason: String(input && input.carryoverMatcherRejectedReason || ''),
+          carryoverSourceClearMarker: String(input && input.carryoverSourceClearMarker || ''),
+          carryoverMatchedCount: Number(input && input.carryoverMatchedCount || 0),
+          carryoverUnmatchedCount: Number(input && input.carryoverUnmatchedCount || 0),
           mergedFileSample: Array.isArray(input && input.mergedFileSample)
             ? input.mergedFileSample.slice(0, 5).map((item) => String(item || ''))
             : [],
@@ -1574,6 +1613,21 @@ ${showRuntimePayoutDiagnostics ? `
               workspacePersistenceBackend: String(entry && entry.workspacePersistenceBackend || 'none'),
               storageKeyUsed: String(entry && entry.storageKeyUsed || monthlyWorkspaceStorageKey),
               saveCompletedBeforeRerunInputAssembly: String(entry && entry.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
+              carryoverPreviousMonthKeyResolved: String(entry && entry.carryoverPreviousMonthKeyResolved || ''),
+              carryoverPreviousMonthWorkspaceFound: String(entry && entry.carryoverPreviousMonthWorkspaceFound || 'ne'),
+              carryoverPreviousMonthUnmatchedPayoutBatchCount: Number(entry && entry.carryoverPreviousMonthUnmatchedPayoutBatchCount || 0),
+              carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: Array.isArray(entry && entry.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample) ? entry.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.slice(0, 5).map((item) => String(item || '')) : [],
+              carryoverSourceMonth: String(entry && entry.carryoverSourceMonth || ''),
+              carryoverCurrentMonth: String(entry && entry.carryoverCurrentMonth || ''),
+              carryoverLoadedPayoutBatchCount: Number(entry && entry.carryoverLoadedPayoutBatchCount || 0),
+              carryoverLoadedPayoutBatchIdsSample: Array.isArray(entry && entry.carryoverLoadedPayoutBatchIdsSample) ? entry.carryoverLoadedPayoutBatchIdsSample.slice(0, 5).map((item) => String(item || '')) : [],
+              carryoverMatchingInputPayoutBatchCount: Number(entry && entry.carryoverMatchingInputPayoutBatchCount || 0),
+              carryoverMatchingInputPayoutBatchIdsSample: Array.isArray(entry && entry.carryoverMatchingInputPayoutBatchIdsSample) ? entry.carryoverMatchingInputPayoutBatchIdsSample.slice(0, 5).map((item) => String(item || '')) : [],
+              carryoverMatcherCandidateExisted: String(entry && entry.carryoverMatcherCandidateExisted || 'ne'),
+              carryoverMatcherRejectedReason: String(entry && entry.carryoverMatcherRejectedReason || ''),
+              carryoverSourceClearMarker: String(entry && entry.carryoverSourceClearMarker || ''),
+              carryoverMatchedCount: Number(entry && entry.carryoverMatchedCount || 0),
+              carryoverUnmatchedCount: Number(entry && entry.carryoverUnmatchedCount || 0),
               selectedFileNames: Array.isArray(entry && entry.selectedFileNames) ? entry.selectedFileNames.slice(0, 20).map((item) => String(item || '')) : [],
               selectedBatchFileCount: Number(entry && entry.selectedBatchFileCount || 0),
               persistedWorkspaceFileNamesBeforeRerun: Array.isArray(entry && entry.persistedWorkspaceFileNamesBeforeRerun) ? entry.persistedWorkspaceFileNamesBeforeRerun.slice(0, 20).map((item) => String(item || '')) : [],
@@ -1627,6 +1681,129 @@ ${showRuntimePayoutDiagnostics ? `
         return 'selectedFiles only';
       }
 
+      ${resolvePreviousMonthKeyFunctionSource}
+
+      function buildPreviousMonthCarryoverSourceFromWorkspace(workspace, currentMonthKey) {
+        const previousMonthKey = resolvePreviousMonthKey(currentMonthKey);
+        const runtimeState = workspace && workspace.runtimeState;
+        const sourceSnapshot = runtimeState && runtimeState.carryoverSourceSnapshot;
+
+        if (!previousMonthKey || !sourceSnapshot) {
+          const reconciliationSnapshot = runtimeState && runtimeState.reconciliationSnapshot;
+          const fallbackPayoutBatches = Array.isArray(reconciliationSnapshot && reconciliationSnapshot.payoutBatchDecisions)
+            ? reconciliationSnapshot.payoutBatchDecisions
+              .filter((decision) => decision && decision.platform === 'comgate' && !decision.matched)
+              .map((decision) => ({
+                payoutBatchKey: String(decision.payoutBatchKey || ''),
+                platform: 'comgate',
+                payoutReference: String(decision.payoutReference || ''),
+                payoutDate: String(decision.payoutDate || ''),
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: [],
+                expectedTotalMinor: Number(decision.expectedBankAmountMinor || decision.expectedTotalMinor || 0),
+                grossTotalMinor: typeof decision.grossTotalMinor === 'number' ? decision.grossTotalMinor : undefined,
+                feeTotalMinor: typeof decision.feeTotalMinor === 'number' ? decision.feeTotalMinor : undefined,
+                netSettlementTotalMinor: typeof decision.netSettlementTotalMinor === 'number' ? decision.netSettlementTotalMinor : undefined,
+                currency: String(decision.expectedBankCurrency || decision.currency || 'CZK')
+              }))
+              .filter((batch) => batch.payoutBatchKey && batch.payoutReference && batch.payoutDate)
+            : [];
+
+          return fallbackPayoutBatches.length > 0
+            ? {
+              sourceMonthKey: previousMonthKey,
+              payoutBatches: fallbackPayoutBatches
+            }
+            : undefined;
+        }
+
+        const payoutBatches = Array.isArray(sourceSnapshot.payoutBatches)
+          ? sourceSnapshot.payoutBatches
+            .filter((batch) => batch && batch.platform === 'comgate' && batch.bankRoutingTarget === 'rb_bank_inflow')
+            .map((batch) => ({
+              payoutBatchKey: String(batch.payoutBatchKey || ''),
+              platform: 'comgate',
+              payoutReference: String(batch.payoutReference || ''),
+              payoutDate: String(batch.payoutDate || ''),
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: Array.isArray(batch.rowIds) ? batch.rowIds.map((item) => String(item || '')) : [],
+              expectedTotalMinor: Number(batch.expectedTotalMinor || 0),
+              grossTotalMinor: typeof batch.grossTotalMinor === 'number' ? batch.grossTotalMinor : undefined,
+              feeTotalMinor: typeof batch.feeTotalMinor === 'number' ? batch.feeTotalMinor : undefined,
+              netSettlementTotalMinor: typeof batch.netSettlementTotalMinor === 'number' ? batch.netSettlementTotalMinor : undefined,
+              currency: String(batch.currency || 'CZK'),
+              payoutSupplementPaymentId: typeof batch.payoutSupplementPaymentId === 'string' ? batch.payoutSupplementPaymentId : undefined,
+              payoutSupplementPayoutDate: typeof batch.payoutSupplementPayoutDate === 'string' ? batch.payoutSupplementPayoutDate : undefined,
+              payoutSupplementPayoutTotalAmountMinor: typeof batch.payoutSupplementPayoutTotalAmountMinor === 'number' ? batch.payoutSupplementPayoutTotalAmountMinor : undefined,
+              payoutSupplementPayoutTotalCurrency: typeof batch.payoutSupplementPayoutTotalCurrency === 'string' ? batch.payoutSupplementPayoutTotalCurrency : undefined,
+              payoutSupplementLocalAmountMinor: typeof batch.payoutSupplementLocalAmountMinor === 'number' ? batch.payoutSupplementLocalAmountMinor : undefined,
+              payoutSupplementLocalCurrency: typeof batch.payoutSupplementLocalCurrency === 'string' ? batch.payoutSupplementLocalCurrency : undefined,
+              payoutSupplementIbanSuffix: typeof batch.payoutSupplementIbanSuffix === 'string' ? batch.payoutSupplementIbanSuffix : undefined,
+              payoutSupplementExchangeRate: typeof batch.payoutSupplementExchangeRate === 'string' ? batch.payoutSupplementExchangeRate : undefined,
+              payoutSupplementReferenceHints: Array.isArray(batch.payoutSupplementReferenceHints) ? batch.payoutSupplementReferenceHints.map((item) => String(item || '')) : undefined,
+              payoutSupplementSourceDocumentIds: Array.isArray(batch.payoutSupplementSourceDocumentIds) ? batch.payoutSupplementSourceDocumentIds.map((item) => String(item || '')) : undefined,
+              payoutSupplementReservationIds: Array.isArray(batch.payoutSupplementReservationIds) ? batch.payoutSupplementReservationIds.map((item) => String(item || '')) : undefined
+            }))
+            .filter((batch) => batch.payoutBatchKey && batch.payoutReference && batch.payoutDate)
+          : [];
+
+        if (payoutBatches.length === 0) {
+          const reconciliationSnapshot = runtimeState && runtimeState.reconciliationSnapshot;
+          const fallbackPayoutBatches = Array.isArray(reconciliationSnapshot && reconciliationSnapshot.payoutBatchDecisions)
+            ? reconciliationSnapshot.payoutBatchDecisions
+              .filter((decision) => decision && decision.platform === 'comgate' && !decision.matched)
+              .map((decision) => ({
+                payoutBatchKey: String(decision.payoutBatchKey || ''),
+                platform: 'comgate',
+                payoutReference: String(decision.payoutReference || ''),
+                payoutDate: String(decision.payoutDate || ''),
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: [],
+                expectedTotalMinor: Number(decision.expectedBankAmountMinor || decision.expectedTotalMinor || 0),
+                grossTotalMinor: typeof decision.grossTotalMinor === 'number' ? decision.grossTotalMinor : undefined,
+                feeTotalMinor: typeof decision.feeTotalMinor === 'number' ? decision.feeTotalMinor : undefined,
+                netSettlementTotalMinor: typeof decision.netSettlementTotalMinor === 'number' ? decision.netSettlementTotalMinor : undefined,
+                currency: String(decision.expectedBankCurrency || decision.currency || 'CZK')
+              }))
+              .filter((batch) => batch.payoutBatchKey && batch.payoutReference && batch.payoutDate)
+            : [];
+
+          return fallbackPayoutBatches.length > 0
+            ? {
+              sourceMonthKey: String(sourceSnapshot.sourceMonthKey || previousMonthKey),
+              payoutBatches: fallbackPayoutBatches
+            }
+            : undefined;
+        }
+
+        return payoutBatches.length > 0
+          ? {
+            sourceMonthKey: String(sourceSnapshot.sourceMonthKey || previousMonthKey),
+            payoutBatches
+          }
+          : undefined;
+      }
+
+      function inspectPreviousMonthCarryoverWorkspace(workspace, currentMonthKey) {
+        const previousMonthKey = resolvePreviousMonthKey(currentMonthKey);
+        const runtimeState = workspace && workspace.runtimeState;
+        const source = buildPreviousMonthCarryoverSourceFromWorkspace(workspace, currentMonthKey);
+        const unmatchedPayoutBatches = source && Array.isArray(source.payoutBatches)
+          ? source.payoutBatches.slice()
+          : [];
+
+        return {
+          previousMonthKey,
+          previousMonthWorkspaceFound: workspace && runtimeState ? 'ano' : 'ne',
+          previousMonthUnmatchedPayoutBatchCount: unmatchedPayoutBatches.length,
+          previousMonthUnmatchedPayoutBatchIdsSample: unmatchedPayoutBatches.map((item) => item.payoutBatchKey).slice(0, 5),
+          source,
+          clearMarker: !workspace && previousMonthKey && previousMonthKey === currentClearedWorkspaceMonth
+            ? 'explicit-clear:' + previousMonthKey
+            : ''
+        };
+      }
+
       function buildVisibleTraceFileNamesFromState(state) {
         const fileRoutes = Array.isArray(state && state.fileRoutes) ? state.fileRoutes : [];
 
@@ -1652,6 +1829,21 @@ ${showRuntimePayoutDiagnostics ? `
           workspacePersistenceBackend: nextState.workspacePersistenceBackend,
           storageKeyUsed: nextState.storageKeyUsed,
           saveCompletedBeforeRerunInputAssembly: nextState.saveCompletedBeforeRerunInputAssembly,
+          carryoverPreviousMonthKeyResolved: nextState.carryoverPreviousMonthKeyResolved,
+          carryoverPreviousMonthWorkspaceFound: nextState.carryoverPreviousMonthWorkspaceFound,
+          carryoverPreviousMonthUnmatchedPayoutBatchCount: nextState.carryoverPreviousMonthUnmatchedPayoutBatchCount,
+          carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: nextState.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.slice(),
+          carryoverSourceMonth: nextState.carryoverSourceMonth,
+          carryoverCurrentMonth: nextState.carryoverCurrentMonth,
+          carryoverLoadedPayoutBatchCount: nextState.carryoverLoadedPayoutBatchCount,
+          carryoverLoadedPayoutBatchIdsSample: nextState.carryoverLoadedPayoutBatchIdsSample.slice(),
+          carryoverMatchingInputPayoutBatchCount: nextState.carryoverMatchingInputPayoutBatchCount,
+          carryoverMatchingInputPayoutBatchIdsSample: nextState.carryoverMatchingInputPayoutBatchIdsSample.slice(),
+          carryoverMatcherCandidateExisted: nextState.carryoverMatcherCandidateExisted,
+          carryoverMatcherRejectedReason: nextState.carryoverMatcherRejectedReason,
+          carryoverSourceClearMarker: nextState.carryoverSourceClearMarker,
+          carryoverMatchedCount: nextState.carryoverMatchedCount,
+          carryoverUnmatchedCount: nextState.carryoverUnmatchedCount,
           selectedFileNames: nextState.selectedFileNames.slice(),
           selectedBatchFileCount: nextState.selectedBatchFileCount,
           persistedWorkspaceFileNamesBeforeRerun: nextState.persistedWorkspaceFileNamesBeforeRerun.slice(),
@@ -2500,7 +2692,7 @@ ${showRuntimePayoutDiagnostics ? `
         return currentWorkspacePersistencePromise;
       }
 
-      async function loadMonthWorkspace(month) {
+      async function loadMonthWorkspace(month, options) {
         const normalizedMonth = String(month || '');
         const store = loadMonthlyWorkspaceStore();
         const backend = await openMonthlyWorkspaceIndexedDb();
@@ -2573,7 +2765,9 @@ ${showRuntimePayoutDiagnostics ? `
           errorMessage: migratedFromLegacy ? 'migrated-from-legacy-localstorage' : ''
         });
 
-        currentWorkspacePersistenceState = loadState;
+        if (!(options && options.silent)) {
+          currentWorkspacePersistenceState = loadState;
+        }
         return { workspace, loadState };
       }
 
@@ -2728,6 +2922,27 @@ ${showRuntimePayoutDiagnostics ? `
           storageKeyUsed: loadState.storageKeyUsed,
           saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
           lastSaveStatus: loadState.status,
+          carryoverPreviousMonthKeyResolved: String(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.sourceMonthKey || resolvePreviousMonthKey(normalizedMonth)),
+          carryoverPreviousMonthWorkspaceFound: String(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.sourceMonthKey ? 'ano' : 'ne'),
+          carryoverPreviousMonthUnmatchedPayoutBatchCount: Number(workspace.runtimeState && workspace.runtimeState.carryoverSourceSnapshot && workspace.runtimeState.carryoverSourceSnapshot.payoutBatches && workspace.runtimeState.carryoverSourceSnapshot.payoutBatches.length || 0),
+          carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: Array.isArray(workspace.runtimeState && workspace.runtimeState.carryoverSourceSnapshot && workspace.runtimeState.carryoverSourceSnapshot.payoutBatches)
+            ? workspace.runtimeState.carryoverSourceSnapshot.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5)
+            : [],
+          carryoverSourceMonth: String(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.sourceMonthKey || ''),
+          carryoverCurrentMonth: String(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.currentMonthKey || normalizedMonth),
+          carryoverLoadedPayoutBatchCount: Number(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.loadedPayoutBatchCount || 0),
+          carryoverLoadedPayoutBatchIdsSample: Array.isArray(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.loadedPayoutBatchKeysSample)
+            ? workspace.runtimeState.carryoverDebug.loadedPayoutBatchKeysSample.slice(0, 5)
+            : [],
+          carryoverMatchingInputPayoutBatchCount: Number(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.matchingInputPayoutBatchCount || 0),
+          carryoverMatchingInputPayoutBatchIdsSample: Array.isArray(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.matchingInputPayoutBatchKeysSample)
+            ? workspace.runtimeState.carryoverDebug.matchingInputPayoutBatchKeysSample.slice(0, 5)
+            : [],
+          carryoverMatcherCandidateExisted: workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.matcherCarryoverCandidateExists ? 'ano' : 'ne',
+          carryoverMatcherRejectedReason: String(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.matcherCarryoverRejectedReason || ''),
+          carryoverSourceClearMarker: '',
+          carryoverMatchedCount: Number(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.matchedCount || 0),
+          carryoverUnmatchedCount: Number(workspace.runtimeState && workspace.runtimeState.carryoverDebug && workspace.runtimeState.carryoverDebug.unmatchedCount || 0),
           mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
         });
         const visibleState = buildCompletedVisibleRuntimeState(workspace.runtimeState);
@@ -2750,6 +2965,27 @@ ${showRuntimePayoutDiagnostics ? `
           visibleTraceFileNamesAfterRender: buildVisibleTraceFileNamesFromState(visibleState),
           visibleTraceFileCount: buildVisibleTraceFileCountFromState(visibleState),
           renderSource: 'persistedWorkspace',
+          carryoverPreviousMonthKeyResolved: String(visibleState.carryoverDebug && visibleState.carryoverDebug.sourceMonthKey || resolvePreviousMonthKey(normalizedMonth)),
+          carryoverPreviousMonthWorkspaceFound: String(visibleState.carryoverDebug && visibleState.carryoverDebug.sourceMonthKey ? 'ano' : 'ne'),
+          carryoverPreviousMonthUnmatchedPayoutBatchCount: Number(workspace.runtimeState && workspace.runtimeState.carryoverSourceSnapshot && workspace.runtimeState.carryoverSourceSnapshot.payoutBatches && workspace.runtimeState.carryoverSourceSnapshot.payoutBatches.length || 0),
+          carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: Array.isArray(workspace.runtimeState && workspace.runtimeState.carryoverSourceSnapshot && workspace.runtimeState.carryoverSourceSnapshot.payoutBatches)
+            ? workspace.runtimeState.carryoverSourceSnapshot.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5)
+            : [],
+          carryoverSourceMonth: String(visibleState.carryoverDebug && visibleState.carryoverDebug.sourceMonthKey || ''),
+          carryoverCurrentMonth: String(visibleState.carryoverDebug && visibleState.carryoverDebug.currentMonthKey || normalizedMonth),
+          carryoverLoadedPayoutBatchCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.loadedPayoutBatchCount || 0),
+          carryoverLoadedPayoutBatchIdsSample: Array.isArray(visibleState.carryoverDebug && visibleState.carryoverDebug.loadedPayoutBatchKeysSample)
+            ? visibleState.carryoverDebug.loadedPayoutBatchKeysSample.slice(0, 5)
+            : [],
+          carryoverMatchingInputPayoutBatchCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.matchingInputPayoutBatchCount || 0),
+          carryoverMatchingInputPayoutBatchIdsSample: Array.isArray(visibleState.carryoverDebug && visibleState.carryoverDebug.matchingInputPayoutBatchKeysSample)
+            ? visibleState.carryoverDebug.matchingInputPayoutBatchKeysSample.slice(0, 5)
+            : [],
+          carryoverMatcherCandidateExisted: visibleState.carryoverDebug && visibleState.carryoverDebug.matcherCarryoverCandidateExists ? 'ano' : 'ne',
+          carryoverMatcherRejectedReason: String(visibleState.carryoverDebug && visibleState.carryoverDebug.matcherCarryoverRejectedReason || ''),
+          carryoverSourceClearMarker: '',
+          carryoverMatchedCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.matchedCount || 0),
+          carryoverUnmatchedCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.unmatchedCount || 0),
           mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
         });
         runtimeOutput.innerHTML = [
@@ -3885,6 +4121,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const mergedFileSampleMarkup = state.mergedFileSample.length === 0
           ? 'žádné'
           : state.mergedFileSample.map((item) => escapeHtml(item)).join(', ');
+        const carryoverLoadedPayoutBatchIdsSampleMarkup = state.carryoverLoadedPayoutBatchIdsSample.length === 0
+          ? 'žádné'
+          : state.carryoverLoadedPayoutBatchIdsSample.map((item) => escapeHtml(item)).join(', ');
         const selectedFileNamesMarkup = state.selectedFileNames.length === 0
           ? 'žádné'
           : state.selectedFileNames.map((item) => escapeHtml(item)).join(', ');
@@ -3920,6 +4159,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
               ' · <strong>restore token:</strong> ' + escapeHtml(String(checkpoint.restoreToken || 0)),
               ' · <strong>restore source:</strong> ' + escapeHtml(checkpoint.restoreSource || 'not-applicable'),
               '<br /><strong>Month key:</strong> ' + escapeHtml(checkpoint.currentMonthKey || 'neuvedeno'),
+              '<br /><strong>Previous month key resolved for carryover:</strong> ' + escapeHtml(checkpoint.carryoverPreviousMonthKeyResolved || 'žádný'),
+              '<br /><strong>Previous month workspace found:</strong> ' + escapeHtml(checkpoint.carryoverPreviousMonthWorkspaceFound || 'ne'),
+              '<br /><strong>Previous month unmatched Comgate payout batch count:</strong> ' + escapeHtml(String(checkpoint.carryoverPreviousMonthUnmatchedPayoutBatchCount || 0)),
+              '<br /><strong>Previous month unmatched Comgate payout batch IDs sample:</strong> ' + (checkpoint.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.length === 0 ? 'žádné' : checkpoint.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.map((item) => escapeHtml(item)).join(', ')),
               '<br /><strong>Storage backend:</strong> ' + escapeHtml(checkpoint.workspacePersistenceBackend || 'none'),
               '<br /><strong>Storage key:</strong> ' + escapeHtml(checkpoint.storageKeyUsed || monthlyWorkspaceStorageKey),
               '<br /><strong>Selection event token:</strong> ' + escapeHtml(String(checkpoint.fileSelectionEventToken || 0)),
@@ -3937,6 +4180,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
               '<br /><strong>Persisted files before rerun:</strong> ' + checkpointPersistedNames + ' (' + escapeHtml(String(checkpoint.persistedWorkspaceFileCountBeforeRerun)) + ')',
               '<br /><strong>Merged files used for rerun:</strong> ' + checkpointMergedNames + ' (' + escapeHtml(String(checkpoint.mergedFileCountUsedForRerun)) + ')',
               '<br /><strong>Visible trace after render:</strong> ' + checkpointVisibleNames + ' (' + escapeHtml(String(checkpoint.visibleTraceFileCount)) + ')',
+              '<br /><strong>Carryover loaded into current month runtime:</strong> ' + escapeHtml(String(checkpoint.carryoverLoadedPayoutBatchCount || 0)),
+              '<br /><strong>Carryover IDs loaded into runtime:</strong> ' + (checkpoint.carryoverLoadedPayoutBatchIdsSample.length === 0 ? 'žádné' : checkpoint.carryoverLoadedPayoutBatchIdsSample.map((item) => escapeHtml(item)).join(', ')),
+              '<br /><strong>Carryover handed into matching input:</strong> ' + escapeHtml(String(checkpoint.carryoverMatchingInputPayoutBatchCount || 0)),
+              '<br /><strong>Carryover IDs handed into matching:</strong> ' + (checkpoint.carryoverMatchingInputPayoutBatchIdsSample.length === 0 ? 'žádné' : checkpoint.carryoverMatchingInputPayoutBatchIdsSample.map((item) => escapeHtml(item)).join(', ')),
+              '<br /><strong>Carryover candidate existed in matcher:</strong> ' + escapeHtml(checkpoint.carryoverMatcherCandidateExisted || 'ne'),
+              '<br /><strong>Carryover rejected reason:</strong> ' + escapeHtml(checkpoint.carryoverMatcherRejectedReason || 'žádný'),
+              '<br /><strong>Carryover missing clear marker:</strong> ' + escapeHtml(checkpoint.carryoverSourceClearMarker || 'žádný'),
               '<br /><strong>Save-before-rerun:</strong> ' + escapeHtml(checkpoint.saveCompletedBeforeRerunInputAssembly || 'not-applicable'),
               '<br /><strong>Render source marker:</strong> ' + escapeHtml(buildWorkspaceRenderSourceMarker(checkpoint.renderSource)),
               '</li>'
@@ -3966,6 +4216,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Selected file names handed into run action:</strong> ' + selectedFileNamesHandedIntoRunMarkup + '</li>',
           '<li><strong>Selected file count handed into run action:</strong> ' + escapeHtml(String(state.selectedFileCountHandedIntoRunAction || 0)) + '</li>',
           '<li><strong>Current month key:</strong> ' + escapeHtml(state.currentMonthKey || 'neuvedeno') + '</li>',
+          '<li><strong>Previous month key resolved for carryover:</strong> ' + escapeHtml(state.carryoverPreviousMonthKeyResolved || 'žádný') + '</li>',
+          '<li><strong>Previous month workspace found:</strong> ' + escapeHtml(state.carryoverPreviousMonthWorkspaceFound || 'ne') + '</li>',
+          '<li><strong>Previous month unmatched Comgate payout batch count:</strong> ' + escapeHtml(String(state.carryoverPreviousMonthUnmatchedPayoutBatchCount || 0)) + '</li>',
+          '<li><strong>Previous month unmatched Comgate payout batch IDs sample:</strong> ' + (state.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.length === 0 ? 'žádné' : state.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample.map((item) => escapeHtml(item)).join(', ')) + '</li>',
           '<li><strong>Selected file names:</strong> ' + selectedFileNamesMarkup + '</li>',
           '<li><strong>Persisted workspace file count before rerun:</strong> ' + escapeHtml(String(state.persistedWorkspaceFileCountBeforeRerun)) + '</li>',
           '<li><strong>Persisted workspace file names before rerun:</strong> ' + persistedFileNamesMarkup + '</li>',
@@ -3980,6 +4234,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li><strong>Storage key used for month workspace load/save:</strong> ' + escapeHtml(state.storageKeyUsed || monthlyWorkspaceStorageKey) + '</li>',
           '<li><strong>Save happened before rerun input assembly:</strong> ' + escapeHtml(state.saveCompletedBeforeRerunInputAssembly || 'not-applicable') + '</li>',
           '<li><strong>Last save status:</strong> ' + escapeHtml(state.lastSaveStatus || 'not-applicable') + '</li>',
+          '<li><strong>Carryover source month:</strong> ' + escapeHtml(state.carryoverSourceMonth || 'žádný') + '</li>',
+          '<li><strong>Carryover current month:</strong> ' + escapeHtml(state.carryoverCurrentMonth || 'žádný') + '</li>',
+          '<li><strong>Loaded carryover payout batch count:</strong> ' + escapeHtml(String(state.carryoverLoadedPayoutBatchCount || 0)) + '</li>',
+          '<li><strong>Carryover batch IDs sample:</strong> ' + carryoverLoadedPayoutBatchIdsSampleMarkup + '</li>',
+          '<li><strong>Carryover batch count handed into matching input:</strong> ' + escapeHtml(String(state.carryoverMatchingInputPayoutBatchCount || 0)) + '</li>',
+          '<li><strong>Carryover batch IDs sample handed into matching:</strong> ' + (state.carryoverMatchingInputPayoutBatchIdsSample.length === 0 ? 'žádné' : state.carryoverMatchingInputPayoutBatchIdsSample.map((item) => escapeHtml(item)).join(', ')) + '</li>',
+          '<li><strong>Carryover candidate existed in matcher:</strong> ' + escapeHtml(state.carryoverMatcherCandidateExisted || 'ne') + '</li>',
+          '<li><strong>Carryover rejected reason:</strong> ' + escapeHtml(state.carryoverMatcherRejectedReason || 'žádný') + '</li>',
+          '<li><strong>Carryover missing clear marker:</strong> ' + escapeHtml(state.carryoverSourceClearMarker || 'žádný') + '</li>',
+          '<li><strong>Carryover matched count:</strong> ' + escapeHtml(String(state.carryoverMatchedCount || 0)) + '</li>',
+          '<li><strong>Carryover unmatched count:</strong> ' + escapeHtml(String(state.carryoverUnmatchedCount || 0)) + '</li>',
           '<li><strong>Merged file sample:</strong> ' + mergedFileSampleMarkup + '</li>',
           '<li><strong>Checkpoint log:</strong><ol>' + checkpointLogMarkup + '</ol></li>',
           '</ul>'
@@ -5627,6 +5892,23 @@ ${showRuntimePayoutDiagnostics ? '' : `
             unmatchedPayoutBatchCount: payoutProjection.unmatchedCount
           },
           reviewSections: state.reviewSections || {},
+          carryoverSourceSnapshot: state.carryoverSourceSnapshot || initialRuntimeState.carryoverSourceSnapshot,
+          carryoverDebug: {
+            sourceMonthKey: String(state.carryoverDebug?.sourceMonthKey || ''),
+            currentMonthKey: String(state.carryoverDebug?.currentMonthKey || state.monthLabel || ''),
+            loadedPayoutBatchCount: Number(state.carryoverDebug?.loadedPayoutBatchCount || 0),
+            loadedPayoutBatchKeysSample: Array.isArray(state.carryoverDebug?.loadedPayoutBatchKeysSample)
+              ? state.carryoverDebug.loadedPayoutBatchKeysSample.slice(0, 5)
+              : [],
+            matchingInputPayoutBatchCount: Number(state.carryoverDebug?.matchingInputPayoutBatchCount || 0),
+            matchingInputPayoutBatchKeysSample: Array.isArray(state.carryoverDebug?.matchingInputPayoutBatchKeysSample)
+              ? state.carryoverDebug.matchingInputPayoutBatchKeysSample.slice(0, 5)
+              : [],
+            matcherCarryoverCandidateExists: Boolean(state.carryoverDebug?.matcherCarryoverCandidateExists),
+            matcherCarryoverRejectedReason: String(state.carryoverDebug?.matcherCarryoverRejectedReason || ''),
+            matchedCount: Number(state.carryoverDebug?.matchedCount || 0),
+            unmatchedCount: Number(state.carryoverDebug?.unmatchedCount || 0)
+          },
           manualMatchGroups: [],
           finalPayoutProjection: payoutProjection,
           reportTransactions: (state.reportTransactions || []).map((transaction) => ({
@@ -5827,6 +6109,25 @@ ${showRuntimePayoutDiagnostics ? '' : `
           storageKeyUsed: currentWorkspacePersistenceState.storageKeyUsed,
           saveCompletedBeforeRerunInputAssembly: currentWorkspaceRenderDebug.saveCompletedBeforeRerunInputAssembly,
           lastSaveStatus: currentWorkspacePersistenceState.status || currentWorkspaceRenderDebug.lastSaveStatus,
+          carryoverPreviousMonthKeyResolved: currentWorkspaceRenderDebug.carryoverPreviousMonthKeyResolved,
+          carryoverPreviousMonthWorkspaceFound: currentWorkspaceRenderDebug.carryoverPreviousMonthWorkspaceFound,
+          carryoverPreviousMonthUnmatchedPayoutBatchCount: currentWorkspaceRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchCount,
+          carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: currentWorkspaceRenderDebug.carryoverPreviousMonthUnmatchedPayoutBatchIdsSample,
+          carryoverSourceMonth: visibleState.carryoverDebug && visibleState.carryoverDebug.sourceMonthKey,
+          carryoverCurrentMonth: visibleState.carryoverDebug && visibleState.carryoverDebug.currentMonthKey,
+          carryoverLoadedPayoutBatchCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.loadedPayoutBatchCount || 0),
+          carryoverLoadedPayoutBatchIdsSample: Array.isArray(visibleState.carryoverDebug && visibleState.carryoverDebug.loadedPayoutBatchKeysSample)
+            ? visibleState.carryoverDebug.loadedPayoutBatchKeysSample.slice(0, 5)
+            : [],
+          carryoverMatchingInputPayoutBatchCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.matchingInputPayoutBatchCount || 0),
+          carryoverMatchingInputPayoutBatchIdsSample: Array.isArray(visibleState.carryoverDebug && visibleState.carryoverDebug.matchingInputPayoutBatchKeysSample)
+            ? visibleState.carryoverDebug.matchingInputPayoutBatchKeysSample.slice(0, 5)
+            : [],
+          carryoverMatcherCandidateExisted: visibleState.carryoverDebug && visibleState.carryoverDebug.matcherCarryoverCandidateExists ? 'ano' : 'ne',
+          carryoverMatcherRejectedReason: String(visibleState.carryoverDebug && visibleState.carryoverDebug.matcherCarryoverRejectedReason || ''),
+          carryoverSourceClearMarker: currentWorkspaceRenderDebug.carryoverSourceClearMarker,
+          carryoverMatchedCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.matchedCount || 0),
+          carryoverUnmatchedCount: Number(visibleState.carryoverDebug && visibleState.carryoverDebug.unmatchedCount || 0),
           mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles),
           checkpointLog: currentWorkspaceRenderDebug.checkpointLog
         });
@@ -6125,6 +6426,27 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const loadState = loadedWorkspace && loadedWorkspace.loadState
           ? loadedWorkspace.loadState
           : persistenceStateBeforeRerun;
+        const previousMonthKey = resolvePreviousMonthKey(normalizedMonth);
+        const previousMonthLoadedWorkspace = previousMonthKey
+          ? await loadMonthWorkspace(previousMonthKey, { silent: true })
+          : undefined;
+        const restoredPreviousMonthWorkspace = previousMonthKey && currentWorkspaceMonth === previousMonthKey && currentExpenseReviewState
+          ? {
+            month: previousMonthKey,
+            files: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.slice() : [],
+            runtimeState: currentExpenseReviewState
+          }
+          : undefined;
+        const previousMonthDirectWorkspace = previousMonthLoadedWorkspace && previousMonthLoadedWorkspace.workspace
+          ? previousMonthLoadedWorkspace.workspace
+          : previousMonthKey
+            ? getLegacyMonthWorkspaceFromStore(loadMonthlyWorkspaceStore(), previousMonthKey)
+            : undefined;
+        const carryoverWorkspaceInspection = inspectPreviousMonthCarryoverWorkspace(
+          restoredPreviousMonthWorkspace || previousMonthDirectWorkspace,
+          normalizedMonth
+        );
+        const previousMonthCarryoverSource = carryoverWorkspaceInspection.source;
         const persistedWorkspaceFileNames = buildWorkspaceDebugNamesFromWorkspaceRecords(existingWorkspace && existingWorkspace.files);
         runtimeOutput.innerHTML = '<p class="hint">Spouštím browser/local workflow nad právě zvolenými soubory…</p>';
 
@@ -6157,6 +6479,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
           storageKeyUsed: loadState.storageKeyUsed,
           saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
           lastSaveStatus: currentWorkspacePersistenceState.status,
+          carryoverPreviousMonthKeyResolved: carryoverWorkspaceInspection.previousMonthKey,
+          carryoverPreviousMonthWorkspaceFound: carryoverWorkspaceInspection.previousMonthWorkspaceFound,
+          carryoverPreviousMonthUnmatchedPayoutBatchCount: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchCount,
+          carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchIdsSample,
+          carryoverSourceMonth: previousMonthCarryoverSource && previousMonthCarryoverSource.sourceMonthKey,
+          carryoverCurrentMonth: normalizedMonth,
+          carryoverLoadedPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+          carryoverLoadedPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+          carryoverMatchingInputPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+          carryoverMatchingInputPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+          carryoverMatcherCandidateExisted: 'ne',
+          carryoverMatcherRejectedReason: '',
+          carryoverSourceClearMarker: carryoverWorkspaceInspection.clearMarker,
+          carryoverMatchedCount: 0,
+          carryoverUnmatchedCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
           mergedFileSample: buildWorkspaceDebugSampleFromRuntimeFiles(runningWorkspacePreviewFiles)
         });
         renderRunningState(runningWorkspacePreviewFiles);
@@ -6200,6 +6537,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
             storageKeyUsed: loadState.storageKeyUsed,
             saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
             lastSaveStatus: currentWorkspacePersistenceState.status,
+            carryoverPreviousMonthKeyResolved: carryoverWorkspaceInspection.previousMonthKey,
+            carryoverPreviousMonthWorkspaceFound: carryoverWorkspaceInspection.previousMonthWorkspaceFound,
+            carryoverPreviousMonthUnmatchedPayoutBatchCount: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchCount,
+            carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchIdsSample,
+            carryoverSourceMonth: previousMonthCarryoverSource && previousMonthCarryoverSource.sourceMonthKey,
+            carryoverCurrentMonth: normalizedMonth,
+            carryoverLoadedPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            carryoverLoadedPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+            carryoverMatchingInputPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            carryoverMatchingInputPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+            carryoverMatcherCandidateExisted: 'ne',
+            carryoverMatcherRejectedReason: '',
+            carryoverSourceClearMarker: carryoverWorkspaceInspection.clearMarker,
+            carryoverMatchedCount: 0,
+            carryoverUnmatchedCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
             mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(mergedWorkspaceFiles)
           });
           renderRunningRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
@@ -6207,6 +6559,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             files: mergedWorkspaceFiles.map((record) => buildRuntimeFileFromWorkspaceRecord(record)),
             month: normalizedMonth,
             generatedAt,
+            previousMonthCarryoverSource,
             onProgress(progress) {
               renderRunningWorkflowProgress(mergedRunningWorkflowFiles, progress);
             }

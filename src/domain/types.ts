@@ -193,6 +193,8 @@ export interface PayoutBatchExpectation {
   platform: PayoutBatchPlatform
   payoutReference: string
   payoutDate: ISODateString
+  fromPreviousMonth?: boolean
+  sourceMonthKey?: string
   bankRoutingTarget: 'rb_bank_inflow'
   rowIds: string[]
   expectedTotalMinor: number
