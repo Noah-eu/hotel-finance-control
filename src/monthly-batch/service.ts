@@ -531,7 +531,7 @@ function buildMonthlyBatchResultFromParsedFiles(
   }
 ): MonthlyBatchResult {
   const extractedRecords = applyPayoutSupplements(
-    parsedFiles.flatMap((file) => file.extractedRecords)
+    enrichParsedExtractedRecords(parsedFiles)
   )
   const reconciliation = reconcileExtractedRecords(
     {
@@ -559,6 +559,87 @@ function buildMonthlyBatchResultFromParsedFiles(
       ).length
     }))
   }
+}
+
+function enrichParsedExtractedRecords(parsedFiles: ParsedImportedMonthlySourceFile[]): ExtractedRecord[] {
+  return parsedFiles.flatMap((file) =>
+    file.extractedRecords.map((record) => enrichExtractedRecordForSharedMonthlyFlow(record, file.importedFile.sourceDocument))
+  )
+}
+
+function enrichExtractedRecordForSharedMonthlyFlow(
+  record: ExtractedRecord,
+  sourceDocument: SourceDocument
+): ExtractedRecord {
+  if (!isComgateDailySettlementPayoutRecord(record)) {
+    return record
+  }
+
+  const bookedAt = resolveComgateDailySettlementBookedAt(record, sourceDocument)
+  const currency = resolveComgateDailySettlementCurrency(record, sourceDocument)
+  const payoutBatchIdentity = typeof record.data.payoutBatchIdentity === 'string'
+    ? record.data.payoutBatchIdentity
+    : typeof record.data.reference === 'string'
+      ? record.data.reference
+      : undefined
+
+  return {
+    ...record,
+    ...(currency ? { currency } : {}),
+    ...(bookedAt ? { occurredAt: bookedAt } : {}),
+    data: {
+      ...record.data,
+      ...(bookedAt ? { bookedAt } : {}),
+      ...(currency ? { currency } : {}),
+      ...(payoutBatchIdentity ? { payoutBatchIdentity } : {})
+    }
+  }
+}
+
+function isComgateDailySettlementPayoutRecord(record: ExtractedRecord): boolean {
+  return record.recordType === 'payout-line'
+    && record.data.platform === 'comgate'
+    && record.data.comgateParserVariant === 'daily-settlement'
+}
+
+function resolveComgateDailySettlementBookedAt(
+  record: ExtractedRecord,
+  sourceDocument: SourceDocument
+): string | undefined {
+  if (typeof record.data.bookedAt === 'string' && record.data.bookedAt.trim().length > 0) {
+    return record.data.bookedAt.trim()
+  }
+
+  if (typeof record.occurredAt === 'string' && record.occurredAt.trim().length > 0) {
+    return record.occurredAt.trim()
+  }
+
+  const fileNameDate = sourceDocument.fileName.match(/(20\d{2}-\d{2}-\d{2})/)
+  if (fileNameDate?.[1]) {
+    return fileNameDate[1]
+  }
+
+  return sourceDocument.uploadedAt.slice(0, 10)
+}
+
+function resolveComgateDailySettlementCurrency(
+  record: ExtractedRecord,
+  sourceDocument: SourceDocument
+): string | undefined {
+  if (typeof record.data.currency === 'string' && record.data.currency.trim().length > 0) {
+    return record.data.currency.trim().toUpperCase()
+  }
+
+  if (typeof record.currency === 'string' && record.currency.trim().length > 0) {
+    return record.currency.trim().toUpperCase()
+  }
+
+  const metadataCurrency = sourceDocument.metadata?.currency
+  if (typeof metadataCurrency === 'string' && metadataCurrency.trim().length > 0) {
+    return metadataCurrency.trim().toUpperCase()
+  }
+
+  return 'CZK'
 }
 
 function selectParser(sourceDocument: SourceDocument, content: string): Parser {

@@ -102,6 +102,46 @@ describe('runMonthlyReconciliationBatch', () => {
     ).toThrow('No monthly batch parser configured')
   })
 
+  it('turns a Comgate daily settlement upload into one unmatched payout batch on the shared monthly flow', () => {
+    const comgateDaily = getRealInputFixture('comgate-daily-payout-export')
+
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: comgateDaily.sourceDocument,
+          content: comgateDaily.rawInput.content
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-comgate-daily-unmatched',
+        requestedAt: '2026-03-27T18:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-27T18:01:00.000Z'
+    })
+
+    expect(result.reconciliation.summary.normalizedTransactionCount).toBe(3)
+    expect(result.reconciliation.workflowPlan?.payoutRows).toHaveLength(3)
+    expect(result.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        platform: 'comgate',
+        payoutReference: '1816656820',
+        payoutDate: '2026-03-27',
+        expectedTotalMinor: 605879,
+        currency: 'CZK'
+      })
+    ])
+    expect(result.report.summary.payoutBatchMatchCount).toBe(0)
+    expect(result.report.summary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.report.unmatchedPayoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        payoutReference: '1816656820',
+        status: 'unmatched'
+      })
+    ])
+  })
+
   it('prepares uploaded files into shared imported monthly source files with traceable source documents', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const airbnb = getRealInputFixture('airbnb-payout-export')

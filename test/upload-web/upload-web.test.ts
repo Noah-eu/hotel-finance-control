@@ -461,12 +461,67 @@ describe('buildUploadWebFlow', () => {
         comgatePipelineDiagnostics: expect.objectContaining({
           parserVariants: ['daily-settlement'],
           extractedRecordCount: 3,
-          normalizedTransactionCount: 0,
-          matchingInputPayoutRowCount: 0,
-          payoutBatchCount: 0,
-          matchingDecisionCount: 0,
-          lossBoundary: 'extraction-to-normalization',
-          lossStage: 'normalizer-produced-no-transactions'
+          normalizedTransactionCount: 3,
+          matchingInputPayoutRowCount: 3,
+          payoutBatchCount: 1,
+          matchingDecisionCount: 1,
+          lossBoundary: 'matching',
+          lossStage: 'no-bank-candidates'
+        })
+      })
+    )
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(1)
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched[0]?.title).toContain('Comgate payout dávka')
+  })
+
+  it('shows a matched payout batch for the mini browser scenario with one daily Comgate CSV and one RB statement', async () => {
+    const fixture = getRealInputFixture('comgate-daily-payout-export')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          fixture.sourceDocument.fileName,
+          fixture.rawInput.content
+        ),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603271815.csv',
+          buildRbComgateDailySettlementContent()
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-27T18:15:00.000Z'
+    })
+
+    expect(result.routingSummary.supportedFileCount).toBe(2)
+    expect(result.extractedRecords).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        extractedCount: 3
+      }),
+      expect.objectContaining({
+        fileName: 'Pohyby_5599955956_202603271815.csv',
+        extractedCount: 1
+      })
+    ]))
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(1)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([])
+    expect(result.reviewSections.payoutBatchMatched[0]?.title).toContain('Comgate payout dávka')
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-2026-03-27_1816656820.csv',
+        comgatePipelineDiagnostics: expect.objectContaining({
+          parserVariants: ['daily-settlement'],
+          normalizedTransactionCount: 3,
+          matchingInputPayoutRowCount: 3,
+          payoutBatchCount: 1,
+          matchingDecisionCount: 1,
+          lossBoundary: 'no-loss',
+          lossStage: 'matched'
         })
       })
     )
@@ -6205,6 +6260,13 @@ function buildRbAggregatedComgatePortalSettlementContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '19.03.2026 11:50;19.03.2026 11:52;5599955956/5500;000000-1234567890/0100;Comgate a.s.;1580,00;CZK;Souhrnná výplata Comgate portal 2026-03-19'
+  ].join('\n')
+}
+
+function buildRbComgateDailySettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '27.03.2026 18:15;27.03.2026 18:17;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-27 / 1816656820'
   ].join('\n')
 }
 
