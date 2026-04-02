@@ -161,6 +161,101 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedOutflows.length).toBeGreaterThan(0)
   })
 
+  it('keeps the exact direction-code-4 Raiffeisenbank GPC file on the supported bank path instead of ingest failure', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpc.sourceDocument.fileName,
+          content: gpc.rawInput.content,
+          uploadedAt: '2026-03-20T10:20:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-raiffeisen-gpc-direction-4',
+      generatedAt: '2026-03-20T10:20:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(1)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc',
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      classificationBasis: 'content'
+    })
+    expect(result.fileRoutes[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc',
+      status: 'supported',
+      sourceSystem: 'bank',
+      parserId: 'raiffeisenbank',
+      classificationBasis: 'content'
+    })
+    expect(result.extractedRecords[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc',
+      extractedCount: 5,
+      accountLabelCs: 'RB účet 5599955956',
+      parserDebugLabel: 'raiffeisenbank-gpc'
+    })
+    expect(result.fileRoutes.some((route) => route.status === 'error')).toBe(false)
+    expect(result.reportTransactions.every((item) => item.amount.includes('Kč'))).toBe(true)
+  })
+
+  it('keeps earlier RB GPC, RB CSV, and Fio browser bank uploads supported after the direction-code-4 fix', () => {
+    const gpcLegacy = getRealInputFixture('raiffeisenbank-gpc-statement')
+    const gpcDirection4 = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+    const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const fio = getRealInputFixture('fio-statement')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpcLegacy.sourceDocument.fileName,
+          content: gpcLegacy.rawInput.content,
+          uploadedAt: '2026-03-20T10:30:00.000Z'
+        },
+        {
+          name: gpcDirection4.sourceDocument.fileName,
+          content: gpcDirection4.rawInput.content,
+          uploadedAt: '2026-03-20T10:31:00.000Z'
+        },
+        {
+          name: raiffeisen.sourceDocument.fileName,
+          content: raiffeisen.rawInput.content,
+          uploadedAt: '2026-03-20T10:32:00.000Z'
+        },
+        {
+          name: fio.sourceDocument.fileName,
+          content: fio.rawInput.content,
+          uploadedAt: '2026-03-20T10:33:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-bank-regression-guard',
+      generatedAt: '2026-03-20T10:33:00.000Z'
+    })
+
+    expect(result.fileRoutes).toHaveLength(4)
+    expect(result.fileRoutes.every((route) => route.status === 'supported')).toBe(true)
+    expect(result.fileRoutes.map((route) => route.fileName)).toEqual([
+      'Vypis_5599955956_CZK_2026_002.gpc',
+      'Vypis_5599955956_CZK_2026_003.gpc',
+      'raiffeisen-2026-03.csv',
+      'fio-2026-03.csv'
+    ])
+    expect(result.extractedRecords.slice(0, 2).map((file) => file.parserDebugLabel)).toEqual([
+      'raiffeisenbank-gpc',
+      'raiffeisenbank-gpc'
+    ])
+    expect(result.extractedRecords.every((file) => file.extractedCount > 0)).toBe(true)
+    expect(result.extractedRecords[2]).toMatchObject({
+      fileName: 'raiffeisen-2026-03.csv',
+      parserDebugLabel: 'raiffeisenbank'
+    })
+    expect(result.extractedRecords[3]).toMatchObject({
+      fileName: 'fio-2026-03.csv',
+      extractedCount: expect.any(Number)
+    })
+  })
+
   it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')

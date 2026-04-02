@@ -5,6 +5,7 @@ export interface RealInputFixture {
   key:
   | 'raiffeisenbank-statement'
   | 'raiffeisenbank-gpc-statement'
+  | 'raiffeisenbank-gpc-statement-direction-4'
   | 'fio-statement'
   | 'booking-payout-export'
   | 'booking-payout-export-browser-upload-shape'
@@ -175,6 +176,20 @@ const raiffeisenbankGpcSampleExcerpt = [
   '0750000005599955956000000400023010300085555751950000006415212000000000000260000000000000000020226CITIBANK EUROPE PLC 01011020226',
   '078G-ZSR3LBSAHDH4I/ROC/G-ZSR3LBSAHDH4I',
   '0750000005599955956000000210735891700085570542930000001128672180260421500270000000000000000030226Comgate a.s.        01011030226'
+].join('\n')
+
+const raiffeisenbankGpcDirection4SampleExcerpt = [
+  '0740000005599955956JOKELAND s.r.o.     01032600000002922598+00000011254963+000000574079870000000657403520003310326',
+  '0750000005599955956000000000000000000086627047390000000439801000000000000000011780000000000270226PK: 408361XXXXXX437101011010326',
+  '078Tesco Praha Eden, Praha 10, CZE',
+  '0750000005599955956000000255084011800086658207850000053883712000000000000260000000000000000020326BOOKING.COM B.V.    01011020326',
+  '078NO.4O3Q6FCNR9XC1EBN/2206371',
+  '0750000005599955956000000000000000000086710092850000003419004000000000000000011780000000000280226                    01011030326',
+  '078Alza.cz, Prague, CZE',
+  '0750000005599955956000000000000000000086888142260000003698004000000000000000011780000000000050326                    01011070326',
+  '078Alza.cz a.s., Prague, CZE',
+  '0750000005599955956000000000000000000087403570170000000317004000000000000000011780000000000170326                    01011190326',
+  '078Alza.cz a.s., Prague, CZE'
 ].join('\n')
 
 export const realInputFixtures: RealInputFixture[] = [
@@ -438,6 +453,89 @@ export const realInputFixtures: RealInputFixture[] = [
         reference: '55705429',
         extractedRecordIds: ['raif-row-10'],
         sourceDocumentIds: ['doc-raif-gpc-2026-02' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'raiffeisenbank-gpc-statement-direction-4',
+    description: 'Deterministic excerpt from the real Raiffeisenbank GPC sample where card-merchant debits use direction code 4.',
+    sourceDocument: sourceDocument({
+      id: 'doc-raif-gpc-2026-03-direction-4' as SourceDocument['id'],
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      fileName: 'Vypis_5599955956_CZK_2026_003.gpc'
+    }),
+    rawInput: {
+      format: 'text',
+      content: raiffeisenbankGpcDirection4SampleExcerpt
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'raif-row-1',
+        sourceDocumentId: 'doc-raif-gpc-2026-03-direction-4' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: 'PK: 408361XXXXXX4371',
+        amountMinor: -43980,
+        currency: 'CZK',
+        occurredAt: '2026-03-01',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-03-01',
+          valueAt: '2026-02-27',
+          amountMinor: -43980,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'Tesco Praha Eden, Praha 10, CZE',
+          reference: 'PK: 408361XXXXXX4371',
+          transactionType: 'Odchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'raif-row-2',
+        sourceDocumentId: 'doc-raif-gpc-2026-03-direction-4' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: 'NO.4O3Q6FCNR9XC1EBN/2206371',
+        amountMinor: 5388371,
+        currency: 'CZK',
+        occurredAt: '2026-03-02',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-03-02',
+          valueAt: '2026-03-02',
+          amountMinor: 5388371,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'BOOKING.COM B.V.',
+          counterpartyAccount: '2550840118/0008',
+          reference: 'NO.4O3Q6FCNR9XC1EBN/2206371',
+          transactionType: 'Příchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'raif-row-3',
+        sourceDocumentId: 'doc-raif-gpc-2026-03-direction-4' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: '67100928',
+        amountMinor: -341900,
+        currency: 'CZK',
+        occurredAt: '2026-03-03',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-03-03',
+          valueAt: '2026-02-28',
+          amountMinor: -341900,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'Alza.cz, Prague, CZE',
+          reference: '67100928',
+          transactionType: 'Odchozí platba'
+        }
       })
     ]
   },

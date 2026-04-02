@@ -267,6 +267,70 @@ describe('parseRaiffeisenbankStatement', () => {
     })
   })
 
+  it('parses real GPC card-merchant rows that encode outgoing debits with direction code 4', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(5)
+    expect(records[2]).toEqual({
+      ...fixture.expectedExtractedRecords[2],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[2]).toMatchObject({
+      amountMinor: -341900,
+      occurredAt: '2026-03-03',
+      currency: 'CZK',
+      data: {
+        counterparty: 'Alza.cz, Prague, CZE',
+        counterpartyAccount: undefined,
+        reference: '67100928',
+        transactionType: 'Odchozí platba'
+      }
+    })
+    expect(records[3]).toMatchObject({
+      amountMinor: -369800,
+      occurredAt: '2026-03-07',
+      data: {
+        counterparty: 'Alza.cz a.s., Prague, CZE',
+        transactionType: 'Odchozí platba'
+      }
+    })
+    expect(records[4]).toMatchObject({
+      amountMinor: -31700,
+      occurredAt: '2026-03-19',
+      data: {
+        counterparty: 'Alza.cz a.s., Prague, CZE',
+        transactionType: 'Odchozí platba'
+      }
+    })
+  })
+
+  it('keeps the direction-code-4 Raiffeisenbank GPC excerpt within sane parser invariants', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(
+      fixture.rawInput.content.split('\n').filter((line) => line.startsWith('075')).length
+    )
+    expect(new Set(records.map((record) => record.id)).size).toBe(records.length)
+    expect(records.every((record) => /^\d{4}-\d{2}-\d{2}$/.test(record.occurredAt ?? ''))).toBe(true)
+    expect(records.every((record) => !record.occurredAt?.startsWith('0000-00-'))).toBe(true)
+    expect(records.every((record) => record.currency === 'CZK')).toBe(true)
+    expect(records.every((record) => Number.isInteger(record.amountMinor))).toBe(true)
+    expect(records.some((record) => (record.amountMinor ?? 0) > 0)).toBe(true)
+    expect(records.filter((record) => (record.amountMinor ?? 0) < 0)).toHaveLength(4)
+  })
+
   it('keeps the real Raiffeisenbank GPC sample excerpt within sane parser invariants', () => {
     const fixture = getRealInputFixture('raiffeisenbank-gpc-statement')
 

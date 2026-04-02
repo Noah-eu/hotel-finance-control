@@ -6,6 +6,7 @@ describe('realInputFixtures', () => {
     expect(realInputFixtures.map((fixture) => fixture.key)).toEqual([
       'raiffeisenbank-statement',
       'raiffeisenbank-gpc-statement',
+      'raiffeisenbank-gpc-statement-direction-4',
       'fio-statement',
       'booking-payout-export',
       'booking-payout-export-browser-upload-shape',
@@ -45,6 +46,7 @@ describe('realInputFixtures', () => {
   it('keeps representative extracted outputs aligned with downstream contracts', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const raiffeisenGpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+    const raiffeisenGpcDirection4 = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
     const booking = getRealInputFixture('booking-payout-export')
     const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
     const bookingPayoutStatementPdf = getRealInputFixture('booking-payout-statement-pdf')
@@ -75,6 +77,17 @@ describe('realInputFixtures', () => {
         sourceSystem: 'bank',
         bankParserVariant: 'raiffeisenbank-gpc',
         bankStatementSource: 'raiffeisenbank',
+        transactionType: 'Odchozí platba'
+      }
+    })
+    expect(raiffeisenGpcDirection4.expectedExtractedRecords[2]).toMatchObject({
+      recordType: 'bank-transaction',
+      amountMinor: -341900,
+      data: {
+        sourceSystem: 'bank',
+        bankParserVariant: 'raiffeisenbank-gpc',
+        bankStatementSource: 'raiffeisenbank',
+        counterparty: 'Alza.cz, Prague, CZE',
         transactionType: 'Odchozí platba'
       }
     })
