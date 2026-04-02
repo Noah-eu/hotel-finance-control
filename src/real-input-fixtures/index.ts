@@ -154,42 +154,28 @@ function encodePdfHexString(value: string): string {
     .join('')
 }
 
-function buildRaiffeisenbankGpcHeaderLine(accountId: string, currency: string): string {
-  return `074${accountId.slice(0, 16).padEnd(16, ' ')}${currency.slice(0, 3).padEnd(3, ' ')}`
-}
-
-function buildRaiffeisenbankGpcTransactionLine(input: {
-  bookedAt: string
-  valueAt?: string
-  amountMinor: number
-  currency: string
-  counterpartyAccount?: string
-  counterparty: string
-  variableSymbol?: string
-  message?: string
-}): string {
-  const sign = input.amountMinor < 0 ? '-' : '+'
-  const absoluteAmount = Math.abs(input.amountMinor).toString().padStart(12, '0')
-  const bookedAt = input.bookedAt.replace(/-/g, '')
-  const valueAt = (input.valueAt ?? input.bookedAt).replace(/-/g, '')
-
-  return [
-    '075',
-    bookedAt,
-    valueAt,
-    sign,
-    absoluteAmount,
-    input.currency.slice(0, 3).padEnd(3, ' '),
-    (input.counterpartyAccount ?? '').slice(0, 16).padEnd(16, ' '),
-    input.counterparty.slice(0, 30).padEnd(30, ' '),
-    (input.variableSymbol ?? '').slice(0, 10).padEnd(10, ' '),
-    input.message ?? ''
-  ].join('')
-}
-
-function buildRaiffeisenbankGpcContinuationLine(recordType: '078' | '079', content: string): string {
-  return `${recordType}${content}`
-}
+const raiffeisenbankGpcSampleExcerpt = [
+  '0740000005599955956JOKELAND s.r.o.     01022600000003308872+00000002922598+000000438538330000000434675590002280226',
+  '0750000005599955956000000000000000000085517392600000001926441000000000000000011780000000000310126PK: 547872XXXXXX280501011010226',
+  '078DEKUJEME, ROHLIK.CZ, Prague 8, CZE',
+  '0750000005599955956000019278400027700085534837950000006670001003042230800010000000000000000020226                    01011020226',
+  '078PRE recepce',
+  '0750000005599955956000000255084011800085539457840000015454792000000000000260000000000000000020226BOOKING.COM B.V.    01011020226',
+  '078NO.ONX09V3VWDRDC0IX/2206371',
+  '0750000005599955956000000045701802400085548793070000000508201100260225500270003080000000000020226                    01011020226',
+  '0750000005599955956000000721738100200085548820200000012321001002026002000550000000000000000020226Eden Laundry s.r.o. 01011020226',
+  '078pr�delna Eden',
+  '0750000005599955956000000517001189900085550713560000000086502000000000000550000000000000000020226Global Payments Euro01011020226',
+  '078SOA/CZ0240000029079/PRZ/AS/ECZ/0112769/02/26 29-01-26 T90,00 -P3,50  C',
+  '079hill Apartments',
+  '0750000005599955956000000400023010300085555531440000001973282000000000000260000000000000000020226CITIBANK EUROPE PLC 01011020226',
+  '078G-E6GN3KCZCKWUB/ROC/G-E6GN3KCZCKWUB',
+  '0750000005599955956000000400023010300085555537020000003392542000000000000260000000000000000020226CITIBANK EUROPE PLC 01011020226',
+  '078G-3HTLYHKWOAXY4/ROC/G-3HTLYHKWOAXY4',
+  '0750000005599955956000000400023010300085555751950000006415212000000000000260000000000000000020226CITIBANK EUROPE PLC 01011020226',
+  '078G-ZSR3LBSAHDH4I/ROC/G-ZSR3LBSAHDH4I',
+  '0750000005599955956000000210735891700085570542930000001128672180260421500270000000000000000030226Comgate a.s.        01011030226'
+].join('\n')
 
 export const realInputFixtures: RealInputFixture[] = [
   {
@@ -306,117 +292,152 @@ export const realInputFixtures: RealInputFixture[] = [
   },
   {
     key: 'raiffeisenbank-gpc-statement',
-    description: 'Representative fixed-width Raiffeisenbank GPC statement with 078/079 continuation lines.',
+    description: 'Deterministic excerpt from the real Raiffeisenbank GPC sample with actual 074/075/078/079 line offsets.',
     sourceDocument: sourceDocument({
-      id: 'doc-raif-gpc-2026-03' as SourceDocument['id'],
+      id: 'doc-raif-gpc-2026-02' as SourceDocument['id'],
       sourceSystem: 'bank',
       documentType: 'bank_statement',
       fileName: 'Vypis_5599955956_CZK_2026_002.gpc'
     }),
     rawInput: {
       format: 'text',
-      content: [
-        buildRaiffeisenbankGpcHeaderLine('5599955956', 'CZK'),
-        buildRaiffeisenbankGpcTransactionLine({
-          bookedAt: '2026-03-19',
-          valueAt: '2026-03-19',
-          amountMinor: 4226900,
-          currency: 'CZK',
-          counterpartyAccount: '0000001234567890',
-          counterparty: 'Comgate a.s.',
-          variableSymbol: '1816656820',
-          message: 'COMGATE SETTLEMENT 1816656820'
-        }),
-        buildRaiffeisenbankGpcContinuationLine('078', 'Jokeland - rezervace 103'),
-        buildRaiffeisenbankGpcContinuationLine('079', 'Jokeland - parkovani'),
-        buildRaiffeisenbankGpcTransactionLine({
-          bookedAt: '2026-03-20',
-          valueAt: '2026-03-20',
-          amountMinor: -13500,
-          currency: 'CZK',
-          counterpartyAccount: '0000000000002010',
-          counterparty: 'Raiffeisenbank a.s.',
-          message: 'POPLATEK ZA SLUZBY'
-        })
-      ].join('\n')
+      content: raiffeisenbankGpcSampleExcerpt
     },
     expectedExtractedRecords: [
       extractedRecord({
         id: 'raif-row-1',
-        sourceDocumentId: 'doc-raif-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        sourceDocumentId: 'doc-raif-gpc-2026-02' as ExtractedRecord['sourceDocumentId'],
         recordType: 'bank-transaction',
-        rawReference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
-        amountMinor: 4226900,
+        rawReference: 'PK: 547872XXXXXX2805',
+        amountMinor: -192644,
         currency: 'CZK',
-        occurredAt: '2026-03-19',
+        occurredAt: '2026-02-01',
         data: {
           sourceSystem: 'bank',
           bankParserVariant: 'raiffeisenbank-gpc',
           bankStatementSource: 'raiffeisenbank',
-          bookedAt: '2026-03-19',
-          valueAt: '2026-03-19',
-          amountMinor: 4226900,
+          bookedAt: '2026-02-01',
+          valueAt: '2026-01-31',
+          amountMinor: -192644,
           currency: 'CZK',
           accountId: '5599955956',
-          counterparty: 'Comgate a.s.',
-          counterpartyAccount: '0000001234567890',
-          reference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
-          variableSymbol: '1816656820',
-          transactionType: 'Příchozí platba'
+          counterparty: 'DEKUJEME, ROHLIK.CZ, Prague 8, CZE',
+          reference: 'PK: 547872XXXXXX2805',
+          transactionType: 'Odchozí platba'
         }
       }),
       extractedRecord({
         id: 'raif-row-2',
-        sourceDocumentId: 'doc-raif-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        sourceDocumentId: 'doc-raif-gpc-2026-02' as ExtractedRecord['sourceDocumentId'],
         recordType: 'bank-transaction',
-        rawReference: 'POPLATEK ZA SLUZBY',
-        amountMinor: -13500,
+        rawReference: '55348379',
+        amountMinor: -667000,
         currency: 'CZK',
-        occurredAt: '2026-03-20',
+        occurredAt: '2026-02-02',
         data: {
           sourceSystem: 'bank',
           bankParserVariant: 'raiffeisenbank-gpc',
           bankStatementSource: 'raiffeisenbank',
-          bookedAt: '2026-03-20',
-          valueAt: '2026-03-20',
-          amountMinor: -13500,
+          bookedAt: '2026-02-02',
+          valueAt: '2026-02-02',
+          amountMinor: -667000,
           currency: 'CZK',
           accountId: '5599955956',
-          counterparty: 'Raiffeisenbank a.s.',
-          counterpartyAccount: '0000000000002010',
-          reference: 'POPLATEK ZA SLUZBY',
+          counterparty: 'PRE recepce',
+          counterpartyAccount: '19-2784000277/0008',
+          reference: '55348379',
           transactionType: 'Odchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'raif-row-3',
+        sourceDocumentId: 'doc-raif-gpc-2026-02' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: 'NO.ONX09V3VWDRDC0IX/2206371',
+        amountMinor: 1545479,
+        currency: 'CZK',
+        occurredAt: '2026-02-02',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-02-02',
+          valueAt: '2026-02-02',
+          amountMinor: 1545479,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'BOOKING.COM B.V.',
+          counterpartyAccount: '2550840118/0008',
+          reference: 'NO.ONX09V3VWDRDC0IX/2206371',
+          transactionType: 'Příchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'raif-row-10',
+        sourceDocumentId: 'doc-raif-gpc-2026-02' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: '55705429',
+        amountMinor: 112867,
+        currency: 'CZK',
+        occurredAt: '2026-02-03',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-02-03',
+          valueAt: '2026-02-03',
+          amountMinor: 112867,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'Comgate a.s.',
+          counterpartyAccount: '2107358917/0008',
+          reference: '55705429',
+          transactionType: 'Příchozí platba'
         }
       })
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
         id: 'txn:bank:raif-row-1' as NormalizedTransaction['id'],
-        direction: 'in',
-        source: 'bank',
-        amountMinor: 4226900,
-        currency: 'CZK',
-        bookedAt: '2026-03-19',
-        valueAt: '2026-03-19',
-        accountId: '5599955956',
-        counterparty: 'Comgate a.s.',
-        reference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
-        extractedRecordIds: ['raif-row-1'],
-        sourceDocumentIds: ['doc-raif-gpc-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
-      }),
-      normalizedTransaction({
-        id: 'txn:bank:raif-row-2' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'bank',
-        amountMinor: 13500,
+        amountMinor: 192644,
         currency: 'CZK',
-        bookedAt: '2026-03-20',
-        valueAt: '2026-03-20',
+        bookedAt: '2026-02-01',
+        valueAt: '2026-01-31',
         accountId: '5599955956',
-        counterparty: 'Raiffeisenbank a.s.',
-        reference: 'POPLATEK ZA SLUZBY',
-        extractedRecordIds: ['raif-row-2'],
-        sourceDocumentIds: ['doc-raif-gpc-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+        counterparty: 'DEKUJEME, ROHLIK.CZ, Prague 8, CZE',
+        reference: 'PK: 547872XXXXXX2805',
+        extractedRecordIds: ['raif-row-1'],
+        sourceDocumentIds: ['doc-raif-gpc-2026-02' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:bank:raif-row-3' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 1545479,
+        currency: 'CZK',
+        bookedAt: '2026-02-02',
+        valueAt: '2026-02-02',
+        accountId: '5599955956',
+        counterparty: 'BOOKING.COM B.V.',
+        reference: 'NO.ONX09V3VWDRDC0IX/2206371',
+        extractedRecordIds: ['raif-row-3'],
+        sourceDocumentIds: ['doc-raif-gpc-2026-02' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:bank:raif-row-10' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 112867,
+        currency: 'CZK',
+        bookedAt: '2026-02-03',
+        valueAt: '2026-02-03',
+        accountId: '5599955956',
+        counterparty: 'Comgate a.s.',
+        reference: '55705429',
+        extractedRecordIds: ['raif-row-10'],
+        sourceDocumentIds: ['doc-raif-gpc-2026-02' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

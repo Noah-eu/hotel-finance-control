@@ -75,7 +75,7 @@ describe('realInputFixtures', () => {
         sourceSystem: 'bank',
         bankParserVariant: 'raiffeisenbank-gpc',
         bankStatementSource: 'raiffeisenbank',
-        transactionType: 'Příchozí platba'
+        transactionType: 'Odchozí platba'
       }
     })
     expect(booking.expectedExtractedRecords[0]).toMatchObject({

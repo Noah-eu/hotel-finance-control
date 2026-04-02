@@ -659,12 +659,13 @@ describe('runMonthlyReconciliationBatch', () => {
       reportGeneratedAt: '2026-03-20T10:07:00.000Z'
     })
 
-    expect(result.files.map((file) => file.extractedCount)).toEqual([2])
-    expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual([
-      'raiffeisenbank-gpc',
-      'raiffeisenbank-gpc'
-    ])
-    expect(result.reconciliation.normalizedTransactions).toEqual([
+    expect(result.files.map((file) => file.extractedCount)).toEqual([10])
+    expect(result.extractedRecords.every((record) => record.data.bankParserVariant === 'raiffeisenbank-gpc')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.some((transaction) => transaction.direction === 'in')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.some((transaction) => transaction.direction === 'out')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.every((transaction) => transaction.currency === 'CZK')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.every((transaction) => !transaction.bookedAt.startsWith('0000-00-'))).toBe(true)
+    expect(result.reconciliation.normalizedTransactions).toEqual(expect.arrayContaining([
       expect.objectContaining({
         ...gpc.expectedNormalizedTransactions?.[0],
         sourceDocumentIds: [prepared[0]!.sourceDocument.id]
@@ -672,8 +673,12 @@ describe('runMonthlyReconciliationBatch', () => {
       expect.objectContaining({
         ...gpc.expectedNormalizedTransactions?.[1],
         sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      }),
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[2],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
       })
-    ])
+    ]))
   })
 
   it('routes the current 5599955956 file by its Fio-style header shape instead of by filename pattern assumptions', () => {

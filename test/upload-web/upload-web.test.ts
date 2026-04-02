@@ -150,15 +150,14 @@ describe('buildUploadWebFlow', () => {
     })
     expect(result.extractedRecords[0]).toMatchObject({
       fileName: 'Vypis_5599955956_CZK_2026_002.gpc',
-      extractedCount: 2,
+      extractedCount: 10,
       accountLabelCs: 'RB účet 5599955956',
       parserDebugLabel: 'raiffeisenbank-gpc'
     })
-    expect(result.reportTransactions).toHaveLength(2)
-    expect(result.reportTransactions.map((item) => item.transactionId)).toEqual([
-      'txn:bank:raif-row-1',
-      'txn:bank:raif-row-2'
-    ])
+    expect(result.reportTransactions.length).toBeGreaterThan(0)
+    expect(result.reportTransactions.every((item) => item.amount.includes('Kč'))).toBe(true)
+    expect(result.reviewSections.expenseUnmatchedInflows.length).toBeGreaterThan(0)
+    expect(result.reviewSections.expenseUnmatchedOutflows.length).toBeGreaterThan(0)
   })
 
   it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {

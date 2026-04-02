@@ -26,8 +26,8 @@ interface ParsedRaiffeisenbankGpcTransaction {
   currency: string
   counterparty: string
   counterpartyAccount?: string
-  variableSymbol?: string
-  message?: string
+  primaryText?: string
+  bankReference?: string
   continuations: string[]
   transactionType: string
 }
@@ -173,7 +173,12 @@ export class RaiffeisenbankParser {
     }
 
     return transactions.map((transaction, index) => {
-      const reference = buildGpcReference(transaction)
+      const { counterparty, reference } = resolveGpcCounterpartyAndReference({
+        primaryText: transaction.primaryText,
+        continuations: transaction.continuations,
+        counterpartyAccount: transaction.counterpartyAccount,
+        bankReference: transaction.bankReference
+      })
 
       return {
         id: `raif-row-${index + 1}`,
@@ -193,10 +198,9 @@ export class RaiffeisenbankParser {
           amountMinor: transaction.amountMinor,
           currency: transaction.currency,
           accountId: header.accountId,
-          counterparty: transaction.counterparty,
+          counterparty,
           counterpartyAccount: transaction.counterpartyAccount,
           reference,
-          variableSymbol: transaction.variableSymbol,
           transactionType: transaction.transactionType
         }
       }
@@ -226,8 +230,8 @@ export function looksLikeRaiffeisenbankGpcStatement(content: string, fileName = 
 
 function parseGpcHeader(line: string, sourceDocument: SourceDocument): ParsedRaiffeisenbankGpcHeader {
   const fallbackAccountId = getAccountIdFromFileName(sourceDocument.fileName)
-  const accountId = line.slice(3, 19).trim() || fallbackAccountId || ''
-  const currency = (line.slice(19, 22).trim() || 'CZK').toUpperCase()
+  const accountId = normalizeGpcAccountId(line.slice(3, 19)) || fallbackAccountId || ''
+  const currency = extractGpcCurrencyFromFileName(sourceDocument.fileName) || 'CZK'
 
   if (!accountId) {
     throw new Error('Raiffeisenbank GPC statement is missing accountId context')
@@ -240,57 +244,172 @@ function parseGpcHeader(line: string, sourceDocument: SourceDocument): ParsedRai
 }
 
 function parseGpcTransaction(line: string, header: ParsedRaiffeisenbankGpcHeader): ParsedRaiffeisenbankGpcTransaction {
-  const bookedAt = parseCompactGpcDate(line.slice(3, 11), 'Raiffeisenbank GPC bookedAt')
-  const valueAtRaw = line.slice(11, 19).trim()
-  const sign = line.slice(19, 20)
-  const amountDigits = line.slice(20, 32).trim()
-  const currency = (line.slice(32, 35).trim() || header.currency).toUpperCase()
-  const counterpartyAccount = line.slice(35, 51).trim() || undefined
-  const counterparty = line.slice(51, 81).trim() || counterpartyAccount || 'Unknown counterparty'
-  const variableSymbol = line.slice(81, 91).trim() || undefined
-  const message = line.slice(91).trim() || undefined
+  const counterpartyPrefix = line.slice(19, 25)
+  const counterpartyAccountNumber = line.slice(25, 35)
+  const counterpartyBankCode = line.slice(35, 39)
+  const bankReference = line.slice(39, 47).trim() || undefined
+  const amountDigits = line.slice(48, 60).trim()
+  const directionCode = line.slice(60, 61)
+  const valueAtRaw = line.slice(91, 97).trim()
+  const bookedAtRaw = line.slice(122, 128).trim()
+  const primaryText = line.slice(97, 117).trim() || undefined
+  const counterpartyAccount = formatGpcCounterpartyAccount(counterpartyPrefix, counterpartyAccountNumber, counterpartyBankCode)
+  const direction = parseGpcDirectionCode(directionCode, 'Raiffeisenbank GPC direction')
+  const amountMinor = parseUnsignedGpcAmountMinor(amountDigits, 'Raiffeisenbank GPC amountMinor')
+  const bookedAt = bookedAtRaw ? parseCompactGpcDateDdMmYy(bookedAtRaw, 'Raiffeisenbank GPC bookedAt') : undefined
+  const valueAt = valueAtRaw ? parseCompactGpcDateDdMmYy(valueAtRaw, 'Raiffeisenbank GPC valueAt') : undefined
+
+  if (!bookedAt) {
+    throw new Error('Raiffeisenbank GPC transaction is missing bookedAt')
+  }
+
+  const { counterparty, reference } = resolveGpcCounterpartyAndReference({
+    primaryText,
+    continuations: [],
+    counterpartyAccount,
+    bankReference
+  })
 
   return {
     bookedAt,
-    valueAt: valueAtRaw ? parseCompactGpcDate(valueAtRaw, 'Raiffeisenbank GPC valueAt') : undefined,
-    amountMinor: parseGpcAmountMinor(sign, amountDigits, 'Raiffeisenbank GPC amountMinor'),
-    currency,
+    valueAt,
+    amountMinor: direction === 'out' ? -amountMinor : amountMinor,
+    currency: header.currency,
     counterparty,
     counterpartyAccount,
-    variableSymbol,
-    message,
+    primaryText,
+    bankReference: reference || bankReference,
     continuations: [],
-    transactionType: sign === '-' ? 'Odchozí platba' : 'Příchozí platba'
+    transactionType: direction === 'out' ? 'Odchozí platba' : 'Příchozí platba'
   }
 }
 
-function parseCompactGpcDate(value: string, fieldName: string): string {
+function parseCompactGpcDateDdMmYy(value: string, fieldName: string): string {
   const normalized = value.trim()
 
-  if (!/^\d{8}$/.test(normalized)) {
+  if (!/^\d{6}$/.test(normalized)) {
     throw new Error(`${fieldName} has unsupported date format: ${value}`)
   }
 
-  return `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}`
+  const day = normalized.slice(0, 2)
+  const month = normalized.slice(2, 4)
+  const year = normalized.slice(4, 6)
+
+  return `20${year}-${month}-${day}`
 }
 
-function parseGpcAmountMinor(sign: string, digits: string, fieldName: string): number {
+function parseUnsignedGpcAmountMinor(digits: string, fieldName: string): number {
   if (!/^\d+$/.test(digits)) {
     throw new Error(`${fieldName} has unsupported amount format: ${digits}`)
   }
 
-  const absoluteAmountMinor = Number.parseInt(digits, 10)
-  return sign === '-' ? -absoluteAmountMinor : absoluteAmountMinor
+  return Number.parseInt(digits, 10)
 }
 
 function buildGpcReference(transaction: ParsedRaiffeisenbankGpcTransaction): string {
-  const parts = [
-    transaction.message,
-    transaction.variableSymbol ? `VS ${transaction.variableSymbol}` : undefined,
-    ...transaction.continuations
-  ].filter((value): value is string => Boolean(value && value.trim().length > 0))
+  return resolveGpcCounterpartyAndReference({
+    primaryText: transaction.primaryText,
+    continuations: transaction.continuations,
+    counterpartyAccount: transaction.counterpartyAccount,
+    bankReference: transaction.bankReference
+  }).reference
+}
 
-  return parts.join(' | ')
+function parseGpcDirectionCode(value: string, fieldName: string): 'in' | 'out' {
+  const normalized = value.trim()
+
+  if (normalized === '1') {
+    return 'out'
+  }
+
+  if (normalized === '2') {
+    return 'in'
+  }
+
+  throw new Error(`${fieldName} has unsupported direction code: ${value}`)
+}
+
+function extractGpcCurrencyFromFileName(fileName: string): string | undefined {
+  const match = fileName.match(/_([A-Z]{3})_\d{4}_\d+\.gpc$/i)
+  return match?.[1]?.toUpperCase()
+}
+
+function normalizeGpcAccountId(value: string): string | undefined {
+  const digits = value.trim().replace(/^0+/, '')
+  return digits.length > 0 ? digits : undefined
+}
+
+function formatGpcCounterpartyAccount(prefix: string, accountNumber: string, bankCode: string): string | undefined {
+  const normalizedAccountNumber = normalizeGpcAccountId(accountNumber)
+  const normalizedBankCode = bankCode.trim()
+
+  if (!normalizedAccountNumber || !normalizedBankCode) {
+    return undefined
+  }
+
+  const normalizedPrefix = normalizeGpcAccountId(prefix)
+
+  if (normalizedPrefix) {
+    return `${normalizedPrefix}-${normalizedAccountNumber}/${normalizedBankCode}`
+  }
+
+  return `${normalizedAccountNumber}/${normalizedBankCode}`
+}
+
+function resolveGpcCounterpartyAndReference(input: {
+  primaryText?: string
+  continuations: string[]
+  counterpartyAccount?: string
+  bankReference?: string
+}): { counterparty: string, reference: string } {
+  const primaryText = normalizeGpcText(input.primaryText)
+  const continuations = input.continuations
+    .map((value) => normalizeGpcText(value))
+    .filter((value): value is string => Boolean(value))
+  const referenceParts: string[] = []
+  let counterparty: string | undefined
+
+  if (primaryText && looksLikeGpcCounterparty(primaryText)) {
+    counterparty = primaryText
+  } else if (primaryText) {
+    referenceParts.push(primaryText)
+  }
+
+  if (!counterparty && continuations.length > 0 && !looksLikeStructuredGpcReference(continuations[0]!)) {
+    counterparty = continuations[0]
+  }
+
+  if (counterparty && continuations.length > 0 && continuations[0] === counterparty) {
+    referenceParts.push(...continuations.slice(1))
+  } else {
+    referenceParts.push(...continuations)
+  }
+
+  if (referenceParts.length === 0 && input.bankReference) {
+    referenceParts.push(input.bankReference)
+  }
+
+  return {
+    counterparty: counterparty || input.counterpartyAccount || 'Unknown counterparty',
+    reference: referenceParts.join(' | ')
+  }
+}
+
+function looksLikeGpcCounterparty(value: string): boolean {
+  if (value.startsWith('PK:')) {
+    return false
+  }
+
+  return /[A-Za-z]/.test(value)
+}
+
+function looksLikeStructuredGpcReference(value: string): boolean {
+  return /^[A-Z0-9:/ .,-]+$/.test(value) && /[/:-]/.test(value)
+}
+
+function normalizeGpcText(value: string | undefined): string | undefined {
+  const normalized = value?.trim().replace(/\s+/g, ' ')
+  return normalized && normalized.length > 0 ? normalized : undefined
 }
 
 function firstPresentWithHeader(row: Record<string, string>, aliases: string[]): { value: string, matchedHeader?: string } {
