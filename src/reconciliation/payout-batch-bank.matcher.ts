@@ -10,7 +10,6 @@ const PAYOUT_BATCH_BANK_RULE_KEY = 'deterministic:payout-batch-bank:1to1:v1'
 const DEFAULT_MAX_DAY_DISTANCE = 2
 const AIRBNB_MAX_DAY_DISTANCE = 3
 const COMGATE_SAME_MONTH_POST_PAYOUT_MAX_DAY_LAG = 3
-const COMGATE_CROSS_MONTH_CARRYOVER_MAX_DAY_LAG = 3
 
 const DATASET_PLATFORM_COUNTERPARTY_CLUES: Record<string, string[]> = {
     airbnb: ['citibank'],
@@ -148,13 +147,6 @@ export function inspectPayoutBatchBankDecisions(
             && candidate.clueLabels.includes('Comgate')
             && isSameCalendarMonth(decision.batch.payoutDate, candidate.bookedAt)
         )
-        const crossMonthCarryoverCandidates = amountCurrencyCandidates
-            .filter((candidate) =>
-                !candidate.rejectionReasons.includes('wrongBankRouting')
-                && candidate.comgateCrossMonthCarryoverCandidate
-            )
-            .sort(compareBatchCandidates)
-        const primaryCrossMonthCarryoverCandidate = crossMonthCarryoverCandidates[0]
         const dateWindowCandidates = amountCurrencyCandidates.filter((candidate) =>
             !candidate.rejectionReasons.includes('dateToleranceMiss')
         )
@@ -180,14 +172,9 @@ export function inspectPayoutBatchBankDecisions(
             exactAmountMatchExistsBeforeDateEvidence: amountCurrencyCandidates.length > 0,
             sameCurrencyCandidateAmountMinors: uniqueSameCurrencyAmountMinors.slice(0, 8),
             sameMonthExactAmountCandidateExists: sameMonthExactAmountCandidates.length > 0,
-            crossMonthCarryoverCandidateExists: crossMonthCarryoverCandidates.length > 0,
             rejectedOnlyByDateGate: sameMonthExactAmountCandidates.some((candidate) => !candidate.strictDateEligible),
             appliedComgateSameMonthLagRule: decision.allCandidates.some((candidate) => candidate.comgateSameMonthLagRuleApplied),
-            appliedComgateCrossMonthCarryoverRule: decision.allCandidates.some((candidate) => candidate.comgateCrossMonthCarryoverRuleApplied),
             wouldRejectOnStrictDateGate: sameMonthExactAmountCandidates.some((candidate) => !candidate.strictDateEligible),
-            carryoverSourceMonth: primaryCrossMonthCarryoverCandidate?.comgateCrossMonthCarryoverSourceMonth,
-            carryoverBankMonth: primaryCrossMonthCarryoverCandidate?.comgateCrossMonthCarryoverBankMonth,
-            carryoverDayDelta: primaryCrossMonthCarryoverCandidate?.comgateCrossMonthCarryoverDayDelta,
             payoutDate: decision.batch.payoutDate,
             bankCandidateCountBeforeFiltering: decision.allCandidates.length,
             bankCandidateCountAfterAmountCurrency: amountCurrencyCandidates.length,
@@ -248,17 +235,8 @@ function buildCandidateDiagnostic(
         clueLabels: clueMatch.labels,
         strictDateEligible
     })
-    const comgateCrossMonthCarryover = evaluateComgateCrossMonthCarryoverRule({
-        batch,
-        transaction,
-        amountExact,
-        currencyExact,
-        routingAllowed,
-        clueLabels: clueMatch.labels,
-        strictDateEligible
-    })
 
-    if (!strictDateEligible && !comgateSameMonthLagRuleApplied && !comgateCrossMonthCarryover.applied) {
+    if (!strictDateEligible && !comgateSameMonthLagRuleApplied) {
         rejectionReasons.push('dateToleranceMiss')
     }
 
@@ -278,12 +256,7 @@ function buildCandidateDiagnostic(
         rejectionReasons,
         dateDistanceDays,
         strictDateEligible,
-        comgateSameMonthLagRuleApplied,
-        comgateCrossMonthCarryoverRuleApplied: comgateCrossMonthCarryover.applied,
-        comgateCrossMonthCarryoverCandidate: comgateCrossMonthCarryover.candidate,
-        comgateCrossMonthCarryoverDayDelta: comgateCrossMonthCarryover.dayDelta,
-        comgateCrossMonthCarryoverSourceMonth: comgateCrossMonthCarryover.sourceMonth,
-        comgateCrossMonthCarryoverBankMonth: comgateCrossMonthCarryover.bankMonth
+        comgateSameMonthLagRuleApplied
     }
 }
 
@@ -497,9 +470,7 @@ function isWithinStrictDateTolerance(
 ): boolean {
     const dateDistanceDays = calculateDayDistance(batch.payoutDate, transaction.bookedAt)
 
-    return Number.isFinite(dateDistanceDays)
-        && isSameCalendarMonth(batch.payoutDate, transaction.bookedAt)
-        && dateDistanceDays <= resolveMaxDayDistance(batch)
+    return Number.isFinite(dateDistanceDays) && dateDistanceDays <= resolveMaxDayDistance(batch)
 }
 
 function normalizeIsoCalendarDate(value?: string): string | undefined {
@@ -541,24 +512,6 @@ function isSameCalendarMonth(left?: string, right?: string): boolean {
     return normalizedLeft.slice(0, 7) === normalizedRight.slice(0, 7)
 }
 
-function isNextCalendarMonth(left?: string, right?: string): boolean {
-    const normalizedLeft = normalizeIsoCalendarDate(left)
-    const normalizedRight = normalizeIsoCalendarDate(right)
-
-    if (!normalizedLeft || !normalizedRight) {
-        return false
-    }
-
-    const leftDate = new Date(`${normalizedLeft}T00:00:00Z`)
-    const rightDate = new Date(`${normalizedRight}T00:00:00Z`)
-
-    return rightDate.getUTCFullYear() === leftDate.getUTCFullYear()
-        ? rightDate.getUTCMonth() === leftDate.getUTCMonth() + 1
-        : rightDate.getUTCFullYear() === leftDate.getUTCFullYear() + 1
-        && leftDate.getUTCMonth() === 11
-        && rightDate.getUTCMonth() === 0
-}
-
 function shouldApplyComgateSameMonthLagRule(input: {
     batch: PayoutBatchExpectation
     transaction: NormalizedTransaction
@@ -589,58 +542,6 @@ function shouldApplyComgateSameMonthLagRule(input: {
     return Number.isFinite(signedDayDelta)
         && signedDayDelta >= 0
         && signedDayDelta <= COMGATE_SAME_MONTH_POST_PAYOUT_MAX_DAY_LAG
-}
-
-function evaluateComgateCrossMonthCarryoverRule(input: {
-    batch: PayoutBatchExpectation
-    transaction: NormalizedTransaction
-    amountExact: boolean
-    currencyExact: boolean
-    routingAllowed: boolean
-    clueLabels: string[]
-    strictDateEligible: boolean
-}): {
-    candidate: boolean
-    applied: boolean
-    dayDelta?: number
-    sourceMonth?: string
-    bankMonth?: string
-} {
-    const { batch, transaction, amountExact, currencyExact, routingAllowed, clueLabels, strictDateEligible } = input
-    const payoutDate = normalizeIsoCalendarDate(batch.payoutDate)
-    const bankDate = normalizeIsoCalendarDate(transaction.bookedAt)
-
-    if (
-        !payoutDate
-        || !bankDate
-        || strictDateEligible
-        || batch.platform !== 'comgate'
-        || batch.bankRoutingTarget !== 'rb_bank_inflow'
-        || !amountExact
-        || !currencyExact
-        || !routingAllowed
-        || !clueLabels.includes('Comgate')
-        || !isNextCalendarMonth(payoutDate, bankDate)
-    ) {
-        return { candidate: false, applied: false }
-    }
-
-    const signedDayDelta = calculateSignedDayDelta(payoutDate, bankDate)
-    const bankDayOfMonth = Number.parseInt(bankDate.slice(8, 10), 10)
-    const candidate = Number.isFinite(signedDayDelta)
-        && signedDayDelta >= 1
-        && signedDayDelta <= COMGATE_CROSS_MONTH_CARRYOVER_MAX_DAY_LAG
-        && Number.isInteger(bankDayOfMonth)
-        && bankDayOfMonth >= 1
-        && bankDayOfMonth <= COMGATE_CROSS_MONTH_CARRYOVER_MAX_DAY_LAG
-
-    return {
-        candidate,
-        applied: candidate,
-        dayDelta: candidate ? signedDayDelta : undefined,
-        sourceMonth: candidate ? payoutDate.slice(0, 7) : undefined,
-        bankMonth: candidate ? bankDate.slice(0, 7) : undefined
-    }
 }
 
 function normalizeComparable(value?: string): string {
