@@ -142,6 +142,47 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('does not create phantom payout batches when a single daily Comgate settlement has blank row references', () => {
+    const result = runMonthlyReconciliationBatch({
+      files: [
+        {
+          sourceDocument: {
+            id: 'doc-comgate-daily-no-row-reference' as never,
+            sourceSystem: 'comgate',
+            documentType: 'payment_gateway_report',
+            fileName: 'vypis-2026-03-27_1816656820.csv',
+            uploadedAt: '2026-03-27T18:00:00.000Z'
+          },
+          content: buildComgateDailySettlementCsv({
+            transferReference: '',
+            componentRows: [
+              { transactionId: 'JGSV-QK5O-DR7O', clientId: '108966761', confirmedAmountText: '2447,50', transferredAmountText: '2423,51' },
+              { transactionId: 'BHOV-M0TY-LBQV', clientId: '108929843', confirmedAmountText: '3059,38', transferredAmountText: '3029,40' },
+              { transactionId: '5V2K-MLZM-ETAK', clientId: '108592573', confirmedAmountText: '611,88', transferredAmountText: '605,88' }
+            ],
+            confirmedSettlementTotalText: '6118,76',
+            transferredSettlementTotalText: '6058,79'
+          })
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-comgate-daily-no-row-reference',
+        requestedAt: '2026-03-27T18:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-27T18:01:00.000Z'
+    })
+
+    expect(result.reconciliation.workflowPlan?.payoutRows).toHaveLength(3)
+    expect(result.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-27:1816656820',
+        payoutReference: '1816656820',
+        expectedTotalMinor: 605879
+      })
+    ])
+    expect(result.report.summary.unmatchedPayoutBatchCount).toBe(1)
+  })
+
   it('prepares uploaded files into shared imported monthly source files with traceable source documents', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const airbnb = getRealInputFixture('airbnb-payout-export')
@@ -236,6 +277,35 @@ describe('runMonthlyReconciliationBatch', () => {
       }
     ])
   })
+
+  function buildComgateDailySettlementCsv(input: {
+    transferReference: string
+    componentRows: Array<{
+      transactionId: string
+      clientId: string
+      confirmedAmountText: string
+      transferredAmountText: string
+    }>
+    confirmedSettlementTotalText: string
+    transferredSettlementTotalText: string
+  }): string {
+    const rows = input.componentRows.map((row) => [
+      '"499465"',
+      `"${row.transactionId}"`,
+      '"Karta online"',
+      `"${row.confirmedAmountText}"`,
+      `"${row.transferredAmountText}"`,
+      '""',
+      `"${input.transferReference}"`,
+      `"${row.clientId}"`
+    ].join(';'))
+
+    return [
+      '"Merchant";"ID ComGate";"Metoda";"Potvrzen� ��stka";"P�eveden� ��stka";"Produkt";"Variabiln� symbol p�evodu";"ID od klienta"',
+      ...rows,
+      `"suma";"";"";"${input.confirmedSettlementTotalText}";"${input.transferredSettlementTotalText}";"";"";""`
+    ].join('\n')
+  }
 
   it('infers shared uploaded source systems from deterministic CSV content even when filenames are generic', () => {
     const booking = getRealInputFixture('booking-payout-export')

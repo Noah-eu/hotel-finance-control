@@ -527,6 +527,93 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('keeps the payout batch count equal to the real settlement count for a 22-file Comgate daily-only month', async () => {
+    const files = Array.from({ length: 22 }, (_, index) => {
+      const day = String(index + 1).padStart(2, '0')
+      const reference = `18166568${String(index + 20).padStart(2, '0')}`
+      const blankTransferReference = index < 10
+
+      return createRuntimeFile(
+        `vypis-2026-03-${day}_${reference}.csv`,
+        buildSyntheticComgateDailySettlementContent({
+          transferReference: blankTransferReference ? '' : reference,
+          componentRows: [
+            { transactionId: `CG-${day}-A`, clientId: `1089${day}01`, confirmedAmountText: '2447,50', transferredAmountText: '2423,51' },
+            { transactionId: `CG-${day}-B`, clientId: `1089${day}02`, confirmedAmountText: '3059,38', transferredAmountText: '3029,40' },
+            { transactionId: `CG-${day}-C`, clientId: `1089${day}03`, confirmedAmountText: '611,88', transferredAmountText: '605,88' }
+          ],
+          confirmedSettlementTotalText: '6118,76',
+          transferredSettlementTotalText: '6058,79'
+        })
+      )
+    })
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files,
+      month: '2026-03',
+      generatedAt: '2026-03-31T18:10:00.000Z'
+    })
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(0)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(22)
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(22)
+    expect(new Set(result.reconciliationSnapshot.unmatchedPayoutBatchKeys).size).toBe(22)
+    expect(result.reconciliationSnapshot.payoutBatchDecisions).toHaveLength(22)
+    expect(result.reconciliationSnapshot.payoutBatchDecisions.every((decision) => decision.componentRowCount === 3)).toBe(true)
+  })
+
+  it('matches a 42 269 Kč Comgate daily settlement batch to the corresponding RB inflow without leaving phantom batch fragments', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(
+          'vypis-2026-03-28_1816656999.csv',
+          buildSyntheticComgateDailySettlementContent({
+            transferReference: '',
+            componentRows: [
+              { transactionId: 'CG-42269-A', clientId: '109000001', confirmedAmountText: '18250,00', transferredAmountText: '18120,00' },
+              { transactionId: 'CG-42269-B', clientId: '109000002', confirmedAmountText: '14120,00', transferredAmountText: '14049,00' },
+              { transactionId: 'CG-42269-C', clientId: '109000003', confirmedAmountText: '10160,00', transferredAmountText: '10100,00' }
+            ],
+            confirmedSettlementTotalText: '42530,00',
+            transferredSettlementTotalText: '42269,00'
+          })
+        ),
+        createRuntimeFile(
+          'Pohyby_5599955956_202603281910.csv',
+          buildRbComgateDailySettlementContent('42269,00', '28.03.2026', 'Souhrnná výplata Comgate 2026-03-28 / 1816656999')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-28T19:10:00.000Z'
+    })
+
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(1)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(0)
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
+    expect(result.reviewSections.payoutBatchUnmatched).toEqual([])
+    expect(result.reconciliationSnapshot.matchedPayoutBatchKeys).toEqual([
+      'comgate-batch:2026-03-28:1816656999'
+    ])
+    expect(result.reconciliationSnapshot.payoutBatchDecisions).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'comgate-batch:2026-03-28:1816656999',
+        expectedBankAmountMinor: 4226900,
+        componentRowCount: 3,
+        matched: true,
+        matchedBankTransactionId: expect.any(String),
+        selectionMode: 'eligible_candidate'
+      })
+    ])
+    expect(result.reconciliationSnapshot.inboundBankTransactions).toContainEqual(
+      expect.objectContaining({
+        amountMinor: 4226900,
+        currency: 'CZK',
+        counterparty: 'Comgate a.s.'
+      })
+    )
+  })
+
   it('proves current Comgate portal gross-to-net delta is explained by aggregated fees and reaches an exact-amount RB candidate before matcher handoff', async () => {
     const fixture = getRealInputFixture('comgate-export-current-portal')
 
@@ -6263,10 +6350,43 @@ function buildRbAggregatedComgatePortalSettlementContent(): string {
   ].join('\n')
 }
 
-function buildRbComgateDailySettlementContent(): string {
+function buildRbComgateDailySettlementContent(
+  amountText = '6058,79',
+  bookedAtDate = '27.03.2026',
+  reference = 'Souhrnná výplata Comgate 2026-03-27 / 1816656820'
+): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
-    '27.03.2026 18:15;27.03.2026 18:17;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-27 / 1816656820'
+    `${bookedAtDate} 18:15;${bookedAtDate} 18:17;5599955956/5500;000000-1234567890/0100;Comgate a.s.;${amountText};CZK;${reference}`
+  ].join('\n')
+}
+
+function buildSyntheticComgateDailySettlementContent(input: {
+  transferReference: string
+  componentRows: Array<{
+    transactionId: string
+    clientId: string
+    confirmedAmountText: string
+    transferredAmountText: string
+  }>
+  confirmedSettlementTotalText: string
+  transferredSettlementTotalText: string
+}): string {
+  const rows = input.componentRows.map((row) => [
+    '"499465"',
+    `"${row.transactionId}"`,
+    '"Karta online"',
+    `"${row.confirmedAmountText}"`,
+    `"${row.transferredAmountText}"`,
+    '""',
+    `"${input.transferReference}"`,
+    `"${row.clientId}"`
+  ].join(';'))
+
+  return [
+    '"Merchant";"ID ComGate";"Metoda";"Potvrzen� ��stka";"P�eveden� ��stka";"Produkt";"Variabiln� symbol p�evodu";"ID od klienta"',
+    ...rows,
+    `"suma";"";"";"${input.confirmedSettlementTotalText}";"${input.transferredSettlementTotalText}";"";"";""`
   ].join('\n')
 }
 

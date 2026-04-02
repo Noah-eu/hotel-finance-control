@@ -562,14 +562,26 @@ function buildMonthlyBatchResultFromParsedFiles(
 }
 
 function enrichParsedExtractedRecords(parsedFiles: ParsedImportedMonthlySourceFile[]): ExtractedRecord[] {
-  return parsedFiles.flatMap((file) =>
-    file.extractedRecords.map((record) => enrichExtractedRecordForSharedMonthlyFlow(record, file.importedFile.sourceDocument))
-  )
+  return parsedFiles.flatMap((file) => {
+    const comgateDailySettlementBatchIdentity = resolveComgateDailySettlementBatchIdentity(
+      file.extractedRecords,
+      file.importedFile.sourceDocument
+    )
+
+    return file.extractedRecords.map((record) =>
+      enrichExtractedRecordForSharedMonthlyFlow(
+        record,
+        file.importedFile.sourceDocument,
+        comgateDailySettlementBatchIdentity
+      )
+    )
+  })
 }
 
 function enrichExtractedRecordForSharedMonthlyFlow(
   record: ExtractedRecord,
-  sourceDocument: SourceDocument
+  sourceDocument: SourceDocument,
+  comgateDailySettlementBatchIdentity?: string
 ): ExtractedRecord {
   if (!isComgateDailySettlementPayoutRecord(record)) {
     return record
@@ -579,9 +591,11 @@ function enrichExtractedRecordForSharedMonthlyFlow(
   const currency = resolveComgateDailySettlementCurrency(record, sourceDocument)
   const payoutBatchIdentity = typeof record.data.payoutBatchIdentity === 'string'
     ? record.data.payoutBatchIdentity
-    : typeof record.data.reference === 'string'
-      ? record.data.reference
-      : undefined
+    : comgateDailySettlementBatchIdentity
+  const reference = payoutBatchIdentity
+    ?? (typeof record.data.reference === 'string' && record.data.reference.trim().length > 0
+      ? record.data.reference.trim()
+      : undefined)
 
   return {
     ...record,
@@ -591,9 +605,42 @@ function enrichExtractedRecordForSharedMonthlyFlow(
       ...record.data,
       ...(bookedAt ? { bookedAt } : {}),
       ...(currency ? { currency } : {}),
+      ...(reference ? { reference } : {}),
       ...(payoutBatchIdentity ? { payoutBatchIdentity } : {})
     }
   }
+}
+
+function resolveComgateDailySettlementBatchIdentity(
+  records: ExtractedRecord[],
+  sourceDocument: SourceDocument
+): string | undefined {
+  const dailySettlementRecords = records.filter(isComgateDailySettlementPayoutRecord)
+  if (dailySettlementRecords.length === 0) {
+    return undefined
+  }
+
+  const uniqueRowReferences = [...new Set(dailySettlementRecords
+    .map((record) => typeof record.data.reference === 'string' ? record.data.reference.trim() : '')
+    .filter((value) => value.length > 0))]
+
+  if (uniqueRowReferences.length === 1) {
+    return uniqueRowReferences[0]
+  }
+
+  const fileNameReference = resolveComgateDailySettlementReferenceFromFileName(sourceDocument.fileName)
+  if (fileNameReference) {
+    return fileNameReference
+  }
+
+  const fileStem = sourceDocument.fileName.replace(/\.[^.]+$/, '').trim()
+  return fileStem || sourceDocument.id
+}
+
+function resolveComgateDailySettlementReferenceFromFileName(fileName: string): string | undefined {
+  const stem = fileName.replace(/\.[^.]+$/, '')
+  const trailingNumericToken = stem.match(/(?:^|[_-])(\d{6,})$/)
+  return trailingNumericToken?.[1]
 }
 
 function isComgateDailySettlementPayoutRecord(record: ExtractedRecord): boolean {
