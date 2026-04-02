@@ -624,6 +624,58 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.extractedRecords[0]?.data.bankParserVariant).toBe('raiffeisenbank')
   })
 
+  it('classifies the exact Raiffeisenbank GPC export shape as a supported bank statement', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: gpc.sourceDocument.fileName,
+        content: gpc.rawInput.content,
+        uploadedAt: '2026-03-20T10:05:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+  })
+
+  it('routes the exact Raiffeisenbank GPC export shape through the shared normalized bank flow', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: gpc.sourceDocument.fileName,
+        content: gpc.rawInput.content,
+        uploadedAt: '2026-03-20T10:06:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-raiffeisen-gpc-routing',
+        requestedAt: '2026-03-20T10:06:30.000Z'
+      },
+      reportGeneratedAt: '2026-03-20T10:07:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([2])
+    expect(result.extractedRecords.map((record) => record.data.bankParserVariant)).toEqual([
+      'raiffeisenbank-gpc',
+      'raiffeisenbank-gpc'
+    ])
+    expect(result.reconciliation.normalizedTransactions).toEqual([
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[0],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      }),
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[1],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      })
+    ])
+  })
+
   it('routes the current 5599955956 file by its Fio-style header shape instead of by filename pattern assumptions', () => {
     const prepared = prepareUploadedMonthlyFiles([
       {

@@ -9,6 +9,7 @@ import {
   inspectBookingPayoutStatementFieldCheck,
   inspectInvoiceDocumentExtractionSummary,
   inspectReceiptDocumentExtractionSummary,
+  looksLikeRaiffeisenbankGpcStatement,
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
@@ -739,6 +740,11 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
   const normalizedFileName = fileName.toLowerCase()
   const headerFields = getNormalizedHeaderFields(content)
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
+
+  if (looksLikeRaiffeisenbankGpcStatement(content, fileName)) {
+    return 'raiffeisenbank'
+  }
+
   const isCanonicalBankHeader = matchesAnyHeaderSignature(normalizedHeaderSample, [
     'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype'
   ])
@@ -1171,6 +1177,10 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
 function inferSourceSystemFromFileName(fileName: string): SourceDocument['sourceSystem'] {
   const normalizedFileName = fileName.toLowerCase()
 
+  if (normalizedFileName.endsWith('.gpc') && normalizedFileName.startsWith('vypis_')) {
+    return 'bank'
+  }
+
   if (normalizedFileName.includes('raiff') || normalizedFileName.includes('raiffeisen')) {
     return 'bank'
   }
@@ -1224,6 +1234,10 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   const headerFields = getNormalizedHeaderFields(content)
   const invoiceSummary = inspectInvoiceDocumentExtractionSummary(content)
   const receiptSummary = inspectReceiptDocumentExtractionSummary(content)
+
+  if (looksLikeRaiffeisenbankGpcStatement(content)) {
+    return 'bank'
+  }
 
   if (invoiceSummary.confidence === 'strong' || looksLikeInvoiceDocumentText(content)) {
     return 'invoice'

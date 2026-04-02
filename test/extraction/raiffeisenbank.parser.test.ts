@@ -223,4 +223,35 @@ describe('parseRaiffeisenbankStatement', () => {
       })
     ])
   })
+
+  it('parses the fixed-width Raiffeisenbank GPC export shape and appends 078/079 continuation lines to the previous transaction reference', () => {
+    const fixture = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toEqual({
+      ...fixture.expectedExtractedRecords[0],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[1]).toEqual({
+      ...fixture.expectedExtractedRecords[1],
+      extractedAt: '2026-03-20T10:00:00.000Z'
+    })
+    expect(records[0]).toMatchObject({
+      id: 'raif-row-1',
+      rawReference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
+      data: {
+        bankParserVariant: 'raiffeisenbank-gpc',
+        bankStatementSource: 'raiffeisenbank',
+        accountId: '5599955956',
+        counterpartyAccount: '0000001234567890',
+        valueAt: '2026-03-19'
+      }
+    })
+  })
 })

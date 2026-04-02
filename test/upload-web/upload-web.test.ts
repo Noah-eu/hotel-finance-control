@@ -121,6 +121,46 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('builds a browser upload state from the exact Raiffeisenbank GPC export shape through the shared bank flow', () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpc.sourceDocument.fileName,
+          content: gpc.rawInput.content,
+          uploadedAt: '2026-03-20T10:10:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-raiffeisen-gpc',
+      generatedAt: '2026-03-20T10:10:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(1)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_002.gpc',
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      classificationBasis: 'content'
+    })
+    expect(result.fileRoutes[0]).toMatchObject({
+      status: 'supported',
+      sourceSystem: 'bank',
+      parserId: 'raiffeisenbank'
+    })
+    expect(result.extractedRecords[0]).toMatchObject({
+      fileName: 'Vypis_5599955956_CZK_2026_002.gpc',
+      extractedCount: 2,
+      accountLabelCs: 'RB účet 5599955956',
+      parserDebugLabel: 'raiffeisenbank-gpc'
+    })
+    expect(result.reportTransactions).toHaveLength(2)
+    expect(result.reportTransactions.map((item) => item.transactionId)).toEqual([
+      'txn:bank:raif-row-1',
+      'txn:bank:raif-row-2'
+    ])
+  })
+
   it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')

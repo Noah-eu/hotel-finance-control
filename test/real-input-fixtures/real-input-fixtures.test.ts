@@ -5,6 +5,7 @@ describe('realInputFixtures', () => {
   it('covers the first practical hotel-finance source types with deterministic metadata', () => {
     expect(realInputFixtures.map((fixture) => fixture.key)).toEqual([
       'raiffeisenbank-statement',
+      'raiffeisenbank-gpc-statement',
       'fio-statement',
       'booking-payout-export',
       'booking-payout-export-browser-upload-shape',
@@ -43,6 +44,7 @@ describe('realInputFixtures', () => {
 
   it('keeps representative extracted outputs aligned with downstream contracts', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
+    const raiffeisenGpc = getRealInputFixture('raiffeisenbank-gpc-statement')
     const booking = getRealInputFixture('booking-payout-export')
     const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
     const bookingPayoutStatementPdf = getRealInputFixture('booking-payout-statement-pdf')
@@ -65,6 +67,15 @@ describe('realInputFixtures', () => {
       data: {
         sourceSystem: 'bank',
         transactionType: 'booking-payout'
+      }
+    })
+    expect(raiffeisenGpc.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'bank-transaction',
+      data: {
+        sourceSystem: 'bank',
+        bankParserVariant: 'raiffeisenbank-gpc',
+        bankStatementSource: 'raiffeisenbank',
+        transactionType: 'Příchozí platba'
       }
     })
     expect(booking.expectedExtractedRecords[0]).toMatchObject({

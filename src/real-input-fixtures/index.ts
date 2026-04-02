@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 export interface RealInputFixture {
   key:
   | 'raiffeisenbank-statement'
+  | 'raiffeisenbank-gpc-statement'
   | 'fio-statement'
   | 'booking-payout-export'
   | 'booking-payout-export-browser-upload-shape'
@@ -153,6 +154,43 @@ function encodePdfHexString(value: string): string {
     .join('')
 }
 
+function buildRaiffeisenbankGpcHeaderLine(accountId: string, currency: string): string {
+  return `074${accountId.slice(0, 16).padEnd(16, ' ')}${currency.slice(0, 3).padEnd(3, ' ')}`
+}
+
+function buildRaiffeisenbankGpcTransactionLine(input: {
+  bookedAt: string
+  valueAt?: string
+  amountMinor: number
+  currency: string
+  counterpartyAccount?: string
+  counterparty: string
+  variableSymbol?: string
+  message?: string
+}): string {
+  const sign = input.amountMinor < 0 ? '-' : '+'
+  const absoluteAmount = Math.abs(input.amountMinor).toString().padStart(12, '0')
+  const bookedAt = input.bookedAt.replace(/-/g, '')
+  const valueAt = (input.valueAt ?? input.bookedAt).replace(/-/g, '')
+
+  return [
+    '075',
+    bookedAt,
+    valueAt,
+    sign,
+    absoluteAmount,
+    input.currency.slice(0, 3).padEnd(3, ' '),
+    (input.counterpartyAccount ?? '').slice(0, 16).padEnd(16, ' '),
+    input.counterparty.slice(0, 30).padEnd(30, ' '),
+    (input.variableSymbol ?? '').slice(0, 10).padEnd(10, ' '),
+    input.message ?? ''
+  ].join('')
+}
+
+function buildRaiffeisenbankGpcContinuationLine(recordType: '078' | '079', content: string): string {
+  return `${recordType}${content}`
+}
+
 export const realInputFixtures: RealInputFixture[] = [
   {
     key: 'raiffeisenbank-statement',
@@ -263,6 +301,122 @@ export const realInputFixtures: RealInputFixture[] = [
         reference: 'PAYROLL-MAR-2026',
         extractedRecordIds: ['raif-row-4'],
         sourceDocumentIds: ['doc-raif-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'raiffeisenbank-gpc-statement',
+    description: 'Representative fixed-width Raiffeisenbank GPC statement with 078/079 continuation lines.',
+    sourceDocument: sourceDocument({
+      id: 'doc-raif-gpc-2026-03' as SourceDocument['id'],
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      fileName: 'Vypis_5599955956_CZK_2026_002.gpc'
+    }),
+    rawInput: {
+      format: 'text',
+      content: [
+        buildRaiffeisenbankGpcHeaderLine('5599955956', 'CZK'),
+        buildRaiffeisenbankGpcTransactionLine({
+          bookedAt: '2026-03-19',
+          valueAt: '2026-03-19',
+          amountMinor: 4226900,
+          currency: 'CZK',
+          counterpartyAccount: '0000001234567890',
+          counterparty: 'Comgate a.s.',
+          variableSymbol: '1816656820',
+          message: 'COMGATE SETTLEMENT 1816656820'
+        }),
+        buildRaiffeisenbankGpcContinuationLine('078', 'Jokeland - rezervace 103'),
+        buildRaiffeisenbankGpcContinuationLine('079', 'Jokeland - parkovani'),
+        buildRaiffeisenbankGpcTransactionLine({
+          bookedAt: '2026-03-20',
+          valueAt: '2026-03-20',
+          amountMinor: -13500,
+          currency: 'CZK',
+          counterpartyAccount: '0000000000002010',
+          counterparty: 'Raiffeisenbank a.s.',
+          message: 'POPLATEK ZA SLUZBY'
+        })
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'raif-row-1',
+        sourceDocumentId: 'doc-raif-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
+        amountMinor: 4226900,
+        currency: 'CZK',
+        occurredAt: '2026-03-19',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-03-19',
+          valueAt: '2026-03-19',
+          amountMinor: 4226900,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'Comgate a.s.',
+          counterpartyAccount: '0000001234567890',
+          reference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
+          variableSymbol: '1816656820',
+          transactionType: 'Příchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'raif-row-2',
+        sourceDocumentId: 'doc-raif-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: 'POPLATEK ZA SLUZBY',
+        amountMinor: -13500,
+        currency: 'CZK',
+        occurredAt: '2026-03-20',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'raiffeisenbank-gpc',
+          bankStatementSource: 'raiffeisenbank',
+          bookedAt: '2026-03-20',
+          valueAt: '2026-03-20',
+          amountMinor: -13500,
+          currency: 'CZK',
+          accountId: '5599955956',
+          counterparty: 'Raiffeisenbank a.s.',
+          counterpartyAccount: '0000000000002010',
+          reference: 'POPLATEK ZA SLUZBY',
+          transactionType: 'Odchozí platba'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:bank:raif-row-1' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 4226900,
+        currency: 'CZK',
+        bookedAt: '2026-03-19',
+        valueAt: '2026-03-19',
+        accountId: '5599955956',
+        counterparty: 'Comgate a.s.',
+        reference: 'COMGATE SETTLEMENT 1816656820 | VS 1816656820 | Jokeland - rezervace 103 | Jokeland - parkovani',
+        extractedRecordIds: ['raif-row-1'],
+        sourceDocumentIds: ['doc-raif-gpc-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:bank:raif-row-2' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'bank',
+        amountMinor: 13500,
+        currency: 'CZK',
+        bookedAt: '2026-03-20',
+        valueAt: '2026-03-20',
+        accountId: '5599955956',
+        counterparty: 'Raiffeisenbank a.s.',
+        reference: 'POPLATEK ZA SLUZBY',
+        extractedRecordIds: ['raif-row-2'],
+        sourceDocumentIds: ['doc-raif-gpc-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },
