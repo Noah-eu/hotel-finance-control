@@ -1477,16 +1477,9 @@ describe('buildReviewScreen', () => {
       generatedAt: '2026-03-21T16:00:00.000Z'
     })
 
-    expect(review.unmatchedReservationSettlements).toHaveLength(1)
-    expect(review.unmatchedReservationSettlements[0]).toMatchObject({
-      kind: 'unmatched-reservation-settlement',
-      title: 'Rezervace PREVIO-20260314'
-    })
-    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Chybí deterministická vazba na odpovídající úhradu.')
-    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Kanál: Přímá rezervace.')
-    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Pobyt: 2026-03-14 – 2026-03-16.')
-    expect(review.unmatchedReservationSettlements[0]?.detail).toContain('Částka: 420,00 CZK.')
-    expect(review.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
+    expect(review.reservationSettlementOverview).toEqual([])
+    expect(review.ancillarySettlementOverview).toEqual([])
+    expect(review.unmatchedReservationSettlements).toEqual([])
   })
 
   it('uses Booking payout supplement display metadata in the unmatched payout review item', () => {

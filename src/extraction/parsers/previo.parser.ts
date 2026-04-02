@@ -201,6 +201,7 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
       data: {
         platform: 'previo',
         rowKind: kind,
+        settlementProjectionEligibility: 'intake_only',
         bookedAt: occurredAt,
         createdAt,
         stayStartAt,

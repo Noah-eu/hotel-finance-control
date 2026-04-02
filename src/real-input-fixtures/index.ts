@@ -874,6 +874,7 @@ export const realInputFixtures: RealInputFixture[] = [
         data: {
           platform: 'previo',
           rowKind: 'accommodation',
+          settlementProjectionEligibility: 'intake_only',
           bookedAt: '2026-03-14',
           createdAt: '2026-03-13T09:15:00',
           stayStartAt: '2026-03-14',

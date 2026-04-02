@@ -2896,6 +2896,11 @@ describe('buildWebDemo', () => {
       fileRoutes: Array<{ fileName: string; sourceSystem: string; status: string; intakeStatus: string }>
       preparedFiles: Array<{ fileName: string; sourceSystem: string; documentType: string }>
       extractedRecords: Array<{ extractedCount: number }>
+      reviewSections: {
+        reservationSettlementOverview: unknown[]
+        ancillarySettlementOverview: unknown[]
+        unmatchedReservationSettlements: unknown[]
+      }
     }
 
     expect(initialState.fileRoutes).toEqual([
@@ -2918,6 +2923,9 @@ describe('buildWebDemo', () => {
         extractedCount: 1
       })
     ])
+    expect(initialState.reviewSections.reservationSettlementOverview).toEqual([])
+    expect(initialState.reviewSections.ancillarySettlementOverview).toEqual([])
+    expect(initialState.reviewSections.unmatchedReservationSettlements).toEqual([])
     expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
     expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>reservations-export-2026-03.xlsx</strong>')
     expect(rendered.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
@@ -2928,6 +2936,11 @@ describe('buildWebDemo', () => {
       runId: string
       fileRoutes: Array<{ fileName: string; sourceSystem: string; status: string; intakeStatus: string }>
       preparedFiles: Array<{ fileName: string; sourceSystem: string; documentType: string }>
+      reviewSections: {
+        reservationSettlementOverview: unknown[]
+        ancillarySettlementOverview: unknown[]
+        unmatchedReservationSettlements: unknown[]
+      }
     }
 
     expect(reloadedState.runId).toContain('2026-03')
@@ -2946,6 +2959,9 @@ describe('buildWebDemo', () => {
         documentType: 'reservation_export'
       })
     ])
+    expect(reloadedState.reviewSections.reservationSettlementOverview).toEqual([])
+    expect(reloadedState.reviewSections.ancillarySettlementOverview).toEqual([])
+    expect(reloadedState.reviewSections.unmatchedReservationSettlements).toEqual([])
     expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>reservations-export-2026-03.xlsx</strong>')
     expect(reloaded.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
   })

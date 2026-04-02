@@ -78,6 +78,7 @@ function buildReservationSources(extractedRecords: ExtractedRecord[]): Reservati
         .filter((record) => record.recordType === 'payout-line')
         .filter((record) => record.data.platform === 'previo')
         .filter((record) => record.data.rowKind !== 'ancillary')
+        .filter(isSettlementProjectionEligible)
         .map((record) => ({
             reservationId: stringOrFallback(record.data.reservationId, record.rawReference, record.id),
             sourceDocumentId: record.sourceDocumentId,
@@ -100,6 +101,7 @@ function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): Anci
     return extractedRecords
         .filter((record) => record.data.platform === 'previo')
         .filter((record) => record.data.rowKind === 'ancillary')
+        .filter(isSettlementProjectionEligible)
         .map((record) => ({
             sourceDocumentId: record.sourceDocumentId,
             sourceSystem: 'previo',
@@ -113,6 +115,10 @@ function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): Anci
             outstandingBalanceMinor: optionalNumber(record.data.outstandingBalanceMinor),
             currency: stringOrFallback(record.data.currency, record.currency, 'CZK')
         }))
+}
+
+function isSettlementProjectionEligible(record: ExtractedRecord): boolean {
+    return record.data.settlementProjectionEligibility !== 'intake_only'
 }
 
 function buildPayoutRows(

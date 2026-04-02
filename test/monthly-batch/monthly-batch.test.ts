@@ -272,19 +272,7 @@ describe('runMonthlyReconciliationBatch', () => {
         extractedCount: 1
       }
     ])
-    expect(result.reconciliation.workflowPlan?.reservationSources).toEqual([
-      expect.objectContaining({
-        reservationId: 'PREVIO-20260314',
-        sourceSystem: 'previo',
-        reference: 'PREVIO-20260314',
-        stayStartAt: '2026-03-14',
-        stayEndAt: '2026-03-16',
-        guestName: 'Jan Novak',
-        channel: 'direct-web',
-        grossRevenueMinor: 42000,
-        currency: 'CZK'
-      })
-    ])
+    expect(result.reconciliation.workflowPlan?.reservationSources).toEqual([])
   })
 
   it('keeps a Fio bank CSV classified as bank when transaction rows mention Comgate a.s.', () => {

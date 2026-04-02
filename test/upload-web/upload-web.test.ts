@@ -2484,7 +2484,7 @@ describe('buildUploadWebFlow', () => {
         accountId: '8888997777/2010'
       })
     ])
-    expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(1)
+    expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.payoutRows).toEqual([
       expect.objectContaining({
@@ -2506,14 +2506,7 @@ describe('buildUploadWebFlow', () => {
     ])
     expect(batch.reconciliation.workflowPlan?.directBankSettlements).toEqual([])
     expect(batch.reconciliation.workflowPlan?.reservationSettlementMatches).toEqual([])
-    expect(batch.reconciliation.workflowPlan?.reservationSettlementNoMatches).toEqual([
-      expect.objectContaining({
-        reservationId: 'PREVIO-20260314',
-        reference: 'PREVIO-20260314',
-        noMatchReason: 'noCandidate',
-        candidateCount: 0
-      })
-    ])
+    expect(batch.reconciliation.workflowPlan?.reservationSettlementNoMatches).toEqual([])
     expect(batch.reconciliation.payoutBatchMatches).toEqual([])
     expect(batch.report.unmatchedPayoutBatches).toEqual([
       expect.objectContaining({
@@ -2566,16 +2559,9 @@ describe('buildUploadWebFlow', () => {
       })
     ])
     expect(state.reviewSections.matched).toHaveLength(0)
-    expect(state.reviewSections.unmatchedReservationSettlements).toHaveLength(1)
-    expect(state.reviewSections.unmatchedReservationSettlements[0]).toEqual(
-      expect.objectContaining({
-        title: 'Rezervace PREVIO-20260314',
-        detail: expect.stringContaining('Chybí deterministická vazba na odpovídající úhradu.')
-      })
-    )
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).toContain('Kanál: Přímá rezervace.')
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).toContain('Pobyt: 2026-03-14 – 2026-03-16.')
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).toContain('Částka: 420,00 CZK.')
+    expect(state.reviewSections.reservationSettlementOverview).toEqual([])
+    expect(state.reviewSections.ancillarySettlementOverview).toEqual([])
+    expect(state.reviewSections.unmatchedReservationSettlements).toEqual([])
     expect(state.reviewSections.unmatched).toHaveLength(4)
     expect(state.reviewSections.suspicious).toHaveLength(0)
     expect(state.reviewSections.missingDocuments).toHaveLength(0)
@@ -2587,7 +2573,6 @@ describe('buildUploadWebFlow', () => {
         detail: expect.stringContaining('Žádná bankovní položka se stejnou částkou.')
       })
     )
-    expect(state.reviewSections.unmatchedReservationSettlements[0]?.detail).not.toContain('noCandidate')
     expect(state.reportSummary.matchedGroupCount).toBe(batch.reconciliation.summary.matchedGroupCount)
     expect(batch.reconciliation.summary.matchedGroupCount).toBe(0)
     expect(batch.report.summary.unmatchedExpectedCount).toBe(1)
@@ -2730,12 +2715,11 @@ describe('buildUploadWebFlow', () => {
       outputPath
     })
 
-    expect(result.preview.review.unmatchedReservationSettlements).toHaveLength(1)
-    expect(result.html).toContain('Nespárované rezervace k úhradě')
-    expect(result.html).toContain('Rezervace PREVIO-20260314')
-    expect(result.html).toContain('Chybí deterministická vazba na odpovídající úhradu.')
-    expect(result.html).toContain('Kanál: Přímá rezervace.')
-    expect(result.html).not.toContain('noCandidate')
+    expect(result.preview.review.reservationSettlementOverview).toEqual([])
+    expect(result.preview.review.ancillarySettlementOverview).toEqual([])
+    expect(result.preview.review.unmatchedReservationSettlements).toEqual([])
+    expect(result.html).not.toContain('Rezervace PREVIO-20260314')
+    expect(result.html).not.toContain('Chybí deterministická vazba na odpovídající úhradu.')
   })
 
   it('carries additive business-facing reservation and ancillary settlement overviews in browser runtime state', async () => {
