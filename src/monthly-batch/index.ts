@@ -22,7 +22,8 @@ export type {
   UploadedMonthlyFileIngestionBranch,
   UploadedMonthlyFileSourceDescriptor,
   UploadedMonthlyFileRoute,
-  UploadedMonthlyFile
+  UploadedMonthlyFile,
+  PreviousMonthCarryoverSource
 } from './contracts'
 
 export type { UploadedMonthlyIngestionProgress } from './service'

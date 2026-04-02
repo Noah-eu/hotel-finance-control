@@ -9,7 +9,7 @@ import {
   ingestUploadedMonthlyFilesProgressively,
   type UploadedMonthlyFile
 } from '../monthly-batch'
-import { inspectPayoutBatchBankDecisions } from '../reconciliation'
+import { inspectPayoutBatchBankDecisions, type PreviousMonthCarryoverSource } from '../reconciliation'
 import { buildReviewScreen } from '../review'
 import { resolveRuntimeBuildInfo } from '../shared/build-provenance'
 import { formatAmountMinorCs } from '../shared/money'
@@ -21,6 +21,7 @@ export interface BuildBrowserRuntimeStateInput {
   files: UploadedMonthlyFile[]
   runId: string
   generatedAt: string
+  previousMonthCarryoverSource?: PreviousMonthCarryoverSource
   runtimeBuildInfo?: BrowserRuntimeUploadState['runtimeBuildInfo']
 }
 
@@ -33,7 +34,8 @@ export function buildBrowserRuntimeUploadStateFromFiles(
       runId: input.runId,
       requestedAt: input.generatedAt
     },
-    reportGeneratedAt: input.generatedAt
+    reportGeneratedAt: input.generatedAt,
+    previousMonthCarryoverSource: input.previousMonthCarryoverSource
   })
 
   return buildBrowserRuntimeUploadStateFromIngestion(input, ingestion)
@@ -52,7 +54,8 @@ export async function buildBrowserRuntimeUploadStateFromFilesProgressively(
       runId: input.runId,
       requestedAt: input.generatedAt
     },
-    reportGeneratedAt: input.generatedAt
+    reportGeneratedAt: input.generatedAt,
+    previousMonthCarryoverSource: input.previousMonthCarryoverSource
   }, {
     onProgress(progress) {
       options.onProgress?.({
@@ -104,6 +107,8 @@ function buildBrowserRuntimeUploadStateFromIngestion(
       fallbackBuildSource: 'browser-runtime'
     }),
     reconciliationSnapshot: buildReconciliationSnapshot(batch),
+    carryoverSourceSnapshot: buildCarryoverSourceSnapshot(batch, deriveMonthLabel(input.runId)),
+    carryoverDebug: buildCarryoverDebugState(batch, input),
     routingSummary: {
       uploadedFileCount: ingestion.fileRoutes.length,
       supportedFileCount: ingestion.fileRoutes.filter((file) => file.status === 'supported').length,
@@ -195,6 +200,68 @@ function buildBrowserRuntimeUploadStateFromIngestion(
       labelCs: file.labelCs,
       fileName: file.fileName
     }))
+  }
+}
+
+function buildCarryoverSourceSnapshot(
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
+  monthLabel: string
+): BrowserRuntimeUploadState['carryoverSourceSnapshot'] {
+  const unmatchedBatchKeys = new Set(
+    (batch.reconciliation.payoutBatchNoMatchDiagnostics ?? []).map((item) => item.payoutBatchKey)
+  )
+  const payoutBatches = (batch.reconciliation.workflowPlan?.payoutBatches ?? [])
+    .filter((item) => item.platform === 'comgate')
+    .filter((item) => !item.fromPreviousMonth)
+    .filter((item) => unmatchedBatchKeys.has(item.payoutBatchKey))
+    .map((item) => ({
+      payoutBatchKey: item.payoutBatchKey,
+      platform: item.platform,
+      payoutReference: item.payoutReference,
+      payoutDate: item.payoutDate,
+      bankRoutingTarget: item.bankRoutingTarget,
+      rowIds: item.rowIds.slice(),
+      expectedTotalMinor: item.expectedTotalMinor,
+      grossTotalMinor: item.grossTotalMinor,
+      feeTotalMinor: item.feeTotalMinor,
+      netSettlementTotalMinor: item.netSettlementTotalMinor,
+      currency: item.currency,
+      payoutSupplementPaymentId: item.payoutSupplementPaymentId,
+      payoutSupplementPayoutDate: item.payoutSupplementPayoutDate,
+      payoutSupplementPayoutTotalAmountMinor: item.payoutSupplementPayoutTotalAmountMinor,
+      payoutSupplementPayoutTotalCurrency: item.payoutSupplementPayoutTotalCurrency,
+      payoutSupplementLocalAmountMinor: item.payoutSupplementLocalAmountMinor,
+      payoutSupplementLocalCurrency: item.payoutSupplementLocalCurrency,
+      payoutSupplementIbanSuffix: item.payoutSupplementIbanSuffix,
+      payoutSupplementExchangeRate: item.payoutSupplementExchangeRate,
+      payoutSupplementReferenceHints: item.payoutSupplementReferenceHints?.slice(),
+      payoutSupplementSourceDocumentIds: item.payoutSupplementSourceDocumentIds?.slice(),
+      payoutSupplementReservationIds: item.payoutSupplementReservationIds?.slice()
+    }))
+
+  return {
+    sourceMonthKey: monthLabel,
+    payoutBatches
+  }
+}
+
+function buildCarryoverDebugState(
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
+  input: BuildBrowserRuntimeStateInput
+): BrowserRuntimeUploadState['carryoverDebug'] {
+  const carryoverPayoutBatchKeys = new Set(
+    (batch.reconciliation.workflowPlan?.payoutBatches ?? [])
+      .filter((item) => item.fromPreviousMonth)
+      .map((item) => item.payoutBatchKey)
+  )
+
+  return {
+    sourceMonthKey: input.previousMonthCarryoverSource?.sourceMonthKey,
+    currentMonthKey: deriveMonthLabel(input.runId),
+    loadedPayoutBatchCount: carryoverPayoutBatchKeys.size,
+    loadedPayoutBatchKeysSample: Array.from(carryoverPayoutBatchKeys).slice(0, 5),
+    matchedCount: (batch.reconciliation.payoutBatchMatches ?? []).filter((item) => carryoverPayoutBatchKeys.has(item.payoutBatchKey)).length,
+    unmatchedCount: (batch.reconciliation.payoutBatchNoMatchDiagnostics ?? []).filter((item) => carryoverPayoutBatchKeys.has(item.payoutBatchKey)).length
   }
 }
 

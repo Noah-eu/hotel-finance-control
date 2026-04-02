@@ -13,11 +13,13 @@ import type {
     SourceDocument
 } from '../domain'
 import { matchReservationSourcesToSettlements } from './reservation-settlement.matcher'
+import type { PreviousMonthCarryoverSource } from './contracts'
 
 export interface BuildWorkflowPlanInput {
     extractedRecords: ExtractedRecord[]
     normalizedTransactions: NormalizedTransaction[]
     requestedAt: string
+    previousMonthCarryoverSource?: PreviousMonthCarryoverSource
 }
 
 export function buildReconciliationWorkflowPlan(
@@ -26,7 +28,9 @@ export function buildReconciliationWorkflowPlan(
     const reservationSources = buildReservationSources(input.extractedRecords)
     const ancillaryRevenueSources = buildAncillaryRevenueSources(input.extractedRecords)
     const payoutRows = buildPayoutRows(input.normalizedTransactions, input.extractedRecords)
-    const payoutBatches = buildPayoutBatches(payoutRows)
+    const payoutBatches = buildPayoutBatches(payoutRows).concat(
+        buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
+    )
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
     const reservationSettlementMatching = matchReservationSourcesToSettlements({
         reservationSources,
@@ -47,6 +51,26 @@ export function buildReconciliationWorkflowPlan(
         expenseDocuments,
         bankFeeClassifications
     }
+}
+
+function buildCarryoverPayoutBatches(
+    source: PreviousMonthCarryoverSource | undefined
+): PayoutBatchExpectation[] {
+    if (!source || !Array.isArray(source.payoutBatches) || source.payoutBatches.length === 0) {
+        return []
+    }
+
+    return source.payoutBatches
+        .filter((batch) => batch.platform === 'comgate')
+        .map((batch) => ({
+            ...batch,
+            rowIds: Array.isArray(batch.rowIds) ? batch.rowIds.slice() : [],
+            payoutSupplementReferenceHints: batch.payoutSupplementReferenceHints?.slice(),
+            payoutSupplementSourceDocumentIds: batch.payoutSupplementSourceDocumentIds?.slice(),
+            payoutSupplementReservationIds: batch.payoutSupplementReservationIds?.slice(),
+            fromPreviousMonth: true,
+            sourceMonthKey: source.sourceMonthKey
+        }))
 }
 
 function buildReservationSources(extractedRecords: ExtractedRecord[]): ReservationSourceRecord[] {

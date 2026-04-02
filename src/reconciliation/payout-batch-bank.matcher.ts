@@ -235,8 +235,17 @@ function buildCandidateDiagnostic(
         clueLabels: clueMatch.labels,
         strictDateEligible
     })
+    const comgatePreviousMonthCarryoverRuleApplied = shouldApplyComgatePreviousMonthCarryoverRule({
+        batch,
+        transaction,
+        amountExact,
+        currencyExact,
+        routingAllowed,
+        clueLabels: clueMatch.labels,
+        strictDateEligible
+    })
 
-    if (!strictDateEligible && !comgateSameMonthLagRuleApplied) {
+    if (!strictDateEligible && !comgateSameMonthLagRuleApplied && !comgatePreviousMonthCarryoverRuleApplied) {
         rejectionReasons.push('dateToleranceMiss')
     }
 
@@ -542,6 +551,64 @@ function shouldApplyComgateSameMonthLagRule(input: {
     return Number.isFinite(signedDayDelta)
         && signedDayDelta >= 0
         && signedDayDelta <= COMGATE_SAME_MONTH_POST_PAYOUT_MAX_DAY_LAG
+}
+
+function shouldApplyComgatePreviousMonthCarryoverRule(input: {
+    batch: PayoutBatchExpectation
+    transaction: NormalizedTransaction
+    amountExact: boolean
+    currencyExact: boolean
+    routingAllowed: boolean
+    clueLabels: string[]
+    strictDateEligible: boolean
+}): boolean {
+    const { batch, transaction, amountExact, currencyExact, routingAllowed, clueLabels, strictDateEligible } = input
+
+    if (
+        strictDateEligible
+        || batch.platform !== 'comgate'
+        || !batch.fromPreviousMonth
+        || !amountExact
+        || !currencyExact
+        || !routingAllowed
+        || !clueLabels.includes('Comgate')
+    ) {
+        return false
+    }
+
+    const sourceMonthKey = String(batch.sourceMonthKey ?? '')
+    if (!sourceMonthKey || sourceMonthKey !== normalizeIsoCalendarDate(batch.payoutDate)?.slice(0, 7)) {
+        return false
+    }
+
+    if (!isImmediateNextCalendarMonth(batch.payoutDate, transaction.bookedAt)) {
+        return false
+    }
+
+    const signedDayDelta = calculateSignedDayDelta(batch.payoutDate, transaction.bookedAt)
+    return Number.isFinite(signedDayDelta) && signedDayDelta >= 0
+}
+
+function isImmediateNextCalendarMonth(left?: string, right?: string): boolean {
+    const normalizedLeft = normalizeIsoCalendarDate(left)
+    const normalizedRight = normalizeIsoCalendarDate(right)
+
+    if (!normalizedLeft || !normalizedRight) {
+        return false
+    }
+
+    const [leftYear, leftMonth] = normalizedLeft.slice(0, 7).split('-').map((value) => Number(value))
+    const [rightYear, rightMonth] = normalizedRight.slice(0, 7).split('-').map((value) => Number(value))
+
+    if (!Number.isInteger(leftYear) || !Number.isInteger(leftMonth) || !Number.isInteger(rightYear) || !Number.isInteger(rightMonth)) {
+        return false
+    }
+
+    if (leftMonth === 12) {
+        return rightYear === leftYear + 1 && rightMonth === 1
+    }
+
+    return rightYear === leftYear && rightMonth === leftMonth + 1
 }
 
 function normalizeComparable(value?: string): string {

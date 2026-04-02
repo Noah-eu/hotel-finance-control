@@ -6,6 +6,7 @@ export function placeholder() {
 }
 
 export type {
+  CarryoverSourcePayoutBatch,
   ReconciliationInput,
   ReconciliationContext,
   ReconciliationSummary,
@@ -14,7 +15,8 @@ export type {
   PayoutBatchBankMatch,
   PayoutBatchNoMatchDiagnostic,
   PayoutBatchCandidateDiagnostic,
-  PayoutBatchBankDecisionTrace
+  PayoutBatchBankDecisionTrace,
+  PreviousMonthCarryoverSource
 } from './contracts'
 
 export { DefaultReconciliationService, reconcileExtractedRecords } from './service'

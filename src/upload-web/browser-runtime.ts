@@ -2,6 +2,7 @@ import type { BrowserRuntimeInputFile, BrowserRuntimeProgressUpdate, BrowserRunt
 import { buildBrowserRuntimeUploadStateFromFilesProgressively } from './browser-runtime-state.js'
 import { resolveRuntimeBuildInfo } from '../shared/build-provenance.js'
 import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
+import type { PreviousMonthCarryoverSource } from '../reconciliation/contracts.js'
 import { detectUploadedMonthlyFileCapability } from '../monthly-batch/capabilities.js'
 import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
 import {
@@ -43,6 +44,7 @@ export interface BrowserRuntimeBridge {
     files: BrowserRuntimeInputFile[]
     month?: string
     generatedAt: string
+    previousMonthCarryoverSource?: PreviousMonthCarryoverSource
     onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
   }): Promise<BrowserRuntimeUploadState>
 }
@@ -58,6 +60,7 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
   files: BrowserRuntimeInputFile[]
   month?: string
   generatedAt: string
+  previousMonthCarryoverSource?: PreviousMonthCarryoverSource
   onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
 }): Promise<BrowserRuntimeUploadState> {
   ensureBrowserCompatibleBuffer()
@@ -67,6 +70,7 @@ export async function buildBrowserRuntimeStateFromSelectedFiles(input: {
     files: uploadedFiles,
     runId: buildBrowserRuntimeRunId(input.month),
     generatedAt: input.generatedAt,
+    previousMonthCarryoverSource: input.previousMonthCarryoverSource,
     runtimeBuildInfo: resolveRuntimeBuildInfo({
       generatedAt: input.generatedAt,
       runtimeModuleVersion: resolveLoadedRuntimeModuleVersion(),

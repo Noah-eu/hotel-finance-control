@@ -12,6 +12,36 @@ import type {
   ReconciliationWorkflowPlan
 } from '../domain/types'
 
+export interface CarryoverSourcePayoutBatch {
+  payoutBatchKey: PayoutBatchExpectation['payoutBatchKey']
+  platform: PayoutBatchExpectation['platform']
+  payoutReference: PayoutBatchExpectation['payoutReference']
+  payoutDate: PayoutBatchExpectation['payoutDate']
+  bankRoutingTarget: PayoutBatchExpectation['bankRoutingTarget']
+  rowIds: PayoutBatchExpectation['rowIds']
+  expectedTotalMinor: PayoutBatchExpectation['expectedTotalMinor']
+  grossTotalMinor?: PayoutBatchExpectation['grossTotalMinor']
+  feeTotalMinor?: PayoutBatchExpectation['feeTotalMinor']
+  netSettlementTotalMinor?: PayoutBatchExpectation['netSettlementTotalMinor']
+  currency: PayoutBatchExpectation['currency']
+  payoutSupplementPaymentId?: PayoutBatchExpectation['payoutSupplementPaymentId']
+  payoutSupplementPayoutDate?: PayoutBatchExpectation['payoutSupplementPayoutDate']
+  payoutSupplementPayoutTotalAmountMinor?: PayoutBatchExpectation['payoutSupplementPayoutTotalAmountMinor']
+  payoutSupplementPayoutTotalCurrency?: PayoutBatchExpectation['payoutSupplementPayoutTotalCurrency']
+  payoutSupplementLocalAmountMinor?: PayoutBatchExpectation['payoutSupplementLocalAmountMinor']
+  payoutSupplementLocalCurrency?: PayoutBatchExpectation['payoutSupplementLocalCurrency']
+  payoutSupplementIbanSuffix?: PayoutBatchExpectation['payoutSupplementIbanSuffix']
+  payoutSupplementExchangeRate?: PayoutBatchExpectation['payoutSupplementExchangeRate']
+  payoutSupplementReferenceHints?: PayoutBatchExpectation['payoutSupplementReferenceHints']
+  payoutSupplementSourceDocumentIds?: PayoutBatchExpectation['payoutSupplementSourceDocumentIds']
+  payoutSupplementReservationIds?: PayoutBatchExpectation['payoutSupplementReservationIds']
+}
+
+export interface PreviousMonthCarryoverSource {
+  sourceMonthKey: string
+  payoutBatches: CarryoverSourcePayoutBatch[]
+}
+
 export interface SupportedExpenseLink {
   expenseTransactionId: NormalizedTransaction['id']
   supportTransactionId: NormalizedTransaction['id']
@@ -116,6 +146,7 @@ export interface PayoutBatchBankDecisionTrace {
 
 export interface ReconciliationInput {
   extractedRecords: ExtractedRecord[]
+  previousMonthCarryoverSource?: PreviousMonthCarryoverSource
 }
 
 export interface ReconciliationContext {

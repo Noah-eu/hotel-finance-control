@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm'
 import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { prepareUploadedMonthlyFiles, runMonthlyReconciliationBatch } from '../../src/monthly-batch'
+import type { PreviousMonthCarryoverSource } from '../../src/reconciliation'
 import { buildFixtureWebDemo, buildWebDemo } from '../../src/web-demo'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
@@ -3574,6 +3575,154 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('Rozpoznáno souborů: 1')
   })
 
+  it('loads open previous-month Comgate payout carryover into the current month and matches the April RB inflow', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T23:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-carryover-source-march',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeFile('Klientsky_portal_comgate_2026_03_31.csv', buildCurrentPortalComgatePreviousMonthCarryoverContent())
+      ]
+    })
+
+    const persistedMarchWorkspace = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      runtimeState?: {
+        carryoverSourceSnapshot?: {
+          sourceMonthKey?: string
+          payoutBatches?: Array<{ payoutBatchKey: string }>
+        }
+        reconciliationSnapshot?: {
+          unmatchedPayoutBatchKeys?: string[]
+        }
+      }
+    }
+
+    expect(persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot).toEqual(expect.objectContaining({
+      sourceMonthKey: '2026-03'
+    }))
+    expect(persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot?.payoutBatches?.map((item) => item.payoutBatchKey)).toContain('comgate-batch:2026-03-31:CZK')
+
+    const aprilState = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthCarryoverSettlementContent())
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-03T09:00:00.000Z',
+      previousMonthCarryoverSource: persistedMarchWorkspace.runtimeState?.carryoverSourceSnapshot as unknown as PreviousMonthCarryoverSource
+    }) as {
+      carryoverDebug: {
+        sourceMonthKey: string
+        currentMonthKey: string
+        loadedPayoutBatchCount: number
+        loadedPayoutBatchKeysSample: string[]
+        matchedCount: number
+        unmatchedCount: number
+      }
+      reviewSections: {
+        payoutBatchMatched: Array<{ title: string }>
+        payoutBatchUnmatched: Array<{ title: string }>
+      }
+    }
+
+    expect(workspacePersistenceState.has('2026-03')).toBe(true)
+    expect(aprilState.carryoverDebug).toEqual(expect.objectContaining({
+      sourceMonthKey: '2026-03',
+      currentMonthKey: '2026-04',
+      loadedPayoutBatchCount: 1,
+      matchedCount: 1,
+      unmatchedCount: 0
+    }))
+    expect(aprilState.carryoverDebug.loadedPayoutBatchKeysSample).toContain('comgate-batch:2026-03-31:CZK')
+    expect(aprilState.reviewSections.payoutBatchMatched.some((item) => item.title.includes('Comgate payout dávka'))).toBe(true)
+    expect(aprilState.reviewSections.payoutBatchUnmatched).toHaveLength(0)
+  })
+
+  it('keeps previous month persistence intact when clearing the current month and drops carryover only after deleting the source month', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-31T23:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-carryover-delete-source-march',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeFile('Klientsky_portal_comgate_2026_03_31.csv', buildCurrentPortalComgatePreviousMonthCarryoverContent())
+      ]
+    })
+
+    const aprilRendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T09:00:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-comgate-carryover-delete-source-april',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      confirmResponses: [true],
+      files: [
+        createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthCarryoverSettlementContent())
+      ]
+    })
+
+    await aprilRendered.clearCurrentMonthWorkspace()
+    expect(workspacePersistenceState.has('2026-03')).toBe(true)
+    expect(workspacePersistenceState.has('2026-04')).toBe(false)
+
+    const marchRendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T09:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-comgate-carryover-delete-source-clear-march',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      confirmResponses: [true],
+      skipStart: true,
+      files: []
+    })
+
+    await marchRendered.clearCurrentMonthWorkspace()
+    expect(workspacePersistenceState.has('2026-03')).toBe(false)
+
+    const aprilRerun = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T09:10:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-comgate-carryover-delete-source-rerun-april',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeFile('Pohyby_5599955956_202604030900.csv', buildRbComgatePreviousMonthCarryoverSettlementContent())
+      ]
+    })
+
+    const rerunState = aprilRerun.getLastVisibleRuntimeState() as {
+      carryoverDebug: {
+        loadedPayoutBatchCount: number
+        matchedCount: number
+        unmatchedCount: number
+      }
+      reviewSections: {
+        payoutBatchMatched: Array<{ title: string }>
+      }
+    }
+
+    expect(rerunState.carryoverDebug).toEqual(expect.objectContaining({
+      loadedPayoutBatchCount: 0,
+      matchedCount: 0,
+      unmatchedCount: 0
+    }))
+    expect(rerunState.reviewSections.payoutBatchMatched).toHaveLength(0)
+    expect(aprilRerun.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Loaded carryover payout batch count:</strong> 0')
+  })
+
   it('keeps different months isolated from the same-month invariant guard', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -5884,6 +6033,22 @@ function buildRbComgateSameMonthLagSettlementContent(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '30.03.2026 11:00;30.03.2026 11:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-27'
+  ].join('\n')
+}
+
+function buildCurrentPortalComgatePreviousMonthCarryoverContent(): string {
+  return [
+    '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+    '"CG-CARRY-TRX-1";"CG-CARRY-20260331-A";"31.03.2026 08:15";"31.03.2026 08:16";"31.03.2026";"guest-a@example.com";"CG-CARRY-20260331-A";"JOKELAND s.r.o.";"2447,50";"CZK";"website-reservation";"0,00";"0,00";"23,99";"23,99"',
+    '"CG-CARRY-TRX-2";"CG-CARRY-20260331-B";"31.03.2026 09:20";"31.03.2026 09:21";"31.03.2026";"guest-b@example.com";"CG-CARRY-20260331-B";"JOKELAND s.r.o.";"3059,38";"CZK";"website-reservation";"0,00";"0,00";"29,98";"29,98"',
+    '"CG-CARRY-TRX-3";"CG-CARRY-20260331-C";"31.03.2026 10:10";"31.03.2026 10:11";"31.03.2026";"guest-c@example.com";"CG-CARRY-20260331-C";"JOKELAND s.r.o.";"611,88";"CZK";"parking";"0,00";"0,00";"6,00";"6,00"'
+  ].join('\n')
+}
+
+function buildRbComgatePreviousMonthCarryoverSettlementContent(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '03.04.2026 09:00;03.04.2026 09:02;5599955956/5500;000000-1234567890/0100;Comgate a.s.;6058,79;CZK;Souhrnná výplata Comgate 2026-03-31'
   ].join('\n')
 }
 

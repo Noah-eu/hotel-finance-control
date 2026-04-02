@@ -557,6 +557,37 @@ describe('matchPayoutBatchesToBank', () => {
         ])
     })
 
+    it('matches a previous-month Comgate carryover batch only when the batch is explicitly flagged as carryover source data', () => {
+        const matches = matchPayoutBatchesToBank({
+            payoutBatches: [comgateBatch({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                payoutDate: '2026-03-31',
+                fromPreviousMonth: true,
+                sourceMonthKey: '2026-03'
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:comgate-cross-month-carryover' as NormalizedTransaction['id'],
+                    amountMinor: 605879,
+                    currency: 'CZK',
+                    bookedAt: '2026-04-03',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Comgate a.s.',
+                    reference: 'Souhrnná výplata Comgate 2026-03-31'
+                })
+            ]
+        })
+
+        expect(matches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'comgate-batch:2026-03-31:1816656820',
+                bankTransactionId: 'txn:bank:comgate-cross-month-carryover',
+                matched: true,
+                reasons: expect.arrayContaining(['amountExact', 'currencyExact', 'routingAllowed', 'counterpartyClueAligned'])
+            })
+        ])
+    })
+
     it('keeps a Booking payout batch unmatched when only the local amount exists but no booking evidence aligns on the bank line', () => {
         const diagnostics = diagnoseUnmatchedPayoutBatchesToBank({
             payoutBatches: [bookingBatchWithSupplement({

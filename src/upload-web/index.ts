@@ -7,6 +7,7 @@ import {
   type UploadedMonthlyFileRoute,
   type UploadedMonthlyFile
 } from '../monthly-batch'
+import type { PreviousMonthCarryoverSource } from '../reconciliation'
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import {
   buildReviewScreen,
@@ -48,6 +49,7 @@ export interface BuildUploadedBatchPreviewInput {
   files: UploadedMonthlyFile[]
   runId: string
   generatedAt: string
+  previousMonthCarryoverSource?: PreviousMonthCarryoverSource
 }
 
 export interface UploadedBatchPreviewResult {
@@ -137,6 +139,18 @@ export interface BrowserRuntimeUploadState {
       reference?: string
       accountId: string
     }>
+  }
+  carryoverSourceSnapshot: {
+    sourceMonthKey: string
+    payoutBatches: PreviousMonthCarryoverSource['payoutBatches']
+  }
+  carryoverDebug: {
+    sourceMonthKey?: string
+    currentMonthKey: string
+    loadedPayoutBatchCount: number
+    loadedPayoutBatchKeysSample: string[]
+    matchedCount: number
+    unmatchedCount: number
   }
   routingSummary: {
     uploadedFileCount: number
@@ -438,6 +452,7 @@ export interface BrowserRuntimeBuilder {
     files: BrowserRuntimeInputFile[]
     month?: string
     generatedAt: string
+    previousMonthCarryoverSource?: PreviousMonthCarryoverSource
     onProgress?: (progress: BrowserRuntimeProgressUpdate) => void
   }): Promise<BrowserRuntimeUploadState>
 }
