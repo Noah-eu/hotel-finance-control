@@ -404,7 +404,9 @@ function looksLikeGpcCounterparty(value: string): boolean {
 }
 
 function looksLikeStructuredGpcReference(value: string): boolean {
-  return /^[A-Z0-9:/ .,-]+$/.test(value) && /[/:-]/.test(value)
+  return (/^[A-Z0-9:/ .,-]+$/.test(value) && /[/:-]/.test(value))
+    || /(?:^|\s)(VS|SS|KS)\s*\d{4,}/.test(value.toUpperCase())
+    || /^(FAKTURA|PLATBA|UHRADA|ÚHRADA|QR)\b/i.test(value)
 }
 
 function normalizeGpcText(value: string | undefined): string | undefined {

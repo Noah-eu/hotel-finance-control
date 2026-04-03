@@ -310,6 +310,49 @@ describe('parseRaiffeisenbankStatement', () => {
     })
   })
 
+  it('keeps a single VS-style GPC continuation as payment reference instead of misclassifying it as counterparty', () => {
+    const transactionLine = buildGpcTransactionLine({
+      mainAccountId: '0000005599955956',
+      counterpartyPrefix: '000000',
+      counterpartyAccountNumber: '0274621920',
+      counterpartyBankCode: '0300',
+      amountMinor: '000001262952',
+      directionCode: '4',
+      valueAt: '080426',
+      bookedAt: '080426'
+    })
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: {
+        id: 'doc-raif-gpc-lenner-review' as never,
+        sourceSystem: 'bank',
+        documentType: 'bank_statement',
+        fileName: 'Vypis_5599955956_CZK_2026_004.gpc',
+        uploadedAt: '2026-04-03T11:00:00.000Z'
+      },
+      content: [
+        '0740000005599955956JOKELAND s.r.o.',
+        transactionLine,
+        '078VS 141260183 Servis vozidla'
+      ].join('\n'),
+      extractedAt: '2026-04-03T11:00:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        amountMinor: -1262952,
+        rawReference: 'VS 141260183 Servis vozidla',
+        data: expect.objectContaining({
+          bankParserVariant: 'raiffeisenbank-gpc',
+          accountId: '5599955956',
+          counterparty: '274621920/0300',
+          reference: 'VS 141260183 Servis vozidla',
+          transactionType: 'Odchozí platba'
+        })
+      })
+    ])
+  })
+
   it('keeps the direction-code-4 Raiffeisenbank GPC excerpt within sane parser invariants', () => {
     const fixture = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
 
@@ -353,3 +396,33 @@ describe('parseRaiffeisenbankStatement', () => {
     expect(records.some((record) => (record.amountMinor ?? 0) > 0)).toBe(true)
   })
 })
+
+function buildGpcTransactionLine(input: {
+  mainAccountId: string
+  counterpartyPrefix: string
+  counterpartyAccountNumber: string
+  counterpartyBankCode: string
+  amountMinor: string
+  directionCode: string
+  valueAt: string
+  bookedAt: string
+}): string {
+  const chars = Array.from({ length: 128 }, () => ' ')
+  writeGpcField(chars, 0, 3, '075')
+  writeGpcField(chars, 3, 19, input.mainAccountId)
+  writeGpcField(chars, 19, 25, input.counterpartyPrefix)
+  writeGpcField(chars, 25, 35, input.counterpartyAccountNumber)
+  writeGpcField(chars, 35, 39, input.counterpartyBankCode)
+  writeGpcField(chars, 47, 48, '5')
+  writeGpcField(chars, 48, 60, input.amountMinor)
+  writeGpcField(chars, 60, 61, input.directionCode)
+  writeGpcField(chars, 91, 97, input.valueAt)
+  writeGpcField(chars, 122, 128, input.bookedAt)
+
+  return chars.join('')
+}
+
+function writeGpcField(buffer: string[], start: number, end: number, value: string): void {
+  const normalized = value.padEnd(end - start, ' ').slice(0, end - start)
+  buffer.splice(start, end - start, ...normalized)
+}
