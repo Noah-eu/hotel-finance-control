@@ -2508,6 +2508,27 @@ ${showRuntimePayoutDiagnostics ? `
           }));
       }
 
+      function syncExpenseReviewOverridesForCurrentSections(overrides, sections) {
+        const normalizedOverrides = sanitizeExpenseReviewOverridesForStorage(overrides);
+        const activeReviewItemIds = new Set(
+          (Array.isArray(sections && sections.expenseNeedsReview) ? sections.expenseNeedsReview : [])
+            .map((item) => String(item && item.id || ''))
+            .filter(Boolean)
+        );
+        const syncedOverrides = normalizedOverrides.filter((override) => activeReviewItemIds.has(String(override && override.reviewItemId || '')));
+        const changed = syncedOverrides.length !== normalizedOverrides.length
+          || syncedOverrides.some((override, index) =>
+            String(override && override.reviewItemId || '') !== String(normalizedOverrides[index] && normalizedOverrides[index].reviewItemId || '')
+            || String(override && override.decision || '') !== String(normalizedOverrides[index] && normalizedOverrides[index].decision || '')
+            || String(override && override.decidedAt || '') !== String(normalizedOverrides[index] && normalizedOverrides[index].decidedAt || '')
+          );
+
+        return {
+          overrides: changed ? syncedOverrides : normalizedOverrides,
+          changed
+        };
+      }
+
       function sanitizeManualMatchGroupsForStorage(groups) {
         return (Array.isArray(groups) ? groups : [])
           .filter((group) =>
@@ -2974,6 +2995,173 @@ ${showRuntimePayoutDiagnostics ? `
         }, { includeWorkspaces: false });
 
         return deleted;
+      }
+
+      function clearSelectedFileInput(marker, monthKey) {
+        if (fileInput) {
+          try {
+            fileInput.value = '';
+          } catch {
+          }
+
+          try {
+            fileInput.files = [];
+          } catch {
+          }
+        }
+
+        resetPendingSelectedFiles(marker, monthKey);
+      }
+
+      async function deleteWorkspaceFileFromCurrentMonth(workspaceFileId) {
+        const normalizedWorkspaceFileId = String(workspaceFileId || '');
+        const normalizedMonth = String(currentWorkspaceMonth || monthInput && monthInput.value || '');
+
+        if (!normalizedMonth || !normalizedWorkspaceFileId) {
+          runtimeOutput.innerHTML = '<p class="hint">Nejprve obnovte měsíc a vyberte konkrétní nahraný soubor.</p>';
+          return false;
+        }
+
+        await awaitCurrentWorkspacePersistence();
+        const requestToken = ++currentWorkspaceViewRequestToken;
+        const loadedWorkspace = await loadMonthWorkspace(normalizedMonth);
+
+        if (requestToken !== currentWorkspaceViewRequestToken) {
+          return false;
+        }
+
+        const workspace = loadedWorkspace && loadedWorkspace.workspace;
+        const loadState = loadedWorkspace && loadedWorkspace.loadState
+          ? loadedWorkspace.loadState
+          : currentWorkspacePersistenceState;
+
+        if (!workspace || !Array.isArray(workspace.files) || !workspace.runtimeState) {
+          runtimeOutput.innerHTML = '<p class="hint">Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> zatím není uložený workspace, ze kterého by šel soubor odebrat.</p>';
+          return false;
+        }
+
+        const targetFile = workspace.files.find((file) => String(file && file.id || '') === normalizedWorkspaceFileId);
+
+        if (!targetFile) {
+          runtimeOutput.innerHTML = '<p class="hint">Vybraný soubor už v uloženém workspace pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> není.</p>';
+          return false;
+        }
+
+        const confirmationMessage = 'Opravdu chcete smazat soubor ' + String(targetFile.fileName || 'bez názvu') + ' z měsíce ' + normalizedMonth + '?';
+        if (typeof window.confirm === 'function' && !window.confirm(confirmationMessage)) {
+          return false;
+        }
+
+        const remainingFiles = workspace.files.filter((file) => String(file && file.id || '') !== normalizedWorkspaceFileId);
+
+        clearSelectedFileInput('delete-one-file', normalizedMonth);
+
+        if (remainingFiles.length === 0) {
+          await clearMonthWorkspace(normalizedMonth);
+          currentClearedWorkspaceMonth = normalizedMonth;
+          currentWorkspaceMonth = normalizedMonth;
+          currentWorkspaceFiles = [];
+          currentExpenseReviewOverrides = [];
+          currentManualMatchGroups = [];
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
+          renderInitialVisibleState();
+          runtimeOutput.innerHTML = '<p class="hint">Soubor <strong>' + escapeHtml(String(targetFile.fileName || 'bez názvu')) + '</strong> byl smazán. Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> už nezůstaly žádné nahrané soubory.</p>';
+          showOperatorView('main-overview');
+          return true;
+        }
+
+        const previousMonthKey = resolvePreviousMonthKey(normalizedMonth);
+        const previousMonthLoadedWorkspace = previousMonthKey
+          ? await loadMonthWorkspace(previousMonthKey, { silent: true })
+          : undefined;
+        const previousMonthDirectWorkspace = previousMonthLoadedWorkspace && previousMonthLoadedWorkspace.workspace
+          ? previousMonthLoadedWorkspace.workspace
+          : previousMonthKey
+            ? getLegacyMonthWorkspaceFromStore(loadMonthlyWorkspaceStore(), previousMonthKey)
+            : undefined;
+        const carryoverWorkspaceInspection = inspectPreviousMonthCarryoverWorkspace(previousMonthDirectWorkspace, normalizedMonth);
+        const previousMonthCarryoverSource = carryoverWorkspaceInspection.source;
+        const remainingRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(remainingFiles);
+        const persistedWorkspaceFileNames = buildWorkspaceDebugNamesFromWorkspaceRecords(workspace.files);
+
+        runtimeStageCopy.innerHTML = 'Stav stránky: <strong>po smazání souboru se workflow znovu přepočítává</strong>. Viditelné sekce se obnovují jen ze zbývajících souborů.';
+        appendWorkspaceRenderDebugCheckpoint({
+          phase: 'before-delete-file-rerun',
+          requestToken,
+          currentMonthKey: normalizedMonth,
+          persistedWorkspaceFileCountBeforeRerun: workspace.files.length,
+          persistedWorkspaceFileNamesBeforeRerun: persistedWorkspaceFileNames,
+          selectedBatchFileCount: 0,
+          selectedFileNames: [],
+          mergedFileCountUsedForRerun: remainingFiles.length,
+          mergedFileNamesUsedForRerun: buildWorkspaceDebugNamesFromWorkspaceRecords(remainingFiles),
+          visibleTraceFileCount: remainingRunningWorkflowFiles.length,
+          visibleTraceFileNamesAfterRender: buildWorkspaceDebugNamesFromRuntimeFiles(remainingRunningWorkflowFiles),
+          renderSource: 'persistedWorkspace',
+          workspacePersistenceBackend: loadState.backendName,
+          storageKeyUsed: loadState.storageKeyUsed,
+          saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+          lastSaveStatus: currentWorkspacePersistenceState.status,
+          mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(remainingFiles)
+        });
+        renderRunningState(remainingRunningWorkflowFiles);
+
+        if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
+          browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
+        }
+
+        if (!browserRuntime) {
+          runtimeOutput.innerHTML = '<p class="hint">Sdílený browser runtime se ještě načítá. Zkuste akci za okamžik znovu.</p>';
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime ještě není připravený</strong>. Viditelné sekce zůstávají v neutrálním stavu bez přepočtu po smazání souboru.';
+          renderInitialVisibleState();
+          return false;
+        }
+
+        try {
+          const state = await browserRuntime.buildRuntimeState({
+            files: remainingFiles.map((record) => buildRuntimeFileFromWorkspaceRecord(record)),
+            month: normalizedMonth,
+            generatedAt,
+            previousMonthCarryoverSource,
+            onProgress(progress) {
+              renderRunningWorkflowProgress(remainingRunningWorkflowFiles, progress);
+            }
+          });
+
+          if (requestToken !== currentWorkspaceViewRequestToken) {
+            return false;
+          }
+
+          currentLaterMonthCarryoverResolutionState = shouldLoadLaterMonthCarryoverResolution(state, normalizedMonth)
+            ? await loadLaterMonthCarryoverResolutionState(normalizedMonth)
+            : buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
+
+          const visibleState = buildCompletedVisibleRuntimeState(state);
+
+          currentWorkspaceMonth = normalizedMonth;
+          currentWorkspaceFiles = remainingFiles;
+          currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+          currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
+
+          applyVisibleRuntimeState(visibleState, 'completed');
+          runtimeOutput.innerHTML = renderMainRuntimeState(visibleState) + '<p class="hint">Soubor <strong>' + escapeHtml(String(targetFile.fileName || 'bez názvu')) + '</strong> byl odebrán a měsíc byl znovu přepočítán jen ze zbývajících souborů.</p>';
+          showOperatorView('main-overview');
+          return true;
+        } catch (error) {
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>přepočet po smazání souboru selhal</strong>. Viditelně zobrazujeme chybu místo tichého nekonzistentního stavu.';
+          renderFailedState(error);
+          runtimeOutput.innerHTML = [
+            '<h3>Výsledek spuštěného browser workflow</h3>',
+            '<p><strong>Smazání souboru se nepodařilo dokončit.</strong></p>',
+            '<p class="hint">' + escapeHtml(error instanceof Error ? error.message : String(error)) + '</p>'
+          ].join('');
+          return false;
+        }
       }
 
       async function restoreWorkspaceForMonth(month, options) {
@@ -3691,7 +3879,7 @@ ${showRuntimePayoutDiagnostics ? `
       }
 
       function buildPreparedFilesMarkup(state) {
-        const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
+        const fileRoutes = buildAnnotatedWorkspaceFileRoutes(state);
         const recognizedFiles = fileRoutes.filter((file) => file.status === 'supported');
         const unsupportedFiles = fileRoutes.filter((file) => file.status === 'unsupported');
         const errorFiles = fileRoutes.filter((file) => file.status === 'error');
@@ -3701,12 +3889,14 @@ ${showRuntimePayoutDiagnostics ? `
             const warningLine = file.warnings && file.warnings.length > 0
               ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
               : '';
+            const deleteButtonMarkup = buildWorkspaceFileDeleteButtonMarkup(file.workspaceFileId);
 
             return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
               + escapeHtml(buildFileRouteOutcomeLabel(file))
               + ' · ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
               + ' · ' + escapeHtml(buildCapabilityProfileLabel(file.decision && file.decision.capability ? file.decision.capability.profile : 'unknown'))
               + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount || 0)) + '</span>'
+              + deleteButtonMarkup
               + warningLine
               + '</li>';
           }).join('');
@@ -3718,6 +3908,7 @@ ${showRuntimePayoutDiagnostics ? `
               const warningLine = file.warnings && file.warnings.length > 0
                 ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
                 : '';
+              const deleteButtonMarkup = buildWorkspaceFileDeleteButtonMarkup(file.workspaceFileId);
 
               return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
                 + escapeHtml(file.reason || 'Soubor nebylo možné bezpečně přiřadit k podporovanému zdroji.')
@@ -3726,6 +3917,7 @@ ${showRuntimePayoutDiagnostics ? `
                 + ' · Větev: '
                 + escapeHtml(buildIngestionBranchLabel(file.decision ? file.decision.ingestionBranch : 'unsupported'))
                 + '</span>'
+                + deleteButtonMarkup
                 + warningLine
                 + '</li>';
             }).join('') + '</ul>'
@@ -3738,6 +3930,7 @@ ${showRuntimePayoutDiagnostics ? `
               const warningLine = file.warnings && file.warnings.length > 0
                 ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
                 : '';
+              const deleteButtonMarkup = buildWorkspaceFileDeleteButtonMarkup(file.workspaceFileId);
 
               return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
                 + escapeHtml(file.errorMessage || file.reason || 'Ingest souboru selhal.')
@@ -3746,6 +3939,7 @@ ${showRuntimePayoutDiagnostics ? `
                 + ' · Větev: '
                 + escapeHtml(buildIngestionBranchLabel(file.decision ? file.decision.ingestionBranch : 'unsupported'))
                 + '</span>'
+                + deleteButtonMarkup
                 + warningLine
                 + '</li>';
             }).join('') + '</ul>'
@@ -3781,6 +3975,29 @@ ${showRuntimePayoutDiagnostics ? `
           '<ul>' + reviewSummaryItems + '</ul>',
           '<p class="hint">Souhrn kontroly: ' + escapeHtml(String(state.reviewSummary.exceptionCount)) + ' položek ke kontrole.</p>'
         ].join('');
+      }
+
+      function buildAnnotatedWorkspaceFileRoutes(state) {
+        const fileRoutes = Array.isArray(state && state.fileRoutes) ? state.fileRoutes : [];
+
+        return fileRoutes.map((file, index) => ({
+          ...file,
+          workspaceFileId: String(currentWorkspaceFiles[index] && currentWorkspaceFiles[index].id || '')
+        }));
+      }
+
+      function buildWorkspaceFileDeleteActionElementId(workspaceFileId) {
+        return 'delete-workspace-file-' + encodeURIComponent(String(workspaceFileId || '')).replace(/%/g, '_');
+      }
+
+      function buildWorkspaceFileDeleteButtonMarkup(workspaceFileId) {
+        const normalizedWorkspaceFileId = String(workspaceFileId || '');
+
+        if (!normalizedWorkspaceFileId || !currentWorkspaceMonth) {
+          return '';
+        }
+
+        return '<br /><button id="' + escapeHtml(buildWorkspaceFileDeleteActionElementId(normalizedWorkspaceFileId)) + '" type="button" class="secondary-button">Smazat tento soubor</button>';
       }
 
       function buildDiagnosticListMarkup(label, values) {
@@ -6286,9 +6503,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
             runtimeBuildInfo: (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo,
             finalPayoutProjection: collectVisiblePayoutProjection(state)
           };
+        const syncedExpenseReviewOverrides = syncExpenseReviewOverridesForCurrentSections(
+          currentExpenseReviewOverrides,
+          baseVisibleState && baseVisibleState.reviewSections
+        );
+
+        if (syncedExpenseReviewOverrides.changed) {
+          currentExpenseReviewOverrides = syncedExpenseReviewOverrides.overrides;
+        }
+
         const effectiveExpenseSections = buildEffectiveExpenseReviewSections(
           baseVisibleState && baseVisibleState.reviewSections,
-          currentExpenseReviewOverrides
+          syncedExpenseReviewOverrides.overrides
         );
         const expenseResolvedState = {
           ...baseVisibleState,
@@ -6393,6 +6619,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         preparedFilesContent.innerHTML = buildPreparedFilesMarkup(visibleState);
+        wirePreparedFileDeleteButtons(visibleState);
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(visibleState);
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
@@ -6607,6 +6834,26 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderRunningRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
         currentLaterMonthCarryoverResolutionState = buildLaterMonthCarryoverResolutionState();
         currentExportVisibleState = initialRuntimeState;
+      }
+
+      function wirePreparedFileDeleteButtons(state) {
+        buildAnnotatedWorkspaceFileRoutes(state).forEach((file) => {
+          const normalizedWorkspaceFileId = String(file && file.workspaceFileId || '');
+
+          if (!normalizedWorkspaceFileId) {
+            return;
+          }
+
+          const button = document.getElementById(buildWorkspaceFileDeleteActionElementId(normalizedWorkspaceFileId));
+
+          if (!button || typeof button.addEventListener !== 'function') {
+            return;
+          }
+
+          button.addEventListener('click', () => {
+            void deleteWorkspaceFileFromCurrentMonth(normalizedWorkspaceFileId);
+          });
+        });
       }
 
       function renderFailedState(error) {
@@ -7055,7 +7302,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         currentWorkspaceFiles = [];
         const previousPendingSelectedFileNames = currentPendingSelectedFileNames.slice();
         const previousPendingSelectedFileCount = previousPendingSelectedFileNames.length;
-        resetPendingSelectedFiles('explicit-clear', normalizedMonth);
+        clearSelectedFileInput('explicit-clear', normalizedMonth);
         currentExpenseReviewOverrides = [];
         currentManualMatchGroups = [];
         currentSelectedManualMatchItemIds = [];

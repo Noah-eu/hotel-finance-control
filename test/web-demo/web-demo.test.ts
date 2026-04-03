@@ -3573,6 +3573,218 @@ describe('buildWebDemo', () => {
     expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Storage key used for month workspace load/save:</strong> indexeddb://hotel-finance-control/monthly-browser-workspaces/2026-03')
   }, 15000)
 
+  it('deletes one uploaded file from the persisted month workspace and keeps only the remaining file after reload', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-delete-file-persisted-workspace',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const persistedBeforeDelete = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+    const pdfRecord = persistedBeforeDelete.files.find((file) => file.fileName === 'Bookinng35k.pdf')
+
+    expect(persistedBeforeDelete.files).toHaveLength(2)
+    expect(pdfRecord?.id).toBeTruthy()
+
+    await rendered.deleteCurrentMonthWorkspaceFile(String(pdfRecord?.id))
+
+    const persistedAfterDelete = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+
+    expect(persistedAfterDelete.files).toHaveLength(1)
+    expect(persistedAfterDelete.files.map((file) => file.fileName)).toEqual(['booking35k.csv'])
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>booking35k.csv</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<strong>Bookinng35k.pdf</strong>')
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      runId: string
+      fileRoutes: Array<{ fileName: string }>
+    }
+
+    expect(reloadedState.runId).toContain('2026-03')
+    expect(reloadedState.fileRoutes.map((file) => file.fileName)).toEqual(['booking35k.csv'])
+    expect(reloaded.preparedFilesContent.innerHTML).toContain('<strong>booking35k.csv</strong>')
+    expect(reloaded.preparedFilesContent.innerHTML).not.toContain('<strong>Bookinng35k.pdf</strong>')
+  })
+
+  it('recomputes visible counts and export handoff truth after deleting one uploaded file from the current month workspace', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-delete-file-recompute',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        )
+      ]
+    })
+
+    const beforeState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    rendered.setWorkspaceExportPreset('complete')
+    rendered.downloadWorkspaceExcelExport()
+    const beforeExport = rendered.getLastExcelExport() as {
+      payoutRowCount: number
+      expenseRowCount: number
+        counts: {
+          payoutMatched: number
+          payoutUnmatched: number
+        }
+    }
+    const persistedBeforeDelete = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+    const bookingRecord = persistedBeforeDelete.files.find((file) => file.fileName === 'booking35k.csv')
+
+    expect(beforeState.fileRoutes).toHaveLength(2)
+    expect(bookingRecord?.id).toBeTruthy()
+
+    await rendered.deleteCurrentMonthWorkspaceFile(String(bookingRecord?.id))
+
+    const afterState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+      reviewSummary: { payoutBatchMatchCount: number; unmatchedPayoutBatchCount: number }
+    }
+
+    rendered.downloadWorkspaceExcelExport()
+    const afterExport = rendered.getLastExcelExport() as {
+      payoutRowCount: number
+      expenseRowCount: number
+        counts: {
+          payoutMatched: number
+          payoutUnmatched: number
+        }
+    }
+
+    expect(rendered.runtimeSummaryUploadedFiles.textContent).toContain('1')
+    expect(afterState.fileRoutes.map((file) => file.fileName)).toEqual(['Pohyby_5599955956_202603191023.csv'])
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<strong>booking35k.csv</strong>')
+    expect(afterState.reviewSummary.payoutBatchMatchCount + afterState.reviewSummary.unmatchedPayoutBatchCount)
+      .not.toBe(beforeState.reviewSummary.payoutBatchMatchCount + beforeState.reviewSummary.unmatchedPayoutBatchCount)
+      expect(afterExport.counts.payoutMatched).toBe(afterState.reviewSummary.payoutBatchMatchCount)
+      expect(afterExport.counts.payoutUnmatched).toBe(afterState.reviewSummary.unmatchedPayoutBatchCount)
+      expect(afterExport.counts).not.toEqual(beforeExport.counts)
+  })
+
+  it('requires confirmation before deleting one uploaded file from the current month workspace', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-delete-file-confirmation',
+      locationSearch: '?debug=1',
+      confirmResponses: [false],
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const persistedWorkspace = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+    const pdfRecord = persistedWorkspace.files.find((file) => file.fileName === 'Bookinng35k.pdf')
+
+    await rendered.clickDeleteCurrentMonthWorkspaceFile(String(pdfRecord?.id))
+
+    expect(rendered.getConfirmMessages()).toContain('Opravdu chcete smazat soubor Bookinng35k.pdf z měsíce 2026-03?')
+    expect(rendered.getLastVisibleRuntimeState()).toMatchObject({
+      fileRoutes: [
+        expect.objectContaining({ fileName: 'booking35k.csv' }),
+        expect.objectContaining({ fileName: 'Bookinng35k.pdf' })
+      ]
+    })
+    expect(JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')).files).toHaveLength(2)
+  })
+
+  it('keeps same-month additive upload working after one uploaded file is deleted from the current month workspace', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:15:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-delete-file-additive-upload',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn(), 'text/csv')
+      ]
+    })
+
+    const persistedBeforeDelete = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+    const airbnbRecord = persistedBeforeDelete.files.find((file) => file.fileName === 'airbnb.csv')
+
+    await rendered.deleteCurrentMonthWorkspaceFile(String(airbnbRecord?.id))
+
+    rendered.selectFiles([
+      createDelayedWebDemoRuntimeArrayBufferTextFile(
+        'Pohyby_5599955956_202603191023.csv',
+        buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+        5,
+        'text/csv'
+      )
+    ])
+    rendered.startWorkflow()
+    await rendered.waitForWorkflowCompletion()
+    await rendered.awaitLastWorkspacePersistence()
+
+    const additiveState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{ fileName: string }>
+    }
+    const persistedAfterAdditive = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+
+    expect(additiveState.fileRoutes.map((file) => file.fileName)).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(additiveState.fileRoutes.some((file) => file.fileName === 'airbnb.csv')).toBe(false)
+    expect(persistedAfterAdditive.files.map((file) => file.fileName)).toEqual([
+      'booking35k.csv',
+      'Pohyby_5599955956_202603191023.csv'
+    ])
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>booking35k.csv</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).toContain('<strong>Pohyby_5599955956_202603191023.csv</strong>')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<strong>airbnb.csv</strong>')
+  })
+
   it('keeps same-month merged reruns and reload restore working even when localStorage cannot hold full workspace payloads', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -5665,6 +5877,8 @@ async function executeWebDemoMainWorkflow(input: {
   backToMainOverviewFromControl: () => void
   changeMonth: (month: string) => Promise<void>
   clearCurrentMonthWorkspace: () => Promise<void>
+    clickDeleteCurrentMonthWorkspaceFile: (workspaceFileId: string) => Promise<void>
+  deleteCurrentMonthWorkspaceFile: (workspaceFileId: string) => Promise<void>
   selectManualMatchItem: (pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) => void
   openManualMatchConfirm: (pageKey: 'control' | 'expense') => void
   confirmManualMatchGroup: (pageKey: 'control' | 'expense', note?: string) => void
@@ -6082,6 +6296,17 @@ async function executeWebDemoMainWorkflow(input: {
       elements['clear-month-workspace-button'].listeners.click()
       await waitForLastClear()
     },
+      async clickDeleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
+      elements[buildWorkspaceFileDeleteActionElementId(workspaceFileId)].listeners.click()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+    },
+    async deleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
+      lastWorkflowStartPreparedFilesMarkup = elements['prepared-files-content'].innerHTML
+      lastWorkflowStartRuntimeOutputMarkup = elements['runtime-output'].innerHTML
+      elements[buildWorkspaceFileDeleteActionElementId(workspaceFileId)].listeners.click()
+      await waitForWorkflowCompletion()
+      await awaitLastWorkspacePersistence()
+    },
     selectManualMatchItem(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) {
       const element = getRenderedManualMatchSelectionControl(pageKey, bucketKey, reviewItemId)
 
@@ -6407,6 +6632,10 @@ function buildManualMatchSelectionElementId(pageKey: 'control' | 'expense', buck
 
 function buildManualMatchActionElementId(pageKey: 'control' | 'expense', action: string, groupOrItemId: string): string {
   return `manual-match-${pageKey}-${action}-${encodeURIComponent(groupOrItemId).replace(/%/g, '_')}`
+}
+
+function buildWorkspaceFileDeleteActionElementId(workspaceFileId: string): string {
+  return `delete-workspace-file-${encodeURIComponent(workspaceFileId).replace(/%/g, '_')}`
 }
 
 function createManualMatchPayoutWorkflowFiles() {
