@@ -3785,6 +3785,125 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('<strong>airbnb.csv</strong>')
   })
 
+  it('shows Náhled action for an uploaded PDF document in prepared files', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-document-preview-prepared-files',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ]
+    })
+
+    const persistedWorkspace = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{ id: string; fileName: string }>
+    }
+    const pdfRecord = persistedWorkspace.files.find((file) => file.fileName === 'Bookinng35k.pdf')
+    const csvRecord = persistedWorkspace.files.find((file) => file.fileName === 'booking35k.csv')
+
+    expect(pdfRecord?.id).toBeTruthy()
+    expect(rendered.preparedFilesContent.innerHTML).toContain(buildWorkspaceFilePreviewActionElementId(String(pdfRecord?.id)))
+    expect(rendered.preparedFilesContent.innerHTML).toContain('>Náhled</button>')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain(buildWorkspaceFilePreviewActionElementId(String(csvRecord?.id)))
+  })
+
+  it('opens an uploaded PDF document preview without losing the current expense detail state and restores that state after close', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:25:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-document-preview-state',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+    rendered.setExpenseDetailFilter('expenseNeedsReview')
+    rendered.setExpenseDetailSearch('Lenner')
+    rendered.setExpenseDetailSort('amount-asc')
+
+    const beforeState = rendered.getLastVisibleRuntimeState() as {
+      runId: string
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = beforeState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+
+    await rendered.openExpenseReviewDocumentPreview(String(reviewItemId))
+
+    const previewState = rendered.getLastDocumentPreviewState() as {
+      open: boolean
+      renderMode: string
+      printAvailable: boolean
+      previewOrigin: string
+    }
+
+    expect(previewState).toMatchObject({
+      open: true,
+      renderMode: 'pdf',
+      printAvailable: true,
+      previewOrigin: 'expense-detail'
+    })
+    expect(rendered.documentPreviewOverlay.hidden).toBe(false)
+    expect(rendered.documentPreviewContent.innerHTML).toContain('document-preview-frame')
+    expect(rendered.expenseDetailView.hidden).toBe(false)
+
+    await rendered.closeDocumentPreview()
+
+    const afterState = rendered.getLastVisibleRuntimeState() as { runId: string }
+
+    expect(afterState.runId).toBe(beforeState.runId)
+    expect(rendered.documentPreviewOverlay.hidden).toBe(true)
+    expect(rendered.expenseDetailView.hidden).toBe(false)
+    expect(rendered.expenseDetailSearchInput.value).toBe('Lenner')
+    expect(rendered.expenseDetailSortSelect.value).toBe('amount-asc')
+  })
+
+  it('offers print only for previewable expense documents and uses the browser print flow', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-document-preview-print',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = state.reviewSections.expenseNeedsReview[0]?.id
+    const outflowId = state.reviewSections.expenseUnmatchedOutflows[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    expect(rendered.expenseReviewContent.innerHTML).toContain(buildExpenseDocumentActionElementId('print', String(reviewItemId)))
+    if (outflowId) {
+      expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain(buildExpenseDocumentActionElementId('print', String(outflowId)))
+    }
+
+    await rendered.printExpenseReviewDocument(String(reviewItemId))
+
+    expect(rendered.getPrintCallCount()).toBe(1)
+    expect(rendered.documentPreviewOverlay.hidden).toBe(false)
+    expect(rendered.getLastDocumentPreviewState()).toMatchObject({
+      open: true,
+      printAvailable: true
+    })
+  })
+
   it('keeps same-month merged reruns and reload restore working even when localStorage cannot hold full workspace payloads', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -5860,6 +5979,11 @@ async function executeWebDemoMainWorkflow(input: {
   expenseUnmatchedDocumentsContent: StubDomElement
   expenseUnmatchedOutflowsContent: StubDomElement
   expenseUnmatchedInflowsContent: StubDomElement
+  documentPreviewOverlay: StubDomElement
+  documentPreviewTitle: StubDomElement
+  documentPreviewMeta: StubDomElement
+  documentPreviewContent: StubDomElement
+  documentPreviewPrintButton: StubDomElement
   exportHandoffContent: StubDomElement
   runtimeFileIntakeDiagnosticsSection: StubDomElement
   runtimeFileIntakeDiagnosticsContent: StubDomElement
@@ -5868,6 +5992,8 @@ async function executeWebDemoMainWorkflow(input: {
   runtimeWorkspaceMergeDebugSection: StubDomElement
   runtimeWorkspaceMergeDebugContent: StubDomElement
   getConfirmMessages: () => string[]
+  getPrintCallCount: () => number
+  getLastDocumentPreviewState: () => unknown
   clickMonthPickerTrigger: () => void
   setMonthPickerShowPickerAvailable: (enabled: boolean) => void
   getMonthPickerInteractionCounts: () => { showPickerCalls: number; focusCalls: number; clickCalls: number }
@@ -5877,8 +6003,13 @@ async function executeWebDemoMainWorkflow(input: {
   backToMainOverviewFromControl: () => void
   changeMonth: (month: string) => Promise<void>
   clearCurrentMonthWorkspace: () => Promise<void>
-    clickDeleteCurrentMonthWorkspaceFile: (workspaceFileId: string) => Promise<void>
+  clickDeleteCurrentMonthWorkspaceFile: (workspaceFileId: string) => Promise<void>
   deleteCurrentMonthWorkspaceFile: (workspaceFileId: string) => Promise<void>
+  openPreviewCurrentMonthWorkspaceFile: (workspaceFileId: string) => Promise<void>
+  closeDocumentPreview: () => Promise<void>
+  openExpenseReviewDocumentPreview: (reviewItemId: string) => Promise<void>
+  printExpenseReviewDocument: (reviewItemId: string) => Promise<void>
+  printCurrentDocumentPreview: () => Promise<void>
   selectManualMatchItem: (pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) => void
   openManualMatchConfirm: (pageKey: 'control' | 'expense') => void
   confirmManualMatchGroup: (pageKey: 'control' | 'expense', note?: string) => void
@@ -5956,6 +6087,7 @@ async function executeWebDemoMainWorkflow(input: {
     : []
   const confirmResponses = Array.isArray(input.confirmResponses) ? input.confirmResponses.slice() : []
   const confirmMessages: string[] = []
+  let printCalls = 0
   function setMonthPickerShowPickerAvailable(enabled: boolean) {
     elements['month-label'].showPicker = enabled
       ? () => {
@@ -5985,6 +6117,7 @@ async function executeWebDemoMainWorkflow(input: {
     }
     btoa: (value: string) => string
     atob: (value: string) => string
+    print: () => void
     TextEncoder?: typeof TextEncoder
     TextDecoder?: typeof TextDecoder
     setTimeout?: typeof setTimeout
@@ -5994,6 +6127,7 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceLastVisibleRuntimeState?: unknown
     __hotelFinanceLastVisiblePayoutProjection?: unknown
     __hotelFinanceLastWorkspaceRenderDebug?: unknown
+    __hotelFinanceLastDocumentPreviewState?: unknown
     __hotelFinanceExpenseReviewOverrides?: unknown
     __hotelFinanceExpenseReviewOverrideStorageKey?: unknown
     __hotelFinanceLastExcelExport?: unknown
@@ -6050,6 +6184,9 @@ async function executeWebDemoMainWorkflow(input: {
     },
     atob(value: string) {
       return Buffer.from(value, 'base64').toString('binary')
+    },
+    print() {
+      printCalls += 1
     },
     TextEncoder,
     TextDecoder,
@@ -6256,6 +6393,11 @@ async function executeWebDemoMainWorkflow(input: {
     expenseUnmatchedDocumentsContent: elements['expense-unmatched-documents-content'],
     expenseUnmatchedOutflowsContent: elements['expense-unmatched-outflows-content'],
     expenseUnmatchedInflowsContent: elements['expense-unmatched-inflows-content'],
+    documentPreviewOverlay: elements['document-preview-overlay'],
+    documentPreviewTitle: elements['document-preview-title'],
+    documentPreviewMeta: elements['document-preview-meta'],
+    documentPreviewContent: elements['document-preview-content'],
+    documentPreviewPrintButton: elements['document-preview-print-button'],
     exportHandoffContent: elements['export-handoff-content'],
     runtimeFileIntakeDiagnosticsSection: elements['runtime-file-intake-diagnostics-section'],
     runtimeFileIntakeDiagnosticsContent: elements['runtime-file-intake-diagnostics-content'],
@@ -6265,6 +6407,12 @@ async function executeWebDemoMainWorkflow(input: {
     runtimeWorkspaceMergeDebugContent: elements['runtime-workspace-merge-debug-content'],
     getConfirmMessages() {
       return confirmMessages.slice()
+    },
+    getPrintCallCount() {
+      return printCalls
+    },
+    getLastDocumentPreviewState() {
+      return windowObject.__hotelFinanceLastDocumentPreviewState
     },
     clickMonthPickerTrigger() {
       elements['month-picker-trigger-button'].listeners.click()
@@ -6306,6 +6454,26 @@ async function executeWebDemoMainWorkflow(input: {
       elements[buildWorkspaceFileDeleteActionElementId(workspaceFileId)].listeners.click()
       await waitForWorkflowCompletion()
       await awaitLastWorkspacePersistence()
+    },
+    async openPreviewCurrentMonthWorkspaceFile(workspaceFileId: string) {
+      elements[buildWorkspaceFilePreviewActionElementId(workspaceFileId)].listeners.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    },
+    async closeDocumentPreview() {
+      elements['document-preview-close-button'].listeners.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    },
+    async openExpenseReviewDocumentPreview(reviewItemId: string) {
+      elements[buildExpenseDocumentActionElementId('preview', reviewItemId)].listeners.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    },
+    async printExpenseReviewDocument(reviewItemId: string) {
+      elements[buildExpenseDocumentActionElementId('print', reviewItemId)].listeners.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    },
+    async printCurrentDocumentPreview() {
+      elements['document-preview-print-button'].listeners.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
     },
     selectManualMatchItem(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) {
       const element = getRenderedManualMatchSelectionControl(pageKey, bucketKey, reviewItemId)
@@ -6544,6 +6712,12 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'expense-detail-visible-count',
     'open-expense-review-button',
     'back-from-expense-detail-button',
+    'document-preview-overlay',
+    'document-preview-title',
+    'document-preview-meta',
+    'document-preview-content',
+    'document-preview-print-button',
+    'document-preview-close-button',
     'unmatched-reservations-section',
     'unmatched-reservations-content',
     'export-handoff-section',
@@ -6636,6 +6810,14 @@ function buildManualMatchActionElementId(pageKey: 'control' | 'expense', action:
 
 function buildWorkspaceFileDeleteActionElementId(workspaceFileId: string): string {
   return `delete-workspace-file-${encodeURIComponent(workspaceFileId).replace(/%/g, '_')}`
+}
+
+function buildWorkspaceFilePreviewActionElementId(workspaceFileId: string): string {
+  return `preview-workspace-file-${encodeURIComponent(workspaceFileId).replace(/%/g, '_')}`
+}
+
+function buildExpenseDocumentActionElementId(action: 'preview' | 'print', reviewItemId: string): string {
+  return `expense-document-${action}-${encodeURIComponent(reviewItemId).replace(/%/g, '_')}`
 }
 
 function createManualMatchPayoutWorkflowFiles() {

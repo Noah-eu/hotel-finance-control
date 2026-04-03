@@ -533,6 +533,162 @@ function renderOperatorWebDemoHtml(input: {
         background: #fff1f3;
         color: #b42318;
       }
+      .expense-actions .secondary-button,
+      .prepared-file-actions .secondary-button,
+      .document-preview-actions .secondary-button {
+        background: #eaf2ff;
+        color: #174ea6;
+      }
+      .prepared-file-actions,
+      .document-action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .prepared-file-actions button,
+      .document-action-row button {
+        padding: 10px 14px;
+        font-size: 14px;
+      }
+      .document-preview-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.62);
+        box-sizing: border-box;
+      }
+      .document-preview-overlay[hidden] {
+        display: none;
+      }
+      .document-preview-shell {
+        width: min(1100px, 100%);
+        max-height: calc(100vh - 48px);
+        overflow: auto;
+        background: #ffffff;
+        border-radius: 18px;
+        border: 1px solid #dce6f5;
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+        padding: 20px;
+      }
+      .document-preview-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .document-preview-header h2 {
+        margin: 0 0 6px;
+      }
+      .document-preview-meta {
+        margin: 0;
+      }
+      .document-preview-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .document-preview-body {
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        background: #f8fafc;
+        padding: 16px;
+      }
+      .document-preview-frame {
+        width: 100%;
+        min-height: 72vh;
+        border: 0;
+        background: #ffffff;
+        border-radius: 10px;
+      }
+      .document-preview-image-shell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 420px;
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 12px;
+      }
+      .document-preview-image {
+        display: block;
+        max-width: 100%;
+        max-height: 72vh;
+        object-fit: contain;
+      }
+      .document-preview-fallback {
+        background: #ffffff;
+        border-radius: 10px;
+        padding: 18px;
+      }
+      .document-preview-fallback pre {
+        margin: 14px 0 0;
+        padding: 14px;
+        border-radius: 10px;
+        background: #f7f9fc;
+        border: 1px solid #dce6f5;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      @media (max-width: 1080px) {
+        .document-preview-overlay {
+          padding: 12px;
+        }
+        .document-preview-shell {
+          max-height: calc(100vh - 24px);
+          padding: 16px;
+        }
+        .document-preview-frame,
+        .document-preview-image {
+          max-height: 60vh;
+        }
+      }
+      @media print {
+        body {
+          padding: 0;
+          background: #ffffff;
+        }
+        main.operator-shell.document-preview-open > :not(#document-preview-overlay) {
+          display: none !important;
+        }
+        #document-preview-overlay {
+          position: static;
+          inset: auto;
+          padding: 0;
+          background: transparent;
+        }
+        #document-preview-overlay[hidden] {
+          display: none !important;
+        }
+        .document-preview-shell {
+          width: 100%;
+          max-height: none;
+          overflow: visible;
+          border: 0;
+          box-shadow: none;
+          padding: 0;
+        }
+        .document-preview-actions,
+        #document-preview-close-button,
+        #document-preview-print-button {
+          display: none !important;
+        }
+        .document-preview-body {
+          border: 0;
+          padding: 0;
+          background: #ffffff;
+        }
+        .document-preview-frame,
+        .document-preview-image {
+          max-height: none;
+        }
+      }
       .manual-match-summary {
         border: 1px solid #dce6f5;
         background: #f8fafc;
@@ -1016,6 +1172,24 @@ ${showRuntimePayoutDiagnostics ? `
           </section>
         </div>
       </section>
+
+      <section id="document-preview-overlay" class="document-preview-overlay" hidden>
+        <div class="document-preview-shell">
+          <div class="document-preview-header">
+            <div>
+              <h2 id="document-preview-title">Náhled dokladu</h2>
+              <p id="document-preview-meta" class="hint document-preview-meta">Náhled se zobrazí po zvolení konkrétního dokladu.</p>
+            </div>
+            <div class="document-preview-actions">
+              <button id="document-preview-print-button" type="button">Tisk</button>
+              <button id="document-preview-close-button" type="button" class="secondary-button">Zavřít náhled</button>
+            </div>
+          </div>
+          <div id="document-preview-content" class="document-preview-body">
+            <p class="hint">Náhled se zobrazí po zvolení konkrétního dokladu.</p>
+          </div>
+        </div>
+      </section>
     </main>
     <script>
       ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
@@ -1036,6 +1210,12 @@ ${showRuntimePayoutDiagnostics ? `
   const mainDashboardView = document.getElementById('main-dashboard-view');
   const controlDetailView = document.getElementById('control-detail-view');
   const expenseDetailView = document.getElementById('expense-detail-view');
+  const documentPreviewOverlay = document.getElementById('document-preview-overlay');
+  const documentPreviewTitle = document.getElementById('document-preview-title');
+  const documentPreviewMeta = document.getElementById('document-preview-meta');
+  const documentPreviewContent = document.getElementById('document-preview-content');
+  const documentPreviewPrintButton = document.getElementById('document-preview-print-button');
+  const documentPreviewCloseButton = document.getElementById('document-preview-close-button');
   const preparedFilesSection = document.getElementById('prepared-files-section');
   const preparedFilesContent = document.getElementById('prepared-files-content');
   const reviewSummarySection = document.getElementById('review-summary-section');
@@ -1111,6 +1291,7 @@ ${showRuntimePayoutDiagnostics ? `
       let currentWorkspaceMonth = '';
       let currentClearedWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
+      let currentDocumentPreviewState = buildEmptyDocumentPreviewState();
       let currentPendingSelectedFiles = [];
       let currentPendingSelectedFileNames = [];
       let currentPendingSelectedMonthKey = '';
@@ -1998,11 +2179,12 @@ ${showRuntimePayoutDiagnostics ? `
         const normalizedType = String(mimeType || '').toLowerCase();
 
         return normalizedType.includes('pdf')
+          || normalizedType.startsWith('image/')
           || normalizedType.includes('spreadsheet')
           || normalizedType.includes('excel')
           || normalizedType.includes('officedocument')
           || normalizedType.includes('octet-stream')
-          || /\.(pdf|xlsx|xls|gpc)$/i.test(normalizedName);
+          || /\.(pdf|xlsx|xls|gpc|png|jpe?g|gif|webp|bmp|tiff?)$/i.test(normalizedName);
       }
 
       async function yieldBrowserWorkflowTurn() {
@@ -3889,6 +4071,7 @@ ${showRuntimePayoutDiagnostics ? `
             const warningLine = file.warnings && file.warnings.length > 0
               ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
               : '';
+            const previewButtonMarkup = buildWorkspaceFilePreviewButtonMarkup(file);
             const deleteButtonMarkup = buildWorkspaceFileDeleteButtonMarkup(file.workspaceFileId);
 
             return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
@@ -3896,6 +4079,7 @@ ${showRuntimePayoutDiagnostics ? `
               + ' · ' + escapeHtml(buildFileRouteSourceLabel(file.sourceSystem, file.documentType))
               + ' · ' + escapeHtml(buildCapabilityProfileLabel(file.decision && file.decision.capability ? file.decision.capability.profile : 'unknown'))
               + '</span><br /><code>' + escapeHtml(file.sourceDocumentId || '') + '</code><br /><span class="hint">Extrahováno: ' + escapeHtml(String(file.extractedCount || 0)) + '</span>'
+              + previewButtonMarkup
               + deleteButtonMarkup
               + warningLine
               + '</li>';
@@ -3908,6 +4092,7 @@ ${showRuntimePayoutDiagnostics ? `
               const warningLine = file.warnings && file.warnings.length > 0
                 ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
                 : '';
+              const previewButtonMarkup = buildWorkspaceFilePreviewButtonMarkup(file);
               const deleteButtonMarkup = buildWorkspaceFileDeleteButtonMarkup(file.workspaceFileId);
 
               return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
@@ -3917,6 +4102,7 @@ ${showRuntimePayoutDiagnostics ? `
                 + ' · Větev: '
                 + escapeHtml(buildIngestionBranchLabel(file.decision ? file.decision.ingestionBranch : 'unsupported'))
                 + '</span>'
+                + previewButtonMarkup
                 + deleteButtonMarkup
                 + warningLine
                 + '</li>';
@@ -3930,6 +4116,7 @@ ${showRuntimePayoutDiagnostics ? `
               const warningLine = file.warnings && file.warnings.length > 0
                 ? '<br /><span class="hint">Varování: ' + escapeHtml(file.warnings.join(' ')) + '</span>'
                 : '';
+              const previewButtonMarkup = buildWorkspaceFilePreviewButtonMarkup(file);
               const deleteButtonMarkup = buildWorkspaceFileDeleteButtonMarkup(file.workspaceFileId);
 
               return '<li><strong>' + escapeHtml(file.fileName) + '</strong><br /><span class="hint">'
@@ -3939,6 +4126,7 @@ ${showRuntimePayoutDiagnostics ? `
                 + ' · Větev: '
                 + escapeHtml(buildIngestionBranchLabel(file.decision ? file.decision.ingestionBranch : 'unsupported'))
                 + '</span>'
+                + previewButtonMarkup
                 + deleteButtonMarkup
                 + warningLine
                 + '</li>';
@@ -3982,12 +4170,278 @@ ${showRuntimePayoutDiagnostics ? `
 
         return fileRoutes.map((file, index) => ({
           ...file,
-          workspaceFileId: String(currentWorkspaceFiles[index] && currentWorkspaceFiles[index].id || '')
+          workspaceFileId: String(currentWorkspaceFiles[index] && currentWorkspaceFiles[index].id || ''),
+          workspaceRecord: currentWorkspaceFiles[index] || undefined
         }));
+      }
+
+      function buildEmptyDocumentPreviewState() {
+        return {
+          open: false,
+          fileName: '',
+          workspaceFileId: '',
+          sourceDocumentId: '',
+          renderMode: 'closed',
+          printAvailable: false,
+          fallbackReason: '',
+          previewMarkup: '',
+          previewOrigin: 'none'
+        };
+      }
+
+      function buildWorkspaceFilePreviewActionElementId(workspaceFileId) {
+        return 'preview-workspace-file-' + encodeURIComponent(String(workspaceFileId || '')).replace(/%/g, '_');
+      }
+
+      function buildExpenseDocumentActionElementId(action, reviewItemId) {
+        return 'expense-document-' + String(action || 'action') + '-' + encodeURIComponent(String(reviewItemId || '')).replace(/%/g, '_');
       }
 
       function buildWorkspaceFileDeleteActionElementId(workspaceFileId) {
         return 'delete-workspace-file-' + encodeURIComponent(String(workspaceFileId || '')).replace(/%/g, '_');
+      }
+
+      function isPdfWorkspaceFile(fileName, mimeType) {
+        const normalizedName = String(fileName || '').toLowerCase();
+        const normalizedType = String(mimeType || '').toLowerCase();
+
+        return normalizedType.includes('pdf') || normalizedName.endsWith('.pdf');
+      }
+
+      function isImageWorkspaceFile(fileName, mimeType) {
+        const normalizedName = String(fileName || '').toLowerCase();
+        const normalizedType = String(mimeType || '').toLowerCase();
+
+        return normalizedType.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|tiff?)$/i.test(normalizedName);
+      }
+
+      function isDocumentLikeTransportProfile(transportProfile) {
+        return transportProfile === 'text_pdf'
+          || transportProfile === 'image_pdf'
+          || transportProfile === 'image_document'
+          || transportProfile === 'text_document';
+      }
+
+      function resolveDocumentPreviewTargetFromAnnotatedFile(file, previewOrigin) {
+        const workspaceRecord = file && file.workspaceRecord;
+        const workspaceFileId = String(file && file.workspaceFileId || workspaceRecord && workspaceRecord.id || '');
+        const fileName = String(file && file.fileName || workspaceRecord && workspaceRecord.fileName || 'Doklad');
+        const mimeType = String(workspaceRecord && workspaceRecord.mimeType || '');
+        const transportProfile = String(file && file.decision && file.decision.capability && file.decision.capability.transportProfile || '');
+        const sourceDocumentId = String(file && file.sourceDocumentId || '');
+        const documentLike = isDocumentLikeTransportProfile(transportProfile)
+          || isPdfWorkspaceFile(fileName, mimeType)
+          || isImageWorkspaceFile(fileName, mimeType);
+
+        if (!documentLike || !workspaceRecord) {
+          return undefined;
+        }
+
+        if (workspaceRecord.encoding === 'base64' && isPdfWorkspaceFile(fileName, mimeType)) {
+          const dataUrl = 'data:' + escapeHtml(mimeType || 'application/pdf') + ';base64,' + escapeHtml(String(workspaceRecord.contentBase64 || ''));
+
+          return {
+            open: true,
+            fileName,
+            workspaceFileId,
+            sourceDocumentId,
+            renderMode: 'pdf',
+            printAvailable: true,
+            fallbackReason: '',
+            previewOrigin: String(previewOrigin || 'prepared-files'),
+            previewMarkup: '<' + 'iframe class="document-preview-frame" src="' + dataUrl + '" title="Náhled dokladu ' + escapeHtml(fileName) + '"></' + 'iframe>'
+          };
+        }
+
+        if (workspaceRecord.encoding === 'base64' && isImageWorkspaceFile(fileName, mimeType)) {
+          const dataUrl = 'data:' + escapeHtml(mimeType || 'image/*') + ';base64,' + escapeHtml(String(workspaceRecord.contentBase64 || ''));
+
+          return {
+            open: true,
+            fileName,
+            workspaceFileId,
+            sourceDocumentId,
+            renderMode: 'image',
+            printAvailable: true,
+            fallbackReason: '',
+            previewOrigin: String(previewOrigin || 'prepared-files'),
+            previewMarkup: '<div class="document-preview-image-shell"><img class="document-preview-image" src="' + dataUrl + '" alt="Náhled dokladu ' + escapeHtml(fileName) + '" /></div>'
+          };
+        }
+
+        const fallbackParts = [
+          '<div class="document-preview-fallback">',
+          '<p><strong>Vizuální náhled teď není k dispozici.</strong></p>',
+          '<p class="hint">Doklad <strong>' + escapeHtml(fileName) + '</strong> je v browser workspace uložen, ale ne jako přímo renderovatelný PDF nebo obrázek.</p>'
+        ];
+
+        if (workspaceRecord.encoding === 'text' && workspaceRecord.textContent) {
+          fallbackParts.push('<p class="hint">K dispozici je jen textový obsah nebo textová stopa dokumentu:</p>');
+          fallbackParts.push('<pre>' + escapeHtml(String(workspaceRecord.textContent).slice(0, 4000)) + '</pre>');
+        }
+
+        fallbackParts.push('</div>');
+
+        return {
+          open: true,
+          fileName,
+          workspaceFileId,
+          sourceDocumentId,
+          renderMode: 'fallback',
+          printAvailable: false,
+          fallbackReason: 'Doklad není uložen jako renderovatelný PDF nebo obrázek.',
+          previewOrigin: String(previewOrigin || 'prepared-files'),
+          previewMarkup: fallbackParts.join('')
+        };
+      }
+
+      function buildWorkspaceFilePreviewButtonMarkup(file) {
+        const previewTarget = resolveDocumentPreviewTargetFromAnnotatedFile(file, 'prepared-files');
+
+        if (!previewTarget || !previewTarget.workspaceFileId) {
+          return '';
+        }
+
+        return '<div class="prepared-file-actions"><button id="' + escapeHtml(buildWorkspaceFilePreviewActionElementId(previewTarget.workspaceFileId)) + '" type="button" class="secondary-button">Náhled</button></div>';
+      }
+
+      function findAnnotatedWorkspaceFileByWorkspaceFileId(state, workspaceFileId) {
+        const normalizedWorkspaceFileId = String(workspaceFileId || '');
+
+        return buildAnnotatedWorkspaceFileRoutes(state).find((file) => String(file && file.workspaceFileId || '') === normalizedWorkspaceFileId);
+      }
+
+      function resolveDocumentPreviewTargetForReviewItem(item, state) {
+        const sourceDocumentIds = Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds : [];
+        const candidates = sourceDocumentIds
+          .map((sourceDocumentId) => {
+            const annotatedFile = buildAnnotatedWorkspaceFileRoutes(state)
+              .find((file) => String(file && file.sourceDocumentId || '') === String(sourceDocumentId || ''));
+
+            return resolveDocumentPreviewTargetFromAnnotatedFile(annotatedFile, 'expense-detail');
+          })
+          .filter(Boolean);
+
+        return candidates.find((candidate) => candidate.printAvailable) || candidates[0];
+      }
+
+      function buildExpenseDocumentActionMarkup(item, state) {
+        const reviewItemId = String(item && item.id || '');
+        const previewTarget = resolveDocumentPreviewTargetForReviewItem(item, state);
+
+        if (!reviewItemId || !previewTarget) {
+          return '';
+        }
+
+        return '<div class="document-action-row">'
+          + '<button id="' + escapeHtml(buildExpenseDocumentActionElementId('preview', reviewItemId)) + '" type="button" class="secondary-button">Náhled dokladu</button>'
+          + (previewTarget.printAvailable
+            ? '<button id="' + escapeHtml(buildExpenseDocumentActionElementId('print', reviewItemId)) + '" type="button" class="secondary-button">Tisk dokladu</button>'
+            : '')
+          + '</div>';
+      }
+
+      function renderDocumentPreviewState() {
+        const previewState = currentDocumentPreviewState || buildEmptyDocumentPreviewState();
+        const previewOpen = Boolean(previewState.open);
+
+        if (documentPreviewOverlay) {
+          documentPreviewOverlay.hidden = !previewOpen;
+        }
+        if (documentPreviewTitle) {
+          documentPreviewTitle.textContent = previewState.fileName || 'Náhled dokladu';
+        }
+        if (documentPreviewMeta) {
+          documentPreviewMeta.innerHTML = previewOpen
+            ? (previewState.printAvailable
+              ? 'Doklad je otevřený přímo z aktuálního browser workspace. Tisk používá nativní browser print flow bez opuštění měsíčního workflow.'
+              : 'Doklad je dostupný v browser workspace, ale jen jako nerenderovatelný nebo textový payload. Zobrazuje se pravdivý fallback bez fake preview.')
+            : 'Náhled se zobrazí po zvolení konkrétního dokladu.';
+        }
+        if (documentPreviewContent) {
+          documentPreviewContent.innerHTML = previewOpen && previewState.previewMarkup
+            ? previewState.previewMarkup
+            : '<p class="hint">Náhled se zobrazí po zvolení konkrétního dokladu.</p>';
+        }
+        if (documentPreviewPrintButton) {
+          documentPreviewPrintButton.hidden = !previewOpen || !previewState.printAvailable;
+        }
+
+        syncAppShellPresentationState();
+        window.__hotelFinanceLastDocumentPreviewState = previewState;
+      }
+
+      function closeDocumentPreview() {
+        currentDocumentPreviewState = buildEmptyDocumentPreviewState();
+        renderDocumentPreviewState();
+      }
+
+      function openDocumentPreview(previewTarget) {
+        if (!previewTarget) {
+          return false;
+        }
+
+        currentDocumentPreviewState = {
+          ...previewTarget,
+          open: true
+        };
+        renderDocumentPreviewState();
+        return true;
+      }
+
+      function openDocumentPreviewByWorkspaceFileId(workspaceFileId) {
+        const previewTarget = resolveDocumentPreviewTargetFromAnnotatedFile(
+          findAnnotatedWorkspaceFileByWorkspaceFileId(currentExportVisibleState, workspaceFileId),
+          'prepared-files'
+        );
+
+        return openDocumentPreview(previewTarget);
+      }
+
+      function openDocumentPreviewForReviewItemId(reviewItemId) {
+        const normalizedReviewItemId = String(reviewItemId || '');
+        const sections = currentExportVisibleState && currentExportVisibleState.reviewSections
+          ? currentExportVisibleState.reviewSections
+          : {};
+        const allExpenseItems = [
+          ...(Array.isArray(sections.expenseMatched) ? sections.expenseMatched : []),
+          ...(Array.isArray(sections.expenseNeedsReview) ? sections.expenseNeedsReview : []),
+          ...(Array.isArray(sections.expenseUnmatchedDocuments) ? sections.expenseUnmatchedDocuments : []),
+          ...(Array.isArray(sections.expenseUnmatchedOutflows) ? sections.expenseUnmatchedOutflows : []),
+          ...(Array.isArray(sections.expenseUnmatchedInflows) ? sections.expenseUnmatchedInflows : [])
+        ];
+        const item = allExpenseItems.find((entry) => String(entry && entry.id || '') === normalizedReviewItemId);
+
+        return openDocumentPreview(resolveDocumentPreviewTargetForReviewItem(item, currentExportVisibleState));
+      }
+
+      function printCurrentDocumentPreview() {
+        if (!currentDocumentPreviewState || !currentDocumentPreviewState.open || !currentDocumentPreviewState.printAvailable) {
+          return false;
+        }
+
+        if (typeof window.print === 'function') {
+          window.print();
+          return true;
+        }
+
+        return false;
+      }
+
+      function syncAppShellPresentationState() {
+        const previewOpen = Boolean(currentDocumentPreviewState && currentDocumentPreviewState.open);
+
+        if (!appShell) {
+          return;
+        }
+
+        if (appShell.classList && typeof appShell.classList.toggle === 'function') {
+          appShell.classList.toggle('operator-shell', true);
+          appShell.classList.toggle('document-preview-open', previewOpen);
+          return;
+        }
+
+        appShell.className = previewOpen ? 'operator-shell document-preview-open' : 'operator-shell';
       }
 
       function buildWorkspaceFileDeleteButtonMarkup(workspaceFileId) {
@@ -5368,15 +5822,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
       }
 
-      function buildExpenseReviewSectionMarkup(items, emptyLabel, bucketKey) {
+      function buildExpenseReviewSectionMarkup(items, emptyLabel, bucketKey, state) {
         if (!items || items.length === 0) {
           return '<p class="hint">' + escapeHtml(emptyLabel) + '</p>';
         }
 
-        return items.map((item) => buildExpenseReviewItemMarkup(item, bucketKey)).join('');
+        return items.map((item) => buildExpenseReviewItemMarkup(item, bucketKey, state)).join('');
       }
 
-      function buildExpenseReviewItemMarkup(item, bucketKey) {
+      function buildExpenseReviewItemMarkup(item, bucketKey, state) {
         const comparison = item && item.expenseComparison ? item.expenseComparison : {};
         const comparisonVariant = comparison && comparison.variant === 'bank-bank' ? 'bank-bank' : 'document-bank';
         const leftLabel = comparison && comparison.leftLabel ? comparison.leftLabel : (comparisonVariant === 'bank-bank' ? 'Odchozí účet' : 'Doklad');
@@ -5388,20 +5842,18 @@ ${showRuntimePayoutDiagnostics ? '' : `
           : '';
         const reviewItemId = String((item && item.id) || '');
         const sourceReviewItemId = String((item && item.manualSourceReviewItemId) || reviewItemId);
-        const actionsMarkup = bucketKey === 'expenseNeedsReview' && reviewItemId
-          ? '<div class="expense-actions">'
-            + '<button id="' + escapeHtml(buildExpenseActionElementId('confirm', reviewItemId)) + '" type="button">Potvrdit shodu</button>'
+        const workflowActionsMarkup = bucketKey === 'expenseNeedsReview' && reviewItemId
+          ? '<button id="' + escapeHtml(buildExpenseActionElementId('confirm', reviewItemId)) + '" type="button">Potvrdit shodu</button>'
             + '<button id="' + escapeHtml(buildExpenseActionElementId('reject', reviewItemId)) + '" type="button" class="danger-button">Není to shoda</button>'
-            + '</div>'
           : item && item.manualDecision === 'confirmed' && reviewItemId && sourceReviewItemId
-            ? '<div class="expense-actions">'
-              + '<button id="' + escapeHtml(buildExpenseActionElementId('undo-confirm', reviewItemId)) + '" type="button">Zrušit ruční potvrzení</button>'
-              + '</div>'
+            ? '<button id="' + escapeHtml(buildExpenseActionElementId('undo-confirm', reviewItemId)) + '" type="button">Zrušit ruční potvrzení</button>'
             : item && item.manualDecision === 'rejected' && reviewItemId && sourceReviewItemId
-              ? '<div class="expense-actions">'
-                + '<button id="' + escapeHtml(buildExpenseActionElementId('undo-reject', reviewItemId)) + '" type="button">Zrušit zamítnutí</button>'
-                + '</div>'
+              ? '<button id="' + escapeHtml(buildExpenseActionElementId('undo-reject', reviewItemId)) + '" type="button">Zrušit zamítnutí</button>'
               : '';
+        const documentActionsMarkup = buildExpenseDocumentActionMarkup(item, state);
+        const actionsMarkup = workflowActionsMarkup || documentActionsMarkup
+          ? '<div class="expense-actions">' + workflowActionsMarkup + documentActionsMarkup + '</div>'
+          : '';
 
         return [
           '<article class="expense-item">',
@@ -5898,10 +6350,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         showOperatorView('expense-detail');
       }
 
-      function wireExpenseReviewActionButtons(bucketKey, items) {
+      function wireExpenseReviewActionButtons(bucketKey, items, state) {
         (Array.isArray(items) ? items : []).forEach((item) => {
           const reviewItemId = String((item && item.id) || '');
           const sourceReviewItemId = String((item && item.manualSourceReviewItemId) || reviewItemId);
+          const previewTarget = resolveDocumentPreviewTargetForReviewItem(item, state);
 
           if (!reviewItemId) {
             return;
@@ -5936,6 +6389,25 @@ ${showRuntimePayoutDiagnostics ? '' : `
             && typeof undoRejectButton.addEventListener === 'function') {
             undoRejectButton.addEventListener('click', () => {
               removeExpenseReviewOverride(sourceReviewItemId);
+            });
+          }
+
+          const previewButton = document.getElementById(buildExpenseDocumentActionElementId('preview', reviewItemId));
+          const printButton = document.getElementById(buildExpenseDocumentActionElementId('print', reviewItemId));
+
+          if (previewButton && typeof previewButton.addEventListener === 'function') {
+            previewButton.addEventListener('click', () => {
+              openDocumentPreview(previewTarget);
+            });
+          }
+
+          if (printButton && typeof printButton.addEventListener === 'function') {
+            printButton.addEventListener('click', () => {
+              if (openDocumentPreview(previewTarget)) {
+                void yieldBrowserWorkflowTurn().then(() => {
+                  printCurrentDocumentPreview();
+                });
+              }
             });
           }
         });
@@ -6291,13 +6763,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         mainDashboardView.hidden = !showMainOverview;
         controlDetailView.hidden = normalizedView !== 'control-detail';
         expenseDetailView.hidden = !showExpenseDetail;
-        if (appShell) {
-          if (appShell.classList && typeof appShell.classList.toggle === 'function') {
-            appShell.classList.toggle('operator-shell', true);
-          } else {
-            appShell.className = 'operator-shell';
-          }
-        }
+        syncAppShellPresentationState();
 
         if (window && window.location) {
           window.location.hash = normalizedView === 'main-overview'
@@ -6640,16 +7106,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(visibleExpenseBucketResult.visibleCount);
         }
         syncExpenseDetailControls();
-        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.visibleItems) || [], 'Žádné spárované výdaje.', 'expenseMatched');
-        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.visibleItems) || [], 'Žádné výdaje ke kontrole.', 'expenseNeedsReview');
-        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [], 'Žádné nespárované doklady.', 'expenseUnmatchedDocuments');
-        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [], 'Žádné nespárované odchozí platby.', 'expenseUnmatchedOutflows');
-        expenseUnmatchedInflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [], 'Žádné nespárované příchozí platby.', 'expenseUnmatchedInflows');
-        wireExpenseReviewActionButtons('expenseMatched', (expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.visibleItems) || []);
-        wireExpenseReviewActionButtons('expenseNeedsReview', (expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.visibleItems) || []);
-        wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || []);
-        wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || []);
-        wireExpenseReviewActionButtons('expenseUnmatchedInflows', (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || []);
+        expenseMatchedContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.visibleItems) || [], 'Žádné spárované výdaje.', 'expenseMatched', visibleState);
+        expenseReviewContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.visibleItems) || [], 'Žádné výdaje ke kontrole.', 'expenseNeedsReview', visibleState);
+        expenseUnmatchedDocumentsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [], 'Žádné nespárované doklady.', 'expenseUnmatchedDocuments', visibleState);
+        expenseUnmatchedOutflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [], 'Žádné nespárované odchozí platby.', 'expenseUnmatchedOutflows', visibleState);
+        expenseUnmatchedInflowsContent.innerHTML = buildExpenseReviewSectionMarkup((expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [], 'Žádné nespárované příchozí platby.', 'expenseUnmatchedInflows', visibleState);
+        wireExpenseReviewActionButtons('expenseMatched', (expenseBucketMap.expenseMatched && expenseBucketMap.expenseMatched.visibleItems) || [], visibleState);
+        wireExpenseReviewActionButtons('expenseNeedsReview', (expenseBucketMap.expenseNeedsReview && expenseBucketMap.expenseNeedsReview.visibleItems) || [], visibleState);
+        wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [], visibleState);
+        wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [], visibleState);
+        wireExpenseReviewActionButtons('expenseUnmatchedInflows', (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [], visibleState);
         wireManualMatchSelectionControls('control', [
           { key: 'payoutBatchUnmatched', items: payoutProjection.unmatchedItems || [] },
           { key: 'unmatchedReservationSettlements', items: (visibleState.reviewSections && visibleState.reviewSections.unmatchedReservationSettlements) || [] }
@@ -6768,6 +7234,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function renderRunningState(files) {
+        closeDocumentPreview();
         preparedFilesSection.setAttribute('data-runtime-phase', 'running');
         reviewSummarySection.setAttribute('data-runtime-phase', 'running');
         controlDetailSummarySection.setAttribute('data-runtime-phase', 'running');
@@ -6844,6 +7311,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
             return;
           }
 
+          const previewButton = document.getElementById(buildWorkspaceFilePreviewActionElementId(normalizedWorkspaceFileId));
+
+          if (previewButton && typeof previewButton.addEventListener === 'function') {
+            previewButton.addEventListener('click', () => {
+              openDocumentPreviewByWorkspaceFileId(normalizedWorkspaceFileId);
+            });
+          }
+
           const button = document.getElementById(buildWorkspaceFileDeleteActionElementId(normalizedWorkspaceFileId));
 
           if (!button || typeof button.addEventListener !== 'function') {
@@ -6857,6 +7332,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function renderFailedState(error) {
+        closeDocumentPreview();
         const message = escapeHtml(error instanceof Error ? error.message : String(error));
 
         preparedFilesSection.setAttribute('data-runtime-phase', 'failed');
@@ -6919,6 +7395,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function renderInitialVisibleState() {
+        closeDocumentPreview();
         preparedFilesSection.setAttribute('data-runtime-phase', 'placeholder');
         reviewSummarySection.setAttribute('data-runtime-phase', 'placeholder');
         controlDetailSummarySection.setAttribute('data-runtime-phase', 'placeholder');
@@ -7347,8 +7824,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
       backFromExpenseDetailButton.addEventListener('click', () => {
         showOperatorView('main-overview');
       });
+      if (documentPreviewCloseButton && typeof documentPreviewCloseButton.addEventListener === 'function') {
+        documentPreviewCloseButton.addEventListener('click', () => {
+          closeDocumentPreview();
+        });
+      }
+      if (documentPreviewPrintButton && typeof documentPreviewPrintButton.addEventListener === 'function') {
+        documentPreviewPrintButton.addEventListener('click', () => {
+          printCurrentDocumentPreview();
+        });
+      }
 
       renderInitialVisibleState();
+      renderDocumentPreviewState();
       showOperatorView(resolveOperatorViewFromHash());
       const initialWorkspaceStore = loadMonthlyWorkspaceStore();
 
