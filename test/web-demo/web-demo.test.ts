@@ -2827,11 +2827,20 @@ describe('buildWebDemo', () => {
     const fortyThousandOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.title.includes('40 000,00'))!
     const fortyThousandSelectionId = buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
 
+    expect((rendered.getLastVisibleRuntimeState() as { manualMatchGroups: Array<{ selectedReviewItemIds: string[] }> }).manualMatchGroups).toEqual([])
+
     rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
     rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
     rendered.openManualMatchConfirm('expense')
     rendered.confirmManualMatchGroup('expense', '40k reload base group')
     await rendered.awaitLastWorkspacePersistence()
+
+    const persistedWorkspace = JSON.parse(workspacePersistenceState.get('2026-03')!) as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+    }
+
+    expect(persistedWorkspace.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([documentItem.id, groupedOutflow.id])
+    expect(persistedWorkspace.manualMatchGroups[0]?.selectedReviewItemIds).not.toContain(fortyThousandOutflow.id)
 
     const reloaded = await rendered.reloadWithSameStorage()
     reloaded.openExpenseReviewPage()
@@ -2844,9 +2853,83 @@ describe('buildWebDemo', () => {
     }
 
     expect(reloadedState.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([documentItem.id, groupedOutflow.id])
+    expect(reloadedState.manualMatchGroups[0]?.selectedReviewItemIds).not.toContain(fortyThousandOutflow.id)
     expect(reloadedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
     expect(reloaded.expenseUnmatchedOutflowsContent.innerHTML).toContain(fortyThousandSelectionId)
 
+    reloaded.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    expect(reloaded.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+  })
+
+  it('keeps the 40 000 Kc outflow selectable after undoing the other persisted manual group', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T09:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-expense-40k-undo-persisted-group',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createManualMatchExpenseWorkflowFilesWithFortyThousandOutflow()
+    })
+
+    rendered.openExpenseReviewPage()
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; title: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const groupedOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const fortyThousandOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.title.includes('40 000,00'))!
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', '40k undo persisted base group')
+    await rendered.awaitLastWorkspacePersistence()
+
+    const groupId = (rendered.getLastVisibleRuntimeState() as { manualMatchGroups: Array<{ id: string }> }).manualMatchGroups[0]!.id
+
+    rendered.removeManualMatchGroup('expense', groupId)
+    await rendered.awaitLastWorkspacePersistence()
+
+    const persistedWorkspace = JSON.parse(workspacePersistenceState.get('2026-03')!) as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+    }
+
+    expect(persistedWorkspace.manualMatchGroups).toEqual([])
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain(
+      buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    )
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+
+    expect(reloadedState.manualMatchGroups).toEqual([])
+    expect(reloadedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
     reloaded.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
     expect(reloaded.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
   })
@@ -5687,6 +5770,51 @@ async function executeWebDemoMainWorkflow(input: {
     }
   }
 
+  function resolveManualMatchBucketContentElement(pageKey: 'control' | 'expense', bucketKey: string): StubDomElement {
+    if (pageKey === 'control') {
+      if (bucketKey === 'payoutBatchUnmatched') {
+        return elements['unmatched-payout-batches-content']
+      }
+
+      if (bucketKey === 'unmatchedReservationSettlements') {
+        return elements['unmatched-reservations-content']
+      }
+    }
+
+    if (bucketKey === 'expenseUnmatchedDocuments') {
+      return elements['expense-unmatched-documents-content']
+    }
+
+    if (bucketKey === 'expenseUnmatchedOutflows') {
+      return elements['expense-unmatched-outflows-content']
+    }
+
+    if (bucketKey === 'expenseUnmatchedInflows') {
+      return elements['expense-unmatched-inflows-content']
+    }
+
+    throw new Error(`Unsupported manual match bucket: ${pageKey}/${bucketKey}`)
+  }
+
+  function getRenderedManualMatchSelectionControl(
+    pageKey: 'control' | 'expense',
+    bucketKey: string,
+    reviewItemId: string
+  ): StubDomElement {
+    const elementId = buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)
+    const bucketContent = resolveManualMatchBucketContentElement(pageKey, bucketKey)
+
+    expect(bucketContent.innerHTML).toContain(elementId)
+
+    const element = elements[elementId]
+
+    if (!element?.listeners.change) {
+      throw new Error(`Rendered manual match selection control ${elementId} is missing a change listener.`)
+    }
+
+    return element
+  }
+
   function startWorkflow() {
     lastWorkflowStartPreparedFilesMarkup = elements['prepared-files-content'].innerHTML
     lastWorkflowStartRuntimeOutputMarkup = elements['runtime-output'].innerHTML
@@ -5771,8 +5899,10 @@ async function executeWebDemoMainWorkflow(input: {
       await waitForLastClear()
     },
     selectManualMatchItem(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) {
-      elements[buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)].checked = true
-      elements[buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)].listeners.change()
+      const element = getRenderedManualMatchSelectionControl(pageKey, bucketKey, reviewItemId)
+
+      element.checked = true
+      element.listeners.change()
     },
     openManualMatchConfirm(pageKey: 'control' | 'expense') {
       elements[buildManualMatchActionElementId(pageKey, 'review', 'selection')].listeners.click()
