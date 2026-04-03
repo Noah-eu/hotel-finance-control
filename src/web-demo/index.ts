@@ -4341,6 +4341,36 @@ ${showRuntimePayoutDiagnostics ? `
           + '</div>';
       }
 
+      function wireExpenseDocumentActionButtons(items, state) {
+        (Array.isArray(items) ? items : []).forEach((item) => {
+          const reviewItemId = String((item && item.id) || '');
+          const previewTarget = resolveDocumentPreviewTargetForReviewItem(item, state);
+
+          if (!reviewItemId || !previewTarget) {
+            return;
+          }
+
+          const previewButton = document.getElementById(buildExpenseDocumentActionElementId('preview', reviewItemId));
+          const printButton = document.getElementById(buildExpenseDocumentActionElementId('print', reviewItemId));
+
+          if (previewButton && typeof previewButton.addEventListener === 'function') {
+            previewButton.addEventListener('click', () => {
+              openDocumentPreview(previewTarget);
+            });
+          }
+
+          if (printButton && typeof printButton.addEventListener === 'function') {
+            printButton.addEventListener('click', () => {
+              if (openDocumentPreview(previewTarget)) {
+                void yieldBrowserWorkflowTurn().then(() => {
+                  printCurrentDocumentPreview();
+                });
+              }
+            });
+          }
+        });
+      }
+
       function renderDocumentPreviewState() {
         const previewState = currentDocumentPreviewState || buildEmptyDocumentPreviewState();
         const previewOpen = Boolean(previewState.open);
@@ -6351,10 +6381,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function wireExpenseReviewActionButtons(bucketKey, items, state) {
-        (Array.isArray(items) ? items : []).forEach((item) => {
+        const normalizedItems = Array.isArray(items) ? items : [];
+
+        normalizedItems.forEach((item) => {
           const reviewItemId = String((item && item.id) || '');
           const sourceReviewItemId = String((item && item.manualSourceReviewItemId) || reviewItemId);
-          const previewTarget = resolveDocumentPreviewTargetForReviewItem(item, state);
 
           if (!reviewItemId) {
             return;
@@ -6391,26 +6422,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
               removeExpenseReviewOverride(sourceReviewItemId);
             });
           }
-
-          const previewButton = document.getElementById(buildExpenseDocumentActionElementId('preview', reviewItemId));
-          const printButton = document.getElementById(buildExpenseDocumentActionElementId('print', reviewItemId));
-
-          if (previewButton && typeof previewButton.addEventListener === 'function') {
-            previewButton.addEventListener('click', () => {
-              openDocumentPreview(previewTarget);
-            });
-          }
-
-          if (printButton && typeof printButton.addEventListener === 'function') {
-            printButton.addEventListener('click', () => {
-              if (openDocumentPreview(previewTarget)) {
-                void yieldBrowserWorkflowTurn().then(() => {
-                  printCurrentDocumentPreview();
-                });
-              }
-            });
-          }
         });
+
+        wireExpenseDocumentActionButtons(normalizedItems, state);
       }
 
       function buildExpenseSummaryTilesMarkup(buckets) {
@@ -6614,9 +6628,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
-      function buildManualMatchGroupMarkup(pageKey, groups, sections) {
+      function buildManualMatchGroupMarkup(pageKey, groups, state) {
         const normalizedGroups = Array.isArray(groups) ? groups : [];
-        const selectionSummary = buildManualMatchSelectionSummary(collectSelectedManualMatchItems(sections, { allowStateSync: false }));
+        const selectionSummary = buildManualMatchSelectionSummary(collectSelectedManualMatchItems(state && state.reviewSections, { allowStateSync: false }));
         const hasAppendSelection = selectionSummary.selectedCount > 0;
 
         if (normalizedGroups.length === 0) {
@@ -6646,9 +6660,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
             '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'remove-group', group.id)) + '" type="button" class="secondary-button">Zrušit ruční spárování</button>',
             '</div>',
             '</div>',
-            '<ul>' + (Array.isArray(group.items) ? group.items : []).map((item) =>
-              '<li><strong>' + escapeHtml(String(item && item.title || 'Položka')) + '</strong><br /><span class="hint">' + escapeHtml(String(item && item.detail || '')) + '</span></li>'
-            ).join('') + '</ul>',
+            '<ul>' + (Array.isArray(group.items) ? group.items : []).map((item) => {
+              const documentActionsMarkup = pageKey === 'expense'
+                ? buildExpenseDocumentActionMarkup(item, state)
+                : '';
+
+              return '<li class="manual-match-group-item"><strong>' + escapeHtml(String(item && item.title || 'Položka')) + '</strong><br /><span class="hint">' + escapeHtml(String(item && item.detail || '')) + '</span>'
+                + (documentActionsMarkup
+                  ? '<div class="expense-actions">' + documentActionsMarkup + '</div>'
+                  : '')
+                + '</li>';
+            }).join('') + '</ul>',
             '</article>'
           ].join('');
         }).join('') + '</div>';
@@ -6751,6 +6773,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
           });
         });
+
+        if (pageKey === 'expense') {
+          groups.forEach((group) => {
+            wireExpenseDocumentActionButtons(group && group.items, state);
+          });
+        }
       }
 
       function showOperatorView(view) {
@@ -7092,7 +7120,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           controlManualMatchSummary.hidden = false;
           controlManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('control', visibleState);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
-        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || [], visibleState.reviewSections);
+        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || [], visibleState);
         matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
         unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
         reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
@@ -7101,7 +7129,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
           expenseManualMatchSummary.hidden = false;
           expenseManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('expense', visibleState);
-          expenseManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('expense', visibleState.manualMatchGroups || [], visibleState.reviewSections);
+          expenseManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('expense', visibleState.manualMatchGroups || [], visibleState);
         if (expenseDetailVisibleCount) {
           expenseDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(visibleExpenseBucketResult.visibleCount);
         }

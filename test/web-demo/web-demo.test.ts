@@ -3904,6 +3904,152 @@ describe('buildWebDemo', () => {
     })
   })
 
+  it('shows manual match grouped PDF document preview action inside Ručně spárováno', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:35:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-document-preview-action',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; manualSourceReviewItemId?: string }>
+      }
+    }
+
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const firstOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', firstOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', 'Doklad s náhledem v manual group')
+
+    expect(rendered.expenseManualMatchedContent.innerHTML).toContain(buildExpenseDocumentActionElementId('preview', documentItem.id))
+    expect(rendered.expenseManualMatchedContent.innerHTML).toContain('Náhled dokladu')
+  })
+
+  it('shows manual match grouped print action only for previewable expense documents', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-document-print-action',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; manualSourceReviewItemId?: string }>
+      }
+    }
+
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const firstOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', firstOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', 'Doklad s tiskem v manual group')
+
+    expect(rendered.expenseManualMatchedContent.innerHTML).toContain(buildExpenseDocumentActionElementId('print', documentItem.id))
+    expect(rendered.expenseManualMatchedContent.innerHTML).toContain('Tisk dokladu')
+    expect(rendered.expenseManualMatchedContent.innerHTML).not.toContain(buildExpenseDocumentActionElementId('print', firstOutflow.id))
+  })
+
+  it('keeps expense detail state when document preview opens from a manual match group', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T20:45:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-document-preview-state',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; manualSourceReviewItemId?: string }>
+      }
+    }
+
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const firstOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', firstOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', 'Manual group preview state')
+    rendered.setExpenseDetailFilter('expenseUnmatchedOutflows')
+    rendered.setExpenseDetailSearch('Lenner')
+    rendered.setExpenseDetailSort('amount-asc')
+
+    const beforeState = rendered.getLastVisibleRuntimeState() as { runId: string }
+    const beforeVisibleCount = rendered.expenseDetailVisibleCount.textContent
+
+    await rendered.openExpenseReviewDocumentPreview(String(documentItem.id))
+
+    expect(rendered.getLastDocumentPreviewState()).toMatchObject({
+      open: true,
+      renderMode: 'pdf',
+      printAvailable: true,
+      previewOrigin: 'expense-detail'
+    })
+    expect(rendered.documentPreviewOverlay.hidden).toBe(false)
+    expect(rendered.expenseDetailView.hidden).toBe(false)
+
+    await rendered.closeDocumentPreview()
+
+    const afterState = rendered.getLastVisibleRuntimeState() as { runId: string }
+
+    expect(afterState.runId).toBe(beforeState.runId)
+    expect(rendered.documentPreviewOverlay.hidden).toBe(true)
+    expect(rendered.expenseDetailView.hidden).toBe(false)
+    expect(rendered.expenseDetailVisibleCount.textContent).toBe(beforeVisibleCount)
+    expect(rendered.expenseDetailSearchInput.value).toBe('Lenner')
+    expect(rendered.expenseDetailSortSelect.value).toBe('amount-asc')
+  })
+
   it('keeps same-month merged reruns and reload restore working even when localStorage cannot hold full workspace payloads', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
