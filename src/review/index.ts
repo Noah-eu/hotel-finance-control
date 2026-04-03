@@ -489,6 +489,9 @@ function buildExpenseReviewSections(
   const transactionsById = new Map(
     batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
   )
+  const extractedRecordsById = new Map(
+    batch.extractedRecords.map((record) => [record.id, record])
+  )
   const documentEntries = batch.extractedRecords
     .filter((record) => DOCUMENT_RECORD_TYPE_SET.has(record.recordType))
     .map((record) => ({
@@ -553,7 +556,7 @@ function buildExpenseReviewSections(
       return []
     }
 
-    return [toExpenseMatchedReviewItem(batch, documentEntry, bankTransaction, link.reasons, link.matchScore, fileRoutes)]
+    return [toExpenseMatchedReviewItem(batch, documentEntry, bankTransaction, link.reasons, link.matchScore, fileRoutes, extractedRecordsById)]
   })
   expenseMatched.push(
     ...internalTransferPairs.map((pair) =>
@@ -571,7 +574,8 @@ function buildExpenseReviewSections(
         documentEntry,
         getExpenseDocumentExpectedBankDirection(documentEntry) === 'in'
           ? incomingCandidateBankTransactions
-          : outgoingCandidateBankTransactions
+          : outgoingCandidateBankTransactions,
+        extractedRecordsById
       )
     }))
     .sort(compareExpenseCandidatePlans)
@@ -597,6 +601,7 @@ function buildExpenseReviewSections(
           selection.winner.reasons,
           selection.winner.score,
           fileRoutes,
+          extractedRecordsById,
           selection.winner
         )
       )
@@ -610,7 +615,8 @@ function buildExpenseReviewSections(
         selection.winner.bankTransaction,
         selection.winner,
         selection.ambiguousCount,
-        fileRoutes
+        fileRoutes,
+        extractedRecordsById
       )
     )
   }
@@ -630,12 +636,12 @@ function buildExpenseReviewSections(
         return []
       }
 
-      return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes)]
+      return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes, extractedRecordsById)]
     })
 
   const expenseUnmatchedInflows = incomingCandidateBankTransactions
     .filter((transaction) => !usedCandidateBankIds.has(transaction.id))
-    .map((transaction) => toExpenseUnmatchedInflowReviewItem(batch, transaction, fileRoutes))
+    .map((transaction) => toExpenseUnmatchedInflowReviewItem(batch, transaction, fileRoutes, extractedRecordsById))
 
   return {
     expenseMatched,
@@ -653,6 +659,7 @@ function toExpenseMatchedReviewItem(
   reasons: string[],
   matchScore: number,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>,
   candidateEvaluation?: ExpenseBankCandidateEvaluation
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
@@ -674,7 +681,7 @@ function toExpenseMatchedReviewItem(
     ],
     sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
     matchStrength,
-    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons, candidateEvaluation),
+    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons, candidateEvaluation, extractedRecordsById),
     operatorExplanation: matchStrength === 'potvrzená shoda'
       ? `Částka, datum a alespoň jedna další stopa potvrzují vazbu dokladu na ${bankMovementLabel}.`
       : `Doklad je spárovaný s ${bankMovementLabel}, ale ručně ověřte reference nebo protistranu.`,
@@ -682,7 +689,7 @@ function toExpenseMatchedReviewItem(
       ? 'Ruční kontrolu dělejte jen při sporné protistraně nebo neobvyklém textu v bankovní platbě.'
       : 'Zkontrolujte ručně reference dokladu, protistranu a datum bankovního pohybu.',
     documentBankRelation: `Potvrzená pravděpodobná vazba mezi dokladem a ${bankRelationLabel}.`,
-    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
+    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction, extractedRecordsById)
   }
 }
 
@@ -715,7 +722,8 @@ function toExpenseNeedsReviewItem(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   candidateEvaluation: ExpenseBankCandidateEvaluation,
   ambiguousCount: number,
-  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
   const uniqueCandidate = ambiguousCount === 1
@@ -742,7 +750,8 @@ function toExpenseNeedsReviewItem(
       bankTransaction,
       fileRoutes,
       candidateEvaluation.reasons,
-      candidateEvaluation
+      candidateEvaluation,
+      extractedRecordsById
     ),
     operatorExplanation: uniqueCandidate
       ? `Systém našel pravděpodobný ${bankCandidateLabel}, ale vazba zatím není dost silná na automatické potvrzení.`
@@ -753,7 +762,7 @@ function toExpenseNeedsReviewItem(
     documentBankRelation: uniqueCandidate
       ? `Doklad je načtený a existuje pravděpodobný ${bankCandidateLabel}, ale vazba zatím není potvrzená.`
       : 'Doklad je načtený a existuje více podobných bankovních kandidátů; vazba není jednoznačná.',
-    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction)
+    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction, extractedRecordsById)
   }
 }
 
@@ -788,7 +797,8 @@ function toExpenseUnmatchedOutflowReviewItem(
   _batch: MonthlyBatchResult,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
-  fileRoutes: UploadedMonthlyFileRoute[] | undefined
+  fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewSectionItem {
   return {
     id: `expense-unmatched-outflow:${bankTransaction.id}`,
@@ -800,18 +810,19 @@ function toExpenseUnmatchedOutflowReviewItem(
     sourceDocumentIds: [],
     severity: exceptionCase.severity,
     matchStrength: 'nespárováno',
-    evidenceSummary: buildExpenseOutflowEvidenceSummary(bankTransaction, fileRoutes),
+    evidenceSummary: buildExpenseOutflowEvidenceSummary(bankTransaction, fileRoutes, extractedRecordsById),
     operatorExplanation: 'Odchozí bankovní platba zatím nemá odpovídající fakturu nebo účtenku.',
     operatorCheckHint: 'Zkontrolujte ručně bankovní zprávu, protistranu a dohledání odpovídajícího dokladu.',
     documentBankRelation: 'Existuje odchozí bankovní platba, ale zatím bez načteného odpovídajícího dokladu.',
-    expenseComparison: buildExpenseOutflowComparison(bankTransaction)
+    expenseComparison: buildExpenseOutflowComparison(bankTransaction, extractedRecordsById)
   }
 }
 
 function toExpenseUnmatchedInflowReviewItem(
   _batch: MonthlyBatchResult,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
-  _fileRoutes: UploadedMonthlyFileRoute[] | undefined
+  _fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewSectionItem {
   return {
     id: `expense-unmatched-inflow:${bankTransaction.id}`,
@@ -822,11 +833,11 @@ function toExpenseUnmatchedInflowReviewItem(
     transactionIds: [bankTransaction.id],
     sourceDocumentIds: [],
     matchStrength: 'nespárováno',
-    evidenceSummary: buildExpenseInflowEvidenceSummary(bankTransaction),
+    evidenceSummary: buildExpenseInflowEvidenceSummary(bankTransaction, extractedRecordsById),
     operatorExplanation: 'Příchozí bankovní platba zůstává bez potvrzeného vysvětlení v aktuálním měsíčním workflow.',
     operatorCheckHint: 'Zkontrolujte ručně protistranu, zprávu banky a případnou vazbu na payout, refund dokument nebo interní převod.',
     documentBankRelation: 'Existuje příchozí bankovní platba, ale zatím bez potvrzené vazby na payout, refund dokument nebo interní převod.',
-    expenseComparison: buildExpenseInflowComparison(bankTransaction)
+    expenseComparison: buildExpenseInflowComparison(bankTransaction, extractedRecordsById)
   }
 }
 
@@ -847,17 +858,19 @@ function classifyExpenseMatchedStrength(reasons: string[], matchScore: number): 
 
 function evaluateExpenseBankCandidates(
   documentEntry: ExpenseDocumentReviewEntry,
-  bankTransactions: MonthlyBatchResult['reconciliation']['normalizedTransactions']
+  bankTransactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
+  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ExpenseBankCandidateEvaluation[] {
   return bankTransactions
-    .map((bankTransaction) => evaluateExpenseBankCandidate(documentEntry, bankTransaction))
+    .map((bankTransaction) => evaluateExpenseBankCandidate(documentEntry, bankTransaction, extractedRecordsById.get(bankTransaction.extractedRecordIds[0] ?? '')))
     .filter((evaluation): evaluation is ExpenseBankCandidateEvaluation => Boolean(evaluation))
     .sort(compareExpenseBankCandidateQuality)
 }
 
 function evaluateExpenseBankCandidate(
   documentEntry: ExpenseDocumentReviewEntry,
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  bankExtractedRecord?: MonthlyBatchResult['extractedRecords'][number]
 ): ExpenseBankCandidateEvaluation | null {
   const documentAmountMinor = documentEntry.extractedRecord.amountMinor
   const documentCurrency = documentEntry.extractedRecord.currency
@@ -890,9 +903,11 @@ function evaluateExpenseBankCandidate(
   const documentReferenceHints = getExpenseDocumentReferenceHints(documentEntry)
   const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
   const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
-  const referenceAligned = expenseReferenceMatches(documentReferenceHints, bankTransaction.reference)
-  const counterpartyAligned = expenseCounterpartyMatches(documentCounterparty, bankTransaction)
-  const ibanAligned = expenseIbanMatches(documentIbanHint, bankTransaction)
+  const resolvedBankReference = getExpenseBankReference(bankTransaction, bankExtractedRecord)
+  const resolvedBankCounterparty = getExpenseBankCounterparty(bankTransaction, bankExtractedRecord)
+  const referenceAligned = expenseReferenceMatches(documentReferenceHints, resolvedBankReference)
+  const counterpartyAligned = expenseCounterpartyMatches(documentCounterparty, resolvedBankCounterparty, resolvedBankReference)
+  const ibanAligned = expenseIbanMatches(documentIbanHint, bankTransaction, bankExtractedRecord)
 
   let score = 0
   const reasons: string[] = []
@@ -1029,9 +1044,13 @@ function compareExpenseCandidatePlans(
 
 function buildExpenseComparison(
   documentEntry: ExpenseDocumentReviewEntry,
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined,
+  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewExpenseComparison {
   const documentSummaryTotal = getExpenseDocumentSummaryTotal(documentEntry)
+  const bankExtractedRecord = bankTransaction && extractedRecordsById
+    ? extractedRecordsById.get(bankTransaction.extractedRecordIds[0] ?? '')
+    : undefined
 
   return {
     variant: 'document-bank',
@@ -1052,8 +1071,8 @@ function buildExpenseComparison(
     ...(bankTransaction
       ? {
         bank: {
-          supplierOrCounterparty: bankTransaction.counterparty,
-          reference: bankTransaction.reference,
+          supplierOrCounterparty: getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord),
+          reference: getExpenseBankReference(bankTransaction, bankExtractedRecord),
           bookedAt: bankTransaction.bookedAt,
           amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
           currency: bankTransaction.currency,
@@ -1065,16 +1084,19 @@ function buildExpenseComparison(
 }
 
 function buildExpenseOutflowComparison(
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewExpenseComparison {
+  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+
   return {
     variant: 'document-bank',
     leftLabel: 'Doklad',
     rightLabel: 'Banka',
     document: {},
     bank: {
-      supplierOrCounterparty: bankTransaction.counterparty,
-      reference: bankTransaction.reference,
+      supplierOrCounterparty: getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord),
+      reference: getExpenseBankReference(bankTransaction, bankExtractedRecord),
       bookedAt: bankTransaction.bookedAt,
       amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
       currency: bankTransaction.currency,
@@ -1114,12 +1136,22 @@ function buildExpenseEvidenceSummary(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
   confirmedReasons: string[] = [],
-  candidateEvaluation?: ExpenseBankCandidateEvaluation
+  candidateEvaluation?: ExpenseBankCandidateEvaluation,
+  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewEvidenceEntry[] {
   const documentReferenceHints = getExpenseDocumentReferenceHints(documentEntry)
   const documentReference = documentReferenceHints[0]
   const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
   const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
+  const bankExtractedRecord = bankTransaction && extractedRecordsById
+    ? extractedRecordsById.get(bankTransaction.extractedRecordIds[0] ?? '')
+    : undefined
+  const bankReference = bankTransaction
+    ? getExpenseBankReference(bankTransaction, bankExtractedRecord)
+    : undefined
+  const bankCounterparty = bankTransaction
+    ? getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord)
+    : undefined
   const documentProvenance = buildDocumentProvenanceLabel(fileRoutes, [documentEntry.extractedRecord.sourceDocumentId])
   const dateDistance = candidateEvaluation?.dateDistance ?? (bankTransaction ? calculateExpenseDateDistance(documentEntry, bankTransaction.bookedAt) : undefined)
   const amountDeltaMinor = candidateEvaluation?.amountDeltaMinor
@@ -1129,13 +1161,13 @@ function buildExpenseEvidenceSummary(
         : undefined
     )
   const referenceAligned = bankTransaction
-    ? confirmedReasons.includes('referenceAligned') || expenseReferenceMatches(documentReferenceHints, bankTransaction.reference)
+    ? confirmedReasons.includes('referenceAligned') || expenseReferenceMatches(documentReferenceHints, bankReference)
     : false
   const counterpartyAligned = bankTransaction
-    ? confirmedReasons.includes('counterpartyAligned') || expenseCounterpartyMatches(documentCounterparty, bankTransaction)
+    ? confirmedReasons.includes('counterpartyAligned') || expenseCounterpartyMatches(documentCounterparty, bankCounterparty, bankReference)
     : false
   const ibanAligned = bankTransaction
-    ? expenseIbanMatches(documentIbanHint, bankTransaction)
+    ? expenseIbanMatches(documentIbanHint, bankTransaction, bankExtractedRecord)
     : undefined
 
   return [
@@ -1191,7 +1223,7 @@ function buildExpenseEvidenceSummary(
     ),
     maybeEvidenceEntry(
       'zpráva banky',
-      bankTransaction?.reference ?? (bankTransaction ? 'chybí' : undefined)
+      bankReference ?? (bankTransaction ? 'chybí' : undefined)
     ),
     maybeEvidenceEntry('provenience', documentProvenance)
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
@@ -1218,27 +1250,37 @@ function getExpenseDocumentSummaryTotal(documentEntry: ExpenseDocumentReviewEntr
 
 function buildExpenseOutflowEvidenceSummary(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
-  _fileRoutes: UploadedMonthlyFileRoute[] | undefined
+  _fileRoutes: UploadedMonthlyFileRoute[] | undefined,
+  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewEvidenceEntry[] {
+  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankReference = getExpenseBankReference(bankTransaction, bankExtractedRecord)
+  const bankCounterparty = getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord)
+
   return [
     { label: 'částka', value: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency) },
     maybeEvidenceEntry('datum', bankTransaction.bookedAt),
-    maybeEvidenceEntry('zpráva banky', bankTransaction.reference ?? 'chybí'),
-    maybeEvidenceEntry('reference', bankTransaction.reference ?? 'chybí'),
-    maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankTransaction.counterparty, bankTransaction.accountId]).join(' · ')),
+    maybeEvidenceEntry('zpráva banky', bankReference ?? 'chybí'),
+    maybeEvidenceEntry('reference', bankReference ?? 'chybí'),
+    maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankCounterparty, bankTransaction.accountId, getExpenseBankCounterpartyAccount(bankExtractedRecord)]).join(' · ')),
     { label: 'dokument', value: 'chybí' }
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
 }
 
 function buildExpenseInflowEvidenceSummary(
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewEvidenceEntry[] {
+  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankReference = getExpenseBankReference(bankTransaction, bankExtractedRecord)
+  const bankCounterparty = getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord)
+
   return [
     { label: 'částka', value: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency) },
     maybeEvidenceEntry('datum', bankTransaction.bookedAt),
-    maybeEvidenceEntry('zpráva banky', bankTransaction.reference ?? 'chybí'),
-    maybeEvidenceEntry('reference', bankTransaction.reference ?? 'chybí'),
-    maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankTransaction.counterparty, bankTransaction.accountId]).join(' · ')),
+    maybeEvidenceEntry('zpráva banky', bankReference ?? 'chybí'),
+    maybeEvidenceEntry('reference', bankReference ?? 'chybí'),
+    maybeEvidenceEntry('protistrana / účet', uniqueTextValues([bankCounterparty, bankTransaction.accountId, getExpenseBankCounterpartyAccount(bankExtractedRecord)]).join(' · ')),
     { label: 'dokument', value: 'není relevantní' }
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
 }
@@ -1274,16 +1316,19 @@ function buildInternalTransferEvidenceSummary(
 }
 
 function buildExpenseInflowComparison(
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewExpenseComparison {
+  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+
   return {
     variant: 'document-bank',
     leftLabel: 'Doklad',
     rightLabel: 'Banka',
     document: {},
     bank: {
-      supplierOrCounterparty: bankTransaction.counterparty,
-      reference: bankTransaction.reference,
+      supplierOrCounterparty: getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord),
+      reference: getExpenseBankReference(bankTransaction, bankExtractedRecord),
       bookedAt: bankTransaction.bookedAt,
       amount: formatAmountMinorCs(bankTransaction.amountMinor, bankTransaction.currency),
       currency: bankTransaction.currency,
@@ -1566,27 +1611,71 @@ function expenseReferenceMatches(documentReferences: string[] | string | undefin
 
 function expenseCounterpartyMatches(
   documentCounterparty: string | undefined,
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  bankCounterparty: string | undefined,
+  bankReference: string | undefined
 ): boolean {
-  return normalizedComparableIncludes(documentCounterparty, bankTransaction.counterparty)
-    || normalizedComparableIncludes(documentCounterparty, bankTransaction.reference)
+  return normalizedComparableIncludes(documentCounterparty, bankCounterparty)
+    || normalizedComparableIncludes(documentCounterparty, bankReference)
 }
 
 function expenseIbanMatches(
   documentIbanHint: string | undefined,
-  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  bankExtractedRecord?: MonthlyBatchResult['extractedRecords'][number]
 ): boolean {
   if (!documentIbanHint) {
     return false
   }
 
   const ibanSuffix = documentIbanHint.replace(/\s+/g, '').slice(-4)
-  const candidates = [bankTransaction.reference, bankTransaction.counterparty, bankTransaction.accountId]
+  const candidates = [
+    getExpenseBankReference(bankTransaction, bankExtractedRecord),
+    bankTransaction.counterparty,
+    bankTransaction.accountId,
+    getExpenseBankCounterpartyAccount(bankExtractedRecord)
+  ]
 
   return candidates.some((candidate) =>
     normalizedComparableIncludes(documentIbanHint, candidate)
     || (ibanSuffix.length > 0 && normalizedComparableIncludes(ibanSuffix, candidate))
   )
+}
+
+function getExpenseBankReference(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  bankExtractedRecord?: MonthlyBatchResult['extractedRecords'][number]
+): string | undefined {
+  const extractedData = bankExtractedRecord?.data as Record<string, unknown> | undefined
+
+  return bankTransaction.reference
+    ?? readString(extractedData?.reference)
+    ?? bankExtractedRecord?.rawReference
+}
+
+function getExpenseBankCounterpartyAccount(
+  bankExtractedRecord?: MonthlyBatchResult['extractedRecords'][number]
+): string | undefined {
+  const extractedData = bankExtractedRecord?.data as Record<string, unknown> | undefined
+
+  return readString(extractedData?.counterpartyAccount)
+}
+
+function getExpenseBankCounterparty(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  bankExtractedRecord?: MonthlyBatchResult['extractedRecords'][number]
+): string | undefined {
+  const extractedData = bankExtractedRecord?.data as Record<string, unknown> | undefined
+
+  return bankTransaction.counterparty
+    ?? readString(extractedData?.counterparty)
+    ?? getExpenseBankCounterpartyAccount(bankExtractedRecord)
+}
+
+function getExpenseBankDisplayCounterparty(
+  bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
+  bankExtractedRecord?: MonthlyBatchResult['extractedRecords'][number]
+): string | undefined {
+  return getExpenseBankCounterparty(bankTransaction, bankExtractedRecord)
 }
 
 function normalizedComparableIncludes(left: string | undefined, right: string | undefined): boolean {

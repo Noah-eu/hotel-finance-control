@@ -353,6 +353,50 @@ describe('parseRaiffeisenbankStatement', () => {
     ])
   })
 
+  it('keeps a service-text continuation as counterparty while preserving the fixed-width counterparty account for downstream review lookup', () => {
+    const transactionLine = buildGpcTransactionLine({
+      mainAccountId: '0000005599955956',
+      counterpartyPrefix: '000000',
+      counterpartyAccountNumber: '0274621920',
+      counterpartyBankCode: '0300',
+      amountMinor: '000001262952',
+      directionCode: '1',
+      valueAt: '080426',
+      bookedAt: '080426'
+    })
+
+    const records = parseRaiffeisenbankStatement({
+      sourceDocument: {
+        id: 'doc-raif-gpc-lenner-service-only' as never,
+        sourceSystem: 'bank',
+        documentType: 'bank_statement',
+        fileName: 'Vypis_5599955956_CZK_2026_004.gpc',
+        uploadedAt: '2026-04-03T11:10:00.000Z'
+      },
+      content: [
+        '0740000005599955956JOKELAND s.r.o.',
+        transactionLine,
+        '078Servis vozidla'
+      ].join('\n'),
+      extractedAt: '2026-04-03T11:10:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        amountMinor: -1262952,
+        rawReference: '',
+        data: expect.objectContaining({
+          bankParserVariant: 'raiffeisenbank-gpc',
+          accountId: '5599955956',
+          counterparty: 'Servis vozidla',
+          counterpartyAccount: '274621920/0300',
+          reference: '',
+          transactionType: 'Odchozí platba'
+        })
+      })
+    ])
+  })
+
   it('keeps the direction-code-4 Raiffeisenbank GPC excerpt within sane parser invariants', () => {
     const fixture = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
 

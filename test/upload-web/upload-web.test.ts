@@ -1593,6 +1593,61 @@ describe('buildUploadWebFlow', () => {
     }
   })
 
+  it('keeps Lenner in expense review on a real-browser-like RB GPC row when the usable signal only survives in counterpartyAccount', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Vypis_5599955956_CZK_2026_004.gpc',
+          buildRaiffeisenbankGpcLennerReviewContentWithServiceOnlyContinuation(),
+          'text/plain'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-03T12:30:00.000Z'
+    })
+
+    const lennerNeedsReview = result.reviewSections.expenseNeedsReview.find((item) =>
+      item.expenseComparison?.document.reference === '141260183'
+        && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+    )
+
+    expect(result.extractedRecords[0]).toMatchObject({
+      extractedCount: 1,
+      parserDebugLabel: 'raiffeisenbank-gpc'
+    })
+    expect(lennerNeedsReview).toMatchObject({
+      title: 'Doklad ke kontrole 141260183',
+      matchStrength: 'slabší shoda',
+      documentBankRelation: 'Doklad je načtený a existuje pravděpodobný odchozí bankovní kandidát, ale vazba zatím není potvrzená.'
+    })
+    expect(lennerNeedsReview?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Lenner Motors s.r.o.',
+        reference: '141260183',
+        ibanHint: 'CZ4903000000000274621920'
+      }),
+      bank: expect.objectContaining({
+        supplierOrCounterparty: 'Servis vozidla',
+        bookedAt: '2026-04-08',
+        amount: '12 629,52 Kč'
+      })
+    })
+    expect(lennerNeedsReview?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'IBAN', value: 'sedí' }),
+        expect.objectContaining({ label: 'reference', value: 'chybí' })
+      ])
+    )
+    expect(
+      result.reviewSections.expenseUnmatchedDocuments.some((item) =>
+        item.expenseComparison?.document.reference === '141260183'
+      )
+    ).toBe(false)
+  })
+
   it('keeps Lenner matched on the full invoice total when a browser text layer exposes only a generic total label above the VAT base', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -6706,6 +6761,23 @@ function buildRaiffeisenbankGpcLennerReviewContentWithReferenceOnlyContinuation(
       bookedAt: '080426'
     }),
     '078VS 141260183 Servis vozidla'
+  ].join('\n')
+}
+
+function buildRaiffeisenbankGpcLennerReviewContentWithServiceOnlyContinuation(): string {
+  return [
+    '0740000005599955956JOKELAND s.r.o.',
+    buildRaiffeisenbankGpcTransactionLine({
+      mainAccountId: '0000005599955956',
+      counterpartyPrefix: '000000',
+      counterpartyAccountNumber: '0274621920',
+      counterpartyBankCode: '0300',
+      amountMinor: '000001262952',
+      directionCode: '1',
+      valueAt: '080426',
+      bookedAt: '080426'
+    }),
+    '078Servis vozidla'
   ].join('\n')
 }
 
