@@ -2656,6 +2656,333 @@ describe('buildWebDemo', () => {
     expect(aprilState.manualMatchGroups).toEqual([])
   })
 
+  it('keeps a remaining outflow selectable after reload when one manual group already exists', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-01T19:35:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-expense-remaining-outflow-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; title: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const firstOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const secondOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.id !== firstOutflow.id)!
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', firstOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', 'Reload remaining outflow')
+    await rendered.awaitLastWorkspacePersistence()
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ id: string; selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+
+    const groupId = reloadedState.manualMatchGroups[0]?.id
+    expect(groupId).toBeTruthy()
+    expect(reloadedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === secondOutflow.id)).toBe(true)
+
+    reloaded.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', secondOutflow.id)
+    expect(reloaded.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+    expect(reloaded.expenseManualMatchedContent.innerHTML).toContain('Přidat vybrané do této skupiny')
+
+    reloaded.addSelectedToManualMatchGroup('expense', String(groupId))
+
+    const extendedState = reloaded.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+
+    expect(extendedState.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([documentItem.id, firstOutflow.id, secondOutflow.id])
+    expect(extendedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === secondOutflow.id)).toBe(false)
+  })
+
+  it('keeps a valid 40 000 Kc outflow selectable when another manual group already exists', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-02T08:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-expense-40k-selectable',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFilesWithFortyThousandOutflow()
+    })
+
+    rendered.openExpenseReviewPage()
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; title: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const groupedOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const fortyThousandOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.title.includes('40 000,00'))!
+    const fortyThousandSelectionId = buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+
+    expect(fortyThousandOutflow.id.startsWith('expense-unmatched-outflow:')).toBe(true)
+    expect(rejectedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain(fortyThousandSelectionId)
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toMatch(new RegExp(`<input id="${fortyThousandSelectionId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"[^>]*disabled`))
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', '40k truth base group')
+
+    const createdState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string; title: string }>
+      }
+    }
+
+    expect(createdState.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([documentItem.id, groupedOutflow.id])
+    expect(createdState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
+    expect(createdState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === groupedOutflow.id)).toBe(false)
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain(fortyThousandSelectionId)
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+
+    const selectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+
+    expect(selectedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
+  })
+
+  it('keeps the valid 40 000 Kc outflow selectable after reload until it is truly grouped', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-02T08:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-expense-40k-selectable-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createManualMatchExpenseWorkflowFilesWithFortyThousandOutflow()
+    })
+
+    rendered.openExpenseReviewPage()
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; title: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const groupedOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const fortyThousandOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.title.includes('40 000,00'))!
+    const fortyThousandSelectionId = buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+
+    expect((rendered.getLastVisibleRuntimeState() as { manualMatchGroups: Array<{ selectedReviewItemIds: string[] }> }).manualMatchGroups).toEqual([])
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', '40k reload base group')
+    await rendered.awaitLastWorkspacePersistence()
+
+    const persistedWorkspace = JSON.parse(workspacePersistenceState.get('2026-03')!) as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+    }
+
+    expect(persistedWorkspace.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([documentItem.id, groupedOutflow.id])
+    expect(persistedWorkspace.manualMatchGroups[0]?.selectedReviewItemIds).not.toContain(fortyThousandOutflow.id)
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string; title: string }>
+      }
+    }
+
+    expect(reloadedState.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([documentItem.id, groupedOutflow.id])
+    expect(reloadedState.manualMatchGroups[0]?.selectedReviewItemIds).not.toContain(fortyThousandOutflow.id)
+    expect(reloadedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
+    expect(reloaded.expenseUnmatchedOutflowsContent.innerHTML).toContain(fortyThousandSelectionId)
+
+    reloaded.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    expect(reloaded.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+  })
+
+  it('keeps the 40 000 Kc outflow selectable after undoing the other persisted manual group', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T09:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-expense-40k-undo-persisted-group',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createManualMatchExpenseWorkflowFilesWithFortyThousandOutflow()
+    })
+
+    rendered.openExpenseReviewPage()
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; title: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const groupedOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const fortyThousandOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.title.includes('40 000,00'))!
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', '40k undo persisted base group')
+    await rendered.awaitLastWorkspacePersistence()
+
+    const groupId = (rendered.getLastVisibleRuntimeState() as { manualMatchGroups: Array<{ id: string }> }).manualMatchGroups[0]!.id
+
+    rendered.removeManualMatchGroup('expense', groupId)
+    await rendered.awaitLastWorkspacePersistence()
+
+    const persistedWorkspace = JSON.parse(workspacePersistenceState.get('2026-03')!) as {
+      manualMatchGroups: Array<{ selectedReviewItemIds: string[] }>
+    }
+
+    expect(persistedWorkspace.manualMatchGroups).toEqual([])
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain(
+      buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    )
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+
+    expect(reloadedState.manualMatchGroups).toEqual([])
+    expect(reloadedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
+    reloaded.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+    expect(reloaded.expenseManualMatchSummary.innerHTML).toContain('Vybráno položek:</strong> 1')
+  })
+
+  it('does not keep a truly grouped outflow selectable while leaving the 40 000 Kc outflow available', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-02T08:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-expense-40k-grouped-guard',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFilesWithFortyThousandOutflow()
+    })
+
+    rendered.openExpenseReviewPage()
+    const sourceState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{ id: string }>
+      }
+    }
+    const reviewItemId = sourceState.reviewSections.expenseNeedsReview[0]?.id
+
+    expect(reviewItemId).toBeTruthy()
+    rendered.rejectExpenseReviewItem(String(reviewItemId))
+
+    const rejectedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{ id: string; manualSourceReviewItemId?: string }>
+        expenseUnmatchedOutflows: Array<{ id: string; title: string; manualSourceReviewItemId?: string }>
+      }
+    }
+    const documentItem = rejectedState.reviewSections.expenseUnmatchedDocuments.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const groupedOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.manualSourceReviewItemId === reviewItemId)!
+    const fortyThousandOutflow = rejectedState.reviewSections.expenseUnmatchedOutflows.find((item) => item.title.includes('40 000,00'))!
+    const groupedSelectionId = buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
+    const fortyThousandSelectionId = buildManualMatchSelectionElementId('expense', 'expenseUnmatchedOutflows', fortyThousandOutflow.id)
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedDocuments', documentItem.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedOutflows', groupedOutflow.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', '40k grouped guard base group')
+
+    const groupedState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedOutflows: Array<{ id: string }>
+      }
+    }
+
+    expect(groupedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === groupedOutflow.id)).toBe(false)
+    expect(groupedState.reviewSections.expenseUnmatchedOutflows.some((item) => item.id === fortyThousandOutflow.id)).toBe(true)
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain(groupedSelectionId)
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain(fortyThousandSelectionId)
+  })
+
   it('deduplicates re-adding the same item and blocks extending a group with an item already assigned to another group', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-01T19:40:00.000Z',
@@ -5443,6 +5770,51 @@ async function executeWebDemoMainWorkflow(input: {
     }
   }
 
+  function resolveManualMatchBucketContentElement(pageKey: 'control' | 'expense', bucketKey: string): StubDomElement {
+    if (pageKey === 'control') {
+      if (bucketKey === 'payoutBatchUnmatched') {
+        return elements['unmatched-payout-batches-content']
+      }
+
+      if (bucketKey === 'unmatchedReservationSettlements') {
+        return elements['unmatched-reservations-content']
+      }
+    }
+
+    if (bucketKey === 'expenseUnmatchedDocuments') {
+      return elements['expense-unmatched-documents-content']
+    }
+
+    if (bucketKey === 'expenseUnmatchedOutflows') {
+      return elements['expense-unmatched-outflows-content']
+    }
+
+    if (bucketKey === 'expenseUnmatchedInflows') {
+      return elements['expense-unmatched-inflows-content']
+    }
+
+    throw new Error(`Unsupported manual match bucket: ${pageKey}/${bucketKey}`)
+  }
+
+  function getRenderedManualMatchSelectionControl(
+    pageKey: 'control' | 'expense',
+    bucketKey: string,
+    reviewItemId: string
+  ): StubDomElement {
+    const elementId = buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)
+    const bucketContent = resolveManualMatchBucketContentElement(pageKey, bucketKey)
+
+    expect(bucketContent.innerHTML).toContain(elementId)
+
+    const element = elements[elementId]
+
+    if (!element?.listeners.change) {
+      throw new Error(`Rendered manual match selection control ${elementId} is missing a change listener.`)
+    }
+
+    return element
+  }
+
   function startWorkflow() {
     lastWorkflowStartPreparedFilesMarkup = elements['prepared-files-content'].innerHTML
     lastWorkflowStartRuntimeOutputMarkup = elements['runtime-output'].innerHTML
@@ -5527,8 +5899,10 @@ async function executeWebDemoMainWorkflow(input: {
       await waitForLastClear()
     },
     selectManualMatchItem(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) {
-      elements[buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)].checked = true
-      elements[buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId)].listeners.change()
+      const element = getRenderedManualMatchSelectionControl(pageKey, bucketKey, reviewItemId)
+
+      element.checked = true
+      element.listeners.change()
     },
     openManualMatchConfirm(pageKey: 'control' | 'expense') {
       elements[buildManualMatchActionElementId(pageKey, 'review', 'selection')].listeners.click()
@@ -5873,6 +6247,22 @@ function createManualMatchExpenseWorkflowFiles() {
     createWebDemoRuntimeArrayBufferTextFile(
       'Pohyby_5599955956_202603191023.csv',
       buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+      'text/csv'
+    ),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+  ]
+}
+
+function createManualMatchExpenseWorkflowFilesWithFortyThousandOutflow() {
+  const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+  return [
+    createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+    createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+    createWebDemoRuntimeArrayBufferTextFile(
+      'Pohyby_5599955956_202603191023.csv',
+      buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndFortyThousandExpenseOutflow(),
       'text/csv'
     ),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
@@ -6407,6 +6797,14 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
     '08.04.2026 10:15;08.04.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
+  ].join('\n')
+}
+
+function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndFortyThousandExpenseOutflow(): string {
+  return [
+    buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+    '08.04.2026 10:15;08.04.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
+    '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-40000,00;CZK;Platba bez dokladu 40k'
   ].join('\n')
 }
 

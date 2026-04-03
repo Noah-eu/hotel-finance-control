@@ -4945,19 +4945,81 @@ ${showRuntimePayoutDiagnostics ? '' : `
         };
       }
 
-      function collectSelectedManualMatchItems(sections) {
+      function syncManualMatchGroupsForCurrentSections(groups, sections, monthKey) {
+        const normalizedGroups = sanitizeManualMatchGroupsForStorage(groups);
+        const normalizedMonthKey = String(monthKey || '');
+
+        if (!normalizedMonthKey) {
+          return {
+            groups: normalizedGroups,
+            changed: normalizedGroups.length !== (Array.isArray(groups) ? groups.length : 0)
+          };
+        }
+
+        const itemLookup = buildManualMatchItemLookup(sections);
+        const assignedReviewItemIds = new Set();
+        let changed = normalizedGroups.length !== (Array.isArray(groups) ? groups.length : 0);
+        const syncedGroups = normalizedGroups.flatMap((group) => {
+          const groupMonthKey = String(group && group.monthKey || '');
+
+          if (groupMonthKey !== normalizedMonthKey) {
+            return [group];
+          }
+
+          const nextSelectedReviewItemIds = [];
+
+          (Array.isArray(group && group.selectedReviewItemIds) ? group.selectedReviewItemIds : []).forEach((itemId) => {
+            const normalizedItemId = String(itemId || '');
+
+            if (!normalizedItemId || !itemLookup.has(normalizedItemId) || assignedReviewItemIds.has(normalizedItemId)) {
+              changed = true;
+              return;
+            }
+
+            assignedReviewItemIds.add(normalizedItemId);
+            nextSelectedReviewItemIds.push(normalizedItemId);
+          });
+
+          if (nextSelectedReviewItemIds.length === 0) {
+            changed = true;
+            return [];
+          }
+
+          if (
+            nextSelectedReviewItemIds.length !== group.selectedReviewItemIds.length
+            || nextSelectedReviewItemIds.some((itemId, index) => itemId !== group.selectedReviewItemIds[index])
+          ) {
+            changed = true;
+
+            return [{
+              ...group,
+              selectedReviewItemIds: nextSelectedReviewItemIds
+            }];
+          }
+
+          return [group];
+        });
+
+        return {
+          groups: changed ? syncedGroups : normalizedGroups,
+          changed
+        };
+      }
+
+      function collectSelectedManualMatchItems(sections, options) {
         const itemLookup = buildManualMatchItemLookup(sections);
         const nextSelectedIds = currentSelectedManualMatchItemIds.filter((itemId) => itemLookup.has(String(itemId || '')));
+        const allowStateSync = !options || options.allowStateSync !== false;
 
-        if (nextSelectedIds.length !== currentSelectedManualMatchItemIds.length) {
+        if (allowStateSync && nextSelectedIds.length !== currentSelectedManualMatchItemIds.length) {
           currentSelectedManualMatchItemIds = nextSelectedIds;
         }
 
-        if (currentSelectedManualMatchItemIds.length === 0) {
+        if (allowStateSync && currentSelectedManualMatchItemIds.length === 0) {
           currentManualMatchConfirmMode = false;
         }
 
-        return currentSelectedManualMatchItemIds.map((itemId) => itemLookup.get(String(itemId || ''))).filter(Boolean);
+        return nextSelectedIds.map((itemId) => itemLookup.get(String(itemId || ''))).filter(Boolean);
       }
 
       function toggleManualMatchSelection(reviewItemId) {
@@ -5817,7 +5879,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildManualMatchSummaryMarkup(pageKey, state) {
         const normalizedState = state || initialRuntimeState;
-        const selectedItems = collectSelectedManualMatchItems(normalizedState.reviewSections);
+        const selectedItems = collectSelectedManualMatchItems(normalizedState.reviewSections, { allowStateSync: false });
 
         if (selectedItems.length === 0) {
           return '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
@@ -5859,7 +5921,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildManualMatchGroupMarkup(pageKey, groups, sections) {
         const normalizedGroups = Array.isArray(groups) ? groups : [];
-        const selectionSummary = buildManualMatchSelectionSummary(collectSelectedManualMatchItems(sections));
+        const selectionSummary = buildManualMatchSelectionSummary(collectSelectedManualMatchItems(sections, { allowStateSync: false }));
         const hasAppendSelection = selectionSummary.selectedCount > 0;
 
         if (normalizedGroups.length === 0) {
@@ -6239,9 +6301,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ...payoutResolutionAdjustedSections
           }
         };
+        const syncedManualMatchGroups = syncManualMatchGroupsForCurrentSections(
+          currentManualMatchGroups,
+          payoutResolutionState.reviewSections,
+          currentWorkspaceMonth || payoutResolutionState.monthLabel || ''
+        );
+
+        if (syncedManualMatchGroups.changed) {
+          currentManualMatchGroups = syncedManualMatchGroups.groups;
+        }
+
+        collectSelectedManualMatchItems(payoutResolutionState.reviewSections);
         const manualMatchProjection = buildEffectiveManualMatchProjection(
           payoutResolutionState.reviewSections,
-          currentManualMatchGroups,
+          syncedManualMatchGroups.groups,
           currentWorkspaceMonth || payoutResolutionState.monthLabel || ''
         );
         const adjustedPayoutProjection = collectVisiblePayoutProjection({
