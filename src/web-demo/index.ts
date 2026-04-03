@@ -371,12 +371,18 @@ function renderOperatorWebDemoHtml(input: {
         gap: 16px;
       }
       .expense-detail-grid {
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         align-items: start;
+        grid-auto-flow: row;
+        gap: 12px;
       }
-      @media (min-width: 1760px) {
+      .expense-detail-grid .detail-panel {
+        min-width: 0;
+      }
+      @media (min-width: 1320px) {
         .expense-detail-grid {
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(6, minmax(0, 1fr));
         }
       }
       @media (max-width: 1080px) {
@@ -971,7 +977,7 @@ ${showRuntimePayoutDiagnostics ? `
           </div>
           <p id="expense-detail-visible-count" class="expense-visible-count">Zobrazeno položek: 0</p>
         </section>
-        <div class="detail-grid expense-detail-grid">
+        <div id="expense-detail-layout" class="detail-grid expense-detail-grid">
           <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
             <h3>Spárované výdaje</h3>
             <div id="expense-matched-content">
@@ -982,6 +988,12 @@ ${showRuntimePayoutDiagnostics ? `
             <h3>Výdaje ke kontrole</h3>
             <div id="expense-review-content">
               <p class="hint">Po spuštění se zde zobrazí výdaje ke kontrole.</p>
+            </div>
+          </section>
+          <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Ručně spárováno</h3>
+            <div id="expense-manual-matched-content">
+              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
             </div>
           </section>
           <section id="expense-unmatched-documents-section" class="detail-panel" data-runtime-phase="placeholder">
@@ -1000,12 +1012,6 @@ ${showRuntimePayoutDiagnostics ? `
             <h3>Nespárované příchozí platby</h3>
             <div id="expense-unmatched-inflows-content">
               <p class="hint">Po spuštění se zde zobrazí nespárované příchozí platby.</p>
-            </div>
-          </section>
-          <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
-            <h3>Ručně spárováno</h3>
-            <div id="expense-manual-matched-content">
-              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
             </div>
           </section>
         </div>

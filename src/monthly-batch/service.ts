@@ -760,10 +760,6 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
       || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ']))
     && !hasAnyHeaderFields(headerFields, ['číslo protiúčtu', 'cislo protiuctu'])
 
-  if (isCanonicalBankHeader) {
-    return 'raiffeisenbank'
-  }
-
   if (isFioSpecificHeader) {
     return 'fio'
   }
@@ -778,6 +774,10 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
 
   if (normalizedFileName.includes('fio')) {
     return 'fio'
+  }
+
+  if (isCanonicalBankHeader) {
+    return 'raiffeisenbank'
   }
 
   return 'unknown'

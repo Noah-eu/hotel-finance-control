@@ -59,13 +59,26 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('class="operator-shell"')
     expect(result.html).toContain('width: min(100%, calc(100vw - 64px));')
     expect(result.html).toContain('max-width: none;')
-    expect(result.html).toContain('grid-template-columns: repeat(5, minmax(0, 1fr));')
+    expect(result.html).toContain('grid-template-columns: repeat(6, minmax(0, 1fr));')
+    expect(result.html).toContain('id="expense-detail-layout"')
     expect(result.html).toContain('expense-summary-grid')
     expect(result.html).toContain('expense-summary-tile')
     expect(result.html).toContain('grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));')
-    expect(result.html.indexOf('id="expense-unmatched-outflows-section"')).toBeGreaterThan(-1)
-    expect(result.html.indexOf('id="expense-unmatched-inflows-section"')).toBeGreaterThan(result.html.indexOf('id="expense-unmatched-outflows-section"'))
-    expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(result.html.indexOf('id="expense-unmatched-inflows-section"'))
+    const expenseMatchedIndex = result.html.indexOf('id="expense-matched-section"')
+    const expenseReviewIndex = result.html.indexOf('id="expense-review-section"')
+    const expenseManualMatchedIndex = result.html.indexOf('id="expense-manual-matched-section"')
+    const expenseUnmatchedDocumentsIndex = result.html.indexOf('id="expense-unmatched-documents-section"')
+    const expenseUnmatchedOutflowsIndex = result.html.indexOf('id="expense-unmatched-outflows-section"')
+    const expenseUnmatchedInflowsIndex = result.html.indexOf('id="expense-unmatched-inflows-section"')
+
+    expect(expenseMatchedIndex).toBeGreaterThan(-1)
+    expect(expenseReviewIndex).toBeGreaterThan(expenseMatchedIndex)
+    expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(result.html.indexOf('id="expense-review-section"'))
+    expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeLessThan(result.html.indexOf('id="expense-unmatched-documents-section"'))
+    expect(expenseUnmatchedDocumentsIndex).toBeGreaterThan(expenseManualMatchedIndex)
+    expect(expenseUnmatchedOutflowsIndex).toBeGreaterThan(expenseUnmatchedDocumentsIndex)
+    expect(expenseUnmatchedInflowsIndex).toBeGreaterThan(expenseUnmatchedOutflowsIndex)
+    expect(result.html.indexOf('id="expense-detail-layout"')).toBeLessThan(result.html.indexOf('id="expense-manual-matched-section"'))
     expect(result.html).not.toContain('grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);')
     expect(result.html).not.toContain('window.open(')
     expect(result.html).not.toContain('about:blank')
@@ -2061,6 +2074,64 @@ describe('buildWebDemo', () => {
     expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')).toBe(fullOutflowCount + 1)
     expect(rendered.matchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(16)
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
+  })
+
+  it('renders all six expense detail sections in the same top-level grid while keeping incoming, outgoing, and manual sections visible with stable counts', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T15:52:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-expense-layout-grid',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('airbnb.csv', buildActualUploadedAirbnbContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndReviewExpenseOutflows(),
+          'text/csv'
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const baseMatchedCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseMatched')
+    const baseReviewCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')
+    const baseOutflowCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')
+    const baseInflowCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedInflows')
+
+    expect(rendered.expenseDetailView.hidden).toBe(false)
+    const expenseLayoutMarkup = rendered.html.slice(
+      rendered.html.indexOf('id="expense-detail-layout"'),
+      rendered.html.indexOf('</section>\n    </main>')
+    )
+
+    expect(expenseLayoutMarkup).toContain('id="expense-matched-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-review-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-manual-matched-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-unmatched-documents-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-unmatched-outflows-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-unmatched-inflows-section"')
+    expect(rendered.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(rendered.html.indexOf('id="expense-review-section"'))
+    expect(rendered.html.indexOf('id="expense-manual-matched-section"')).toBeLessThan(rendered.html.indexOf('id="expense-unmatched-documents-section"'))
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Nespárovaná odchozí platba')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('Žádné nespárované příchozí platby.')
+    expect(rendered.expenseManualMatchedContent.innerHTML).toContain('Zatím nebyla vytvořená žádná ruční match group')
+
+    rendered.setExpenseDetailFilter('expenseUnmatchedOutflows')
+    rendered.setExpenseDetailSearch('servis')
+    rendered.setExpenseDetailSort('oldest')
+
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseMatched')).toBe(baseMatchedCount)
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseNeedsReview')).toBe(baseReviewCount)
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')).toBe(baseOutflowCount)
+    expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedInflows')).toBe(baseInflowCount)
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Žádné nespárované odchozí platby.')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('Žádné nespárované příchozí platby.')
+    expect(rendered.expenseManualMatchedContent.innerHTML).toContain('Zatím nebyla vytvořená žádná ruční match group')
   })
 
   it('lets the operator reject a review-worthy expense pair and does not immediately re-suggest the same pair', async () => {
@@ -4942,6 +5013,91 @@ describe('buildWebDemo', () => {
       .toBe(rendered.expenseUnmatchedInflowsContent.innerHTML.split('<article class=\"expense-item\">').length - 1)
     expect(extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedOutflows')).toBe(0)
     expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Žádné nespárované odchozí platby.')
+  })
+
+  it('keeps Fio incoming items visible and manually matchable when RB GPC coexists in the same browser month workflow', async () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+    const fio = getRealInputFixture('fio-statement')
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T10:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-rb-gpc-fio-manual-match',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(gpc.sourceDocument.fileName, gpc.rawInput.content, 'text/plain'),
+        createWebDemoRuntimeArrayBufferTextFile(fio.sourceDocument.fileName, fio.rawInput.content, 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines(invoice.sourceDocument.fileName, invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{
+          id: string
+          transactionIds: string[]
+          expenseComparison?: {
+            bank?: {
+              supplierOrCounterparty?: string
+              reference?: string
+            }
+          }
+        }>
+        expenseUnmatchedOutflows: Array<{
+          expenseComparison?: {
+            bank?: {
+              supplierOrCounterparty?: string
+              reference?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const fioInflows = stateBefore.reviewSections.expenseUnmatchedInflows.filter((item) =>
+      item.expenseComparison?.bank?.supplierOrCounterparty === 'EXPEDIA TERMINAL'
+    )
+
+    expect(fioInflows.map((item) => item.expenseComparison?.bank?.reference)).toEqual(['EXP-TERM-1001', 'EXP-TERM-1002'])
+    expect(fioInflows.map((item) => item.transactionIds[0])).toEqual(['txn:bank:fio-row-1', 'txn:bank:fio-row-2'])
+    expect(stateBefore.reviewSections.expenseUnmatchedOutflows.some((item) =>
+      item.expenseComparison?.bank?.supplierOrCounterparty === 'EXPEDIA TERMINAL'
+      || String(item.expenseComparison?.bank?.reference || '').startsWith('EXP-TERM-')
+    )).toBe(false)
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedInflows', fioInflows[0]!.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedInflows', fioInflows[1]!.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', 'Fio incoming pair')
+
+    const createdState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ id: string; note?: string | null; selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+    }
+
+    const groupId = createdState.manualMatchGroups[0]?.id
+    expect(groupId).toBeTruthy()
+    expect(createdState.manualMatchGroups[0]?.note).toBe('Fio incoming pair')
+    expect(createdState.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([fioInflows[0]!.id, fioInflows[1]!.id])
+    expect(createdState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[0]!.id)).toBe(false)
+    expect(createdState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[1]!.id)).toBe(false)
+
+    rendered.removeManualMatchGroup('expense', String(groupId))
+
+    const restoredState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+    }
+
+    expect(restoredState.manualMatchGroups).toEqual([])
+    expect(restoredState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[0]!.id)).toBe(true)
+    expect(restoredState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[1]!.id)).toBe(true)
   })
 
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
