@@ -5546,6 +5546,34 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…')
     expect(result.html).toContain('Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…')
   })
+
+  it('keeps the exact Fio GPC upload out of ingest failure after the preview workspace roundtrip', async () => {
+    const fioGpc = getRealInputFixture('fio-gpc-statement')
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T19:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-fio-gpc-preview-workspace-roundtrip',
+      files: [
+        createWebDemoRuntimeWindows1250TextFile(
+          fioGpc.sourceDocument.fileName,
+          fioGpc.rawInput.content,
+          'text/plain'
+        )
+      ]
+    })
+
+    expect(rendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 1 · Nepodporováno: 0 · Selhání ingestu: 0')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('Fio GPC bookedAt has unsupported date format: rmi002')
+    expect(rendered.preparedFilesContent.innerHTML).not.toContain('<h4>Soubory se selháním ingestu</h4>')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Vypis_z_uctu-8888997777_20260301-20260331_cislo-3.gpc')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Rozhodnutí klasifikátoru: bank / bank_statement / content')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Capability evidence: fixed-width-gpc-shape')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: recognized supported · Rozpoznaný a zpracovaný zdroj')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Výběr z bankomatu: M')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('Fio banka, a.s.')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).not.toContain('rmi002')
+  })
 })
 
 interface StubDomElement {
@@ -6583,6 +6611,62 @@ function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, 
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
+}
+
+function createWebDemoRuntimeWindows1250TextFile(name: string, content: string, type = 'text/plain') {
+  const bytes = encodeWindows1250Text(content)
+
+  return {
+    name,
+    type,
+    async text() {
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+    },
+    async arrayBuffer() {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    }
+  }
+}
+
+function encodeWindows1250Text(value: string): Uint8Array {
+  const windows1250Map: Record<string, number> = {
+    'Á': 0xc1,
+    'Č': 0xc8,
+    'Í': 0xcd,
+    'Ř': 0xd8,
+    'Ú': 0xda,
+    'Ý': 0xdd,
+    'á': 0xe1,
+    'č': 0xe8,
+    'ě': 0xec,
+    'í': 0xed,
+    'ř': 0xf8,
+    'ú': 0xfa,
+    'ý': 0xfd,
+    'ť': 0x9d
+  }
+
+  const bytes = new Uint8Array(value.length)
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]!
+    const codePoint = character.codePointAt(0)
+
+    if (typeof codePoint === 'number' && codePoint <= 0x7f) {
+      bytes[index] = codePoint
+      continue
+    }
+
+    const encoded = windows1250Map[character]
+    if (typeof encoded === 'number') {
+      bytes[index] = encoded
+      continue
+    }
+
+    throw new Error(`Unsupported Windows-1250 test character: ${character}`)
+  }
+
+  return bytes
 }
 
 function createDelayedWebDemoRuntimeArrayBufferTextFile(name: string, content: string, delayMs: number, type = 'text/plain') {

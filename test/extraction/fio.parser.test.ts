@@ -84,6 +84,36 @@ describe('parseFioStatement', () => {
     expect(records.every((record) => record.data.bankParserVariant === 'fio-gpc')).toBe(true)
   })
 
+  it('keeps the exact POS-terminal Fio GPC row on the correct ddMMyy slices instead of the preview-broken rmi002 substring', () => {
+    const fixture = getRealInputFixture('fio-gpc-statement')
+    const lines = fixture.rawInput.content.split('\n')
+    const headerLine = lines[0]
+    const failingTransactionLine = lines[4]
+
+    expect(failingTransactionLine).toBeDefined()
+    expect(failingTransactionLine?.slice(91, 97)).toBe('030326')
+    expect(failingTransactionLine?.slice(122, 128)).toBe('030326')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: [headerLine, failingTransactionLine].join('\n'),
+      extractedAt: '2026-04-03T18:25:00.000Z'
+    })
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        id: 'fio-row-1',
+        occurredAt: '2026-03-03',
+        data: expect.objectContaining({
+          bankParserVariant: 'fio-gpc',
+          bookedAt: '2026-03-03',
+          valueAt: '2026-03-03',
+          counterparty: 'Zaúčtování POS termi'
+        })
+      })
+    ])
+  })
+
   it('extracts deterministic bank transaction records from the representative Fio fixture', () => {
     const fixture = getRealInputFixture('fio-statement')
 
