@@ -2845,11 +2845,24 @@ describe('buildUploadWebFlow', () => {
         accountId: '5599955956/5500'
       }),
       expect.objectContaining({
-        id: 'txn:bank:fio-row-1',
+        id: expect.stringMatching(/^txn:bank:fio-row-1:uploaded-bank-4-pohyby-na-uctu-8888997777-20260301-20260319-csv$/),
         source: 'bank',
         direction: 'in',
         accountId: '8888997777/2010'
       })
+    ])
+    const inboundBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
+      transaction.source === 'bank' && transaction.direction === 'in'
+    )
+    expect(inboundBankTransactions).toHaveLength(2)
+    expect(new Set(inboundBankTransactions.map((transaction) => transaction.id)).size).toBe(2)
+    expect(inboundBankTransactions.map((transaction) => transaction.id)).toEqual([
+      'txn:bank:fio-row-1',
+      'txn:bank:fio-row-1:uploaded-bank-4-pohyby-na-uctu-8888997777-20260301-20260319-csv'
+    ])
+    expect(inboundBankTransactions.map((transaction) => transaction.accountId)).toEqual([
+      '5599955956/5500',
+      '8888997777/2010'
     ])
     expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
