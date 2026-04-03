@@ -59,18 +59,16 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('class="operator-shell"')
     expect(result.html).toContain('width: min(100%, calc(100vw - 64px));')
     expect(result.html).toContain('max-width: none;')
-    expect(result.html).toContain('grid-template-columns: repeat(5, minmax(0, 1fr));')
+    expect(result.html).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));')
     expect(result.html).toContain('id="expense-detail-layout"')
-    expect(result.html).toContain('id="expense-detail-primary-grid"')
-    expect(result.html).toContain('id="expense-detail-secondary-grid"')
     expect(result.html).toContain('expense-summary-grid')
     expect(result.html).toContain('expense-summary-tile')
     expect(result.html).toContain('grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));')
     expect(result.html.indexOf('id="expense-unmatched-outflows-section"')).toBeGreaterThan(-1)
+    expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(result.html.indexOf('id="expense-review-section"'))
+    expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeLessThan(result.html.indexOf('id="expense-unmatched-documents-section"'))
     expect(result.html.indexOf('id="expense-unmatched-inflows-section"')).toBeGreaterThan(result.html.indexOf('id="expense-unmatched-outflows-section"'))
-    expect(result.html.indexOf('id="expense-detail-primary-grid"')).toBeLessThan(result.html.indexOf('id="expense-matched-section"'))
-    expect(result.html.indexOf('id="expense-detail-secondary-grid"')).toBeGreaterThan(result.html.indexOf('id="expense-unmatched-inflows-section"'))
-    expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(result.html.indexOf('id="expense-unmatched-inflows-section"'))
+    expect(result.html.indexOf('id="expense-detail-layout"')).toBeLessThan(result.html.indexOf('id="expense-manual-matched-section"'))
     expect(result.html).not.toContain('grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);')
     expect(result.html).not.toContain('window.open(')
     expect(result.html).not.toContain('about:blank')
@@ -2068,7 +2066,7 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
-  it('renders expense detail primary buckets in one grid while keeping incoming, outgoing, and manual sections visible with stable counts', async () => {
+  it('renders expense detail manual section in the same top-level grid while keeping incoming, outgoing, and manual sections visible with stable counts', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T15:52:00.000Z',
@@ -2096,6 +2094,8 @@ describe('buildWebDemo', () => {
     const baseInflowCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedInflows')
 
     expect(rendered.expenseDetailView.hidden).toBe(false)
+    expect(rendered.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(rendered.html.indexOf('id="expense-review-section"'))
+    expect(rendered.html.indexOf('id="expense-manual-matched-section"')).toBeLessThan(rendered.html.indexOf('id="expense-unmatched-documents-section"'))
     expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Nespárovaná odchozí platba')
     expect(rendered.expenseUnmatchedInflowsContent.innerHTML).toContain('Žádné nespárované příchozí platby.')
     expect(rendered.expenseManualMatchedContent.innerHTML).toContain('Zatím nebyla vytvořená žádná ruční match group')

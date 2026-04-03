@@ -370,25 +370,15 @@ function renderOperatorWebDemoHtml(input: {
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
         gap: 16px;
       }
-      .expense-detail-layout {
-        display: grid;
-        gap: 16px;
-        align-items: start;
-      }
       .expense-detail-grid {
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
         align-items: start;
         grid-auto-flow: row;
       }
-      .expense-detail-secondary-grid {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: 16px;
-        align-items: start;
-      }
-      @media (min-width: 1240px) {
-        .expense-detail-primary-grid {
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+      @media (min-width: 1320px) {
+        .expense-detail-grid {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
         }
       }
       @media (max-width: 1080px) {
@@ -398,8 +388,7 @@ function renderOperatorWebDemoHtml(input: {
         main.operator-shell {
           width: 100%;
         }
-        .expense-detail-grid,
-        .expense-detail-secondary-grid {
+        .expense-detail-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -984,47 +973,43 @@ ${showRuntimePayoutDiagnostics ? `
           </div>
           <p id="expense-detail-visible-count" class="expense-visible-count">Zobrazeno položek: 0</p>
         </section>
-        <div id="expense-detail-layout" class="expense-detail-layout">
-          <div id="expense-detail-primary-grid" class="detail-grid expense-detail-grid expense-detail-primary-grid">
-            <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
-              <h3>Spárované výdaje</h3>
-              <div id="expense-matched-content">
-                <p class="hint">Po spuštění se zde zobrazí spárované výdaje.</p>
-              </div>
-            </section>
-            <section id="expense-review-section" class="detail-panel" data-runtime-phase="placeholder">
-              <h3>Výdaje ke kontrole</h3>
-              <div id="expense-review-content">
-                <p class="hint">Po spuštění se zde zobrazí výdaje ke kontrole.</p>
-              </div>
-            </section>
-            <section id="expense-unmatched-documents-section" class="detail-panel" data-runtime-phase="placeholder">
-              <h3>Nespárované doklady</h3>
-              <div id="expense-unmatched-documents-content">
-                <p class="hint">Po spuštění se zde zobrazí nespárované doklady.</p>
-              </div>
-            </section>
-            <section id="expense-unmatched-outflows-section" class="detail-panel" data-runtime-phase="placeholder">
-              <h3>Nespárované odchozí platby</h3>
-              <div id="expense-unmatched-outflows-content">
-                <p class="hint">Po spuštění se zde zobrazí nespárované odchozí platby.</p>
-              </div>
-            </section>
-            <section id="expense-unmatched-inflows-section" class="detail-panel" data-runtime-phase="placeholder">
-              <h3>Nespárované příchozí platby</h3>
-              <div id="expense-unmatched-inflows-content">
-                <p class="hint">Po spuštění se zde zobrazí nespárované příchozí platby.</p>
-              </div>
-            </section>
-          </div>
-          <div id="expense-detail-secondary-grid" class="expense-detail-secondary-grid">
-            <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
-              <h3>Ručně spárováno</h3>
-              <div id="expense-manual-matched-content">
-                <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
-              </div>
-            </section>
-          </div>
+        <div id="expense-detail-layout" class="detail-grid expense-detail-grid">
+          <section id="expense-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Spárované výdaje</h3>
+            <div id="expense-matched-content">
+              <p class="hint">Po spuštění se zde zobrazí spárované výdaje.</p>
+            </div>
+          </section>
+          <section id="expense-review-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Výdaje ke kontrole</h3>
+            <div id="expense-review-content">
+              <p class="hint">Po spuštění se zde zobrazí výdaje ke kontrole.</p>
+            </div>
+          </section>
+          <section id="expense-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Ručně spárováno</h3>
+            <div id="expense-manual-matched-content">
+              <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-documents-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované doklady</h3>
+            <div id="expense-unmatched-documents-content">
+              <p class="hint">Po spuštění se zde zobrazí nespárované doklady.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-outflows-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované odchozí platby</h3>
+            <div id="expense-unmatched-outflows-content">
+              <p class="hint">Po spuštění se zde zobrazí nespárované odchozí platby.</p>
+            </div>
+          </section>
+          <section id="expense-unmatched-inflows-section" class="detail-panel" data-runtime-phase="placeholder">
+            <h3>Nespárované příchozí platby</h3>
+            <div id="expense-unmatched-inflows-content">
+              <p class="hint">Po spuštění se zde zobrazí nespárované příchozí platby.</p>
+            </div>
+          </section>
         </div>
       </section>
     </main>
