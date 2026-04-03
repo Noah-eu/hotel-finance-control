@@ -59,15 +59,25 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('class="operator-shell"')
     expect(result.html).toContain('width: min(100%, calc(100vw - 64px));')
     expect(result.html).toContain('max-width: none;')
-    expect(result.html).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));')
+    expect(result.html).toContain('grid-template-columns: repeat(6, minmax(0, 1fr));')
     expect(result.html).toContain('id="expense-detail-layout"')
     expect(result.html).toContain('expense-summary-grid')
     expect(result.html).toContain('expense-summary-tile')
     expect(result.html).toContain('grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));')
-    expect(result.html.indexOf('id="expense-unmatched-outflows-section"')).toBeGreaterThan(-1)
+    const expenseMatchedIndex = result.html.indexOf('id="expense-matched-section"')
+    const expenseReviewIndex = result.html.indexOf('id="expense-review-section"')
+    const expenseManualMatchedIndex = result.html.indexOf('id="expense-manual-matched-section"')
+    const expenseUnmatchedDocumentsIndex = result.html.indexOf('id="expense-unmatched-documents-section"')
+    const expenseUnmatchedOutflowsIndex = result.html.indexOf('id="expense-unmatched-outflows-section"')
+    const expenseUnmatchedInflowsIndex = result.html.indexOf('id="expense-unmatched-inflows-section"')
+
+    expect(expenseMatchedIndex).toBeGreaterThan(-1)
+    expect(expenseReviewIndex).toBeGreaterThan(expenseMatchedIndex)
     expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(result.html.indexOf('id="expense-review-section"'))
     expect(result.html.indexOf('id="expense-manual-matched-section"')).toBeLessThan(result.html.indexOf('id="expense-unmatched-documents-section"'))
-    expect(result.html.indexOf('id="expense-unmatched-inflows-section"')).toBeGreaterThan(result.html.indexOf('id="expense-unmatched-outflows-section"'))
+    expect(expenseUnmatchedDocumentsIndex).toBeGreaterThan(expenseManualMatchedIndex)
+    expect(expenseUnmatchedOutflowsIndex).toBeGreaterThan(expenseUnmatchedDocumentsIndex)
+    expect(expenseUnmatchedInflowsIndex).toBeGreaterThan(expenseUnmatchedOutflowsIndex)
     expect(result.html.indexOf('id="expense-detail-layout"')).toBeLessThan(result.html.indexOf('id="expense-manual-matched-section"'))
     expect(result.html).not.toContain('grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);')
     expect(result.html).not.toContain('window.open(')
@@ -2066,7 +2076,7 @@ describe('buildWebDemo', () => {
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML.split('<li><strong>').length - 1).toBe(2)
   })
 
-  it('renders expense detail manual section in the same top-level grid while keeping incoming, outgoing, and manual sections visible with stable counts', async () => {
+  it('renders all six expense detail sections in the same top-level grid while keeping incoming, outgoing, and manual sections visible with stable counts', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T15:52:00.000Z',
@@ -2094,6 +2104,17 @@ describe('buildWebDemo', () => {
     const baseInflowCount = extractExpenseBucketCount(rendered.expenseDetailSummaryContent.innerHTML, 'expenseUnmatchedInflows')
 
     expect(rendered.expenseDetailView.hidden).toBe(false)
+    const expenseLayoutMarkup = rendered.html.slice(
+      rendered.html.indexOf('id="expense-detail-layout"'),
+      rendered.html.indexOf('</section>\n    </main>')
+    )
+
+    expect(expenseLayoutMarkup).toContain('id="expense-matched-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-review-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-manual-matched-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-unmatched-documents-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-unmatched-outflows-section"')
+    expect(expenseLayoutMarkup).toContain('id="expense-unmatched-inflows-section"')
     expect(rendered.html.indexOf('id="expense-manual-matched-section"')).toBeGreaterThan(rendered.html.indexOf('id="expense-review-section"'))
     expect(rendered.html.indexOf('id="expense-manual-matched-section"')).toBeLessThan(rendered.html.indexOf('id="expense-unmatched-documents-section"'))
     expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Nespárovaná odchozí platba')

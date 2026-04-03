@@ -372,13 +372,17 @@ function renderOperatorWebDemoHtml(input: {
       }
       .expense-detail-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         align-items: start;
         grid-auto-flow: row;
+        gap: 12px;
+      }
+      .expense-detail-grid .detail-panel {
+        min-width: 0;
       }
       @media (min-width: 1320px) {
         .expense-detail-grid {
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(6, minmax(0, 1fr));
         }
       }
       @media (max-width: 1080px) {
