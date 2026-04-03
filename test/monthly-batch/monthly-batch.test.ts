@@ -627,6 +627,22 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
   })
 
+  it('classifies the exact Fio GPC export shape as a supported bank statement', () => {
+    const gpc = getRealInputFixture('fio-gpc-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: gpc.sourceDocument.fileName,
+        content: gpc.rawInput.content,
+        uploadedAt: '2026-04-03T17:40:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('bank')
+    expect(prepared[0]?.sourceDocument.documentType).toBe('bank_statement')
+    expect(prepared[0]?.sourceDocument.fileName).toBe('Vypis_z_uctu-8888997777_20260301-20260331_cislo-3.gpc')
+  })
+
   it('routes the exact Raiffeisenbank GPC export shape through the shared normalized bank flow', () => {
     const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
 
@@ -664,6 +680,43 @@ describe('runMonthlyReconciliationBatch', () => {
       }),
       expect.objectContaining({
         ...gpc.expectedNormalizedTransactions?.[2],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      })
+    ]))
+  })
+
+  it('routes the exact Fio GPC export shape through the shared normalized bank flow', () => {
+    const gpc = getRealInputFixture('fio-gpc-statement')
+
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: gpc.sourceDocument.fileName,
+        content: gpc.rawInput.content,
+        uploadedAt: '2026-04-03T17:41:00.000Z'
+      }
+    ])
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-fio-gpc-routing',
+        requestedAt: '2026-04-03T17:41:30.000Z'
+      },
+      reportGeneratedAt: '2026-04-03T17:42:00.000Z'
+    })
+
+    expect(result.files.map((file) => file.extractedCount)).toEqual([7])
+    expect(result.extractedRecords.every((record) => record.data.bankParserVariant === 'fio-gpc')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.some((transaction) => transaction.direction === 'in')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.some((transaction) => transaction.direction === 'out')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions.every((transaction) => transaction.currency === 'CZK')).toBe(true)
+    expect(result.reconciliation.normalizedTransactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[0],
+        sourceDocumentIds: [prepared[0]!.sourceDocument.id]
+      }),
+      expect.objectContaining({
+        ...gpc.expectedNormalizedTransactions?.[1],
         sourceDocumentIds: [prepared[0]!.sourceDocument.id]
       })
     ]))

@@ -161,6 +161,44 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedOutflows.length).toBeGreaterThan(0)
   })
 
+  it('builds a browser upload state from the exact Fio GPC export shape through the shared bank flow', () => {
+    const gpc = getRealInputFixture('fio-gpc-statement')
+
+    const result = buildBrowserRuntimeUploadState({
+      files: [
+        {
+          name: gpc.sourceDocument.fileName,
+          content: gpc.rawInput.content,
+          uploadedAt: '2026-04-03T17:45:00.000Z'
+        }
+      ],
+      runId: 'runtime-browser-upload-fio-gpc',
+      generatedAt: '2026-04-03T17:45:00.000Z'
+    })
+
+    expect(result.preparedFiles).toHaveLength(1)
+    expect(result.preparedFiles[0]).toMatchObject({
+      fileName: 'Vypis_z_uctu-8888997777_20260301-20260331_cislo-3.gpc',
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      classificationBasis: 'content'
+    })
+    expect(result.fileRoutes[0]).toMatchObject({
+      status: 'supported',
+      sourceSystem: 'bank',
+      parserId: 'fio'
+    })
+    expect(result.extractedRecords[0]).toMatchObject({
+      fileName: 'Vypis_z_uctu-8888997777_20260301-20260331_cislo-3.gpc',
+      extractedCount: 7,
+      accountLabelCs: 'Fio účet 8888997777',
+      parserDebugLabel: 'fio-gpc'
+    })
+    expect(result.reportTransactions.length).toBeGreaterThan(0)
+    expect(result.reviewSections.expenseUnmatchedInflows.length).toBeGreaterThan(0)
+    expect(result.reviewSections.expenseUnmatchedOutflows.length).toBeGreaterThan(0)
+  })
+
   it('keeps the exact direction-code-4 Raiffeisenbank GPC file on the supported bank path instead of ingest failure', () => {
     const gpc = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
 
@@ -200,9 +238,10 @@ describe('buildUploadWebFlow', () => {
     expect(result.reportTransactions.every((item) => item.amount.includes('Kč'))).toBe(true)
   })
 
-  it('keeps earlier RB GPC, RB CSV, and Fio browser bank uploads supported after the direction-code-4 fix', () => {
+  it('keeps Fio GPC, Fio CSV, RB CSV, and RB GPC browser bank uploads supported together', () => {
     const gpcLegacy = getRealInputFixture('raiffeisenbank-gpc-statement')
     const gpcDirection4 = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+    const fioGpc = getRealInputFixture('fio-gpc-statement')
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const fio = getRealInputFixture('fio-statement')
 
@@ -219,6 +258,11 @@ describe('buildUploadWebFlow', () => {
           uploadedAt: '2026-03-20T10:31:00.000Z'
         },
         {
+          name: fioGpc.sourceDocument.fileName,
+          content: fioGpc.rawInput.content,
+          uploadedAt: '2026-04-03T17:46:00.000Z'
+        },
+        {
           name: raiffeisen.sourceDocument.fileName,
           content: raiffeisen.rawInput.content,
           uploadedAt: '2026-03-20T10:32:00.000Z'
@@ -233,24 +277,26 @@ describe('buildUploadWebFlow', () => {
       generatedAt: '2026-03-20T10:33:00.000Z'
     })
 
-    expect(result.fileRoutes).toHaveLength(4)
+    expect(result.fileRoutes).toHaveLength(5)
     expect(result.fileRoutes.every((route) => route.status === 'supported')).toBe(true)
     expect(result.fileRoutes.map((route) => route.fileName)).toEqual([
       'Vypis_5599955956_CZK_2026_002.gpc',
       'Vypis_5599955956_CZK_2026_003.gpc',
+      'Vypis_z_uctu-8888997777_20260301-20260331_cislo-3.gpc',
       'raiffeisen-2026-03.csv',
       'fio-2026-03.csv'
     ])
-    expect(result.extractedRecords.slice(0, 2).map((file) => file.parserDebugLabel)).toEqual([
+    expect(result.extractedRecords.slice(0, 3).map((file) => file.parserDebugLabel)).toEqual([
       'raiffeisenbank-gpc',
-      'raiffeisenbank-gpc'
+      'raiffeisenbank-gpc',
+      'fio-gpc'
     ])
     expect(result.extractedRecords.every((file) => file.extractedCount > 0)).toBe(true)
-    expect(result.extractedRecords[2]).toMatchObject({
+    expect(result.extractedRecords[3]).toMatchObject({
       fileName: 'raiffeisen-2026-03.csv',
       parserDebugLabel: 'raiffeisenbank'
     })
-    expect(result.extractedRecords[3]).toMatchObject({
+    expect(result.extractedRecords[4]).toMatchObject({
       fileName: 'fio-2026-03.csv',
       extractedCount: expect.any(Number)
     })
@@ -303,6 +349,46 @@ describe('buildUploadWebFlow', () => {
       expect(fioInflows.map((item) => item.transactionIds[0])).toEqual(['txn:bank:fio-row-1', 'txn:bank:fio-row-2'])
       expect(fioOutflows).toEqual([])
       expect(new Set(visibleBankTransactionIds).size).toBe(visibleBankTransactionIds.length)
+    }
+  })
+
+  it('keeps exact Fio GPC bank rows visible next to both RB CSV and RB GPC uploads', async () => {
+    const fioGpc = getRealInputFixture('fio-gpc-statement')
+
+    for (const scenario of [
+      {
+        bank: getRealInputFixture('raiffeisenbank-statement'),
+        expectedBankParser: 'raiffeisenbank'
+      },
+      {
+        bank: getRealInputFixture('raiffeisenbank-gpc-statement'),
+        expectedBankParser: 'raiffeisenbank-gpc'
+      }
+    ] as const) {
+      const result = await buildBrowserRuntimeStateFromSelectedFiles({
+        files: [
+          createRuntimeArrayBufferTextFile(scenario.bank.sourceDocument.fileName, scenario.bank.rawInput.content, 'text/plain'),
+          createRuntimeArrayBufferTextFile(fioGpc.sourceDocument.fileName, fioGpc.rawInput.content, 'text/plain')
+        ],
+        month: '2026-03',
+        generatedAt: '2026-04-03T17:50:00.000Z'
+      })
+
+      expect(result.extractedRecords.find((file) => file.fileName === scenario.bank.sourceDocument.fileName)).toMatchObject({
+        parserDebugLabel: scenario.expectedBankParser
+      })
+      expect(result.extractedRecords.find((file) => file.fileName === fioGpc.sourceDocument.fileName)).toMatchObject({
+        parserDebugLabel: 'fio-gpc',
+        extractedCount: 7
+      })
+
+      const visibleFioBankTransactionIds = [
+        ...result.reviewSections.expenseUnmatchedInflows.flatMap((item) => item.transactionIds),
+        ...result.reviewSections.expenseUnmatchedOutflows.flatMap((item) => item.transactionIds)
+      ].filter((transactionId) => transactionId.startsWith('txn:bank:fio-row-'))
+
+      expect(visibleFioBankTransactionIds.length).toBeGreaterThan(0)
+      expect(new Set(visibleFioBankTransactionIds).size).toBe(visibleFioBankTransactionIds.length)
     }
   })
 

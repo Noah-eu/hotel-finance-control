@@ -20,7 +20,7 @@ export {
   parseRaiffeisenbankStatement
 } from './parsers/raiffeisenbank.parser'
 export type { ParseFioStatementInput } from './parsers/fio.parser'
-export { FioParser, parseFioStatement } from './parsers/fio.parser'
+export { FioParser, looksLikeFioGpcStatement, parseFioStatement } from './parsers/fio.parser'
 export type { ParseBookingPayoutExportInput } from './parsers/booking.parser'
 export { BookingPayoutParser, parseBookingPayoutExport } from './parsers/booking.parser'
 export type {

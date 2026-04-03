@@ -3,6 +3,87 @@ import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { parseFioStatement } from '../../src/extraction'
 
 describe('parseFioStatement', () => {
+  it('extracts deterministic bank transaction records from the exact Fio GPC fixture', () => {
+    const fixture = getRealInputFixture('fio-gpc-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-04-03T17:30:00.000Z'
+    })
+
+    expect(records).toHaveLength(7)
+    expect(records[0]).toMatchObject({
+      id: 'fio-row-1',
+      sourceDocumentId: fixture.sourceDocument.id,
+      recordType: 'bank-transaction',
+      rawReference: '50905871',
+      amountMinor: -3000000,
+      currency: 'CZK',
+      occurredAt: '2026-03-01',
+      data: expect.objectContaining({
+        sourceSystem: 'bank',
+        bankParserVariant: 'fio-gpc',
+        bankStatementSource: 'fio',
+        bookedAt: '2026-03-01',
+        valueAt: '2026-03-01',
+        amountMinor: -3000000,
+        currency: 'CZK',
+        accountId: '8888997777',
+        counterparty: 'Výběr z bankomatu: M',
+        reference: '50905871',
+        transactionType: 'Odchozí platba'
+      })
+    })
+    expect(records[1]).toMatchObject({
+      id: 'fio-row-2',
+      sourceDocumentId: fixture.sourceDocument.id,
+      recordType: 'bank-transaction',
+      rawReference: '51629242',
+      amountMinor: 4879694,
+      currency: 'CZK',
+      occurredAt: '2026-03-03',
+      data: expect.objectContaining({
+        sourceSystem: 'bank',
+        bankParserVariant: 'fio-gpc',
+        bankStatementSource: 'fio',
+        bookedAt: '2026-03-03',
+        valueAt: '2026-03-03',
+        amountMinor: 4879694,
+        currency: 'CZK',
+        accountId: '8888997777',
+        counterparty: 'Fio banka, a.s.',
+        counterpartyAccount: '999001788/0027',
+        reference: '51629242',
+        transactionType: 'Příchozí platba'
+      })
+    })
+    expect(records[5]).toMatchObject({
+      id: 'fio-row-6',
+      sourceDocumentId: fixture.sourceDocument.id,
+      recordType: 'bank-transaction',
+      rawReference: '53207532',
+      amountMinor: -500000,
+      currency: 'CZK',
+      occurredAt: '2026-03-13',
+      data: expect.objectContaining({
+        sourceSystem: 'bank',
+        bankParserVariant: 'fio-gpc',
+        bankStatementSource: 'fio',
+        bookedAt: '2026-03-13',
+        valueAt: '2026-03-13',
+        amountMinor: -500000,
+        currency: 'CZK',
+        accountId: '8888997777',
+        counterparty: 'hotel RB',
+        counterpartyAccount: '5599955956/0027',
+        reference: '53207532',
+        transactionType: 'Odchozí platba'
+      })
+    })
+    expect(records.every((record) => record.data.bankParserVariant === 'fio-gpc')).toBe(true)
+  })
+
   it('extracts deterministic bank transaction records from the representative Fio fixture', () => {
     const fixture = getRealInputFixture('fio-statement')
 
@@ -236,5 +317,34 @@ describe('parseFioStatement', () => {
         extractedAt: '2026-03-19T17:30:00.000Z'
       })
     ).toThrow('Fio bookedAt has unsupported date format: 2026/03/19 06:23')
+  })
+
+  it('keeps the exact Fio GPC file on the Fio parser path instead of treating it as a delimited export', () => {
+    const fixture = getRealInputFixture('fio-gpc-statement')
+
+    const records = parseFioStatement({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-04-03T17:35:00.000Z'
+    })
+
+    expect(records.map((record) => record.id)).toEqual([
+      'fio-row-1',
+      'fio-row-2',
+      'fio-row-3',
+      'fio-row-4',
+      'fio-row-5',
+      'fio-row-6',
+      'fio-row-7'
+    ])
+    expect(records.map((record) => record.occurredAt)).toEqual([
+      '2026-03-01',
+      '2026-03-03',
+      '2026-03-03',
+      '2026-03-03',
+      '2026-03-10',
+      '2026-03-13',
+      '2026-03-14'
+    ])
   })
 })
