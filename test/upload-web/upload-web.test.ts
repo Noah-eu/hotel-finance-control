@@ -1520,6 +1520,134 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedOutflows).toEqual([])
   })
 
+  it('keeps Lenner in expense review for both RB CSV and RB GPC when the GPC row only exposes a VS-style payment message', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const scenarios = [
+      {
+        expectedParser: 'fio',
+        bankFile: createRuntimeArrayBufferTextFile(
+          'raiffeisen-lenner-review.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '08.04.2026 10:15;08.04.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla'
+          ].join('\n'),
+          'text/csv'
+        )
+      },
+      {
+        expectedParser: 'raiffeisenbank-gpc',
+        bankFile: createRuntimeArrayBufferTextFile(
+          'Vypis_5599955956_CZK_2026_004.gpc',
+          buildRaiffeisenbankGpcLennerReviewContentWithReferenceOnlyContinuation(),
+          'text/plain'
+        )
+      }
+    ] as const
+
+    for (const scenario of scenarios) {
+      const result = await buildBrowserRuntimeStateFromSelectedFiles({
+        files: [
+          scenario.bankFile,
+          createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+        ],
+        month: '2026-04',
+        generatedAt: '2026-04-03T11:20:00.000Z'
+      })
+
+      const lennerNeedsReview = result.reviewSections.expenseNeedsReview.find((item) =>
+        item.expenseComparison?.document.reference === '141260183'
+          && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+      )
+
+      expect(result.extractedRecords[0]).toMatchObject({
+        extractedCount: 1,
+        parserDebugLabel: scenario.expectedParser
+      })
+      expect(lennerNeedsReview).toMatchObject({
+        title: 'Doklad ke kontrole 141260183',
+        matchStrength: 'slabší shoda',
+        documentBankRelation: 'Doklad je načtený a existuje pravděpodobný odchozí bankovní kandidát, ale vazba zatím není potvrzená.',
+        expenseComparison: expect.objectContaining({
+          document: expect.objectContaining({
+            supplierOrCounterparty: 'Lenner Motors s.r.o.',
+            reference: '141260183',
+            amount: '12 629,52 Kč'
+          }),
+          bank: expect.objectContaining({
+            reference: 'VS 141260183 Servis vozidla',
+            bookedAt: expect.stringContaining('2026-04-08'),
+            amount: '12 629,52 Kč'
+          })
+        })
+      })
+      expect(
+        result.reviewSections.expenseUnmatchedDocuments.some((item) =>
+          item.expenseComparison?.document.reference === '141260183'
+        )
+      ).toBe(false)
+      expect(
+        result.reviewSections.expenseUnmatchedOutflows.some((item) =>
+          item.expenseComparison?.bank?.reference === 'VS 141260183 Servis vozidla'
+        )
+      ).toBe(false)
+    }
+  })
+
+  it('keeps Lenner in expense review on a real-browser-like RB GPC row when the usable signal only survives in counterpartyAccount', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Vypis_5599955956_CZK_2026_004.gpc',
+          buildRaiffeisenbankGpcLennerReviewContentWithServiceOnlyContinuation(),
+          'text/plain'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-03T12:30:00.000Z'
+    })
+
+    const lennerNeedsReview = result.reviewSections.expenseNeedsReview.find((item) =>
+      item.expenseComparison?.document.reference === '141260183'
+        && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+    )
+
+    expect(result.extractedRecords[0]).toMatchObject({
+      extractedCount: 1,
+      parserDebugLabel: 'raiffeisenbank-gpc'
+    })
+    expect(lennerNeedsReview).toMatchObject({
+      title: 'Doklad ke kontrole 141260183',
+      matchStrength: 'slabší shoda',
+      documentBankRelation: 'Doklad je načtený a existuje pravděpodobný odchozí bankovní kandidát, ale vazba zatím není potvrzená.'
+    })
+    expect(lennerNeedsReview?.expenseComparison).toMatchObject({
+      document: expect.objectContaining({
+        supplierOrCounterparty: 'Lenner Motors s.r.o.',
+        reference: '141260183',
+        ibanHint: 'CZ4903000000000274621920'
+      }),
+      bank: expect.objectContaining({
+        supplierOrCounterparty: 'Servis vozidla',
+        bookedAt: '2026-04-08',
+        amount: '12 629,52 Kč'
+      })
+    })
+    expect(lennerNeedsReview?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'IBAN', value: 'sedí' }),
+        expect.objectContaining({ label: 'reference', value: 'chybí' })
+      ])
+    )
+    expect(
+      result.reviewSections.expenseUnmatchedDocuments.some((item) =>
+        item.expenseComparison?.document.reference === '141260183'
+      )
+    ).toBe(false)
+  })
+
   it('keeps Lenner matched on the full invoice total when a browser text layer exposes only a generic total label above the VAT base', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -6613,6 +6741,70 @@ function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingRefer
     '25.03.2026 10:15;25.03.2026 10:17;5599955956/5500;CZ4903000000000274621920;Lenner Motors s.r.o.;-12629,52;CZK;VS 141260183 Servis vozidla',
     '26.03.2026 11:20;26.03.2026 11:23;5599955956/5500;000000-1111111111/0100;Dodavatel bez dokladu;-4500,00;CZK;Platba bez dokladu'
   ].join('\n')
+}
+
+function buildRaiffeisenbankGpcLennerReviewContentWithReferenceOnlyContinuation(): string {
+  return [
+    '0740000005599955956JOKELAND s.r.o.',
+    buildRaiffeisenbankGpcTransactionLine({
+      mainAccountId: '0000005599955956',
+      counterpartyPrefix: '000000',
+      counterpartyAccountNumber: '0274621920',
+      counterpartyBankCode: '0300',
+      amountMinor: '000001262952',
+      directionCode: '4',
+      valueAt: '080426',
+      bookedAt: '080426'
+    }),
+    '078VS 141260183 Servis vozidla'
+  ].join('\n')
+}
+
+function buildRaiffeisenbankGpcLennerReviewContentWithServiceOnlyContinuation(): string {
+  return [
+    '0740000005599955956JOKELAND s.r.o.',
+    buildRaiffeisenbankGpcTransactionLine({
+      mainAccountId: '0000005599955956',
+      counterpartyPrefix: '000000',
+      counterpartyAccountNumber: '0274621920',
+      counterpartyBankCode: '0300',
+      amountMinor: '000001262952',
+      directionCode: '1',
+      valueAt: '080426',
+      bookedAt: '080426'
+    }),
+    '078Servis vozidla'
+  ].join('\n')
+}
+
+function buildRaiffeisenbankGpcTransactionLine(input: {
+  mainAccountId: string
+  counterpartyPrefix: string
+  counterpartyAccountNumber: string
+  counterpartyBankCode: string
+  amountMinor: string
+  directionCode: string
+  valueAt: string
+  bookedAt: string
+}): string {
+  const chars = Array.from({ length: 128 }, () => ' ')
+  writeRaiffeisenbankGpcField(chars, 0, 3, '075')
+  writeRaiffeisenbankGpcField(chars, 3, 19, input.mainAccountId)
+  writeRaiffeisenbankGpcField(chars, 19, 25, input.counterpartyPrefix)
+  writeRaiffeisenbankGpcField(chars, 25, 35, input.counterpartyAccountNumber)
+  writeRaiffeisenbankGpcField(chars, 35, 39, input.counterpartyBankCode)
+  writeRaiffeisenbankGpcField(chars, 47, 48, '5')
+  writeRaiffeisenbankGpcField(chars, 48, 60, input.amountMinor)
+  writeRaiffeisenbankGpcField(chars, 60, 61, input.directionCode)
+  writeRaiffeisenbankGpcField(chars, 91, 97, input.valueAt)
+  writeRaiffeisenbankGpcField(chars, 122, 128, input.bookedAt)
+
+  return chars.join('')
+}
+
+function writeRaiffeisenbankGpcField(buffer: string[], start: number, end: number, value: string): void {
+  const normalized = value.padEnd(end - start, ' ').slice(0, end - start)
+  buffer.splice(start, end - start, ...normalized)
 }
 
 function buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintAndDobraSettlementDocuments(): string {
