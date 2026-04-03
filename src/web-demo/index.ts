@@ -2002,7 +2002,7 @@ ${showRuntimePayoutDiagnostics ? `
           || normalizedType.includes('excel')
           || normalizedType.includes('officedocument')
           || normalizedType.includes('octet-stream')
-          || /\.(pdf|xlsx|xls)$/i.test(normalizedName);
+          || /\.(pdf|xlsx|xls|gpc)$/i.test(normalizedName);
       }
 
       async function yieldBrowserWorkflowTurn() {

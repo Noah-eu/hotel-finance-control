@@ -9,6 +9,7 @@ import {
   inspectBookingPayoutStatementFieldCheck,
   inspectInvoiceDocumentExtractionSummary,
   inspectReceiptDocumentExtractionSummary,
+  looksLikeFioGpcStatement,
   looksLikeRaiffeisenbankGpcStatement,
   parseAirbnbPayoutExport,
   parseBookingPayoutExport,
@@ -742,6 +743,10 @@ function inferBankParserVariant(fileName: string, content: string): 'raiffeisenb
   const headerFields = getNormalizedHeaderFields(content)
   const normalizedHeaderSample = getNormalizedHeaderSample(content)
 
+  if (looksLikeFioGpcStatement(content, fileName)) {
+    return 'fio'
+  }
+
   if (looksLikeRaiffeisenbankGpcStatement(content, fileName)) {
     return 'raiffeisenbank'
   }
@@ -1235,6 +1240,10 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   const headerFields = getNormalizedHeaderFields(content)
   const invoiceSummary = inspectInvoiceDocumentExtractionSummary(content)
   const receiptSummary = inspectReceiptDocumentExtractionSummary(content)
+
+  if (looksLikeFioGpcStatement(content)) {
+    return 'bank'
+  }
 
   if (looksLikeRaiffeisenbankGpcStatement(content)) {
     return 'bank'

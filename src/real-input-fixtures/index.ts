@@ -6,6 +6,7 @@ export interface RealInputFixture {
   | 'raiffeisenbank-statement'
   | 'raiffeisenbank-gpc-statement'
   | 'raiffeisenbank-gpc-statement-direction-4'
+  | 'fio-gpc-statement'
   | 'fio-statement'
   | 'booking-payout-export'
   | 'booking-payout-export-browser-upload-shape'
@@ -190,6 +191,17 @@ const raiffeisenbankGpcDirection4SampleExcerpt = [
   '078Alza.cz a.s., Prague, CZE',
   '0750000005599955956000000000000000000087403570170000000317004000000000000000011780000000000170326                    01011190326',
   '078Alza.cz a.s., Prague, CZE'
+].join('\n')
+
+const fioGpcSampleExcerpt = [
+  '0740000008888997777JOKELAND s.r.o.     01032600000002958335+00000000584893+000000163897880000000140163460003310326FIO           ',
+  '0750000008888997777000000000000000000275090587100000030000001000000530900000000000000000000010326Výběr z bankomatu: M00203010326',
+  '0750000008888997777000000099900178800275162924210000048796942000000000000201000000000000000030326Fio banka, a.s.     00203030326',
+  '0750000008888997777000000205535408300275163458910000040000001000000000000080000000000000000030326výplata eder        00203030326',
+  '0750000008888997777000000000000000000275162904750000000966181000000000000000000000000000000030326Zaúčtování POS termi00203030326',
+  '0750000008888997777000000512597523400275268286400000001201171202670324200201000000000000000100326previo              00203100326',
+  '0750000008888997777000000559995595600275320753270000005000001000000000000550000000000000000130326hotel RB            00203130326',
+  '0750000008888997777000000000000000000275339131420000000427001000000530900000000000000000000140326Nákup: www.ppl.cz - 00203140326'
 ].join('\n')
 
 export const realInputFixtures: RealInputFixture[] = [
@@ -536,6 +548,120 @@ export const realInputFixtures: RealInputFixture[] = [
           reference: '67100928',
           transactionType: 'Odchozí platba'
         }
+      })
+    ]
+  },
+  {
+    key: 'fio-gpc-statement',
+    description: 'Deterministic excerpt from the real Fio GPC sample with exact 074/075 line offsets and no continuation records.',
+    sourceDocument: sourceDocument({
+      id: 'doc-fio-gpc-2026-03' as SourceDocument['id'],
+      sourceSystem: 'bank',
+      documentType: 'bank_statement',
+      fileName: 'Vypis_z_uctu-8888997777_20260301-20260331_cislo-3.gpc'
+    }),
+    rawInput: {
+      format: 'text',
+      content: fioGpcSampleExcerpt
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'fio-row-1',
+        sourceDocumentId: 'doc-fio-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: '50905871',
+        amountMinor: -3000000,
+        currency: 'CZK',
+        occurredAt: '2026-03-01',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'fio-gpc',
+          bankStatementSource: 'fio',
+          bookedAt: '2026-03-01',
+          valueAt: '2026-03-01',
+          amountMinor: -3000000,
+          currency: 'CZK',
+          accountId: '8888997777',
+          counterparty: 'Výběr z bankomatu: M',
+          reference: '50905871',
+          transactionType: 'Odchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'fio-row-2',
+        sourceDocumentId: 'doc-fio-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: '51629242',
+        amountMinor: 4879694,
+        currency: 'CZK',
+        occurredAt: '2026-03-03',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'fio-gpc',
+          bankStatementSource: 'fio',
+          bookedAt: '2026-03-03',
+          valueAt: '2026-03-03',
+          amountMinor: 4879694,
+          currency: 'CZK',
+          accountId: '8888997777',
+          counterparty: 'Fio banka, a.s.',
+          counterpartyAccount: '999001788/0027',
+          reference: '51629242',
+          transactionType: 'Příchozí platba'
+        }
+      }),
+      extractedRecord({
+        id: 'fio-row-6',
+        sourceDocumentId: 'doc-fio-gpc-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'bank-transaction',
+        rawReference: '53207532',
+        amountMinor: -500000,
+        currency: 'CZK',
+        occurredAt: '2026-03-13',
+        data: {
+          sourceSystem: 'bank',
+          bankParserVariant: 'fio-gpc',
+          bankStatementSource: 'fio',
+          bookedAt: '2026-03-13',
+          valueAt: '2026-03-13',
+          amountMinor: -500000,
+          currency: 'CZK',
+          accountId: '8888997777',
+          counterparty: 'hotel RB',
+          counterpartyAccount: '5599955956/0027',
+          reference: '53207532',
+          transactionType: 'Odchozí platba'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:bank:fio-row-2' as NormalizedTransaction['id'],
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 4879694,
+        currency: 'CZK',
+        bookedAt: '2026-03-03',
+        valueAt: '2026-03-03',
+        accountId: '8888997777',
+        counterparty: 'Fio banka, a.s.',
+        reference: '51629242',
+        extractedRecordIds: ['fio-row-2'],
+        sourceDocumentIds: ['doc-fio-gpc-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
+      }),
+      normalizedTransaction({
+        id: 'txn:bank:fio-row-6' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'bank',
+        amountMinor: 500000,
+        currency: 'CZK',
+        bookedAt: '2026-03-13',
+        valueAt: '2026-03-13',
+        accountId: '8888997777',
+        counterparty: 'hotel RB',
+        reference: '53207532',
+        extractedRecordIds: ['fio-row-6'],
+        sourceDocumentIds: ['doc-fio-gpc-2026-03' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

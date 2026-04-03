@@ -7,6 +7,7 @@ describe('realInputFixtures', () => {
       'raiffeisenbank-statement',
       'raiffeisenbank-gpc-statement',
       'raiffeisenbank-gpc-statement-direction-4',
+      'fio-gpc-statement',
       'fio-statement',
       'booking-payout-export',
       'booking-payout-export-browser-upload-shape',
@@ -47,6 +48,7 @@ describe('realInputFixtures', () => {
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
     const raiffeisenGpc = getRealInputFixture('raiffeisenbank-gpc-statement')
     const raiffeisenGpcDirection4 = getRealInputFixture('raiffeisenbank-gpc-statement-direction-4')
+    const fioGpc = getRealInputFixture('fio-gpc-statement')
     const booking = getRealInputFixture('booking-payout-export')
     const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
     const bookingPayoutStatementPdf = getRealInputFixture('booking-payout-statement-pdf')
@@ -89,6 +91,18 @@ describe('realInputFixtures', () => {
         bankStatementSource: 'raiffeisenbank',
         counterparty: 'Alza.cz, Prague, CZE',
         transactionType: 'Odchozí platba'
+      }
+    })
+    expect(fioGpc.expectedExtractedRecords[1]).toMatchObject({
+      recordType: 'bank-transaction',
+      amountMinor: 4879694,
+      data: {
+        sourceSystem: 'bank',
+        bankParserVariant: 'fio-gpc',
+        bankStatementSource: 'fio',
+        counterparty: 'Fio banka, a.s.',
+        counterpartyAccount: '999001788/0027',
+        transactionType: 'Příchozí platba'
       }
     })
     expect(booking.expectedExtractedRecords[0]).toMatchObject({
