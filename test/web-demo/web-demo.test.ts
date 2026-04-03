@@ -5015,6 +5015,91 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).toContain('Žádné nespárované odchozí platby.')
   })
 
+  it('keeps Fio incoming items visible and manually matchable when RB GPC coexists in the same browser month workflow', async () => {
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+    const fio = getRealInputFixture('fio-statement')
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-03T10:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-rb-gpc-fio-manual-match',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(gpc.sourceDocument.fileName, gpc.rawInput.content, 'text/plain'),
+        createWebDemoRuntimeArrayBufferTextFile(fio.sourceDocument.fileName, fio.rawInput.content, 'text/csv'),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines(invoice.sourceDocument.fileName, invoice.rawInput.content.split('\n'))
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{
+          id: string
+          transactionIds: string[]
+          expenseComparison?: {
+            bank?: {
+              supplierOrCounterparty?: string
+              reference?: string
+            }
+          }
+        }>
+        expenseUnmatchedOutflows: Array<{
+          expenseComparison?: {
+            bank?: {
+              supplierOrCounterparty?: string
+              reference?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const fioInflows = stateBefore.reviewSections.expenseUnmatchedInflows.filter((item) =>
+      item.expenseComparison?.bank?.supplierOrCounterparty === 'EXPEDIA TERMINAL'
+    )
+
+    expect(fioInflows.map((item) => item.expenseComparison?.bank?.reference)).toEqual(['EXP-TERM-1001', 'EXP-TERM-1002'])
+    expect(fioInflows.map((item) => item.transactionIds[0])).toEqual(['txn:bank:fio-row-1', 'txn:bank:fio-row-2'])
+    expect(stateBefore.reviewSections.expenseUnmatchedOutflows.some((item) =>
+      item.expenseComparison?.bank?.supplierOrCounterparty === 'EXPEDIA TERMINAL'
+      || String(item.expenseComparison?.bank?.reference || '').startsWith('EXP-TERM-')
+    )).toBe(false)
+
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedInflows', fioInflows[0]!.id)
+    rendered.selectManualMatchItem('expense', 'expenseUnmatchedInflows', fioInflows[1]!.id)
+    rendered.openManualMatchConfirm('expense')
+    rendered.confirmManualMatchGroup('expense', 'Fio incoming pair')
+
+    const createdState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ id: string; note?: string | null; selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+    }
+
+    const groupId = createdState.manualMatchGroups[0]?.id
+    expect(groupId).toBeTruthy()
+    expect(createdState.manualMatchGroups[0]?.note).toBe('Fio incoming pair')
+    expect(createdState.manualMatchGroups[0]?.selectedReviewItemIds).toEqual([fioInflows[0]!.id, fioInflows[1]!.id])
+    expect(createdState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[0]!.id)).toBe(false)
+    expect(createdState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[1]!.id)).toBe(false)
+
+    rendered.removeManualMatchGroup('expense', String(groupId))
+
+    const restoredState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+    }
+
+    expect(restoredState.manualMatchGroups).toEqual([])
+    expect(restoredState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[0]!.id)).toBe(true)
+    expect(restoredState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === fioInflows[1]!.id)).toBe(true)
+  })
+
   it('shows OCR fallback recovery for scan-like invoices on the built browser path', async () => {
     const invoice = getRealInputFixture('invoice-document-scan-pdf-with-ocr-stub')
     const rendered = await executeWebDemoMainWorkflow({

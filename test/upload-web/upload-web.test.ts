@@ -256,6 +256,97 @@ describe('buildUploadWebFlow', () => {
     })
   })
 
+  it('keeps Fio parser truth and incoming-bank visibility intact next to both RB CSV and RB GPC uploads', async () => {
+    const invoice = getRealInputFixture('invoice-document-czech-pdf')
+    const fio = getRealInputFixture('fio-statement')
+
+    for (const scenario of [
+      {
+        bank: getRealInputFixture('raiffeisenbank-statement'),
+        expectedBankParser: 'raiffeisenbank'
+      },
+      {
+        bank: getRealInputFixture('raiffeisenbank-gpc-statement'),
+        expectedBankParser: 'raiffeisenbank-gpc'
+      }
+    ] as const) {
+      const result = await buildBrowserRuntimeStateFromSelectedFiles({
+        files: [
+          createRuntimeArrayBufferTextFile(scenario.bank.sourceDocument.fileName, scenario.bank.rawInput.content, 'text/plain'),
+          createRuntimeArrayBufferTextFile(fio.sourceDocument.fileName, fio.rawInput.content, 'text/csv'),
+          createRuntimePdfFileFromToUnicodeTextLines(invoice.sourceDocument.fileName, invoice.rawInput.content.split('\n'))
+        ],
+        month: '2026-03',
+        generatedAt: '2026-04-03T10:15:00.000Z'
+      })
+
+      expect(result.extractedRecords.find((file) => file.fileName === scenario.bank.sourceDocument.fileName)).toMatchObject({
+        parserDebugLabel: scenario.expectedBankParser
+      })
+      expect(result.extractedRecords.find((file) => file.fileName === fio.sourceDocument.fileName)).toMatchObject({
+        parserDebugLabel: 'fio',
+        extractedRecordIds: ['fio-row-1', 'fio-row-2']
+      })
+
+      const fioInflows = result.reviewSections.expenseUnmatchedInflows.filter((item) =>
+        item.expenseComparison?.bank?.supplierOrCounterparty === 'EXPEDIA TERMINAL'
+      )
+      const fioOutflows = result.reviewSections.expenseUnmatchedOutflows.filter((item) =>
+        item.expenseComparison?.bank?.supplierOrCounterparty === 'EXPEDIA TERMINAL'
+      )
+      const visibleBankTransactionIds = [
+        ...result.reviewSections.expenseUnmatchedInflows.flatMap((item) => item.transactionIds),
+        ...result.reviewSections.expenseUnmatchedOutflows.flatMap((item) => item.transactionIds)
+      ]
+
+      expect(fioInflows.map((item) => item.expenseComparison?.bank?.reference)).toEqual(['EXP-TERM-1001', 'EXP-TERM-1002'])
+      expect(fioInflows.map((item) => item.transactionIds[0])).toEqual(['txn:bank:fio-row-1', 'txn:bank:fio-row-2'])
+      expect(fioOutflows).toEqual([])
+      expect(new Set(visibleBankTransactionIds).size).toBe(visibleBankTransactionIds.length)
+    }
+  })
+
+  it('keeps standalone Fio and standalone RB GPC browser uploads parser-truthful', async () => {
+    const fio = getRealInputFixture('fio-statement')
+    const gpc = getRealInputFixture('raiffeisenbank-gpc-statement')
+
+    const fioOnly = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(fio.sourceDocument.fileName, fio.rawInput.content, 'text/csv')
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-03T10:20:00.000Z'
+    })
+
+    expect(fioOnly.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'fio-2026-03.csv',
+        parserDebugLabel: 'fio',
+        extractedRecordIds: ['fio-row-1', 'fio-row-2']
+      })
+    ])
+    expect(fioOnly.reviewSections.expenseUnmatchedOutflows).toEqual([])
+    expect(fioOnly.reviewSections.expenseUnmatchedInflows.map((item) => item.transactionIds[0])).toEqual([
+      'txn:bank:fio-row-1',
+      'txn:bank:fio-row-2'
+    ])
+
+    const gpcOnly = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(gpc.sourceDocument.fileName, gpc.rawInput.content, 'text/plain')
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-03T10:21:00.000Z'
+    })
+
+    expect(gpcOnly.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'Vypis_5599955956_CZK_2026_002.gpc',
+        parserDebugLabel: 'raiffeisenbank-gpc'
+      })
+    ])
+  })
+
   it('exposes real upstream Airbnb payout audit layers in the browser runtime state for uploaded files', () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const raiffeisen = getRealInputFixture('raiffeisenbank-statement')
@@ -2527,7 +2618,7 @@ describe('buildUploadWebFlow', () => {
         reference: 'Platba rezervace WEB-2001'
       },
       {
-        id: 'txn:bank:fio-row-1',
+        id: 'txn:bank:fio-row-1:uploaded-bank-2-pohyby-na-uctu-8888997777-20260301-20260319-csv',
         accountId: '8888997777/2010',
         amountMinor: 154000,
         currency: 'CZK',
@@ -2574,7 +2665,7 @@ describe('buildUploadWebFlow', () => {
         rejectionReasons: ['noExactAmount', 'dateToleranceMiss']
       }),
       expect.objectContaining({
-        bankTransactionId: 'txn:bank:fio-row-1',
+        bankTransactionId: 'txn:bank:fio-row-1:uploaded-bank-2-pohyby-na-uctu-8888997777-20260301-20260319-csv',
         bankAccountId: '8888997777/2010',
         amountMinor: 154000,
         currency: 'CZK',
