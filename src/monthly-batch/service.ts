@@ -1294,7 +1294,9 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     || hasAllHeaderFields(headerFields, ['datum prevodu', 'castka prevodu', 'mena', 'transfer id', 'confirmation code', 'listing name'])
     || hasAllHeaderFields(headerFields, ['payout amount', 'currency', 'payout id', 'confirmation code', 'listing name'])
     || hasAllHeaderFields(headerFields, ['datum', 'bude připsán do dne', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
-    || hasAllHeaderFields(headerFields, ['datum', 'bude pripsan do dne', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])) {
+    || hasAllHeaderFields(headerFields, ['datum', 'bude pripsan do dne', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])
+    || hasAllHeaderFields(headerFields, ['datum', 'datum připsání na účet', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
+    || hasAllHeaderFields(headerFields, ['datum', 'datum pripsani na ucet', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])) {
     return 'airbnb'
   }
 

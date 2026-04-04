@@ -573,6 +573,143 @@ describe('parseAirbnbPayoutExport', () => {
     })
   })
 
+  it('recognizes the wider monthly Airbnb export variant with the account-credit-date header alias and extra columns', () => {
+    const content = [
+      'Datum;Datum připsání na účet;Typ;Datum rezervace;Datum zahájení;Datum ukončení;Počet nocí;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Daně odvedené Airbnb;Hrubé výdělky;Výdělky za kalendářní rok',
+      '2026-03-12;2026-03-12;Rezervace;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;0,00;1 060,00;12 340,00'
+    ].join('\n')
+
+    expect(inspectAirbnbPayoutHeaderDiagnostics(content)).toEqual({
+      parserVariant: 'real-mixed-export',
+      rawHeaderRow: 'Datum;Datum připsání na účet;Typ;Datum rezervace;Datum zahájení;Datum ukončení;Počet nocí;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Daně odvedené Airbnb;Hrubé výdělky;Výdělky za kalendářní rok',
+      normalizedHeaders: [
+        'date',
+        'availableUntilDate',
+        'type',
+        'Datum rezervace',
+        'stayStartDate',
+        'stayEndDate',
+        'Počet nocí',
+        'guestName',
+        'listingName',
+        'details',
+        'referenceCode',
+        'confirmationCode',
+        'currency',
+        'amountMinor',
+        'paidOutAmountMinor',
+        'serviceFeeMinor',
+        'Daně odvedené Airbnb',
+        'grossEarningsMinor',
+        'Výdělky za kalendářní rok'
+      ],
+      normalizedHeaderMap: [
+        'Datum -> date',
+        'Datum připsání na účet -> availableUntilDate',
+        'Typ -> type',
+        'Datum rezervace -> Datum rezervace',
+        'Datum zahájení -> stayStartDate',
+        'Datum ukončení -> stayEndDate',
+        'Počet nocí -> Počet nocí',
+        'Host -> guestName',
+        'Nabídka -> listingName',
+        'Podrobnosti -> details',
+        'Referenční kód -> referenceCode',
+        'Potvrzující kód -> confirmationCode',
+        'Měna -> currency',
+        'Částka -> amountMinor',
+        'Vyplaceno -> paidOutAmountMinor',
+        'Servisní poplatek -> serviceFeeMinor',
+        'Daně odvedené Airbnb -> Daně odvedené Airbnb',
+        'Hrubé výdělky -> grossEarningsMinor',
+        'Výdělky za kalendářní rok -> Výdělky za kalendářní rok'
+      ],
+      requiredCanonicalHeaders: ['payoutDate', 'amountMinor', 'currency', 'payoutReference', 'reservationId', 'listingId'],
+      mappedCanonicalHeaders: {
+        payoutDate: 'Datum připsání na účet',
+        amountMinor: 'Vyplaceno',
+        currency: 'Měna',
+        payoutReference: 'Referenční kód',
+        reservationId: 'Potvrzující kód',
+        listingId: 'Nabídka'
+      },
+      candidateSourceHeaders: [
+        'Datum',
+        'Datum připsání na účet',
+        'Typ',
+        'Datum rezervace',
+        'Datum zahájení',
+        'Datum ukončení',
+        'Počet nocí',
+        'Host',
+        'Nabídka',
+        'Podrobnosti',
+        'Referenční kód',
+        'Potvrzující kód',
+        'Měna',
+        'Částka',
+        'Vyplaceno',
+        'Servisní poplatek',
+        'Daně odvedené Airbnb',
+        'Hrubé výdělky',
+        'Výdělky za kalendářní rok'
+      ],
+      missingCanonicalHeaders: []
+    })
+  })
+
+  it('parses the wider monthly Airbnb export variant without misclassifying the known resolution-adjustment row type', () => {
+    const fixture = getRealInputFixture('airbnb-payout-export')
+
+    const records = parseAirbnbPayoutExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        'Datum;Datum připsání na účet;Typ;Datum rezervace;Datum zahájení;Datum ukončení;Počet nocí;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Daně odvedené Airbnb;Hrubé výdělky;Výdělky za kalendářní rok',
+        '2026-03-12;2026-03-12;Rezervace;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;0,00;1 060,00;12 340,00',
+        '2026-03-13;2026-03-13;Vyrovnání z řešení;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Vyrovnání z řešení HMA4TR9;RSN-HMA4TR9;HMA4TR9;CZK;-120,00;-120,00;0,00;0,00;-120,00;12 220,00',
+        '2026-03-12;2026-03-15;Payout;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;980,00;0,00;0,00;980,00;13 320,00'
+      ].join('\n'),
+      extractedAt: '2026-03-24T10:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(3)
+    expect(records[0]).toMatchObject({
+      id: 'airbnb-payout-1',
+      recordType: 'payout-line',
+      amountMinor: 106000,
+      occurredAt: '2026-03-12',
+      data: {
+        rowKind: 'reservation',
+        confirmationCode: 'HMA4TR9'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      id: 'airbnb-auxiliary-2',
+      recordType: 'airbnb-auxiliary-line',
+      rawReference: 'RSN-HMA4TR9',
+      occurredAt: '2026-03-13',
+      data: {
+        rowKind: 'resolution_adjustment',
+        sourceRowType: 'Vyrovnání z řešení',
+        referenceCode: 'RSN-HMA4TR9',
+        confirmationCode: 'HMA4TR9',
+        rawAmount: '-120,00',
+        rawPaidOutAmount: '-120,00'
+      }
+    })
+    expect(records[2]).toMatchObject({
+      id: 'airbnb-payout-3',
+      recordType: 'payout-line',
+      amountMinor: 98000,
+      occurredAt: '2026-03-15',
+      data: {
+        rowKind: 'transfer',
+        payoutReference: 'G-OC3WJE3SIXRO5',
+        availableUntilDate: '2026-03-15'
+      }
+    })
+  })
+
   it('fails fast for unsupported real-style Airbnb files when transfer details are not deterministic', () => {
     const fixture = getRealInputFixture('airbnb-payout-export')
 

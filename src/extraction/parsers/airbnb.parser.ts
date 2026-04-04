@@ -113,7 +113,7 @@ const REAL_AIRBNB_REQUIRED_HEADERS = [
 
 const REAL_AIRBNB_HEADER_ALIASES = {
   date: ['Datum'],
-  availableUntilDate: ['Bude připsán do dne'],
+  availableUntilDate: ['Bude připsán do dne', 'Datum připsání na účet'],
   type: ['Typ'],
   stayStartDate: ['Datum zahájení'],
   stayEndDate: ['Datum ukončení'],
@@ -128,6 +128,8 @@ const REAL_AIRBNB_HEADER_ALIASES = {
   serviceFeeMinor: ['Servisní poplatek'],
   grossEarningsMinor: ['Hrubé výdělky']
 } satisfies Record<string, string[]>
+
+type RealAirbnbRowKind = 'reservation' | 'transfer' | 'resolution_adjustment'
 
 export class AirbnbPayoutParser {
   parse(input: ParseAirbnbPayoutExportInput): ExtractedRecord[] {
@@ -186,17 +188,6 @@ export function parseAirbnbPayoutExport(input: ParseAirbnbPayoutExportInput): Ex
 }
 
 export function inspectAirbnbPayoutHeaderDiagnostics(content: string): AirbnbPayoutHeaderDiagnostics {
-  const structuredParsed = parseDelimitedContent(content, { canonicalHeaders: HEADER_ALIASES })
-  const structuredMissing = findMissingHeaders(structuredParsed.rows, REQUIRED_HEADERS)
-
-  if (structuredParsed.rows.length > 0 && structuredMissing.length === 0) {
-    return buildAirbnbHeaderDiagnostics(
-      'structured-export',
-      structuredParsed,
-      REQUIRED_HEADERS
-    )
-  }
-
   const realParsed = parseDelimitedContent(content, { canonicalHeaders: REAL_AIRBNB_HEADER_ALIASES })
   const realMissing = findMissingHeaders(realParsed.rows, REAL_AIRBNB_REQUIRED_HEADERS)
 
@@ -218,6 +209,17 @@ export function inspectAirbnbPayoutHeaderDiagnostics(content: string): AirbnbPay
       candidateSourceHeaders: realParsed.headerColumns.map((column) => column.rawHeader),
       missingCanonicalHeaders: []
     }
+  }
+
+  const structuredParsed = parseDelimitedContent(content, { canonicalHeaders: HEADER_ALIASES })
+  const structuredMissing = findMissingHeaders(structuredParsed.rows, REQUIRED_HEADERS)
+
+  if (structuredParsed.rows.length > 0 && structuredMissing.length === 0) {
+    return buildAirbnbHeaderDiagnostics(
+      'structured-export',
+      structuredParsed,
+      REQUIRED_HEADERS
+    )
   }
 
   return buildAirbnbHeaderDiagnostics(
@@ -283,14 +285,62 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
 
   return rows.flatMap((row, index) => {
     const rowKind = inferRealAirbnbRowKind(row.type, row.details)
+    const bookedAt = parseRealAirbnbDate(row.date, 'Airbnb real export date')
+    const availableUntilDate = parseOptionalRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate')
+    const currency = row.currency.trim().toUpperCase()
+    const stayStartDate = parseOptionalRealAirbnbDate(row.stayStartDate, 'Airbnb real export stayStartDate')
+    const stayEndDate = parseOptionalRealAirbnbDate(row.stayEndDate, 'Airbnb real export stayEndDate')
+    const guestName = row.guestName.trim()
+    const details = row.details.trim()
+    const listingName = typeof row.listingName === 'string' ? row.listingName.trim() : ''
+    const referenceCode = typeof row.referenceCode === 'string' ? row.referenceCode.trim() : ''
+    const confirmationCode = typeof row.confirmationCode === 'string' ? row.confirmationCode.trim() : ''
+
+    if (rowKind === 'resolution_adjustment') {
+      const rawReference = referenceCode.length > 0
+        ? referenceCode
+        : `AIRBNB-AUXILIARY:${slugifyComparable(row.type || details || `row-${index + 1}`)}:${bookedAt}`
+
+      return {
+        id: `airbnb-auxiliary-${index + 1}`,
+        sourceDocumentId: input.sourceDocument.id,
+        recordType: 'airbnb-auxiliary-line',
+        extractedAt: input.extractedAt,
+        rawReference,
+        currency: currency || undefined,
+        occurredAt: bookedAt,
+        data: {
+          platform: 'airbnb',
+          rowKind,
+          sourceRowType: row.type?.trim() || 'Vyrovnání z řešení',
+          sourceDate: bookedAt,
+          availableUntilDate,
+          guestName,
+          details,
+          ...(listingName ? { listingName } : {}),
+          ...(referenceCode ? { referenceCode } : {}),
+          ...(confirmationCode ? { confirmationCode } : {}),
+          ...(typeof row.amountMinor === 'string' && row.amountMinor.trim().length > 0
+            ? { rawAmount: row.amountMinor.trim() }
+            : {}),
+          ...(typeof row.paidOutAmountMinor === 'string' && row.paidOutAmountMinor.trim().length > 0
+            ? { rawPaidOutAmount: row.paidOutAmountMinor.trim() }
+            : {}),
+          ...(typeof row.serviceFeeMinor === 'string' && row.serviceFeeMinor.trim().length > 0
+            ? { rawServiceFee: row.serviceFeeMinor.trim() }
+            : {}),
+          ...(typeof row.grossEarningsMinor === 'string' && row.grossEarningsMinor.trim().length > 0
+            ? { rawGrossEarnings: row.grossEarningsMinor.trim() }
+            : {})
+        }
+      } satisfies ExtractedRecord
+    }
+
     const paidOutAmountMinor = parseOptionalAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
 
     if (rowKind === 'transfer' && paidOutAmountMinor === undefined) {
       return []
     }
-
-    const bookedAt = parseRealAirbnbDate(row.date, 'Airbnb real export date')
-    const availableUntilDate = parseOptionalRealAirbnbDate(row.availableUntilDate, 'Airbnb real export availableUntilDate')
 
     if (rowKind === 'transfer' && availableUntilDate === undefined) {
       throw new DeterministicParserError('Airbnb real export transfer row is missing required availableUntilDate')
@@ -300,14 +350,6 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
     const amountMinor = parseRealAirbnbRowAmount(row, rowKind)
     const serviceFeeMinor = parseOptionalSignedMoney(row.serviceFeeMinor, 'Airbnb real export service fee')
     const grossEarningsMinor = parseOptionalSignedMoney(row.grossEarningsMinor, 'Airbnb real export gross earnings')
-    const currency = row.currency.trim().toUpperCase()
-    const stayStartDate = parseOptionalRealAirbnbDate(row.stayStartDate, 'Airbnb real export stayStartDate')
-    const stayEndDate = parseOptionalRealAirbnbDate(row.stayEndDate, 'Airbnb real export stayEndDate')
-    const guestName = row.guestName.trim()
-    const details = row.details.trim()
-    const listingName = typeof row.listingName === 'string' ? row.listingName.trim() : ''
-    const referenceCode = typeof row.referenceCode === 'string' ? row.referenceCode.trim() : ''
-    const confirmationCode = typeof row.confirmationCode === 'string' ? row.confirmationCode.trim() : ''
     const parsedTransfer = rowKind === 'transfer' ? parseRealAirbnbTransferDetails(details) : undefined
     const reservationId = rowKind === 'reservation' && stayStartDate && stayEndDate
       ? buildRealAirbnbReservationId(confirmationCode || guestName, stayStartDate, stayEndDate, amountMinor)
@@ -372,22 +414,30 @@ function parseRealAirbnbMixedExport(input: ParseAirbnbPayoutExportInput): Extrac
   })
 }
 
-function inferRealAirbnbRowKind(type: string | undefined, details: string): 'reservation' | 'transfer' {
-  const normalizedType = (type ?? '').trim().toLowerCase()
+function inferRealAirbnbRowKind(type: string | undefined, details: string): RealAirbnbRowKind {
+  const normalizedType = normalizeRealAirbnbRowType(type)
 
   if (normalizedType === 'rezervace' || normalizedType === 'reservation') {
     return 'reservation'
   }
 
-  if (normalizedType === 'payout' || normalizedType === 'převod' || normalizedType === 'prevod' || normalizedType === 'transfer') {
+  if (normalizedType === 'payout' || normalizedType === 'prevod' || normalizedType === 'transfer') {
     return 'transfer'
   }
 
-  const normalized = details.trim().toLowerCase()
-  return normalized.startsWith('převod ') || normalized.startsWith('prevod ') ? 'transfer' : 'reservation'
+  if (normalizedType === 'vyrovnani z reseni') {
+    return 'resolution_adjustment'
+  }
+
+  const normalizedDetails = normalizeRealAirbnbRowType(details)
+  if (normalizedDetails.startsWith('vyrovnani z reseni')) {
+    return 'resolution_adjustment'
+  }
+
+  return normalizedDetails.startsWith('prevod ') ? 'transfer' : 'reservation'
 }
 
-function parseRealAirbnbRowAmount(row: Record<string, string>, rowKind: 'reservation' | 'transfer'): number {
+function parseRealAirbnbRowAmount(row: Record<string, string>, rowKind: Exclude<RealAirbnbRowKind, 'resolution_adjustment'>): number {
   if (rowKind === 'transfer') {
     return parseAmountMinor(row.paidOutAmountMinor, 'Airbnb real export paid out amount')
   }
@@ -479,6 +529,16 @@ function slugifyComparable(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+function normalizeRealAirbnbRowType(value: string | undefined): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\x00-\x1f]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function parseSignedMoney(value: string, fieldName: string): number {

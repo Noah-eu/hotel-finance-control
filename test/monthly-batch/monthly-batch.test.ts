@@ -1216,6 +1216,50 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(prepared.map((file) => file.sourceDocument.documentType)).toEqual(['ota_report', 'ota_report', 'payment_gateway_report'])
   })
 
+  it('routes the wider Airbnb monthly export through shared intake and ignores the known auxiliary row during normalization without failing ingest', () => {
+    const prepared = prepareUploadedMonthlyFiles([
+      {
+        name: 'opaque-report.csv',
+        content: [
+          'Datum;Datum připsání na účet;Typ;Datum rezervace;Datum zahájení;Datum ukončení;Počet nocí;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Daně odvedené Airbnb;Hrubé výdělky;Výdělky za kalendářní rok',
+          '2026-03-12;2026-03-12;Rezervace;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Rezervace HMA4TR9;REF-HMA4TR9;HMA4TR9;CZK;1 060,00;980,00;-80,00;0,00;1 060,00;12 340,00',
+          '2026-03-13;2026-03-13;Vyrovnání z řešení;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Vyrovnání z řešení HMA4TR9;RSN-HMA4TR9;HMA4TR9;CZK;-120,00;-120,00;0,00;0,00;-120,00;12 220,00',
+          '2026-03-12;2026-03-15;Payout;2026-02-10;2026-03-10;2026-03-12;2;Jan Novak;Jokeland apartment;Převod Jokeland s.r.o., IBAN 5956 (CZK);G-OC3WJE3SIXRO5;;CZK;;980,00;0,00;0,00;980,00;13 320,00'
+        ].join('\n'),
+        uploadedAt: '2026-03-24T09:30:00.000Z'
+      }
+    ])
+
+    expect(prepared[0]?.sourceDocument.sourceSystem).toBe('airbnb')
+
+    const result = runMonthlyReconciliationBatch({
+      files: prepared,
+      reconciliationContext: {
+        runId: 'monthly-run-airbnb-wide-export',
+        requestedAt: '2026-03-24T09:31:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-24T09:31:30.000Z'
+    })
+
+    expect(result.files).toEqual([
+      {
+        sourceDocumentId: prepared[0]!.sourceDocument.id,
+        extractedRecordIds: ['airbnb-payout-1', 'airbnb-auxiliary-2', 'airbnb-payout-3'],
+        extractedCount: 3
+      }
+    ])
+    expect(result.extractedRecords.map((record) => record.recordType)).toEqual([
+      'payout-line',
+      'airbnb-auxiliary-line',
+      'payout-line'
+    ])
+    expect(result.reconciliation.normalizedTransactions).toHaveLength(2)
+    expect(result.reconciliation.normalizedTransactions.map((transaction) => transaction.subtype)).toEqual([
+      'reservation',
+      'transfer'
+    ])
+  })
+
   it('separates supported and unsupported uploaded files with deterministic routing metadata', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const invoice = getRealInputFixture('invoice-document')
