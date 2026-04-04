@@ -147,10 +147,11 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
   )
   const expenseReview = buildExpenseReviewSections(input.batch, input.fileRoutes)
 
+  const reservationSettlementSources = buildVisibleReservationSettlementSources(input.batch)
   const unmatchedReservationSettlements = (input.batch.reconciliation.workflowPlan?.reservationSettlementNoMatches ?? [])
     .map((noMatch) => toReservationSettlementNoMatchReviewItem(input.batch, noMatch))
 
-  const reservationSettlementOverview = (input.batch.reconciliation.workflowPlan?.reservationSources ?? [])
+  const reservationSettlementOverview = reservationSettlementSources
     .map((reservation) => toReservationSettlementOverviewItem(input.batch, reservation))
 
   const ancillarySettlementOverview = (input.batch.reconciliation.workflowPlan?.ancillaryRevenueSources ?? [])
@@ -183,6 +184,40 @@ export function buildReviewScreen(input: BuildReviewScreenInput): ReviewScreenDa
     suspicious,
     missingDocuments
   }
+}
+
+function buildVisibleReservationSettlementSources(
+  batch: MonthlyBatchResult
+): NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSources'] {
+  const workflowPlan = batch.reconciliation.workflowPlan
+
+  if (!workflowPlan) {
+    return []
+  }
+
+  const matchedReservationKeys = new Set(
+    (workflowPlan.reservationSettlementMatches ?? []).map(
+      (match) => `${match.sourceDocumentId}:${match.reservationId}`
+    )
+  )
+  const combined = [
+    ...(workflowPlan.reservationSources ?? []),
+    ...(workflowPlan.previoReservationTruth ?? []).filter((reservation) =>
+      matchedReservationKeys.has(`${reservation.sourceDocumentId}:${reservation.reservationId}`)
+    )
+  ]
+  const seen = new Set<string>()
+
+  return combined.filter((reservation) => {
+    const key = `${reservation.sourceDocumentId}:${reservation.reservationId}`
+
+    if (seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+    return true
+  })
 }
 
 export function applyExpenseReviewOperatorOverrides(
@@ -2361,7 +2396,7 @@ function toReservationSettlementNoMatchReviewItem(
   batch: MonthlyBatchResult,
   noMatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['reservationSettlementNoMatches'][number]
 ): ReviewSectionItem {
-  const reservation = batch.reconciliation.workflowPlan?.reservationSources.find(
+  const reservation = buildVisibleReservationSettlementSources(batch).find(
     (item) => item.reservationId === noMatch.reservationId && item.sourceDocumentId === noMatch.sourceDocumentId
   )
 

@@ -728,6 +728,168 @@ describe('buildUploadWebFlow', () => {
     ]))
   })
 
+  it('shows exact matched Previo reservations against Booking reservation rows in browser runtime state', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '02.03.2026 09:15',
+              stayStartAt: '03.03.2026',
+              stayEndAt: '04.03.2026',
+              voucher: '5178029336',
+              guestName: 'Booking Guest 1',
+              channel: 'booking',
+              amountText: '44,80 EUR',
+              roomName: 'A101'
+            },
+            {
+              createdAt: '20.02.2026 10:00',
+              stayStartAt: '25.02.2026',
+              stayEndAt: '11.03.2026',
+              voucher: '5212240106',
+              guestName: 'Booking Guest 2',
+              channel: 'booking',
+              amountText: '856,10 EUR',
+              roomName: 'A102'
+            },
+            {
+              createdAt: '22.03.2026 13:30',
+              stayStartAt: '24.03.2026',
+              stayEndAt: '25.03.2026',
+              voucher: '6027430941',
+              guestName: 'Booking Guest 3',
+              channel: 'booking',
+              amountText: '64,00 EUR',
+              roomName: 'A103'
+            }
+          ])
+        ),
+        createRuntimeFile(
+          'booking-exact.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '5178029336',
+              checkIn: '2026-03-03',
+              checkout: '2026-03-04',
+              guestName: 'Booking Guest 1',
+              currency: 'EUR',
+              amountText: '44,80',
+              payoutDate: '12 Mar 2026',
+              payoutId: '015022808386'
+            },
+            {
+              reservationId: '5212240106',
+              checkIn: '2026-02-25',
+              checkout: '2026-03-11',
+              guestName: 'Booking Guest 2',
+              currency: 'EUR',
+              amountText: '856,10',
+              payoutDate: '12 Mar 2026',
+              payoutId: '010638445054'
+            },
+            {
+              reservationId: '6027430941',
+              checkIn: '2026-03-24',
+              checkout: '2026-03-25',
+              guestName: 'Booking Guest 3',
+              currency: 'EUR',
+              amountText: '64,00',
+              payoutDate: '24 Mar 2026',
+              payoutId: '010738140021'
+            }
+          ])
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:00:00.000Z'
+    })
+
+    expect(result.reviewSections.reservationSettlementOverview).toHaveLength(3)
+    expect(result.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Rezervace 5178029336',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-1']
+      }),
+      expect.objectContaining({
+        title: 'Rezervace 5212240106',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-2']
+      }),
+      expect.objectContaining({
+        title: 'Rezervace 6027430941',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-3']
+      })
+    ]))
+    expect(result.reviewSections.reservationSettlementOverview.every((item) => item.detail.includes('Kanál: Booking.'))).toBe(true)
+    expect(result.reviewSections.unmatchedReservationSettlements).toEqual([])
+  })
+
+  it('shows a matched Previo reservation against a real mixed Airbnb reservation row in browser runtime state', async () => {
+    const airbnbReservationId = buildAirbnbReservationIdForTest({
+      confirmationCode: 'AIR8841',
+      stayStartAt: '2026-03-10',
+      stayEndAt: '2026-03-12',
+      amountText: '1 060,00'
+    })
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '08.03.2026 08:45',
+              stayStartAt: '10.03.2026',
+              stayEndAt: '12.03.2026',
+              voucher: airbnbReservationId,
+              guestName: 'Jan Novak',
+              channel: 'airbnb',
+              amountText: '1 060,00 Kč',
+              roomName: 'B201'
+            }
+          ])
+        ),
+        createRuntimeFile(
+          'airbnb.csv',
+          buildRealMixedAirbnbReservationContent([
+            {
+              sourceDate: '2026-03-12',
+              availableUntilDate: '2026-03-12',
+              stayStartAt: '2026-03-10',
+              stayEndAt: '2026-03-12',
+              guestName: 'Jan Novak',
+              listingName: 'Jokeland apartment',
+              referenceCode: 'REF-AIR8841',
+              confirmationCode: 'AIR8841',
+              currency: 'CZK',
+              amountText: '1 060,00',
+              paidOutAmountText: '1 060,00',
+              serviceFeeText: '0,00',
+              grossEarningsText: '1 060,00'
+            }
+          ])
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T11:00:00.000Z'
+    })
+
+    expect(result.reviewSections.reservationSettlementOverview).toEqual([
+      expect.objectContaining({
+        title: `Rezervace ${airbnbReservationId}`,
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:airbnb-payout-1']
+      })
+    ])
+    expect(result.reviewSections.reservationSettlementOverview[0]?.detail).toContain('Kanál: Airbnb.')
+    expect(result.reviewSections.reservationSettlementOverview[0]?.detail).toContain('1060,00 CZK')
+    expect(result.reviewSections.unmatchedReservationSettlements).toEqual([])
+  })
+
   it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
     const fixture = getRealInputFixture('comgate-export-current-portal')
 
@@ -6207,6 +6369,34 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
 }
 
 function buildPrevioBrowserShapeWorkbookBase64(): string {
+  return buildPrevioWorkbookBase64FromRows([
+    {
+      createdAt: '13.03.2026 09:15',
+      stayStartAt: '14.03.2026',
+      stayEndAt: '16.03.2026',
+      voucher: 'PREVIO-20260314',
+      guestName: 'Jan Novak',
+      companyName: 'Acme Travel s.r.o.',
+      channel: 'direct-web',
+      amountText: '420,00',
+      outstandingText: '30,00',
+      roomName: 'A101'
+    }
+  ])
+}
+
+function buildPrevioWorkbookBase64FromRows(rows: Array<{
+  createdAt: string
+  stayStartAt: string
+  stayEndAt: string
+  voucher: string
+  guestName: string
+  companyName?: string
+  channel: string
+  amountText: string
+  outstandingText?: string
+  roomName?: string
+}>): string {
   const workbook = XLSX.utils.book_new()
   const reservationSheet = XLSX.utils.aoa_to_sheet([
     ['Seznam rezervací'],
@@ -6227,30 +6417,121 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       'Saldo',
       'Pokoj'
     ],
-    [
-      '13.03.2026 09:15',
-      '14.03.2026',
-      '16.03.2026',
-      '2',
-      'PREVIO-20260314',
-      '2',
-      'Jan Novak',
+    ...rows.map((row) => [
+      row.createdAt,
+      row.stayStartAt,
+      row.stayEndAt,
+      '1',
+      row.voucher,
+      '1',
+      row.guestName,
       'Ano',
       '',
-      'Acme Travel s.r.o.',
-      'direct-web',
+      row.companyName ?? '',
+      row.channel,
       'confirmed',
-      '420,00',
-      '30,00',
-      'A101'
-    ]
+      row.amountText,
+      row.outstandingText ?? '0,00',
+      row.roomName ?? 'A101'
+    ])
   ])
   XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ['Přehled rezervací'],
-    ['Počet rezervací', '1']
+    ['Počet rezervací', String(rows.length)]
   ]), 'Přehled rezervací')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
+function buildBookingBrowserUploadContentFromRows(rows: Array<{
+  reservationId: string
+  checkIn: string
+  checkout: string
+  guestName: string
+  currency: string
+  amountText: string
+  payoutDate: string
+  payoutId: string
+}>): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    ...rows.map((row) => [
+      'Reservation',
+      row.reservationId,
+      row.checkIn,
+      row.checkout,
+      row.guestName,
+      'OK',
+      row.currency,
+      'Paid',
+      row.amountText,
+      row.payoutDate,
+      row.payoutId
+    ].join(';'))
+  ].join('\n')
+}
+
+function buildRealMixedAirbnbReservationContent(rows: Array<{
+  sourceDate: string
+  availableUntilDate: string
+  stayStartAt: string
+  stayEndAt: string
+  guestName: string
+  listingName: string
+  referenceCode: string
+  confirmationCode: string
+  currency: string
+  amountText: string
+  paidOutAmountText: string
+  serviceFeeText: string
+  grossEarningsText: string
+}>): string {
+  return [
+    'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
+    ...rows.map((row) => [
+      row.sourceDate,
+      row.availableUntilDate,
+      'Rezervace',
+      row.stayStartAt,
+      row.stayEndAt,
+      row.guestName,
+      row.listingName,
+      `Rezervace ${row.confirmationCode}`,
+      row.referenceCode,
+      row.confirmationCode,
+      row.currency,
+      row.amountText,
+      row.paidOutAmountText,
+      row.serviceFeeText,
+      row.grossEarningsText
+    ].join(';'))
+  ].join('\n')
+}
+
+function buildAirbnbReservationIdForTest(input: {
+  confirmationCode: string
+  stayStartAt: string
+  stayEndAt: string
+  amountText: string
+}): string {
+  return [
+    'AIRBNB-RES',
+    input.confirmationCode.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+    input.stayStartAt,
+    input.stayEndAt,
+    String(parseTestAmountMinor(input.amountText))
+  ].join(':')
+}
+
+function parseTestAmountMinor(value: string): number {
+  const normalized = value
+    .replace(/[€KčA-Za-z]/g, '')
+    .replace(/\s+/g, '')
+    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+    .replace(',', '.')
+    .trim()
+
+  return Math.round(Number.parseFloat(normalized) * 100)
 }
 
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {

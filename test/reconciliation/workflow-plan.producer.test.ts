@@ -475,6 +475,69 @@ describe('buildReconciliationWorkflowPlan', () => {
         ])
     })
 
+    it('matches intake-only Previo reservations to Airbnb reservation rows without turning them into payout batches', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                    amountMinor: 106000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-10',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        settlementProjectionEligibility: 'intake_only',
+                        bookedAt: '2026-03-10',
+                        stayStartAt: '2026-03-10',
+                        stayEndAt: '2026-03-12',
+                        amountMinor: 106000,
+                        currency: 'CZK',
+                        reference: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                        reservationId: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                        guestName: 'Jan Novak',
+                        channel: 'airbnb',
+                        sourceSheet: 'Seznam rezervací'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:airbnb-reservation-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'airbnb',
+                    subtype: 'reservation',
+                    amountMinor: 106000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-12',
+                    accountId: 'expected-payouts',
+                    reference: 'AIRBNB-STAY:air8841:2026-03-10:2026-03-12',
+                    reservationId: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                    extractedRecordIds: ['airbnb-payout-1'],
+                    sourceDocumentIds: ['doc-airbnb-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:45:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                settlementKind: 'payout_row',
+                matchedRowId: 'txn:payout:airbnb-reservation-1',
+                platform: 'airbnb',
+                amountMinor: 106000,
+                reasons: expect.arrayContaining(['reservationIdExact', 'amountExact', 'channelAligned'])
+            })
+        ])
+        expect(plan.reservationSources).toEqual([])
+        expect(plan.payoutRows).toEqual([])
+        expect(plan.payoutBatches).toEqual([])
+    })
+
     it('leaves ambiguous reservation settlement candidates unmatched instead of guessing', () => {
         const plan = buildReconciliationWorkflowPlan({
             extractedRecords: [

@@ -29,18 +29,22 @@ export function buildReconciliationWorkflowPlan(
     const reservationSources = buildReservationSources(input.extractedRecords)
     const ancillaryRevenueSources = buildAncillaryRevenueSources(input.extractedRecords)
     const payoutRows = buildPayoutRows(input.normalizedTransactions, input.extractedRecords)
+    const reservationMatchingPayoutRows = buildReservationMatchingPayoutRows(
+        input.normalizedTransactions,
+        input.extractedRecords
+    )
     const payoutBatches = buildPayoutBatches(payoutRows).concat(
         buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
     )
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
     const reservationSettlementMatching = matchReservationSourcesToSettlements({
         reservationSources,
-        payoutRows,
+        payoutRows: reservationMatchingPayoutRows,
         directBankSettlements
     })
     const previoReservationTruthMatching = matchReservationSourcesToSettlements({
         reservationSources: previoReservationTruth,
-        payoutRows,
+        payoutRows: reservationMatchingPayoutRows,
         directBankSettlements
     })
     const expenseDocuments = buildExpenseDocuments(input.normalizedTransactions)
@@ -121,14 +125,15 @@ function isSettlementProjectionEligible(record: ExtractedRecord): boolean {
 
 function buildPayoutRows(
     transactions: NormalizedTransaction[],
-    extractedRecords: ExtractedRecord[]
+    extractedRecords: ExtractedRecord[],
+    options?: { includeAirbnbReservationRows?: boolean }
 ): PayoutRowExpectation[] {
     const extractedRecordsById = new Map(extractedRecords.map((record) => [record.id, record]))
 
     return transactions
         .filter(isPayoutPlanTransaction)
         .filter((transaction) => transaction.direction === 'in')
-        .filter(shouldRemainPayoutPlanTransaction)
+        .filter((transaction) => shouldRemainPayoutPlanTransaction(transaction, options?.includeAirbnbReservationRows === true))
         .map((transaction) => {
             const totalFeeMinor = resolveCurrentPortalComgateTotalFeeMinor(transaction, extractedRecordsById)
             const matchingAmountMinor = typeof totalFeeMinor === 'number'
@@ -161,6 +166,13 @@ function buildPayoutRows(
                 payoutSupplementReservationIds: transaction.payoutSupplementReservationIds
             }
         })
+}
+
+function buildReservationMatchingPayoutRows(
+    transactions: NormalizedTransaction[],
+    extractedRecords: ExtractedRecord[]
+): PayoutRowExpectation[] {
+    return buildPayoutRows(transactions, extractedRecords, { includeAirbnbReservationRows: true })
 }
 
 function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectation[] {
@@ -342,12 +354,15 @@ function isPayoutPlanTransaction(
     return transaction.source === 'booking' || transaction.source === 'airbnb' || transaction.source === 'comgate'
 }
 
-function shouldRemainPayoutPlanTransaction(transaction: NormalizedTransaction): boolean {
+function shouldRemainPayoutPlanTransaction(
+    transaction: NormalizedTransaction,
+    includeAirbnbReservationRows = false
+): boolean {
     if (transaction.source !== 'airbnb') {
         return true
     }
 
-    return transaction.subtype !== 'reservation'
+    return includeAirbnbReservationRows || transaction.subtype !== 'reservation'
 }
 
 function isExpenseDocumentTransaction(
