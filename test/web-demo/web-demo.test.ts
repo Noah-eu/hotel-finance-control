@@ -3609,7 +3609,7 @@ describe('buildWebDemo', () => {
 
     expect(additiveWorkspaceDebug.requestToken).toBe(2)
     expect(additiveWorkspaceDebug.restoreToken).toBe(1)
-    expect(additiveWorkspaceDebug.restoreSource).toBe('persisted-workspace')
+    expect(additiveWorkspaceDebug.restoreSource).toBe('persisted-workspace-stale-build')
     expect(additiveWorkspaceDebug.currentMonthKey).toBe('2026-03')
     expect(additiveWorkspaceDebug.selectedFileNames).toEqual(['Pohyby_5599955956_202603191023.csv'])
     expect(additiveWorkspaceDebug.persistedWorkspaceFileCountBeforeRerun).toBe(3)
@@ -5591,6 +5591,109 @@ describe('buildWebDemo', () => {
       && row.Titulek.includes('5 000,00 Kč')
     )).toBe(false)
   })
+
+  it('reruns a stale persisted internal-transfer workspace snapshot from stored files during restore', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T19:32:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-internal-transfer-pair-fio-rb-stale-seed',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithInternalTransferInflowOnly(),
+          'text/csv'
+        ),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithInternalTransferOutflowOnly(),
+          'text/csv'
+        )
+      ]
+    })
+
+    const persistedWorkspace = JSON.parse(workspacePersistenceState.get('2026-03') || '{}') as {
+      runtimeState?: {
+        runtimeBuildInfo?: Record<string, string>
+        reviewSections?: {
+          expenseMatched?: Array<Record<string, unknown>>
+          expenseUnmatchedOutflows?: Array<Record<string, unknown>>
+          expenseUnmatchedInflows?: Array<Record<string, unknown>>
+        }
+      }
+    }
+    const staleMatchedItem = Array.isArray(persistedWorkspace.runtimeState?.reviewSections?.expenseMatched)
+      ? persistedWorkspace.runtimeState?.reviewSections?.expenseMatched?.find((item) => item.title === 'Vnitřní převod 5 000,00 Kč')
+      : undefined
+
+    expect(staleMatchedItem).toBeTruthy()
+
+    persistedWorkspace.runtimeState = {
+      ...persistedWorkspace.runtimeState,
+      runtimeBuildInfo: {
+        ...(persistedWorkspace.runtimeState?.runtimeBuildInfo || {}),
+        runtimeModuleVersion: 'stale-browser-runtime-module'
+      },
+      reviewSections: {
+        ...(persistedWorkspace.runtimeState?.reviewSections || {}),
+        expenseMatched: [],
+        expenseUnmatchedOutflows: staleMatchedItem
+          ? [{
+            ...staleMatchedItem,
+            id: 'expense-outflow-unmatched:internal-transfer-stale-5000'
+          }]
+          : [],
+        expenseUnmatchedInflows: []
+      }
+    }
+    workspacePersistenceState.set('2026-03', JSON.stringify(persistedWorkspace))
+
+    const reloaded = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T19:34:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-internal-transfer-pair-fio-rb-stale-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: []
+    })
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      runtimeBuildInfo: { runtimeModuleVersion: string }
+    }
+    const reloadedWorkspaceDebug = reloaded.getLastWorkspaceRenderDebug() as {
+      renderSource: string
+      restoreSource: string
+      mergedFileCountUsedForRerun: number
+      visibleTraceFileCount: number
+    }
+
+    reloaded.openExpenseReviewPage()
+
+    expect(reloaded.expenseMatchedContent.innerHTML).toContain('Vnitřní převod 5 000,00 Kč')
+    expect(reloaded.expenseUnmatchedOutflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+    expect(reloaded.expenseUnmatchedInflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+    expect(reloadedState.runtimeBuildInfo.runtimeModuleVersion).not.toBe('stale-browser-runtime-module')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspaceRerun')
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Current month key:</strong> 2026-03')
+    expect(reloadedWorkspaceDebug.renderSource).toBe('persistedWorkspaceRerun')
+    expect(reloadedWorkspaceDebug.restoreSource).toBe('persisted-workspace-stale-build')
+    expect(reloadedWorkspaceDebug.mergedFileCountUsedForRerun).toBe(2)
+    expect(reloadedWorkspaceDebug.visibleTraceFileCount).toBe(2)
+
+    const refreshedWorkspace = JSON.parse(workspacePersistenceState.get('2026-03') || '{}') as {
+      runtimeState?: {
+        runtimeBuildInfo?: { runtimeModuleVersion?: string }
+      }
+    }
+
+    expect(refreshedWorkspace.runtimeState?.runtimeBuildInfo?.runtimeModuleVersion).not.toBe('stale-browser-runtime-module')
+  }, 15000)
 
   it('renders a generic unmatched incoming bank movement in the dedicated incoming bucket and keeps internal transfers out of unmatched buckets', async () => {
     const rendered = await executeWebDemoMainWorkflow({

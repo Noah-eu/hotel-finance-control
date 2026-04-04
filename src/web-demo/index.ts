@@ -1903,11 +1903,58 @@ ${showRuntimePayoutDiagnostics ? `
           return 'persisted workspace only';
         }
 
+        if (renderSource === 'persistedWorkspaceRerun') {
+          return 'persisted workspace rerun on current build';
+        }
+
         if (renderSource === 'mergedWorkspace') {
           return 'persisted + selected merge';
         }
 
         return 'selectedFiles only';
+      }
+
+      function normalizeRuntimeBuildInfoForWorkspaceRestore(buildInfo) {
+        return {
+          gitCommitHash: String(buildInfo && buildInfo.gitCommitHash || ''),
+          runtimeModuleVersion: String(buildInfo && buildInfo.runtimeModuleVersion || ''),
+          rendererVersion: String(buildInfo && buildInfo.rendererVersion || ''),
+          payoutProjectionVersion: String(buildInfo && buildInfo.payoutProjectionVersion || '')
+        };
+      }
+
+      function collectPersistedWorkspaceRerunReasons(runtimeState) {
+        const persistedBuildInfo = normalizeRuntimeBuildInfoForWorkspaceRestore(runtimeState && runtimeState.runtimeBuildInfo);
+        const currentBuildInfo = normalizeRuntimeBuildInfoForWorkspaceRestore(initialRuntimeState.runtimeBuildInfo);
+        const mismatchLabels = [];
+
+        if (!persistedBuildInfo.runtimeModuleVersion) {
+          mismatchLabels.push('missing runtimeModuleVersion');
+        } else if (persistedBuildInfo.runtimeModuleVersion !== currentBuildInfo.runtimeModuleVersion) {
+          mismatchLabels.push('runtimeModuleVersion ' + persistedBuildInfo.runtimeModuleVersion + ' -> ' + currentBuildInfo.runtimeModuleVersion);
+        }
+
+        if (!persistedBuildInfo.rendererVersion) {
+          mismatchLabels.push('missing rendererVersion');
+        } else if (persistedBuildInfo.rendererVersion !== currentBuildInfo.rendererVersion) {
+          mismatchLabels.push('rendererVersion ' + persistedBuildInfo.rendererVersion + ' -> ' + currentBuildInfo.rendererVersion);
+        }
+
+        if (!persistedBuildInfo.payoutProjectionVersion) {
+          mismatchLabels.push('missing payoutProjectionVersion');
+        } else if (persistedBuildInfo.payoutProjectionVersion !== currentBuildInfo.payoutProjectionVersion) {
+          mismatchLabels.push('payoutProjectionVersion ' + persistedBuildInfo.payoutProjectionVersion + ' -> ' + currentBuildInfo.payoutProjectionVersion);
+        }
+
+        if (
+          persistedBuildInfo.gitCommitHash
+          && currentBuildInfo.gitCommitHash
+          && persistedBuildInfo.gitCommitHash !== currentBuildInfo.gitCommitHash
+        ) {
+          mismatchLabels.push('gitCommitHash ' + persistedBuildInfo.gitCommitHash + ' -> ' + currentBuildInfo.gitCommitHash);
+        }
+
+        return mismatchLabels;
       }
 
       ${resolvePreviousMonthKeyFunctionSource}
@@ -3410,10 +3457,6 @@ ${showRuntimePayoutDiagnostics ? `
           return false;
         }
 
-        currentLaterMonthCarryoverResolutionState = workspace && workspace.runtimeState && shouldLoadLaterMonthCarryoverResolution(workspace.runtimeState, normalizedMonth)
-          ? await loadLaterMonthCarryoverResolutionState(normalizedMonth)
-          : buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
-
         appendWorkspaceRenderDebugCheckpoint({
           phase: workspace && workspace.runtimeState ? 'restore-loaded' : 'restore-missing',
           requestToken,
@@ -3468,6 +3511,7 @@ ${showRuntimePayoutDiagnostics ? `
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
           currentManualMatchConfirmMode = false;
+          currentLaterMonthCarryoverResolutionState = buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
           renderInitialVisibleState();
           runtimeOutput.innerHTML = normalizedMonth
             ? '<p class="hint">Pro měsíc <strong>' + escapeHtml(normalizedMonth) + '</strong> zatím není uložený žádný browser workspace.</p>'
@@ -3477,6 +3521,180 @@ ${showRuntimePayoutDiagnostics ? `
             : 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
           return false;
         }
+
+        const persistedWorkspaceRerunReasons = collectPersistedWorkspaceRerunReasons(workspace.runtimeState);
+
+        if (persistedWorkspaceRerunReasons.length > 0 && Array.isArray(workspace.files) && workspace.files.length > 0) {
+          if (!browserRuntime && typeof window.__hotelFinanceCreateBrowserRuntime === 'function') {
+            browserRuntime = window.__hotelFinanceCreateBrowserRuntime();
+          }
+
+          if (!browserRuntime) {
+            currentLaterMonthCarryoverResolutionState = buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
+            runtimeOutput.innerHTML = '<p class="hint">Sdílený browser runtime se ještě načítá. Obnovení uloženého workspace zkuste za okamžik znovu.</p>';
+            runtimeStageCopy.innerHTML = 'Stav stránky: <strong>runtime ještě není připravený</strong>. Uložený workspace zatím nelze přepočítat na aktuálním buildu.';
+            renderInitialVisibleState();
+            return false;
+          }
+
+          currentWorkspaceFiles = workspace.files.slice();
+          currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+          currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
+
+          const previousMonthKey = resolvePreviousMonthKey(normalizedMonth);
+          const previousMonthLoadedWorkspace = previousMonthKey
+            ? await loadMonthWorkspace(previousMonthKey, { silent: true })
+            : undefined;
+          const previousMonthDirectWorkspace = previousMonthLoadedWorkspace && previousMonthLoadedWorkspace.workspace
+            ? previousMonthLoadedWorkspace.workspace
+            : previousMonthKey
+              ? getLegacyMonthWorkspaceFromStore(loadMonthlyWorkspaceStore(), previousMonthKey)
+              : undefined;
+          const carryoverWorkspaceInspection = inspectPreviousMonthCarryoverWorkspace(previousMonthDirectWorkspace, normalizedMonth);
+          const previousMonthCarryoverSource = carryoverWorkspaceInspection.source;
+          const persistedRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(currentWorkspaceFiles);
+          const rerunReasonLabel = persistedWorkspaceRerunReasons.join(' | ');
+          const persistedWorkspaceFileNames = buildWorkspaceDebugNamesFromWorkspaceRecords(currentWorkspaceFiles);
+
+          setWorkspaceRenderDebugState({
+            requestToken,
+            restoreToken: requestToken,
+            restoreSource: 'persisted-workspace-stale-build',
+            currentMonthKey: normalizedMonth,
+            selectedFileNames: [],
+            persistedWorkspaceFileCountBeforeRerun: currentWorkspaceFiles.length,
+            persistedWorkspaceFileNamesBeforeRerun: persistedWorkspaceFileNames,
+            selectedBatchFileCount: 0,
+            mergedFileCountUsedForRerun: currentWorkspaceFiles.length,
+            mergedFileNamesUsedForRerun: persistedWorkspaceFileNames,
+            visibleTraceFileCount: currentWorkspaceFiles.length,
+            visibleTraceFileNamesAfterRender: persistedWorkspaceFileNames,
+            renderSource: 'persistedWorkspaceRerun',
+            workspacePersistenceBackend: loadState.backendName,
+            storageKeyUsed: loadState.storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+            lastSaveStatus: 'stale-build-rerun',
+            carryoverPreviousMonthKeyResolved: carryoverWorkspaceInspection.previousMonthKey,
+            carryoverPreviousMonthWorkspaceFound: carryoverWorkspaceInspection.previousMonthWorkspaceFound,
+            carryoverPreviousMonthMatchedPayoutBatchCount: carryoverWorkspaceInspection.previousMonthMatchedPayoutBatchCount,
+            carryoverPreviousMonthUnmatchedPayoutBatchCount: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchCount,
+            carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchIdsSample,
+            carryoverPreviousMonthUnmatchedOnly: carryoverWorkspaceInspection.previousMonthUnmatchedOnly,
+            carryoverSourceMonth: previousMonthCarryoverSource && previousMonthCarryoverSource.sourceMonthKey,
+            carryoverCurrentMonth: normalizedMonth,
+            carryoverLoadedPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            carryoverLoadedPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+            carryoverMatchingInputPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            carryoverMatchingInputPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+            carryoverMatcherCandidateExisted: 'ne',
+            carryoverMatcherRejectedReason: '',
+            carryoverSourceClearMarker: carryoverWorkspaceInspection.clearMarker,
+            carryoverMatchedCount: 0,
+            carryoverUnmatchedCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
+          });
+          appendWorkspaceRenderDebugCheckpoint({
+            phase: 'restore-stale-build-rerun',
+            requestToken,
+            restoreToken: requestToken,
+            restoreSource: 'persisted-workspace-stale-build',
+            currentMonthKey: normalizedMonth,
+            selectedFileNames: [],
+            selectedBatchFileCount: 0,
+            persistedWorkspaceFileCountBeforeRerun: currentWorkspaceFiles.length,
+            persistedWorkspaceFileNamesBeforeRerun: persistedWorkspaceFileNames,
+            mergedFileCountUsedForRerun: currentWorkspaceFiles.length,
+            mergedFileNamesUsedForRerun: persistedWorkspaceFileNames,
+            visibleTraceFileCount: persistedRunningWorkflowFiles.length,
+            visibleTraceFileNamesAfterRender: buildWorkspaceDebugNamesFromRuntimeFiles(persistedRunningWorkflowFiles),
+            renderSource: 'persistedWorkspaceRerun',
+            workspacePersistenceBackend: loadState.backendName,
+            storageKeyUsed: loadState.storageKeyUsed,
+            saveCompletedBeforeRerunInputAssembly: loadState.saveCompletedBeforeRerunInputAssembly,
+            lastSaveStatus: 'stale-build-rerun: ' + rerunReasonLabel,
+            carryoverPreviousMonthKeyResolved: carryoverWorkspaceInspection.previousMonthKey,
+            carryoverPreviousMonthWorkspaceFound: carryoverWorkspaceInspection.previousMonthWorkspaceFound,
+            carryoverPreviousMonthMatchedPayoutBatchCount: carryoverWorkspaceInspection.previousMonthMatchedPayoutBatchCount,
+            carryoverPreviousMonthUnmatchedPayoutBatchCount: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchCount,
+            carryoverPreviousMonthUnmatchedPayoutBatchIdsSample: carryoverWorkspaceInspection.previousMonthUnmatchedPayoutBatchIdsSample,
+            carryoverPreviousMonthUnmatchedOnly: carryoverWorkspaceInspection.previousMonthUnmatchedOnly,
+            carryoverSourceMonth: previousMonthCarryoverSource && previousMonthCarryoverSource.sourceMonthKey,
+            carryoverCurrentMonth: normalizedMonth,
+            carryoverLoadedPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            carryoverLoadedPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+            carryoverMatchingInputPayoutBatchCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            carryoverMatchingInputPayoutBatchIdsSample: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.map((item) => item.payoutBatchKey).slice(0, 5) : [],
+            carryoverMatcherCandidateExisted: 'ne',
+            carryoverMatcherRejectedReason: '',
+            carryoverSourceClearMarker: carryoverWorkspaceInspection.clearMarker,
+            carryoverMatchedCount: 0,
+            carryoverUnmatchedCount: previousMonthCarryoverSource ? previousMonthCarryoverSource.payoutBatches.length : 0,
+            mergedFileSample: buildWorkspaceDebugSampleFromWorkspaceRecords(currentWorkspaceFiles)
+          });
+
+          renderRunningState(persistedRunningWorkflowFiles);
+          runtimeStageCopy.innerHTML = 'Stav stránky: <strong>uložený workspace se znovu přepočítává na aktuálním buildu</strong>. Persisted runtime snapshot byl označen jako zastaralý.';
+
+          try {
+            const state = await browserRuntime.buildRuntimeState({
+              files: currentWorkspaceFiles.map((record) => buildRuntimeFileFromWorkspaceRecord(record)),
+              month: normalizedMonth,
+              generatedAt,
+              previousMonthCarryoverSource,
+              onProgress(progress) {
+                renderRunningWorkflowProgress(persistedRunningWorkflowFiles, progress);
+              }
+            });
+
+            if (requestToken !== currentWorkspaceViewRequestToken) {
+              return false;
+            }
+
+            currentLaterMonthCarryoverResolutionState = shouldLoadLaterMonthCarryoverResolution(state, normalizedMonth)
+              ? await loadLaterMonthCarryoverResolutionState(normalizedMonth)
+              : buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
+
+            const visibleState = buildCompletedVisibleRuntimeState(state);
+            applyVisibleRuntimeState(visibleState, 'completed');
+            runtimeOutput.innerHTML = [
+              '<h3>Výsledek spuštěného browser workflow</h3>',
+              '<p><strong>Obnovený měsíc:</strong> ' + escapeHtml(normalizedMonth) + '</p>',
+              '<p><strong>Run ID:</strong> <code>' + escapeHtml(String(visibleState.runId || 'bez runtime běhu')) + '</code></p>',
+              '<p class="hint">Uložený workspace byl přepočítán z persisted souborů, protože build markers nesouhlasily s aktuálním během: ' + escapeHtml(rerunReasonLabel) + '.</p>'
+            ].join('');
+            runtimeStageCopy.innerHTML = 'Stav stránky: <strong>obnovený workspace byl přepočítán na aktuálním buildu</strong>. Další upload do stejného měsíce dál doplní existující soubory místo úplného přepsání.';
+
+            const store = loadMonthlyWorkspaceStore();
+            saveMonthlyWorkspaceStore({
+              lastUsedMonth: normalizedMonth,
+              workspaceMonths: normalizeWorkspaceMonths((store.workspaceMonths || []).concat([normalizedMonth])),
+              workspaces: store.workspaces
+            }, { includeWorkspaces: false });
+
+            if (!(options && options.preserveCurrentView)) {
+              showOperatorView(resolveOperatorViewFromHash());
+            }
+
+            return true;
+          } catch (error) {
+            currentLaterMonthCarryoverResolutionState = buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
+            runtimeStageCopy.innerHTML = 'Stav stránky: <strong>obnova stale workspace selhala</strong>. Viditelně zobrazujeme chybu místo tichého ponechání zastaralého snapshotu.';
+            renderFailedState(error);
+            runtimeOutput.innerHTML = [
+              '<h3>Výsledek spuštěného browser workflow</h3>',
+              '<p><strong>Obnova uloženého workspace selhala.</strong></p>',
+              '<p class="hint">Persisted snapshot byl označen jako zastaralý a nový přepočet skončil chybou: ' + escapeHtml(error instanceof Error ? error.message : String(error)) + '</p>'
+            ].join('');
+            return false;
+          }
+        }
+
+        currentLaterMonthCarryoverResolutionState = shouldLoadLaterMonthCarryoverResolution(workspace.runtimeState, normalizedMonth)
+          ? await loadLaterMonthCarryoverResolutionState(normalizedMonth)
+          : buildLaterMonthCarryoverResolutionState({ sourceMonthKey: normalizedMonth });
 
         currentWorkspaceFiles = Array.isArray(workspace.files) ? workspace.files.slice() : [];
         currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
