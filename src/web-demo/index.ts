@@ -5531,6 +5531,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const internalTransferDiagnostics = Array.isArray(runtimeAudit.internalTransferDiagnostics)
           ? runtimeAudit.internalTransferDiagnostics
           : [];
+        const exactInternalTransferPairTrace = runtimeAudit.exactInternalTransferPairTrace || undefined;
 
         const reconciliationDecisionMarkup = Array.isArray(reconciliationSnapshot.payoutBatchDecisions) && reconciliationSnapshot.payoutBatchDecisions.length > 0
           ? '<li><strong>Raw reconciliation batch decisions:</strong><ul>'
@@ -5639,6 +5640,58 @@ ${showRuntimePayoutDiagnostics ? '' : `
             }).join('')
             + '</ul></li>'
           : '';
+        const exactInternalTransferPairTraceMarkup = exactInternalTransferPairTrace
+          ? '<li><strong>Exact internal transfer pair trace:</strong><ul>'
+            + '<li><strong>Outgoing 76526712:</strong> raw row ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.rawRowId || 'n/a'))
+            + ' · tx ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.normalizedTransactionId || 'n/a'))
+            + ' · fingerprint ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.movementFingerprint || 'n/a'))
+            + ' · account ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.bankAccountId || 'n/a'))
+            + ' · direction ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.direction || 'n/a'))
+            + ' · amount ' + escapeHtml(buildAmountDisplay(exactInternalTransferPairTrace.outgoing.amountMinor || 0, exactInternalTransferPairTrace.outgoing.currency || 'CZK'))
+            + ' · transaction date ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.transactionDate || 'n/a'))
+            + ' · value date ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.valueDate || 'n/a'))
+            + ' · own-account flags own=' + escapeHtml(exactInternalTransferPairTrace.outgoing.ownAccountEvidence.accountRecognizedAsOwnAccount ? '1' : '0')
+            + '/hint=' + escapeHtml(exactInternalTransferPairTrace.outgoing.ownAccountEvidence.accountHintMatchedOnCounterMovement ? '1' : '0')
+            + '/counter=' + escapeHtml(exactInternalTransferPairTrace.outgoing.ownAccountEvidence.counterMovementRecognizedAsOwnAccount ? '1' : '0')
+            + ' · candidates before ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountBeforeFilters || 0))
+            + ' · after amount ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountAfterAmountFilter || 0))
+            + ' · after direction ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountAfterDirectionFilter || 0))
+            + ' · after own-account/account-hint ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountAfterOwnAccountAccountHintFilter || 0))
+            + ' · after date gate ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountAfterDateGate || 0))
+            + ' · primary date gate ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountAfterPrimaryDateGate || 0))
+            + ' · extended date gate ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.candidateCountAfterExtendedDateGate || 0))
+            + ' · final reason ' + escapeHtml(String(exactInternalTransferPairTrace.outgoing.finalMatchedOrUnmatchedReason || 'n/a'))
+            + '</li>'
+            + '<li><strong>Incoming 71394921:</strong> raw row ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.rawRowId || 'n/a'))
+            + ' · tx ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.normalizedTransactionId || 'n/a'))
+            + ' · fingerprint ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.movementFingerprint || 'n/a'))
+            + ' · account ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.bankAccountId || 'n/a'))
+            + ' · direction ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.direction || 'n/a'))
+            + ' · amount ' + escapeHtml(buildAmountDisplay(exactInternalTransferPairTrace.incoming.amountMinor || 0, exactInternalTransferPairTrace.incoming.currency || 'CZK'))
+            + ' · transaction date ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.transactionDate || 'n/a'))
+            + ' · value date ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.valueDate || 'n/a'))
+            + ' · own-account flags own=' + escapeHtml(exactInternalTransferPairTrace.incoming.ownAccountEvidence.accountRecognizedAsOwnAccount ? '1' : '0')
+            + '/hint=' + escapeHtml(exactInternalTransferPairTrace.incoming.ownAccountEvidence.accountHintMatchedOnCounterMovement ? '1' : '0')
+            + '/counter=' + escapeHtml(exactInternalTransferPairTrace.incoming.ownAccountEvidence.counterMovementRecognizedAsOwnAccount ? '1' : '0')
+            + ' · candidates before ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountBeforeFilters || 0))
+            + ' · after amount ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountAfterAmountFilter || 0))
+            + ' · after direction ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountAfterDirectionFilter || 0))
+            + ' · after own-account/account-hint ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountAfterOwnAccountAccountHintFilter || 0))
+            + ' · after date gate ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountAfterDateGate || 0))
+            + ' · primary date gate ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountAfterPrimaryDateGate || 0))
+            + ' · extended date gate ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.candidateCountAfterExtendedDateGate || 0))
+            + ' · final reason ' + escapeHtml(String(exactInternalTransferPairTrace.incoming.finalMatchedOrUnmatchedReason || 'n/a'))
+            + '</li>'
+            + '<li><strong>Pair / projection:</strong> internalTransferPairCreated=' + escapeHtml(exactInternalTransferPairTrace.internalTransferPairCreated ? 'ano' : 'ne')
+            + ' · matchedTransferPairId=' + escapeHtml(String(exactInternalTransferPairTrace.matchedTransferPairId || 'n/a'))
+            + ' · consumedInReviewProjection=' + escapeHtml(exactInternalTransferPairTrace.consumedInReviewProjection ? 'ano' : 'ne')
+            + ' · visibleInUnmatchedOutgoing=' + escapeHtml(exactInternalTransferPairTrace.visibleInUnmatchedOutgoing ? 'ano' : 'ne')
+            + ' · visibleInUnmatchedIncoming=' + escapeHtml(exactInternalTransferPairTrace.visibleInUnmatchedIncoming ? 'ano' : 'ne')
+            + (exactInternalTransferPairTrace.visibleUnmatchedOutgoingReason ? ' · unmatched outgoing reason ' + escapeHtml(String(exactInternalTransferPairTrace.visibleUnmatchedOutgoingReason)) : '')
+            + (exactInternalTransferPairTrace.visibleUnmatchedIncomingReason ? ' · unmatched incoming reason ' + escapeHtml(String(exactInternalTransferPairTrace.visibleUnmatchedIncomingReason)) : '')
+            + '</li>'
+            + '</ul></li>'
+          : '';
 
         return [
           '<p class="hint">Tento blok čte build marker i finální payout projekci ze stejného state objektu, který používá summary pás i detailní payout sekce.</p>',
@@ -5677,6 +5730,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           reconciliationDecisionMarkup,
           inboundBankTransactionsMarkup,
           internalTransferTraceMarkup,
+          exactInternalTransferPairTraceMarkup,
           buildDiagnosticListMarkup('Matched payout batch ids', payoutProjection.matchedIds || []),
           buildDiagnosticListMarkup('Unmatched payout batch ids', payoutProjection.unmatchedIds || []),
           '</ul>'

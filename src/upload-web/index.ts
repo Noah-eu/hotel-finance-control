@@ -214,6 +214,63 @@ export interface BrowserRuntimeUploadState {
         dateWindow: 'primary' | 'extended-own-account'
       }>
     }>
+    exactInternalTransferPairTrace?: {
+      outgoing: {
+        rawRowId?: string
+        normalizedTransactionId: string
+        movementFingerprint: string
+        bankAccountId: string
+        direction: 'in' | 'out'
+        amountMinor: number
+        currency: string
+        transactionDate: string
+        valueDate?: string
+        ownAccountEvidence: {
+          accountRecognizedAsOwnAccount: boolean
+          accountHintMatchedOnCounterMovement: boolean
+          counterMovementRecognizedAsOwnAccount: boolean
+        }
+        candidateCountBeforeFilters: number
+        candidateCountAfterAmountFilter: number
+        candidateCountAfterDirectionFilter: number
+        candidateCountAfterOwnAccountAccountHintFilter: number
+        candidateCountAfterDateGate: number
+        candidateCountAfterPrimaryDateGate: number
+        candidateCountAfterExtendedDateGate: number
+        finalMatchedOrUnmatchedReason: string
+      }
+      incoming: {
+        rawRowId?: string
+        normalizedTransactionId: string
+        movementFingerprint: string
+        bankAccountId: string
+        direction: 'in' | 'out'
+        amountMinor: number
+        currency: string
+        transactionDate: string
+        valueDate?: string
+        ownAccountEvidence: {
+          accountRecognizedAsOwnAccount: boolean
+          accountHintMatchedOnCounterMovement: boolean
+          counterMovementRecognizedAsOwnAccount: boolean
+        }
+        candidateCountBeforeFilters: number
+        candidateCountAfterAmountFilter: number
+        candidateCountAfterDirectionFilter: number
+        candidateCountAfterOwnAccountAccountHintFilter: number
+        candidateCountAfterDateGate: number
+        candidateCountAfterPrimaryDateGate: number
+        candidateCountAfterExtendedDateGate: number
+        finalMatchedOrUnmatchedReason: string
+      }
+      internalTransferPairCreated: boolean
+      matchedTransferPairId?: string
+      consumedInReviewProjection: boolean
+      visibleInUnmatchedOutgoing: boolean
+      visibleInUnmatchedIncoming: boolean
+      visibleUnmatchedOutgoingReason?: string
+      visibleUnmatchedIncomingReason?: string
+    }
     fileIntakeDiagnostics: Array<{
       fileName: string
       mimeType?: string

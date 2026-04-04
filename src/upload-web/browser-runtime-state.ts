@@ -462,6 +462,11 @@ function buildRuntimeAudit(
     batch.reconciliation.normalizedTransactions,
     new Set(batch.reconciliation.supportedExpenseLinks.map((link) => link.expenseTransactionId))
   )
+  const exactInternalTransferPairTrace = buildExactInternalTransferPairTrace(
+    batch,
+    review,
+    internalTransferDiagnostics
+  )
 
   return {
     payoutDiagnostics: {
@@ -478,6 +483,7 @@ function buildRuntimeAudit(
       runtimeUnmatchedTitleSourceValues
     },
     internalTransferDiagnostics,
+    exactInternalTransferPairTrace,
     fileIntakeDiagnostics: uploadedFiles.map((file, index) => {
       const route = fileRoutes[index]
       const browserTextExtraction = file.sourceDescriptor?.browserTextExtraction
@@ -569,6 +575,214 @@ function buildRuntimeAudit(
       }
     })
   }
+}
+
+const EXACT_INTERNAL_TRANSFER_OUTGOING_REFERENCE = '76526712'
+const EXACT_INTERNAL_TRANSFER_INCOMING_REFERENCE = '71394921'
+const EXACT_INTERNAL_TRANSFER_AMOUNT_MINOR = 500000
+const EXACT_INTERNAL_TRANSFER_CURRENCY = 'CZK'
+const INTERNAL_TRANSFER_PRIMARY_DAY_GATE = 2
+const INTERNAL_TRANSFER_EXTENDED_DAY_GATE = 14
+
+function buildExactInternalTransferPairTrace(
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch'],
+  review: ReturnType<typeof buildReviewScreen>,
+  internalTransferDiagnostics: BrowserRuntimeUploadState['runtimeAudit']['internalTransferDiagnostics']
+): BrowserRuntimeUploadState['runtimeAudit']['exactInternalTransferPairTrace'] | undefined {
+  const bankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
+    transaction.source === 'bank'
+    && transaction.currency === EXACT_INTERNAL_TRANSFER_CURRENCY
+    && transaction.amountMinor === EXACT_INTERNAL_TRANSFER_AMOUNT_MINOR
+  )
+  const outgoing = bankTransactions.find((transaction) =>
+    transaction.direction === 'out'
+    && transaction.reference === EXACT_INTERNAL_TRANSFER_OUTGOING_REFERENCE
+  )
+  const incoming = bankTransactions.find((transaction) =>
+    transaction.direction === 'in'
+    && transaction.reference === EXACT_INTERNAL_TRANSFER_INCOMING_REFERENCE
+  )
+
+  if (!outgoing || !incoming) {
+    return undefined
+  }
+
+  const knownOwnAccountIds = [...new Set(bankTransactions.map((transaction) => transaction.accountId).filter(Boolean))]
+  const extractedRecordsById = new Map(batch.extractedRecords.map((record) => [record.id, record]))
+  const outgoingTrace = buildExactMovementTrace({
+    transaction: outgoing,
+    counterMovement: incoming,
+    allBankTransactions: bankTransactions,
+    knownOwnAccountIds,
+    extractedRecordsById
+  })
+  const incomingTrace = buildExactMovementTrace({
+    transaction: incoming,
+    counterMovement: outgoing,
+    allBankTransactions: bankTransactions,
+    knownOwnAccountIds,
+    extractedRecordsById
+  })
+  const matchedReviewItem = review.expenseMatched.find((item) =>
+    item.transactionIds.includes(outgoing.id)
+    && item.transactionIds.includes(incoming.id)
+  )
+  const unmatchedOutgoingItem = review.expenseUnmatchedOutflows.find((item) => item.transactionIds.includes(outgoing.id))
+  const unmatchedIncomingItem = review.expenseUnmatchedInflows.find((item) => item.transactionIds.includes(incoming.id))
+  const pairDiagnostic = internalTransferDiagnostics.find((trace) =>
+    trace.outgoingTransactionId === outgoing.id
+    && trace.incomingTransactionId === incoming.id
+  )
+
+  return {
+    outgoing: outgoingTrace,
+    incoming: incomingTrace,
+    internalTransferPairCreated: Boolean(pairDiagnostic?.matched),
+    matchedTransferPairId: matchedReviewItem?.id,
+    consumedInReviewProjection: Boolean(matchedReviewItem) && !unmatchedOutgoingItem && !unmatchedIncomingItem,
+    visibleInUnmatchedOutgoing: Boolean(unmatchedOutgoingItem),
+    visibleInUnmatchedIncoming: Boolean(unmatchedIncomingItem),
+    visibleUnmatchedOutgoingReason: unmatchedOutgoingItem?.detail,
+    visibleUnmatchedIncomingReason: unmatchedIncomingItem?.detail
+  }
+}
+
+function buildExactMovementTrace(input: {
+  transaction: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']['reconciliation']['normalizedTransactions'][number]
+  counterMovement: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']['reconciliation']['normalizedTransactions'][number]
+  allBankTransactions: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']['reconciliation']['normalizedTransactions']
+  knownOwnAccountIds: string[]
+  extractedRecordsById: Map<string, ReturnType<typeof ingestUploadedMonthlyFiles>['batch']['extractedRecords'][number]>
+}): NonNullable<BrowserRuntimeUploadState['runtimeAudit']['exactInternalTransferPairTrace']>['outgoing'] {
+  const oppositeDirectionCandidates = input.allBankTransactions.filter((candidate) =>
+    candidate.id !== input.transaction.id
+    && candidate.direction !== input.transaction.direction
+  )
+  const sameAmountCandidates = input.allBankTransactions.filter((candidate) =>
+    candidate.id !== input.transaction.id
+    && candidate.amountMinor === input.transaction.amountMinor
+    && candidate.currency === input.transaction.currency
+  )
+  const directionAndAmountCandidates = oppositeDirectionCandidates.filter((candidate) =>
+    candidate.amountMinor === input.transaction.amountMinor
+    && candidate.currency === input.transaction.currency
+  )
+  const ownAccountAndHintCandidates = directionAndAmountCandidates.filter((candidate) =>
+    input.knownOwnAccountIds.includes(candidate.accountId ?? '')
+    && input.knownOwnAccountIds.includes(input.transaction.accountId ?? '')
+    && exactTraceMentionsAccount(input.transaction, candidate.accountId ?? '')
+  )
+  const primaryDateGateCandidates = ownAccountAndHintCandidates.filter((candidate) =>
+    calculateDayDistanceForTrace(input.transaction.bookedAt, candidate.bookedAt) <= INTERNAL_TRANSFER_PRIMARY_DAY_GATE
+  )
+  const extendedDateGateCandidates = ownAccountAndHintCandidates.filter((candidate) =>
+    calculateDayDistanceForTrace(input.transaction.bookedAt, candidate.bookedAt) <= INTERNAL_TRANSFER_EXTENDED_DAY_GATE
+  )
+  const extractedRecord = input.extractedRecordsById.get(input.transaction.extractedRecordIds[0] ?? '')
+  const extractedData = extractedRecord?.data as Record<string, unknown> | undefined
+  const finalMatchedOrUnmatchedReason = input.transaction.id === input.counterMovement.id
+    ? 'self'
+    : exactTraceMentionsAccount(input.transaction, input.counterMovement.accountId ?? '')
+      ? primaryDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
+        ? 'matched-within-primary-date-gate'
+        : extendedDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
+          ? 'matched-within-extended-own-account-date-gate'
+          : 'rejected-by-date-gate'
+      : 'rejected-by-own-account-account-hint-filter'
+
+  return {
+    rawRowId: input.transaction.extractedRecordIds[0],
+    normalizedTransactionId: input.transaction.id,
+    movementFingerprint: buildExactMovementFingerprint(input.transaction),
+    bankAccountId: input.transaction.accountId ?? '',
+    direction: input.transaction.direction === 'in' ? 'in' : 'out',
+    amountMinor: input.transaction.amountMinor,
+    currency: input.transaction.currency,
+    transactionDate: input.transaction.bookedAt,
+    valueDate: readOptionalTraceDate(extractedData?.accountingDate, extractedData?.date),
+    ownAccountEvidence: {
+      accountRecognizedAsOwnAccount: input.knownOwnAccountIds.includes(input.transaction.accountId ?? ''),
+      accountHintMatchedOnCounterMovement: exactTraceMentionsAccount(input.transaction, input.counterMovement.accountId ?? ''),
+      counterMovementRecognizedAsOwnAccount: input.knownOwnAccountIds.includes(input.counterMovement.accountId ?? '')
+    },
+    candidateCountBeforeFilters: input.allBankTransactions.filter((candidate) => candidate.id !== input.transaction.id).length,
+    candidateCountAfterAmountFilter: sameAmountCandidates.length,
+    candidateCountAfterDirectionFilter: directionAndAmountCandidates.length,
+    candidateCountAfterOwnAccountAccountHintFilter: ownAccountAndHintCandidates.length,
+    candidateCountAfterDateGate: primaryDateGateCandidates.length > 0
+      ? primaryDateGateCandidates.length
+      : extendedDateGateCandidates.length,
+    candidateCountAfterPrimaryDateGate: primaryDateGateCandidates.length,
+    candidateCountAfterExtendedDateGate: extendedDateGateCandidates.length,
+    finalMatchedOrUnmatchedReason
+  }
+}
+
+function buildExactMovementFingerprint(
+  transaction: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']['reconciliation']['normalizedTransactions'][number]
+): string {
+  return [
+    transaction.direction,
+    transaction.accountId ?? 'no-account',
+    transaction.bookedAt,
+    `${transaction.amountMinor}:${transaction.currency}`,
+    transaction.reference ?? 'no-reference',
+    transaction.counterparty ?? 'no-counterparty'
+  ].join('|')
+}
+
+function exactTraceMentionsAccount(
+  transaction: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']['reconciliation']['normalizedTransactions'][number],
+  accountId: string
+): boolean {
+  const normalizedAccountHints = buildExactTraceAccountHints(accountId)
+  const comparableValues = [transaction.counterparty, transaction.reference, transaction.accountId]
+
+  return comparableValues.some((value) => {
+    const normalizedValue = String(value ?? '').toLowerCase().replace(/\s+/g, ' ')
+    const digitsOnly = String(value ?? '').replace(/\D+/g, '')
+
+    return normalizedAccountHints.some((hint) =>
+      hint.length >= 6
+      && (normalizedValue.includes(hint) || digitsOnly.includes(hint.replace(/\D+/g, '')))
+    )
+  })
+}
+
+function buildExactTraceAccountHints(accountId: string): string[] {
+  const normalized = accountId.trim().toLowerCase()
+  const digits = normalized.replace(/\D+/g, '')
+  const [accountNumberPart, bankCodePart] = normalized.split('/')
+  const accountNumberDigits = (accountNumberPart ?? '').replace(/\D+/g, '')
+  const bankCodeDigits = (bankCodePart ?? '').replace(/\D+/g, '')
+
+  return [...new Set([
+    normalized,
+    digits,
+    accountNumberDigits,
+    bankCodeDigits ? `${accountNumberDigits}${bankCodeDigits}` : undefined
+  ].filter((value): value is string => Boolean(value)))]
+}
+
+function calculateDayDistanceForTrace(left: string, right: string): number {
+  const leftDate = new Date(left)
+  const rightDate = new Date(right)
+
+  if (Number.isNaN(leftDate.getTime()) || Number.isNaN(rightDate.getTime())) {
+    return Number.POSITIVE_INFINITY
+  }
+
+  return Math.abs(rightDate.getTime() - leftDate.getTime()) / (1000 * 60 * 60 * 24)
+}
+
+function readOptionalTraceDate(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+
+  return undefined
 }
 
 function buildComgatePipelineDiagnostics(

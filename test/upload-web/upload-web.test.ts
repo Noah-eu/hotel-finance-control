@@ -2870,6 +2870,55 @@ describe('buildUploadWebFlow', () => {
         incomingMentionsOutgoingAccount: false
       })
     ]))
+    expect(result.runtimeAudit.exactInternalTransferPairTrace).toMatchObject({
+      outgoing: {
+        rawRowId: expect.stringContaining('fio-row-1'),
+        normalizedTransactionId: 'txn:bank:fio-row-1:uploaded-bank-2-pohyby-na-uctu-8888997777-20260301-20260331-csv',
+        bankAccountId: '8888997777/2010',
+        direction: 'out',
+        amountMinor: 500000,
+        currency: 'CZK',
+        ownAccountEvidence: {
+          accountRecognizedAsOwnAccount: true,
+          accountHintMatchedOnCounterMovement: true,
+          counterMovementRecognizedAsOwnAccount: true
+        },
+        candidateCountBeforeFilters: 1,
+        candidateCountAfterAmountFilter: 1,
+        candidateCountAfterDirectionFilter: 1,
+        candidateCountAfterOwnAccountAccountHintFilter: 1,
+        candidateCountAfterDateGate: 1,
+        candidateCountAfterPrimaryDateGate: 0,
+        candidateCountAfterExtendedDateGate: 1,
+        finalMatchedOrUnmatchedReason: 'matched-within-extended-own-account-date-gate'
+      },
+      incoming: {
+        rawRowId: expect.stringContaining('fio-row-1'),
+        normalizedTransactionId: 'txn:bank:fio-row-1',
+        bankAccountId: '5599955956/5500',
+        direction: 'in',
+        amountMinor: 500000,
+        currency: 'CZK',
+        ownAccountEvidence: {
+          accountRecognizedAsOwnAccount: true,
+          accountHintMatchedOnCounterMovement: false,
+          counterMovementRecognizedAsOwnAccount: true
+        },
+        candidateCountBeforeFilters: 1,
+        candidateCountAfterAmountFilter: 1,
+        candidateCountAfterDirectionFilter: 1,
+        candidateCountAfterOwnAccountAccountHintFilter: 0,
+        candidateCountAfterDateGate: 0,
+        candidateCountAfterPrimaryDateGate: 0,
+        candidateCountAfterExtendedDateGate: 0,
+        finalMatchedOrUnmatchedReason: 'rejected-by-own-account-account-hint-filter'
+      },
+      internalTransferPairCreated: true,
+      matchedTransferPairId: expect.stringContaining('expense-matched:internal-transfer:'),
+      consumedInReviewProjection: true,
+      visibleInUnmatchedOutgoing: false,
+      visibleInUnmatchedIncoming: false
+    })
   })
 
   it('surfaces a generic unmatched incoming bank movement in the dedicated incoming bucket', async () => {
