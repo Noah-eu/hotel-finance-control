@@ -12,6 +12,7 @@ export interface RealInputFixture {
   | 'booking-payout-export-browser-upload-shape'
   | 'booking-payout-export-browser-upload-batch-shape'
   | 'booking-payout-statement-pdf'
+  | 'booking-payout-statement-pdf-czk-main-total'
   | 'airbnb-payout-export'
   | 'expedia-payout-export'
   | 'previo-reservation-export'
@@ -951,8 +952,73 @@ export const realInputFixtures: RealInputFixture[] = [
           payoutDate: '2026-03-12',
           amountMinor: 125000,
           currency: 'CZK',
+          payoutTotalRaw: '1250.00 CZK',
+          payoutTotalAmountMinor: 125000,
+          payoutTotalCurrency: 'CZK',
+          localTotalRaw: '1250.00 CZK',
+          localAmountMinor: 125000,
+          localCurrency: 'CZK',
           ibanSuffix: '5956',
           reservationIds: ['RES-BOOK-8841']
+        }
+      })
+    ]
+  },
+  {
+    key: 'booking-payout-statement-pdf-czk-main-total',
+    description: 'Representative Booking payout statement PDF where the main payout total is already the CZK bank-settlement amount.',
+    sourceDocument: sourceDocument({
+      id: 'doc-booking-payout-statement-czk-main-total-2026-03' as SourceDocument['id'],
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      fileName: 'booking-payout-statement-czk-main-total-2026-03.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Booking.com B.V.',
+        'Výkaz plateb',
+        'Datum vyplacení částky 26. března 2026',
+        'ID platby 010738140021',
+        'Celková částka k vyplacení 52,938.86 CZK',
+        'IBAN CZ65 5500 0000 0000 5599 555956',
+        'Rezervace RES-BOOK-9901'
+      ].join('\n'),
+      binaryContentBase64: pdfBase64FromTextLines([
+        'Booking.com B.V.',
+        'Výkaz plateb',
+        'Datum vyplacení částky 26. března 2026',
+        'ID platby 010738140021',
+        'Celková částka k vyplacení 52,938.86 CZK',
+        'IBAN CZ65 5500 0000 0000 5599 555956',
+        'Rezervace RES-BOOK-9901'
+      ])
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'booking-payout-statement-1',
+        sourceDocumentId: 'doc-booking-payout-statement-czk-main-total-2026-03' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'payout-supplement',
+        rawReference: '010738140021',
+        amountMinor: 5293886,
+        currency: 'CZK',
+        occurredAt: '2026-03-26',
+        data: {
+          platform: 'booking',
+          supplementRole: 'payout_statement',
+          paymentId: '010738140021',
+          payoutDate: '2026-03-26',
+          amountMinor: 5293886,
+          currency: 'CZK',
+          payoutTotalRaw: '52938.86 CZK',
+          payoutTotalAmountMinor: 5293886,
+          payoutTotalCurrency: 'CZK',
+          localTotalRaw: '52938.86 CZK',
+          localAmountMinor: 5293886,
+          localCurrency: 'CZK',
+          ibanSuffix: '5956',
+          referenceHints: ['RES-BOOK-9901'],
+          reservationIds: ['RES-BOOK-9901']
         }
       })
     ]

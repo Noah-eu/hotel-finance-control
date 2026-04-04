@@ -13,6 +13,7 @@ describe('realInputFixtures', () => {
       'booking-payout-export-browser-upload-shape',
       'booking-payout-export-browser-upload-batch-shape',
       'booking-payout-statement-pdf',
+      'booking-payout-statement-pdf-czk-main-total',
       'airbnb-payout-export',
       'expedia-payout-export',
       'previo-reservation-export',
@@ -22,6 +23,9 @@ describe('realInputFixtures', () => {
       'invoice-document',
       'booking-invoice-pdf',
       'invoice-document-czech-pdf',
+      'invoice-document-retail-tax-pdf',
+      'invoice-document-save-car-pdf',
+      'invoice-document-t-mobile-simplified-tax-pdf',
       'invoice-document-dobra-energie-pdf',
       'invoice-document-dobra-energie-refund-pdf',
       'invoice-document-dobra-energie-refund-sparse-pdf',
@@ -52,6 +56,7 @@ describe('realInputFixtures', () => {
     const booking = getRealInputFixture('booking-payout-export')
     const bookingBatch = getRealInputFixture('booking-payout-export-browser-upload-batch-shape')
     const bookingPayoutStatementPdf = getRealInputFixture('booking-payout-statement-pdf')
+    const bookingPayoutStatementPdfCzkMainTotal = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
     const airbnb = getRealInputFixture('airbnb-payout-export')
     const expedia = getRealInputFixture('expedia-payout-export')
     const previo = getRealInputFixture('previo-reservation-export')
@@ -124,6 +129,22 @@ describe('realInputFixtures', () => {
         supplementRole: 'payout_statement',
         paymentId: 'PAYOUT-BOOK-20260310',
         payoutDate: '2026-03-12',
+        localAmountMinor: 125000,
+        localCurrency: 'CZK',
+        ibanSuffix: '5956'
+      }
+    })
+    expect(bookingPayoutStatementPdfCzkMainTotal.expectedExtractedRecords[0]).toMatchObject({
+      recordType: 'payout-supplement',
+      data: {
+        platform: 'booking',
+        supplementRole: 'payout_statement',
+        paymentId: '010738140021',
+        payoutDate: '2026-03-26',
+        payoutTotalAmountMinor: 5293886,
+        payoutTotalCurrency: 'CZK',
+        localAmountMinor: 5293886,
+        localCurrency: 'CZK',
         ibanSuffix: '5956'
       }
     })

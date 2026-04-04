@@ -199,6 +199,49 @@ describe('matchPayoutBatchesToBank', () => {
         ])
     })
 
+    it('matches a Booking payout batch by a unique exact RB incoming candidate when the statement contributes the CZK settlement amount but the bank line carries no reference evidence', () => {
+        const matches = matchPayoutBatchesToBank({
+            payoutBatches: [bookingBatchWithSupplement({
+                payoutBatchKey: 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326',
+                payoutReference: 'PAYOUT-BOOK-20260326',
+                payoutDate: '2026-03-26',
+                expectedTotalMinor: 216077,
+                currency: 'EUR',
+                payoutSupplementPaymentId: '010738140021',
+                payoutSupplementPayoutDate: '2026-03-26',
+                payoutSupplementPayoutTotalAmountMinor: 5293886,
+                payoutSupplementPayoutTotalCurrency: 'CZK',
+                payoutSupplementLocalAmountMinor: 5293886,
+                payoutSupplementLocalCurrency: 'CZK',
+                payoutSupplementReferenceHints: ['RES-BOOK-9901'],
+                payoutSupplementReservationIds: ['RES-BOOK-9901'],
+                payoutSupplementSourceDocumentIds: ['doc-booking-pdf-czk-main-total' as never]
+            })],
+            bankTransactions: [
+                bankTransaction({
+                    id: 'txn:bank:booking-unique-generic' as NormalizedTransaction['id'],
+                    amountMinor: 5293886,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-27',
+                    accountId: '5599955956/5500',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit'
+                })
+            ]
+        })
+
+        expect(matches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326',
+                bankTransactionId: 'txn:bank:booking-unique-generic',
+                amountMinor: 5293886,
+                currency: 'CZK',
+                matched: true,
+                reasons: ['amountExact', 'currencyExact', 'directionInbound', 'routingAllowed']
+            })
+        ])
+    })
+
     it('leaves ambiguous bank candidates unmatched', () => {
         const matches = matchPayoutBatchesToBank({
             payoutBatches: [bookingBatch()],
@@ -588,7 +631,7 @@ describe('matchPayoutBatchesToBank', () => {
         ])
     })
 
-    it('keeps a Booking payout batch unmatched when only the local amount exists but no booking evidence aligns on the bank line', () => {
+    it('keeps a Booking payout batch unmatched when multiple generic exact RB candidates remain ambiguous', () => {
         const diagnostics = diagnoseUnmatchedPayoutBatchesToBank({
             payoutBatches: [bookingBatchWithSupplement({
                 expectedTotalMinor: 145642,
@@ -596,12 +639,20 @@ describe('matchPayoutBatchesToBank', () => {
             })],
             bankTransactions: [
                 bankTransaction({
-                    id: 'txn:bank:booking-generic' as NormalizedTransaction['id'],
+                    id: 'txn:bank:booking-generic-a' as NormalizedTransaction['id'],
                     amountMinor: 3553012,
                     currency: 'CZK',
                     bookedAt: '2026-03-12',
                     counterparty: 'Incoming bank transfer',
                     reference: 'Settlement credit'
+                }),
+                bankTransaction({
+                    id: 'txn:bank:booking-generic-b' as NormalizedTransaction['id'],
+                    amountMinor: 3553012,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-13',
+                    counterparty: 'Incoming bank transfer',
+                    reference: 'Settlement credit duplicate'
                 })
             ]
         })
@@ -610,10 +661,11 @@ describe('matchPayoutBatchesToBank', () => {
             expect.objectContaining({
                 expectedTotalMinor: 3553012,
                 currency: 'CZK',
-                noMatchReason: 'counterpartyClueMismatch',
+                noMatchReason: 'ambiguousCandidates',
                 matched: false
             })
         ])
+        expect(diagnostics[0]?.eligibleCandidates).toHaveLength(2)
         expect(diagnostics[0]?.allInboundBankCandidates[0]).toEqual(
             expect.objectContaining({
                 amountMinor: 3553012,

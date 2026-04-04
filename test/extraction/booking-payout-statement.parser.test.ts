@@ -73,8 +73,25 @@ describe('parseBookingPayoutStatementPdf', () => {
 
     expect(records).toEqual([
       expect.objectContaining({
-        ...fixture.expectedExtractedRecords[0],
-        data: expect.objectContaining(fixture.expectedExtractedRecords[0]?.data ?? {}),
+        id: 'booking-payout-statement-1',
+        sourceDocumentId: fixture.sourceDocument.id,
+        recordType: 'payout-supplement',
+        rawReference: 'PAYOUT-BOOK-20260310',
+        amountMinor: 125000,
+        currency: 'CZK',
+        occurredAt: '2026-03-12',
+        data: expect.objectContaining({
+          platform: 'booking',
+          supplementRole: 'payout_statement',
+          paymentId: 'PAYOUT-BOOK-20260310',
+          payoutDate: '2026-03-12',
+          payoutTotalAmountMinor: 125000,
+          payoutTotalCurrency: 'CZK',
+          localAmountMinor: 125000,
+          localCurrency: 'CZK',
+          ibanSuffix: '5956',
+          reservationIds: ['RES-BOOK-8841']
+        }),
         extractedAt: '2026-03-24T11:20:45.000Z'
       })
     ])
@@ -130,6 +147,54 @@ describe('parseBookingPayoutStatementPdf', () => {
       propertyId: 'CHILL-APT-PRG',
       referenceHints: ['CHILL-APT-PRG', 'RES-BOOK-8841']
     })
+  })
+
+  it('treats a CZK-only Booking payout statement total as local bank settlement truth', () => {
+    const fixture = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+    const fieldCheck = inspectBookingPayoutStatementFieldCheck(fixture.rawInput.content)
+    const records = parseBookingPayoutStatementPdf({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      extractedAt: '2026-04-04T10:20:00.000Z'
+    })
+
+    expect(fieldCheck).toEqual({
+      fields: expect.objectContaining({
+        paymentId: '010738140021',
+        payoutDate: '2026-03-26',
+        payoutTotalRaw: '52938.86 CZK',
+        payoutTotalAmountMinor: 5293886,
+        payoutTotalCurrency: 'CZK',
+        localTotalRaw: '52938.86 CZK',
+        localAmountMinor: 5293886,
+        localCurrency: 'CZK',
+        ibanSuffix: '5956',
+        reservationIds: ['RES-BOOK-9901']
+      }),
+      parserExtracted: {
+        paymentId: '010738140021',
+        payoutDate: '2026-03-26',
+        payoutTotal: '52938.86 CZK',
+        localTotal: '52938.86 CZK',
+        ibanHint: '5956',
+        exchangeRate: undefined
+      },
+      validatorInput: {
+        paymentId: '010738140021',
+        payoutDate: '2026-03-26',
+        payoutTotal: '52938.86 CZK'
+      },
+      missingFields: [],
+      requiredFieldsCheck: 'passed'
+    })
+    expect(records).toEqual([
+      expect.objectContaining({
+        ...fixture.expectedExtractedRecords[0],
+        data: expect.objectContaining(fixture.expectedExtractedRecords[0]?.data ?? {}),
+        extractedAt: '2026-04-04T10:20:00.000Z'
+      })
+    ])
   })
 
   it('keeps required field validation aligned with parser extraction when labels and values arrive in separate text blocks', () => {

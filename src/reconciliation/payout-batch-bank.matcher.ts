@@ -516,27 +516,44 @@ function selectUniqueExactAmountFallbackCandidate(
     batch: PayoutBatchExpectation,
     candidates: PayoutBatchCandidateDiagnostic[]
 ): PayoutBatchCandidateDiagnostic | undefined {
-    if (batch.platform !== 'airbnb') {
+    if (batch.platform === 'airbnb') {
+        if (requiresPositiveEvidence(batch)) {
+            return undefined
+        }
+
+        const amountCurrencyRoutingCandidates = candidates
+            .filter((candidate) =>
+                !candidate.rejectionReasons.includes('noExactAmount')
+                && !candidate.rejectionReasons.includes('currencyMismatch')
+                && !candidate.rejectionReasons.includes('wrongBankRouting')
+            )
+            .sort(compareBatchCandidates)
+
+        if (amountCurrencyRoutingCandidates.length !== 1) {
+            return undefined
+        }
+
+        return amountCurrencyRoutingCandidates[0]
+    }
+
+    if (!supportsBookingUniqueExactAmountFallback(batch)) {
         return undefined
     }
 
-    if (requiresPositiveEvidence(batch)) {
-        return undefined
-    }
-
-    const amountCurrencyRoutingCandidates = candidates
+    const amountCurrencyRoutingDateCandidates = candidates
         .filter((candidate) =>
             !candidate.rejectionReasons.includes('noExactAmount')
             && !candidate.rejectionReasons.includes('currencyMismatch')
             && !candidate.rejectionReasons.includes('wrongBankRouting')
+            && !candidate.rejectionReasons.includes('dateToleranceMiss')
         )
         .sort(compareBatchCandidates)
 
-    if (amountCurrencyRoutingCandidates.length !== 1) {
+    if (amountCurrencyRoutingDateCandidates.length !== 1) {
         return undefined
     }
 
-    return amountCurrencyRoutingCandidates[0]
+    return amountCurrencyRoutingDateCandidates[0]
 }
 
 function calculateDayDistance(left: string, right: string): number {
@@ -704,6 +721,19 @@ function normalizeComparable(value?: string): string {
 
 function requiresPositiveEvidence(batch: PayoutBatchExpectation): boolean {
     return Boolean(batch.payoutSupplementPaymentId?.trim())
+}
+
+function supportsBookingUniqueExactAmountFallback(batch: PayoutBatchExpectation): boolean {
+    if (batch.platform !== 'booking' || batch.bankRoutingTarget !== 'rb_bank_inflow') {
+        return false
+    }
+
+    if ((batch.payoutSupplementSourceDocumentIds?.length ?? 0) === 0) {
+        return false
+    }
+
+    const bankExpectation = resolveBankMatchingExpectation(batch)
+    return bankExpectation.currency === 'CZK'
 }
 
 function resolveBankMatchingExpectation(

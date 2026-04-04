@@ -2432,6 +2432,73 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.batch.report.summary.payoutBatchMatchCount).toBe(16)
     expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(2)
   })
+
+  it('matches a Booking payout PDF supplement to a unique RB incoming by CZK amount and date tolerance when the bank line does not carry the payout paymentId', () => {
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'booking52938.csv',
+          content: buildBooking52938BrowserUploadContentInEur(),
+          uploadedAt: '2026-04-04T10:10:00.000Z'
+        },
+        {
+          name: 'Pohyby_5599955956_202603270912.csv',
+          content: buildActualUploadedRbCitiContentWithBookingGenericUniqueMatch(),
+          uploadedAt: '2026-04-04T10:10:20.000Z'
+        },
+        {
+          name: bookingPdf.sourceDocument.fileName,
+          content: bookingPdf.rawInput.content,
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-04-04T10:10:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-czk-main-total-bank-match',
+        requestedAt: '2026-04-04T10:11:00.000Z'
+      },
+      reportGeneratedAt: '2026-04-04T10:12:00.000Z'
+    })
+
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326',
+        platform: 'booking',
+        payoutReference: 'PAYOUT-BOOK-20260326',
+        payoutDate: '2026-03-26',
+        bankRoutingTarget: 'rb_bank_inflow',
+        expectedTotalMinor: 216077,
+        currency: 'EUR',
+        payoutSupplementPaymentId: '010738140021',
+        payoutSupplementPayoutDate: '2026-03-26',
+        payoutSupplementPayoutTotalAmountMinor: 5293886,
+        payoutSupplementPayoutTotalCurrency: 'CZK',
+        payoutSupplementLocalAmountMinor: 5293886,
+        payoutSupplementLocalCurrency: 'CZK',
+        payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReservationIds: ['RES-BOOK-9901'],
+        payoutSupplementSourceDocumentIds: ['uploaded:booking:3:booking-payout-statement-czk-main-total-2026-03-pdf']
+      })
+    ])
+    expect(result.batch.report.payoutBatchMatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326',
+        amountMinor: 5293886,
+        currency: 'CZK',
+        matchedBankSummary: '2026-03-27T09:12:00 · Incoming bank transfer · Settlement credit',
+        reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
+        display: {
+          title: 'Booking payout 010738140021 / 52 938,86 Kč',
+          context: 'Datum payoutu: 2026-03-26 · IBAN 5956 · rezervace: 1'
+        }
+      })
+    ])
+    expect(result.batch.report.unmatchedPayoutBatches.some(
+      (item) => item.payoutBatchKey === 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326'
+    )).toBe(false)
+  })
 })
 
 function buildActualUploadedAirbnbContent(): string {
@@ -2489,6 +2556,13 @@ function buildBooking35kBrowserUploadContentInEur(): string {
   return [
     'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
     'Reservation;RES-BOOK-8841;2026-03-08;2026-03-10;Jan Novak;OK;EUR;Paid;1456,42;12 Mar 2026;PAYOUT-BOOK-20260310'
+  ].join('\n')
+}
+
+function buildBooking52938BrowserUploadContentInEur(): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    'Reservation;RES-BOOK-9901;2026-03-23;2026-03-26;Eva Novakova;OK;EUR;Paid;2160,77;26 Mar 2026;PAYOUT-BOOK-20260326'
   ].join('\n')
 }
 
@@ -2586,5 +2660,12 @@ function buildActualUploadedRbCitiContentWithBookingReferenceHintMatch(): string
   return [
     buildActualUploadedRbCitiContent(),
     '13.03.2026 09:10;13.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;NO.AAOS6MOZUH8BFTER/2206371'
+  ].join('\n')
+}
+
+function buildActualUploadedRbCitiContentWithBookingGenericUniqueMatch(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '27.03.2026 09:10;27.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;52938,86;CZK;Settlement credit'
   ].join('\n')
 }

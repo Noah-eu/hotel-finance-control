@@ -171,6 +171,8 @@ export function extractBookingPayoutStatementFields(content: string): BookingPay
   const signals = detectBookingPayoutStatementSignals(content)
   const payoutTotal = safeParseBookingStatementMoney(candidates.payoutTotalRaw, 'Booking payout statement payoutTotal')
   const localTotal = safeParseBookingStatementMoney(candidates.localTotalRaw, 'Booking payout statement localTotal')
+  const resolvedLocalTotal = localTotal ?? (payoutTotal?.currency === 'CZK' ? payoutTotal : undefined)
+  const resolvedLocalTotalRaw = candidates.localTotalRaw ?? (payoutTotal?.currency === 'CZK' ? candidates.payoutTotalRaw : undefined)
 
   return {
     hasBookingBranding: signals.hasBookingBranding,
@@ -181,9 +183,9 @@ export function extractBookingPayoutStatementFields(content: string): BookingPay
     payoutTotalRaw: candidates.payoutTotalRaw,
     payoutTotalAmountMinor: payoutTotal?.amountMinor,
     payoutTotalCurrency: payoutTotal?.currency,
-    localTotalRaw: candidates.localTotalRaw,
-    localAmountMinor: localTotal?.amountMinor,
-    localCurrency: localTotal?.currency,
+    localTotalRaw: resolvedLocalTotalRaw,
+    localAmountMinor: resolvedLocalTotal?.amountMinor,
+    localCurrency: resolvedLocalTotal?.currency,
     ibanValue: candidates.ibanValue,
     ibanSuffix: extractIbanSuffix(candidates.ibanValue),
     exchangeRate: candidates.exchangeRate,
