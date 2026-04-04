@@ -29,6 +29,87 @@ describe('buildReconciliationWorkflowPlan', () => {
         ])
     })
 
+    it('builds a Booking fallback payout batch from a payout statement PDF when no primary payout rows exist', () => {
+        const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: bookingPdf.expectedExtractedRecords,
+            normalizedTransactions: [],
+            requestedAt: '2026-04-05T09:00:00.000Z'
+        })
+
+        expect(plan.payoutRows).toEqual([])
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
+                platform: 'booking',
+                payoutReference: '010738140021',
+                payoutDate: '2026-03-26',
+                rowIds: [],
+                expectedTotalMinor: 5293886,
+                currency: 'CZK',
+                payoutSupplementPaymentId: '010738140021',
+                payoutSupplementLocalAmountMinor: 5293886,
+                payoutSupplementLocalCurrency: 'CZK',
+                payoutSupplementSourceDocumentIds: ['doc-booking-payout-statement-czk-main-total-2026-03'],
+                payoutSupplementReservationIds: ['RES-BOOK-9901']
+            })
+        ])
+    })
+
+    it('does not add a duplicate Booking fallback payout batch when a row-based primary batch already covers the same payout', () => {
+        const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: bookingPdf.expectedExtractedRecords,
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:booking-payout-52938' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'booking',
+                    amountMinor: 216077,
+                    currency: 'EUR',
+                    bookedAt: '2026-03-26',
+                    accountId: 'expected-payouts',
+                    reference: 'PAYOUT-BOOK-20260326',
+                    reservationId: 'RES-BOOK-9901',
+                    extractedRecordIds: ['booking-payout-52938'],
+                    sourceDocumentIds: ['doc-booking-52938' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-04-05T09:01:00.000Z'
+        })
+
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326',
+                payoutReference: 'PAYOUT-BOOK-20260326',
+                rowIds: ['txn:payout:booking-payout-52938'],
+                expectedTotalMinor: 216077,
+                currency: 'EUR'
+            })
+        ])
+    })
+
+    it('keeps non-payout-statement Booking supplements out of payout batch creation', () => {
+        const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: bookingPdf.expectedExtractedRecords.map((record) => ({
+                ...record,
+                data: {
+                    ...record.data,
+                    supplementRole: 'invoice'
+                }
+            })),
+            normalizedTransactions: [],
+            requestedAt: '2026-04-05T09:02:00.000Z'
+        })
+
+        expect(plan.payoutRows).toEqual([])
+        expect(plan.payoutBatches).toEqual([])
+    })
+
     it('represents the Expedia direct-bank path separately from payout batches', () => {
         const expedia = getRealInputFixture('expedia-payout-export')
 

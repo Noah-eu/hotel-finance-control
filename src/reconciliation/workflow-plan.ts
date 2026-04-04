@@ -33,7 +33,10 @@ export function buildReconciliationWorkflowPlan(
         input.normalizedTransactions,
         input.extractedRecords
     )
-    const payoutBatches = buildPayoutBatches(payoutRows).concat(
+    const rowBasedPayoutBatches = buildPayoutBatches(payoutRows)
+    const payoutBatches = rowBasedPayoutBatches
+        .concat(buildBookingPayoutStatementFallbackBatches(input.extractedRecords, payoutRows, rowBasedPayoutBatches))
+        .concat(
         buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
     )
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
@@ -232,6 +235,151 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
                 batchRows.flatMap((row) => row.payoutSupplementReservationIds ?? [])
             )
         }
+    })
+}
+
+function buildBookingPayoutStatementFallbackBatches(
+    extractedRecords: ExtractedRecord[],
+    payoutRows: PayoutRowExpectation[],
+    existingPayoutBatches: PayoutBatchExpectation[]
+): PayoutBatchExpectation[] {
+    const payoutRowsByBatchKey = new Map<string, PayoutRowExpectation[]>()
+
+    for (const row of payoutRows) {
+        const items = payoutRowsByBatchKey.get(row.payoutBatchKey) ?? []
+        items.push(row)
+        payoutRowsByBatchKey.set(row.payoutBatchKey, items)
+    }
+
+    return extractedRecords.flatMap((record) => {
+        if (!hasBookingPayoutStatementFallbackSignals(record)) {
+            return []
+        }
+
+        if (hasExistingBookingPrimaryBatchForSupplement(record, existingPayoutBatches, payoutRowsByBatchKey)) {
+            return []
+        }
+
+        const paymentId = optionalString(record.data.paymentId)!
+        const payoutDate = optionalString(record.data.payoutDate)!
+        const localAmountMinor = optionalNumber(record.data.localAmountMinor)!
+        const localCurrency = optionalString(record.data.localCurrency)!
+        const payoutTotalAmountMinor = optionalNumber(record.data.payoutTotalAmountMinor) ?? localAmountMinor
+        const payoutTotalCurrency = optionalString(record.data.payoutTotalCurrency) ?? localCurrency
+        const reservationIds = collectStringArray(record.data.reservationIds)
+        const referenceHints = uniqueValues(
+            collectStringArray(record.data.referenceHints).concat(reservationIds)
+        )
+
+        return [{
+            payoutBatchKey: buildGenericPayoutBatchKey('booking', payoutDate, paymentId),
+            platform: 'booking',
+            payoutReference: paymentId,
+            payoutDate,
+            bankRoutingTarget: 'rb_bank_inflow',
+            rowIds: [],
+            expectedTotalMinor: localAmountMinor,
+            currency: localCurrency,
+            payoutSupplementPaymentId: paymentId,
+            payoutSupplementPayoutDate: payoutDate,
+            payoutSupplementPayoutTotalAmountMinor: payoutTotalAmountMinor,
+            payoutSupplementPayoutTotalCurrency: payoutTotalCurrency,
+            payoutSupplementLocalAmountMinor: localAmountMinor,
+            payoutSupplementLocalCurrency: localCurrency,
+            payoutSupplementIbanSuffix: optionalString(record.data.ibanSuffix),
+            payoutSupplementExchangeRate: optionalString(record.data.exchangeRate),
+            payoutSupplementReferenceHints: referenceHints,
+            payoutSupplementSourceDocumentIds: [record.sourceDocumentId],
+            payoutSupplementReservationIds: uniqueValues(reservationIds)
+        }]
+    })
+}
+
+function hasBookingPayoutStatementFallbackSignals(record: ExtractedRecord): boolean {
+    return isBookingPayoutStatementSupplement(record)
+        && Boolean(optionalString(record.data.paymentId))
+        && Boolean(optionalString(record.data.payoutDate))
+        && typeof optionalNumber(record.data.localAmountMinor) === 'number'
+        && Boolean(optionalString(record.data.localCurrency))
+}
+
+function hasExistingBookingPrimaryBatchForSupplement(
+    supplement: ExtractedRecord,
+    existingPayoutBatches: PayoutBatchExpectation[],
+    payoutRowsByBatchKey: Map<string, PayoutRowExpectation[]>
+): boolean {
+    const supplementSourceDocumentId = supplement.sourceDocumentId
+    const supplementPaymentId = normalizeComparable(optionalString(supplement.data.paymentId))
+    const supplementPayoutDate = optionalString(supplement.data.payoutDate)
+    const supplementLocalAmountMinor = optionalNumber(supplement.data.localAmountMinor)
+    const supplementLocalCurrency = optionalString(supplement.data.localCurrency)?.toUpperCase()
+    const supplementReservationIds = new Set(collectStringArray(supplement.data.reservationIds))
+    const supplementReferenceHints = new Set(
+        collectStringArray(supplement.data.referenceHints)
+            .concat(Array.from(supplementReservationIds))
+            .map((value) => normalizeComparable(value))
+            .filter(Boolean)
+    )
+
+    return existingPayoutBatches.some((batch) => {
+        if (batch.platform !== 'booking') {
+            return false
+        }
+
+        if ((batch.payoutSupplementSourceDocumentIds ?? []).includes(supplementSourceDocumentId)) {
+            return true
+        }
+
+        const batchPaymentId = normalizeComparable(batch.payoutSupplementPaymentId ?? batch.payoutReference)
+        if (supplementPaymentId && batchPaymentId === supplementPaymentId) {
+            return true
+        }
+
+        if (!supplementPayoutDate || batch.payoutDate !== supplementPayoutDate) {
+            return false
+        }
+
+        if (
+            typeof supplementLocalAmountMinor === 'number'
+            && supplementLocalCurrency
+            && (
+                (
+                    batch.expectedTotalMinor === supplementLocalAmountMinor
+                    && batch.currency.trim().toUpperCase() === supplementLocalCurrency
+                )
+                || (
+                    batch.payoutSupplementLocalAmountMinor === supplementLocalAmountMinor
+                    && batch.payoutSupplementLocalCurrency?.trim().toUpperCase() === supplementLocalCurrency
+                )
+            )
+        ) {
+            return true
+        }
+
+        const batchRows = payoutRowsByBatchKey.get(batch.payoutBatchKey) ?? []
+
+        if (
+            supplementReservationIds.size > 0
+            && batchRows.some((row) => Boolean(row.reservationId && supplementReservationIds.has(row.reservationId)))
+        ) {
+            return true
+        }
+
+        if (supplementReferenceHints.size === 0) {
+            return false
+        }
+
+        const batchComparableHints = new Set(
+            [
+                batch.payoutReference,
+                ...(batch.payoutSupplementReferenceHints ?? []),
+                ...batchRows.map((row) => row.reservationId ?? '')
+            ]
+                .map((value) => normalizeComparable(value))
+                .filter(Boolean)
+        )
+
+        return Array.from(supplementReferenceHints).some((value) => batchComparableHints.has(value))
     })
 }
 
@@ -451,8 +599,25 @@ function resolveAirbnbReservationMatchingAmountMinor(
     return undefined
 }
 
+function isBookingPayoutStatementSupplement(record: ExtractedRecord): boolean {
+    return record.recordType === 'payout-supplement'
+        && optionalString(record.data.platform)?.toLowerCase() === 'booking'
+        && optionalString(record.data.supplementRole)?.toLowerCase() === 'payout_statement'
+}
+
 function optionalString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function collectStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return []
+    }
+
+    return value
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
 }
 
 function stringOrFallback(...values: Array<unknown>): string {
@@ -486,6 +651,14 @@ function firstDefined<T>(values: Array<T | undefined>): T | undefined {
 function uniqueValues<T>(values: T[]): T[] | undefined {
     const unique = Array.from(new Set(values))
     return unique.length > 0 ? unique : undefined
+}
+
+function normalizeComparable(value: string | undefined): string {
+    return (value ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '')
 }
 
 function isPrevioAccommodationReservationRecord(record: ExtractedRecord): boolean {

@@ -2499,6 +2499,69 @@ describe('runMonthlyReconciliationBatch', () => {
       (item) => item.payoutBatchKey === 'booking-batch:2026-03-26:PAYOUT-BOOK-20260326'
     )).toBe(false)
   })
+
+  it('matches a Booking payout PDF-only fallback batch to a unique RB incoming when no Booking CSV is uploaded', () => {
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'Pohyby_5599955956_202603270912.csv',
+          content: buildActualUploadedRbCitiContentWithBookingGenericUniqueMatch(),
+          uploadedAt: '2026-04-04T10:10:20.000Z'
+        },
+        {
+          name: bookingPdf.sourceDocument.fileName,
+          content: bookingPdf.rawInput.content,
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-04-04T10:10:30.000Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-booking-pdf-only-fallback-match',
+        requestedAt: '2026-04-04T10:11:00.000Z'
+      },
+      reportGeneratedAt: '2026-04-04T10:12:00.000Z'
+    })
+
+    expect(result.batch.reconciliation.workflowPlan?.payoutRows).toEqual([])
+    expect(result.batch.reconciliation.workflowPlan?.payoutBatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
+        platform: 'booking',
+        payoutReference: '010738140021',
+        payoutDate: '2026-03-26',
+        bankRoutingTarget: 'rb_bank_inflow',
+        rowIds: [],
+        expectedTotalMinor: 5293886,
+        currency: 'CZK',
+        payoutSupplementPaymentId: '010738140021',
+        payoutSupplementPayoutDate: '2026-03-26',
+        payoutSupplementPayoutTotalAmountMinor: 5293886,
+        payoutSupplementPayoutTotalCurrency: 'CZK',
+        payoutSupplementLocalAmountMinor: 5293886,
+        payoutSupplementLocalCurrency: 'CZK',
+        payoutSupplementIbanSuffix: '5956',
+        payoutSupplementReservationIds: ['RES-BOOK-9901'],
+        payoutSupplementSourceDocumentIds: ['uploaded:booking:2:booking-payout-statement-czk-main-total-2026-03-pdf']
+      })
+    ])
+    expect(result.batch.report.payoutBatchMatches).toEqual([
+      expect.objectContaining({
+        payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
+        amountMinor: 5293886,
+        currency: 'CZK',
+        matchedBankSummary: '2026-03-27T09:12:00 · Incoming bank transfer · Settlement credit',
+        display: {
+          title: 'Booking payout 010738140021 / 52 938,86 Kč',
+          context: 'Datum payoutu: 2026-03-26 · IBAN 5956 · rezervace: 1'
+        }
+      })
+    ])
+    expect(result.batch.report.unmatchedPayoutBatches.some(
+      (item) => item.payoutBatchKey === 'booking-batch:2026-03-26:010738140021'
+    )).toBe(false)
+  })
 })
 
 function buildActualUploadedAirbnbContent(): string {
