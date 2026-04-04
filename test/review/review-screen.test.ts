@@ -1350,6 +1350,190 @@ describe('buildReviewScreen', () => {
     )
   })
 
+  it('keeps a Booking PDF-only consumed RB incoming out of unmatched inflows', () => {
+    const review = buildReviewForConsumedPayoutIncomingScenario({
+      platform: 'booking',
+      payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
+      payoutReference: '010738140021',
+      matchedBankTransaction: buildTransaction({
+        id: toTransactionId('txn:bank:booking-pdf-consumed'),
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 5293886,
+        currency: 'CZK',
+        bookedAt: '2026-03-27T09:12:00',
+        accountId: '5599955956/5500',
+        counterparty: 'Incoming bank transfer',
+        reference: 'Settlement credit'
+      }),
+      extraIncomingTransactions: [
+        buildTransaction({
+          id: toTransactionId('txn:bank:booking-pdf-unmatched'),
+          direction: 'in',
+          source: 'bank',
+          amountMinor: 245000,
+          currency: 'CZK',
+          bookedAt: '2026-03-27T11:30:00',
+          accountId: '5599955956/5500',
+          counterparty: 'Incoming bank transfer',
+          reference: 'Other incoming transfer'
+        })
+      ]
+    })
+
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.expenseUnmatchedInflows.map((item) => item.transactionIds[0])).toEqual([
+      'txn:bank:booking-pdf-unmatched'
+    ])
+  })
+
+  it('keeps a Booking CSV-backed consumed RB incoming out of unmatched inflows', () => {
+    const review = buildReviewForConsumedPayoutIncomingScenario({
+      platform: 'booking',
+      payoutBatchKey: 'booking-batch:2026-03-12:PAYOUT-BOOK-20260310',
+      payoutReference: 'PAYOUT-BOOK-20260310',
+      payoutBatchRowIds: ['txn:payout:booking-row-1'],
+      matchedBankTransaction: buildTransaction({
+        id: toTransactionId('txn:bank:booking-csv-consumed'),
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 3553012,
+        currency: 'CZK',
+        bookedAt: '2026-03-12T09:12:00',
+        accountId: '5599955956/5500',
+        counterparty: 'Incoming bank transfer',
+        reference: '010638445054'
+      }),
+      extraIncomingTransactions: [
+        buildTransaction({
+          id: toTransactionId('txn:bank:booking-csv-unmatched'),
+          direction: 'in',
+          source: 'bank',
+          amountMinor: 220000,
+          currency: 'CZK',
+          bookedAt: '2026-03-12T14:00:00',
+          accountId: '5599955956/5500',
+          counterparty: 'Incoming bank transfer',
+          reference: 'Other payment'
+        })
+      ]
+    })
+
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.expenseUnmatchedInflows.map((item) => item.transactionIds[0])).toEqual([
+      'txn:bank:booking-csv-unmatched'
+    ])
+  })
+
+  it('keeps an Airbnb exact-match incoming out of unmatched inflows', () => {
+    const review = buildReviewForConsumedPayoutIncomingScenario({
+      platform: 'airbnb',
+      payoutBatchKey: 'airbnb-batch:2026-03-15:G-OC3WJE3SIXRO5',
+      payoutReference: 'G-OC3WJE3SIXRO5',
+      payoutBatchRowIds: ['txn:payout:airbnb-row-1'],
+      matchedBankTransaction: buildTransaction({
+        id: toTransactionId('txn:bank:airbnb-consumed'),
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 396105,
+        currency: 'CZK',
+        bookedAt: '2026-03-15T06:23:00',
+        accountId: '5599955956/5500',
+        counterparty: 'CITIBANK EUROPE PLC',
+        reference: 'G-OC3WJE3SIXRO5'
+      }),
+      extraIncomingTransactions: [
+        buildTransaction({
+          id: toTransactionId('txn:bank:airbnb-unmatched'),
+          direction: 'in',
+          source: 'bank',
+          amountMinor: 55555,
+          currency: 'CZK',
+          bookedAt: '2026-03-15T06:38:00',
+          accountId: '5599955956/5500',
+          counterparty: 'Incoming bank transfer',
+          reference: 'NON-MATCHING-CITIBANK-ROW'
+        })
+      ]
+    })
+
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.expenseUnmatchedInflows.map((item) => item.transactionIds[0])).toEqual([
+      'txn:bank:airbnb-unmatched'
+    ])
+  })
+
+  it('keeps a Comgate matched incoming out of unmatched inflows', () => {
+    const review = buildReviewForConsumedPayoutIncomingScenario({
+      platform: 'comgate',
+      payoutBatchKey: 'comgate-batch:2026-03-28:1816656999',
+      payoutReference: '1816656999',
+      payoutBatchRowIds: ['txn:payout:comgate-row-1'],
+      matchedBankTransaction: buildTransaction({
+        id: toTransactionId('txn:bank:comgate-consumed'),
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 4226900,
+        currency: 'CZK',
+        bookedAt: '2026-03-28T06:23:00',
+        accountId: '5599955956/5500',
+        counterparty: 'Comgate a.s.',
+        reference: 'Souhrnná výplata Comgate 2026-03-28 / 1816656999'
+      }),
+      extraIncomingTransactions: [
+        buildTransaction({
+          id: toTransactionId('txn:bank:comgate-unmatched'),
+          direction: 'in',
+          source: 'bank',
+          amountMinor: 154000,
+          currency: 'CZK',
+          bookedAt: '2026-03-19T06:23:00',
+          accountId: '5599955956/5500',
+          counterparty: 'Comgate a.s.',
+          reference: 'Platba rezervace WEB-2001'
+        })
+      ]
+    })
+
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.expenseUnmatchedInflows.map((item) => item.transactionIds[0])).toEqual([
+      'txn:bank:comgate-unmatched'
+    ])
+  })
+
+  it('treats the exact payout-consumed bank movement identity as consumed even when the review input carries a different bank transaction id', () => {
+    const review = buildReviewForConsumedPayoutIncomingScenario({
+      platform: 'booking',
+      payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
+      payoutReference: '010738140021',
+      matchedBankTransaction: buildTransaction({
+        id: toTransactionId('txn:bank:booking-pdf-consumed-source'),
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 5293886,
+        currency: 'CZK',
+        bookedAt: '2026-03-27T09:12:00',
+        accountId: '5599955956/5500',
+        counterparty: 'Incoming bank transfer',
+        reference: 'Settlement credit'
+      }),
+      visibleMatchedTransaction: buildTransaction({
+        id: toTransactionId('txn:bank:booking-pdf-visible-duplicate'),
+        direction: 'in',
+        source: 'bank',
+        amountMinor: 5293886,
+        currency: 'CZK',
+        bookedAt: '2026-03-27T09:12:00',
+        accountId: '5599955956/5500',
+        counterparty: 'Incoming bank transfer',
+        reference: 'Settlement credit'
+      })
+    })
+
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.expenseUnmatchedInflows).toEqual([])
+  })
+
   it('applies manual expense review overrides as one shared bucket transformation', () => {
     const sections = {
       expenseMatched: [],
@@ -1819,6 +2003,106 @@ function toTransactionId(value: string): TransactionId {
 
 function toDocumentId(value: string): DocumentId {
   return value as DocumentId
+}
+
+function buildReviewForConsumedPayoutIncomingScenario(input: {
+  platform: 'booking' | 'airbnb' | 'comgate'
+  payoutBatchKey: string
+  payoutReference: string
+  matchedBankTransaction: NormalizedTransaction
+  visibleMatchedTransaction?: NormalizedTransaction
+  extraIncomingTransactions?: NormalizedTransaction[]
+  payoutBatchRowIds?: TransactionId[] | string[]
+}): ReturnType<typeof buildReviewScreen> {
+  const visibleMatchedTransaction = input.visibleMatchedTransaction ?? input.matchedBankTransaction
+  const normalizedTransactions = [
+    visibleMatchedTransaction,
+    ...(input.extraIncomingTransactions ?? [])
+  ]
+
+  return buildReviewScreen({
+    generatedAt: '2026-04-04T12:00:00.000Z',
+    batch: {
+      files: [],
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions,
+        matching: buildMatchingResult(),
+        matchGroups: [],
+        exceptionCases: [],
+        supportedExpenseLinks: [],
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: input.payoutBatchKey,
+            payoutBatchRowIds: (input.payoutBatchRowIds ?? []) as TransactionId[],
+            bankTransactionId: input.matchedBankTransaction.id,
+            bankAccountId: input.matchedBankTransaction.accountId,
+            amountMinor: input.matchedBankTransaction.amountMinor,
+            currency: input.matchedBankTransaction.currency,
+            confidence: 0.99,
+            ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+            matched: true,
+            reasons: ['amountExact', 'currencyExact'],
+            evidence: [
+              { key: 'bankBookedAt', value: input.matchedBankTransaction.bookedAt },
+              { key: 'bankCounterparty', value: input.matchedBankTransaction.counterparty ?? '' },
+              { key: 'bankReference', value: input.matchedBankTransaction.reference ?? '' }
+            ]
+          }
+        ],
+        normalization: {
+          warnings: [],
+          trace: []
+        },
+        exceptions: {
+          cases: [],
+          trace: []
+        },
+        summary: {
+          normalizedTransactionCount: normalizedTransactions.length,
+          matchedGroupCount: 0,
+          exceptionCount: 0,
+          unmatchedExpectedCount: 0,
+          unmatchedActualCount: 0
+        }
+      },
+      report: {
+        generatedAt: '2026-04-04T12:00:00.000Z',
+        summary: {
+          normalizedTransactionCount: normalizedTransactions.length,
+          matchedGroupCount: 0,
+          payoutBatchMatchCount: 1,
+          unmatchedPayoutBatchCount: 0,
+          exceptionCount: 0,
+          unmatchedExpectedCount: 0,
+          unmatchedActualCount: 0
+        },
+        matches: [],
+        exceptions: [],
+        supportedExpenseLinks: [],
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: input.payoutBatchKey,
+            platform: input.platform === 'booking' ? 'Booking' : input.platform === 'airbnb' ? 'Airbnb' : 'Comgate',
+            payoutReference: input.payoutReference,
+            payoutDate: input.matchedBankTransaction.bookedAt.slice(0, 10),
+            bankAccountId: input.matchedBankTransaction.accountId,
+            amountMinor: input.matchedBankTransaction.amountMinor,
+            currency: input.matchedBankTransaction.currency,
+            status: 'matched',
+            confidence: 0.99,
+            reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
+            evidence: [],
+            display: {
+              title: `${input.platform === 'booking' ? 'Booking' : input.platform === 'airbnb' ? 'Airbnb' : 'Comgate'} payout ${input.payoutReference}`
+            }
+          }
+        ],
+        unmatchedPayoutBatches: [],
+        transactions: []
+      }
+    }
+  })
 }
 
 function buildTransaction(

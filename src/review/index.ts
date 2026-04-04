@@ -566,6 +566,12 @@ function buildExpenseReviewSections(
       .filter((match) => match.matched)
       .map((match) => match.bankTransactionId)
   )
+  const payoutMatchedBankMovementKeys = new Set(
+    (batch.reconciliation.payoutBatchMatches ?? [])
+      .filter((match) => match.matched)
+      .map((match) => buildPayoutConsumedBankTransactionKey(match))
+      .filter((value): value is string => Boolean(value))
+  )
   const outgoingCandidateBankTransactions = batch.reconciliation.normalizedTransactions.filter((transaction) =>
     transaction.source === 'bank'
     && transaction.direction === 'out'
@@ -578,6 +584,7 @@ function buildExpenseReviewSections(
     && transaction.direction === 'in'
     && !matchedRevenueTransactionIds.has(transaction.id)
     && !payoutMatchedBankTransactionIds.has(transaction.id)
+    && !payoutMatchedBankMovementKeys.has(buildComparableReviewBankTransactionKey(transaction))
     && !linkedExpenseTransactionIds.has(transaction.id)
     && !internalTransferIncomingKeys.has(buildReviewBankTransactionKey(transaction))
   )
@@ -1635,6 +1642,54 @@ function buildReviewBankTransactionKey(
     transaction.reference,
     transaction.counterparty
   ].map((value) => String(value ?? '')).join('|')
+}
+
+function buildComparableReviewBankTransactionKey(
+  transaction: Pick<NormalizedTransaction, 'accountId' | 'direction' | 'bookedAt' | 'amountMinor' | 'currency' | 'reference' | 'counterparty'>
+): string {
+  return [
+    transaction.accountId,
+    transaction.direction,
+    transaction.bookedAt,
+    transaction.amountMinor,
+    transaction.currency,
+    transaction.reference,
+    transaction.counterparty
+  ].map((value) => String(value ?? '').trim()).join('|')
+}
+
+function buildPayoutConsumedBankTransactionKey(
+  match: NonNullable<MonthlyBatchResult['reconciliation']['payoutBatchMatches']>[number]
+): string | undefined {
+  const bookedAt = readPayoutMatchEvidenceValue(match, 'bankBookedAt')
+  const reference = readPayoutMatchEvidenceValue(match, 'bankReference')
+  const counterparty = readPayoutMatchEvidenceValue(match, 'bankCounterparty')
+
+  if (!match.bankAccountId || !bookedAt || !match.currency) {
+    return undefined
+  }
+
+  if (!reference && !counterparty) {
+    return undefined
+  }
+
+  return [
+    match.bankAccountId,
+    'in',
+    bookedAt,
+    match.amountMinor,
+    match.currency,
+    reference,
+    counterparty
+  ].map((value) => String(value ?? '').trim()).join('|')
+}
+
+function readPayoutMatchEvidenceValue(
+  match: NonNullable<MonthlyBatchResult['reconciliation']['payoutBatchMatches']>[number],
+  key: string
+): string | undefined {
+  const value = match.evidence.find((entry) => entry.key === key)?.value
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 }
 
 function getExpenseDocumentReference(documentEntry: ExpenseDocumentReviewEntry): string | undefined {
