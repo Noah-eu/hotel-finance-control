@@ -483,7 +483,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                     sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
                     recordType: 'payout-line',
                     extractedAt: '2026-03-20T18:45:00.000Z',
-                    rawReference: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                    rawReference: 'AIR8841',
                     amountMinor: 106000,
                     currency: 'CZK',
                     occurredAt: '2026-03-10',
@@ -496,8 +496,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         stayEndAt: '2026-03-12',
                         amountMinor: 106000,
                         currency: 'CZK',
-                        reference: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
-                        reservationId: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                        reference: 'AIR8841',
+                        reservationId: 'AIR8841',
                         guestName: 'Jan Novak',
                         channel: 'airbnb',
                         sourceSheet: 'Seznam rezervací'
@@ -525,12 +525,12 @@ describe('buildReconciliationWorkflowPlan', () => {
 
         expect(plan.reservationSettlementMatches).toEqual([
             expect.objectContaining({
-                reservationId: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                reservationId: 'AIR8841',
                 settlementKind: 'payout_row',
                 matchedRowId: 'txn:payout:airbnb-reservation-1',
                 platform: 'airbnb',
                 amountMinor: 106000,
-                reasons: expect.arrayContaining(['reservationIdExact', 'amountExact', 'channelAligned'])
+                reasons: expect.arrayContaining(['reservationIdDerivedExact', 'amountExact', 'channelAligned'])
             })
         ])
         expect(plan.reservationSources).toEqual([])

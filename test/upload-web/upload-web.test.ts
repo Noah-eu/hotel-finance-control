@@ -829,11 +829,12 @@ describe('buildUploadWebFlow', () => {
   })
 
   it('shows a matched Previo reservation against a real mixed Airbnb reservation row in browser runtime state', async () => {
-    const airbnbReservationId = buildAirbnbReservationIdForTest({
-      confirmationCode: 'AIR8841',
-      stayStartAt: '2026-03-10',
-      stayEndAt: '2026-03-12',
-      amountText: '1 060,00'
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+
+    const baseline = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeFile(airbnb.sourceDocument.fileName, airbnb.rawInput.content)],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:55:00.000Z'
     })
 
     const result = await createBrowserRuntime().buildRuntimeState({
@@ -845,7 +846,7 @@ describe('buildUploadWebFlow', () => {
               createdAt: '08.03.2026 08:45',
               stayStartAt: '10.03.2026',
               stayEndAt: '12.03.2026',
-              voucher: airbnbReservationId,
+              voucher: 'HMA4TR9',
               guestName: 'Jan Novak',
               channel: 'airbnb',
               amountText: '1 060,00 Kč',
@@ -853,26 +854,7 @@ describe('buildUploadWebFlow', () => {
             }
           ])
         ),
-        createRuntimeFile(
-          'airbnb.csv',
-          buildRealMixedAirbnbReservationContent([
-            {
-              sourceDate: '2026-03-12',
-              availableUntilDate: '2026-03-12',
-              stayStartAt: '2026-03-10',
-              stayEndAt: '2026-03-12',
-              guestName: 'Jan Novak',
-              listingName: 'Jokeland apartment',
-              referenceCode: 'REF-AIR8841',
-              confirmationCode: 'AIR8841',
-              currency: 'CZK',
-              amountText: '1 060,00',
-              paidOutAmountText: '1 060,00',
-              serviceFeeText: '0,00',
-              grossEarningsText: '1 060,00'
-            }
-          ])
-        )
+        createRuntimeFile(airbnb.sourceDocument.fileName, airbnb.rawInput.content)
       ],
       month: '2026-03',
       generatedAt: '2026-03-26T11:00:00.000Z'
@@ -880,7 +862,7 @@ describe('buildUploadWebFlow', () => {
 
     expect(result.reviewSections.reservationSettlementOverview).toEqual([
       expect.objectContaining({
-        title: `Rezervace ${airbnbReservationId}`,
+        title: 'Rezervace HMA4TR9',
         matchStrength: 'potvrzená shoda',
         transactionIds: ['txn:payout:airbnb-payout-1']
       })
@@ -888,6 +870,10 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.reservationSettlementOverview[0]?.detail).toContain('Kanál: Airbnb.')
     expect(result.reviewSections.reservationSettlementOverview[0]?.detail).toContain('1060,00 CZK')
     expect(result.reviewSections.unmatchedReservationSettlements).toEqual([])
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(baseline.reviewSections.payoutBatchMatched.length)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(baseline.reviewSections.payoutBatchUnmatched.length)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(baseline.reportSummary.payoutBatchMatchCount)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(baseline.reportSummary.unmatchedPayoutBatchCount)
   })
 
   it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
@@ -6469,69 +6455,6 @@ function buildBookingBrowserUploadContentFromRows(rows: Array<{
       row.payoutId
     ].join(';'))
   ].join('\n')
-}
-
-function buildRealMixedAirbnbReservationContent(rows: Array<{
-  sourceDate: string
-  availableUntilDate: string
-  stayStartAt: string
-  stayEndAt: string
-  guestName: string
-  listingName: string
-  referenceCode: string
-  confirmationCode: string
-  currency: string
-  amountText: string
-  paidOutAmountText: string
-  serviceFeeText: string
-  grossEarningsText: string
-}>): string {
-  return [
-    'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',
-    ...rows.map((row) => [
-      row.sourceDate,
-      row.availableUntilDate,
-      'Rezervace',
-      row.stayStartAt,
-      row.stayEndAt,
-      row.guestName,
-      row.listingName,
-      `Rezervace ${row.confirmationCode}`,
-      row.referenceCode,
-      row.confirmationCode,
-      row.currency,
-      row.amountText,
-      row.paidOutAmountText,
-      row.serviceFeeText,
-      row.grossEarningsText
-    ].join(';'))
-  ].join('\n')
-}
-
-function buildAirbnbReservationIdForTest(input: {
-  confirmationCode: string
-  stayStartAt: string
-  stayEndAt: string
-  amountText: string
-}): string {
-  return [
-    'AIRBNB-RES',
-    input.confirmationCode.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
-    input.stayStartAt,
-    input.stayEndAt,
-    String(parseTestAmountMinor(input.amountText))
-  ].join(':')
-}
-
-function parseTestAmountMinor(value: string): number {
-  const normalized = value
-    .replace(/[€KčA-Za-z]/g, '')
-    .replace(/\s+/g, '')
-    .replace(/\.(?=\d{3}(?:\D|$))/g, '')
-    .replace(',', '.')
-    .trim()
-
-  return Math.round(Number.parseFloat(normalized) * 100)
 }
 
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {

@@ -3373,6 +3373,77 @@ describe('buildWebDemo', () => {
     expect(reloaded.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
   })
 
+  it('renders matched Airbnb reservation-level Previo rows in the visible operator truth without changing Airbnb payout batch totals', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+    const airbnb = getRealInputFixture('airbnb-payout-export')
+
+    const baseline = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T18:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-airbnb-previo-baseline',
+      locationSearch: '?debug=1',
+      storageState: new Map<string, string>(),
+      workspacePersistenceState: new Map<string, string>(),
+      files: [
+        createWebDemoRuntimeFile('airbnb.csv', airbnb.rawInput.content)
+      ]
+    })
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-03-29T18:25:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-airbnb-previo-visible-match',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '08.03.2026 08:45',
+              stayStartAt: '10.03.2026',
+              stayEndAt: '12.03.2026',
+              voucher: 'HMA4TR9',
+              guestName: 'Jan Novak',
+              channel: 'airbnb',
+              amountText: '1 060,00 Kč',
+              roomName: 'B201'
+            }
+          ])
+        ),
+        createWebDemoRuntimeFile('airbnb.csv', airbnb.rawInput.content)
+      ]
+    })
+
+    const visibleState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        reservationSettlementOverview: Array<{ title: string; detail: string; transactionIds: string[] }>
+        payoutBatchMatched: unknown[]
+        payoutBatchUnmatched: unknown[]
+      }
+    }
+
+    rendered.openControlDetailPage()
+
+    expect(visibleState.reviewSections.reservationSettlementOverview).toEqual([
+      expect.objectContaining({
+        title: 'Rezervace HMA4TR9',
+        transactionIds: ['txn:payout:airbnb-payout-1']
+      })
+    ])
+    expect(visibleState.reviewSections.reservationSettlementOverview[0]?.detail).toContain('Kanál: Airbnb.')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMA4TR9')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Kanál: Airbnb.')
+    expect(visibleState.reviewSections.payoutBatchMatched.length).toBe(
+      (baseline.getLastVisibleRuntimeState() as { reviewSections: { payoutBatchMatched: unknown[] } }).reviewSections.payoutBatchMatched.length
+    )
+    expect(visibleState.reviewSections.payoutBatchUnmatched.length).toBe(
+      (baseline.getLastVisibleRuntimeState() as { reviewSections: { payoutBatchUnmatched: unknown[] } }).reviewSections.payoutBatchUnmatched.length
+    )
+  })
+
   it('keeps previously uploaded files visible and reruns the same month on the merged file set when RB is added later', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -7110,6 +7181,34 @@ function createWebDemoRuntimeWorkbookFile(name: string, binaryContentBase64: str
 }
 
 function buildPrevioBrowserShapeWorkbookBase64(): string {
+  return buildPrevioWorkbookBase64FromRows([
+    {
+      createdAt: '13.03.2026 09:15',
+      stayStartAt: '14.03.2026',
+      stayEndAt: '16.03.2026',
+      voucher: 'PREVIO-20260314',
+      guestName: 'Jan Novak',
+      companyName: 'Acme Travel s.r.o.',
+      channel: 'direct-web',
+      amountText: '420,00',
+      outstandingText: '30,00',
+      roomName: 'A101'
+    }
+  ])
+}
+
+function buildPrevioWorkbookBase64FromRows(rows: Array<{
+  createdAt: string
+  stayStartAt: string
+  stayEndAt: string
+  voucher: string
+  guestName: string
+  companyName?: string
+  channel: string
+  amountText: string
+  outstandingText?: string
+  roomName?: string
+}>): string {
   const workbook = XLSX.utils.book_new()
   const reservationSheet = XLSX.utils.aoa_to_sheet([
     ['Seznam rezervací'],
@@ -7130,28 +7229,28 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       'Saldo',
       'Pokoj'
     ],
-    [
-      '13.03.2026 09:15',
-      '14.03.2026',
-      '16.03.2026',
-      '2',
-      'PREVIO-20260314',
-      '2',
-      'Jan Novak',
+    ...rows.map((row) => [
+      row.createdAt,
+      row.stayStartAt,
+      row.stayEndAt,
+      '1',
+      row.voucher,
+      '1',
+      row.guestName,
       'Ano',
       '',
-      'Acme Travel s.r.o.',
-      'direct-web',
+      row.companyName ?? '',
+      row.channel,
       'confirmed',
-      '420,00',
-      '30,00',
-      'A101'
-    ]
+      row.amountText,
+      row.outstandingText ?? '0,00',
+      row.roomName ?? 'A101'
+    ])
   ])
   XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ['Přehled rezervací'],
-    ['Počet rezervací', '1']
+    ['Počet rezervací', String(rows.length)]
   ]), 'Přehled rezervací')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
 }

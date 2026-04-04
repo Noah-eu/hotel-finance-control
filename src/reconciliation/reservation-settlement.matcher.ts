@@ -134,7 +134,14 @@ function evaluateCandidate(
         evidence.push({ key: 'reference', value: reference })
         reasons.push('referenceExact')
     } else {
-        return null
+        const derivedAirbnbIdentityMatch = matchDerivedAirbnbIdentity(reservation, candidate)
+
+        if (!derivedAirbnbIdentityMatch) {
+            return null
+        }
+
+        evidence.push({ key: derivedAirbnbIdentityMatch.key, value: derivedAirbnbIdentityMatch.value })
+        reasons.push(derivedAirbnbIdentityMatch.reason)
     }
 
     if (candidate.currency !== reservation.currency) {
@@ -267,4 +274,95 @@ function inferReservationSettlementChannels(
     if (reference.includes('expedia')) return ['expedia_direct_bank']
 
     return []
+}
+
+function matchDerivedAirbnbIdentity(
+    reservation: ReservationSourceRecord,
+    candidate: Candidate
+): { key: string, value: string, reason: string } | null {
+    if (candidate.settlementKind !== 'payout_row' || candidate.platform !== 'airbnb') {
+        return null
+    }
+
+    if (!inferReservationSettlementChannels(reservation).includes('airbnb')) {
+        return null
+    }
+
+    const derivedReservationId = buildDerivedAirbnbReservationId(reservation)
+    if (candidate.reservationId && derivedReservationId && candidate.reservationId === derivedReservationId) {
+        return {
+            key: 'derivedAirbnbReservationId',
+            value: derivedReservationId,
+            reason: 'reservationIdDerivedExact'
+        }
+    }
+
+    const derivedReference = buildDerivedAirbnbReservationReference(reservation)
+    if (derivedReference && candidate.payoutReference === derivedReference) {
+        return {
+            key: 'derivedAirbnbReference',
+            value: derivedReference,
+            reason: 'referenceDerivedExact'
+        }
+    }
+
+    return null
+}
+
+function buildDerivedAirbnbReservationId(reservation: ReservationSourceRecord): string | undefined {
+    const token = extractComparableAirbnbToken(reservation)
+
+    if (!token || !reservation.stayStartAt || !reservation.stayEndAt) {
+        return undefined
+    }
+
+    return `AIRBNB-RES:${token}:${reservation.stayStartAt}:${reservation.stayEndAt}:${reservation.grossRevenueMinor}`
+}
+
+function buildDerivedAirbnbReservationReference(reservation: ReservationSourceRecord): string | undefined {
+    const token = extractComparableAirbnbToken(reservation)
+
+    if (!token || !reservation.stayStartAt || !reservation.stayEndAt) {
+        return undefined
+    }
+
+    return `AIRBNB-STAY:${token}:${reservation.stayStartAt}:${reservation.stayEndAt}`
+}
+
+function extractComparableAirbnbToken(reservation: ReservationSourceRecord): string | undefined {
+    const candidates = [reservation.reference, reservation.reservationId]
+
+    for (const candidate of candidates) {
+        const token = normalizeComparableAirbnbToken(candidate)
+
+        if (token) {
+            return token
+        }
+    }
+
+    return undefined
+}
+
+function normalizeComparableAirbnbToken(value: string | undefined): string | undefined {
+    const raw = (value ?? '').trim()
+
+    if (!raw) {
+        return undefined
+    }
+
+    const fullReservationIdMatch = /^AIRBNB-RES:([^:]+):\d{4}-\d{2}-\d{2}:\d{4}-\d{2}-\d{2}:\d+$/i.exec(raw)
+    if (fullReservationIdMatch) {
+        return fullReservationIdMatch[1]!.trim().toLowerCase()
+    }
+
+    const fullReferenceMatch = /^AIRBNB-STAY:([^:]+):\d{4}-\d{2}-\d{2}:\d{4}-\d{2}-\d{2}$/i.exec(raw)
+    if (fullReferenceMatch) {
+        return fullReferenceMatch[1]!.trim().toLowerCase()
+    }
+
+    if (!/^[A-Za-z0-9-]+$/.test(raw)) {
+        return undefined
+    }
+
+    return raw.toLowerCase()
 }
