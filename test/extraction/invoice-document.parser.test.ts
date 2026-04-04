@@ -366,6 +366,82 @@ describe('parseInvoiceDocument', () => {
     expect((records[0]?.data as { amountMinor?: number }).amountMinor).not.toBe(1043762)
   })
 
+  it('parses retail tax invoices with terminal-slip noise without losing invoice family, dates, supplier, or total selection', () => {
+    const invoice = getRealInputFixture('invoice-document-retail-tax-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-03-31T11:20:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-03-31T11:20:00.000Z'
+    })
+
+    expect(detectInvoiceDocumentKeywordHits(invoice.rawInput.content)).toEqual(expect.arrayContaining([
+      'Daňový doklad - FAKTURA',
+      'daňový doklad',
+      'Faktura',
+      'Dodavatel',
+      'Datum vystavení',
+      'Datum uskutečnění zdaň. plnění',
+      'Datum splatnosti',
+      'Celkem k úhradě s DPH',
+      'IČ / DIČ'
+    ]))
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      settlementDirection: 'payable_outgoing',
+      issuerOrCounterparty: 'HP TRONIC Zlín, spol. s r.o.',
+      referenceNumber: '358260021513',
+      issueDate: '2026-03-28',
+      taxableDate: '2026-03-28',
+      dueDate: '2026-03-28',
+      totalAmountMinor: 228800,
+      totalCurrency: 'CZK',
+      settlementAmountMinor: 228800,
+      settlementCurrency: 'CZK',
+      vatBaseAmountMinor: 189091,
+      vatBaseCurrency: 'CZK',
+      vatAmountMinor: 39709,
+      vatCurrency: 'CZK',
+      confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: [],
+      fieldExtractionDebug: expect.objectContaining({
+        totalAmount: expect.objectContaining({
+          winnerRule: 'field-specific-summary-total',
+          winnerValue: '2 288,00 CZK',
+          candidateValues: expect.arrayContaining(['1 890,91 CZK', '2 288,00 CZK'])
+        }),
+        issueDate: expect.objectContaining({
+          winnerValue: '28.03.2026'
+        }),
+        dueDate: expect.objectContaining({
+          winnerValue: '28.03.2026'
+        }),
+        taxableDate: expect.objectContaining({
+          winnerValue: '28.03.2026'
+        })
+      })
+    })
+  })
+
+  it('does not recognize retail tax invoices with terminal-slip wording as strong receipts', () => {
+    const invoice = getRealInputFixture('invoice-document-retail-tax-pdf')
+
+    expect(inspectReceiptDocumentExtractionSummary(invoice.rawInput.content)).not.toMatchObject({
+      confidence: 'strong',
+      documentKind: 'receipt'
+    })
+  })
+
   it('parses Booking invoice PDFs as invoice documents and preserves local CZK payable totals when present', () => {
     const invoice = getRealInputFixture('booking-invoice-pdf')
 

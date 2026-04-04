@@ -161,11 +161,11 @@ const FIELD_ALIASES = {
   customer: ['Customer', 'Buyer', 'Odběratel'],
   issueDate: ['Issue date', 'Invoice date', 'Issued on', 'Datum vystavení'],
   dueDate: ['Due date', 'Payment due', 'Payment due date', 'Due on', 'Datum splatnosti'],
-  taxableDate: ['Taxable date', 'Tax point date', 'Datum zdanitelného plnění'],
-  total: ['Total payable', 'Payable amount', 'Total due', 'Amount due', 'Celkem Kč k úhradě', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem', 'Total'],
+  taxableDate: ['Taxable date', 'Tax point date', 'Datum zdanitelného plnění', 'Datum uskutečnění zdanitelného plnění', 'Datum uskutečnění zdaň. plnění'],
+  total: ['Total payable', 'Payable amount', 'Total due', 'Amount due', 'Celkem Kč k úhradě', 'Celkem k úhradě s DPH', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem CZK', 'Celkem', 'Total'],
   paymentMethod: ['Payment method', 'Forma úhrady'],
   description: ['Service', 'Description', 'Invoice type', 'Položka', 'Předmět plnění'],
-  vatBase: ['VAT base', 'Tax base', 'Základ DPH'],
+  vatBase: ['VAT base', 'Tax base', 'Základ DPH', 'Základ'],
   vat: ['VAT', 'DPH'],
   iban: ['IBAN', 'Iban']
 } satisfies Record<string, string[]>
@@ -191,6 +191,7 @@ const STRUCTURED_VALUE_SEPARATOR_GLOBAL_PATTERN = /[|¦│┃]/g
 const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Faktura', pattern: /\bfaktura\b/i },
   { label: 'Faktura - daňový doklad', pattern: /\bfaktura\s*-\s*daňový\s+doklad\b/i },
+  { label: 'Daňový doklad - FAKTURA', pattern: /\bdaňový\s+doklad\s*-\s*faktura\b/i },
   { label: 'daňový doklad', pattern: /\bdaňový\s+doklad\b/i },
   { label: 'Invoice', pattern: /\binvoice\b/i },
   { label: 'Invoice No', pattern: /\binvoice\s*(?:no|number)\b/i },
@@ -200,9 +201,11 @@ const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Datum vystavení', pattern: /datum\s+vystavení/iu },
   { label: 'Datum splatnosti', pattern: /\bdatum\s+splatnosti\b/i },
   { label: 'Datum zdanitelného plnění', pattern: /datum\s+zdanitelného\s+plnění/iu },
+  { label: 'Datum uskutečnění zdaň. plnění', pattern: /datum\s+uskutečnění\s+zda[nň]\.??\s+plnění/iu },
   { label: 'Forma úhrady', pattern: /\bforma\s+úhrady\b/i },
   { label: 'Rozpis DPH', pattern: /\brozpis\s+dph\b/i },
   { label: 'K úhradě', pattern: /k\s+úhradě/iu },
+  { label: 'Celkem k úhradě s DPH', pattern: /celkem\s+k\s+úhradě\s+s\s+dph/iu },
   { label: 'Celkem Kč k úhradě', pattern: /\bcelkem(?:\s+kč)?\s+k\s+úhrad[ěe]\b/i },
   { label: 'Celkem po zaokrouhlení', pattern: /celkem\s+po\s+zaokrouhlen[íi]/iu },
   { label: 'IBAN', pattern: /\biban\b/i },
@@ -1061,6 +1064,7 @@ function extractGeneralInvoiceSupplementaryFields(
   const explicitInvoiceNumber = normalizeInvoiceReferenceValue(
     pickRequiredField(fields, FIELD_ALIASES.invoiceNumber)
     ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*(?:da[ňn]ový\s+doklad\s*-\s*faktura|faktura)\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
       /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*[:\-]?\s*([^\n]+)/iu,
       /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*\n\s*([^\n]+)/iu
     ])
@@ -2331,7 +2335,7 @@ function collectSummaryTotalCandidates(
   for (let index = 0; index < lines.length; index += 1) {
     const normalized = normalizeLabelSearch(lines[index]!)
 
-    if (normalized !== 's dph' && !normalized.startsWith('s dph ')) {
+    if (!isInvoiceSummaryTotalLabel(normalized)) {
       continue
     }
 
@@ -3042,6 +3046,7 @@ function isPreferredPayableTotalLabel(normalizedLabel: string): boolean {
   return normalizedLabel === 'celkem kc k uhrade'
     || normalizedLabel === 'k uhrade'
     || normalizedLabel === 'celkem k uhrade'
+    || normalizedLabel === 'celkem k uhrade s dph'
     || normalizedLabel === 'total due'
     || normalizedLabel === 'amount due'
 }
@@ -3112,6 +3117,7 @@ function collectFallbackInvoiceCandidates(
   recordDirectFieldCandidates(debugStates.vatAmount, fields, FIELD_ALIASES.vat, 'vatAmount', /./)
 
   recordRegexCandidate(debugStates.referenceNumber, content, 'regex-invoice-number', [
+    /(?:^|\n)\s*(?:da[ňn]ový\s+doklad\s*-\s*faktura|faktura)\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
     /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
   ], 'referenceNumber')
   recordRegexCandidate(debugStates.issuerOrCounterparty, content, 'regex-supplier', [
@@ -3129,7 +3135,7 @@ function collectFallbackInvoiceCandidates(
     /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'dueDate')
   recordRegexCandidate(debugStates.taxableDate, content, 'regex-taxable-date', [
-    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
+    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|datum\s+uskute[cč]n[ěe]n[íi]\s+zda[nň]\.??\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'taxableDate')
   recordRegexCandidate(debugStates.paymentMethod, content, 'regex-payment-method', [
     /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]?\s*([^\n]+)/iu
@@ -4093,6 +4099,7 @@ function payableLabelPriority(normalizedLabel: string): number {
   if (
     normalizedLabel === 'celkem kc k uhrade'
     || normalizedLabel === 'celkem k uhrade'
+    || normalizedLabel === 'celkem k uhrade s dph'
     || normalizedLabel === 'k uhrade'
   ) {
     return 2
@@ -4103,6 +4110,13 @@ function payableLabelPriority(normalizedLabel: string): number {
   }
 
   return 0
+}
+
+function isInvoiceSummaryTotalLabel(normalizedLabel: string): boolean {
+  return normalizedLabel === 's dph'
+    || normalizedLabel.startsWith('s dph ')
+    || normalizedLabel === 'celkem czk'
+    || (normalizedLabel.includes('zaklad') && normalizedLabel.includes('celkem') && normalizedLabel.includes('dph'))
 }
 
 function normalizeInvoiceReferenceValue(value: string | undefined): string | undefined {

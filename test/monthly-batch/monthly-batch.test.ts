@@ -1469,6 +1469,62 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('keeps retail tax invoice PDFs on the invoice route even when a payment-terminal slip block is embedded in the text layer', () => {
+    const invoice = getRealInputFixture('invoice-document-retail-tax-pdf')
+
+    expect(detectUploadedMonthlyFileCapability({
+      fileName: invoice.sourceDocument.fileName,
+      content: invoice.rawInput.content,
+      contentFormat: 'pdf-text'
+    })).toEqual({
+      profile: 'pdf_text_layer',
+      transportProfile: 'text_pdf',
+      documentHints: ['invoice_like'],
+      confidence: 'strong',
+      evidence: expect.arrayContaining(['pdf-upload', 'text-layer-extracted', 'document-hint:invoice_like'])
+    })
+
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: invoice.sourceDocument.fileName,
+        content: invoice.rawInput.content,
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-31T11:35:00.000Z',
+        sourceDescriptor: {
+          mimeType: 'application/pdf',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Daňový doklad - FAKTURA 358260021513 HP TRONIC Zlín, spol. s r.o.',
+            detectedSignatures: []
+          }
+        }
+      }
+    ])
+
+    expect(prepared.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Datart-retail-tax-invoice.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        parserId: 'invoice',
+        role: 'primary',
+        decision: expect.objectContaining({
+          capability: expect.objectContaining({
+            profile: 'pdf_text_layer',
+            transportProfile: 'text_pdf',
+            documentHints: ['invoice_like']
+          }),
+          ingestionBranch: 'text-pdf-parser',
+          resolvedBucket: 'recognized-supported'
+        })
+      })
+    ])
+  })
+
   it('routes Booking-branded invoice PDFs into the invoice document path instead of the Booking payout supplement path', () => {
     const invoice = getRealInputFixture('booking-invoice-pdf')
     const prepared = prepareUploadedMonthlyBatchFiles([

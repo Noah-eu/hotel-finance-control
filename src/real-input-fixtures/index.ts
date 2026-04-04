@@ -21,6 +21,7 @@ export interface RealInputFixture {
   | 'invoice-document'
   | 'booking-invoice-pdf'
   | 'invoice-document-czech-pdf'
+  | 'invoice-document-retail-tax-pdf'
   | 'invoice-document-dobra-energie-pdf'
   | 'invoice-document-dobra-energie-refund-pdf'
   | 'invoice-document-dobra-energie-refund-sparse-pdf'
@@ -1802,6 +1803,96 @@ export const realInputFixtures: RealInputFixture[] = [
         invoiceNumber: '141260183',
         extractedRecordIds: ['invoice-record:doc-invoice-lenner-141260183'],
         sourceDocumentIds: ['doc-invoice-lenner-141260183' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-retail-tax-pdf',
+    description: 'Retail tax invoice PDF fixture with VAT-summary totals and embedded payment-terminal slip noise.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-retail-tax-358260021513' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'Datart-retail-tax-invoice.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'Daňový doklad - FAKTURA 358260021513',
+        'Dodavatel',
+        'HP TRONIC Zlín, spol. s r.o.',
+        'nám. Práce 2523',
+        '760 01 Zlín',
+        'IČO: 66699053',
+        'DIČ: CZ66699053',
+        'Koncový zákazník',
+        'JOKELAND s.r.o.',
+        'Datum vystavení',
+        '28.03.2026',
+        'Datum uskutečnění zdaň. plnění',
+        '28.03.2026',
+        'Datum splatnosti',
+        '28.03.2026',
+        'DPH | Základ | Celkem CZK',
+        '397,09 | 1 890,91 | 2 288,00',
+        'Celkem k úhradě s DPH',
+        '2 288,00 CZK',
+        'Platební terminál',
+        'Částka CZK',
+        '2 290,00',
+        'Datum a čas transakce',
+        '28/03/2026 16:54:25',
+        'Autorizační kód',
+        '123456',
+        'Strana 1/2',
+        'Strana 2/2'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record:doc-invoice-retail-tax-358260021513',
+        sourceDocumentId: 'doc-invoice-retail-tax-358260021513' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: '358260021513',
+        amountMinor: 228800,
+        currency: 'CZK',
+        occurredAt: '2026-03-28',
+        data: {
+          sourceSystem: 'invoice',
+          settlementDirection: 'payable_outgoing',
+          invoiceNumber: '358260021513',
+          supplier: 'HP TRONIC Zlín, spol. s r.o.',
+          issueDate: '2026-03-28',
+          dueDate: '2026-03-28',
+          taxableDate: '2026-03-28',
+          amountMinor: 228800,
+          currency: 'CZK',
+          settlementAmountMinor: 228800,
+          settlementCurrency: 'CZK',
+          referenceHints: ['358260021513'],
+          vatBaseAmountMinor: 189091,
+          vatBaseCurrency: 'CZK',
+          vatAmountMinor: 39709,
+          vatCurrency: 'CZK'
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record:doc-invoice-retail-tax-358260021513' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        settlementDirection: 'payable_outgoing',
+        amountMinor: 228800,
+        currency: 'CZK',
+        bookedAt: '2026-03-28',
+        accountId: 'document-expenses',
+        counterparty: 'HP TRONIC Zlín, spol. s r.o.',
+        reference: '358260021513',
+        referenceHints: ['358260021513'],
+        invoiceNumber: '358260021513',
+        extractedRecordIds: ['invoice-record:doc-invoice-retail-tax-358260021513'],
+        sourceDocumentIds: ['doc-invoice-retail-tax-358260021513' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },
