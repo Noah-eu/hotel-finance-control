@@ -647,6 +647,17 @@ describe('parsePrevioReservationExport', () => {
       requestedAt: '2026-03-21T15:05:30.000Z'
     })
 
+    expect(plan.previoReservationTruth).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        reference: 'PREVIO-20260314',
+        sourceSystem: 'previo',
+        grossRevenueMinor: 42000,
+        currency: 'CZK',
+        channel: 'booking',
+        expectedSettlementChannels: ['booking']
+      })
+    ])
     expect(plan.reservationSources).toEqual([])
     expect(plan.ancillaryRevenueSources).toEqual([])
   })

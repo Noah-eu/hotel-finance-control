@@ -3078,6 +3078,18 @@ describe('buildUploadWebFlow', () => {
       '5599955956/5500',
       '8888997777/2010'
     ])
+    expect(batch.reconciliation.workflowPlan?.previoReservationTruth).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        reference: 'PREVIO-20260314',
+        sourceSystem: 'previo',
+        grossRevenueMinor: 42000,
+        outstandingBalanceMinor: 3000,
+        currency: 'CZK',
+        channel: 'direct-web',
+        expectedSettlementChannels: ['comgate']
+      })
+    ])
     expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.payoutRows).toEqual([

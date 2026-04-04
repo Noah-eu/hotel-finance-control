@@ -249,6 +249,7 @@ export interface BankFeeClassification {
 }
 
 export interface ReconciliationWorkflowPlan {
+  previoReservationTruth?: ReservationSourceRecord[]
   reservationSources: ReservationSourceRecord[]
   ancillaryRevenueSources: AncillaryRevenueSourceRecord[]
   reservationSettlementMatches: ReservationSettlementMatch[]

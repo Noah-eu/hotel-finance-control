@@ -382,6 +382,18 @@ describe('runMonthlyReconciliationBatch', () => {
         extractedCount: 1
       }
     ])
+    expect(result.reconciliation.workflowPlan?.previoReservationTruth).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        reference: 'PREVIO-20260314',
+        sourceSystem: 'previo',
+        grossRevenueMinor: 42000,
+        outstandingBalanceMinor: 3000,
+        currency: 'CZK',
+        channel: 'direct-web',
+        expectedSettlementChannels: ['comgate']
+      })
+    ])
     expect(result.reconciliation.workflowPlan?.reservationSources).toEqual([])
   })
 

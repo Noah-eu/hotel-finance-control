@@ -25,6 +25,7 @@ export interface BuildWorkflowPlanInput {
 export function buildReconciliationWorkflowPlan(
     input: BuildWorkflowPlanInput
 ): ReconciliationWorkflowPlan {
+    const previoReservationTruth = buildPrevioReservationTruth(input.extractedRecords)
     const reservationSources = buildReservationSources(input.extractedRecords)
     const ancillaryRevenueSources = buildAncillaryRevenueSources(input.extractedRecords)
     const payoutRows = buildPayoutRows(input.normalizedTransactions, input.extractedRecords)
@@ -37,13 +38,21 @@ export function buildReconciliationWorkflowPlan(
         payoutRows,
         directBankSettlements
     })
+    const previoReservationTruthMatching = matchReservationSourcesToSettlements({
+        reservationSources: previoReservationTruth,
+        payoutRows,
+        directBankSettlements
+    })
     const expenseDocuments = buildExpenseDocuments(input.normalizedTransactions)
     const bankFeeClassifications = buildBankFeeClassifications(input.normalizedTransactions)
 
     return {
+        previoReservationTruth,
         reservationSources,
         ancillaryRevenueSources,
-        reservationSettlementMatches: reservationSettlementMatching.matches,
+        reservationSettlementMatches: dedupeReservationSettlementMatches(
+            reservationSettlementMatching.matches.concat(previoReservationTruthMatching.matches)
+        ),
         reservationSettlementNoMatches: reservationSettlementMatching.noMatches,
         payoutRows,
         payoutBatches,
@@ -51,6 +60,12 @@ export function buildReconciliationWorkflowPlan(
         expenseDocuments,
         bankFeeClassifications
     }
+}
+
+function buildPrevioReservationTruth(extractedRecords: ExtractedRecord[]): ReservationSourceRecord[] {
+    return extractedRecords
+        .filter(isPrevioAccommodationReservationRecord)
+        .map(toReservationSourceRecord)
 }
 
 function buildCarryoverPayoutBatches(
@@ -75,26 +90,9 @@ function buildCarryoverPayoutBatches(
 
 function buildReservationSources(extractedRecords: ExtractedRecord[]): ReservationSourceRecord[] {
     return extractedRecords
-        .filter((record) => record.recordType === 'payout-line')
-        .filter((record) => record.data.platform === 'previo')
-        .filter((record) => record.data.rowKind !== 'ancillary')
+        .filter(isPrevioAccommodationReservationRecord)
         .filter(isSettlementProjectionEligible)
-        .map((record) => ({
-            reservationId: stringOrFallback(record.data.reservationId, record.rawReference, record.id),
-            sourceDocumentId: record.sourceDocumentId,
-            sourceSystem: 'previo',
-            bookedAt: stringOrFallback(record.data.bookedAt, record.occurredAt, record.extractedAt.slice(0, 10)),
-            reference: optionalString(record.data.reference) ?? record.rawReference,
-            guestName: optionalString(record.data.guestName),
-            channel: optionalString(record.data.channel),
-            stayStartAt: optionalString(record.data.stayStartAt) ?? optionalString(record.data.bookedAt) ?? record.occurredAt,
-            stayEndAt: optionalString(record.data.stayEndAt),
-            propertyId: optionalString(record.data.propertyId),
-            grossRevenueMinor: numberOrZero(record.data.amountMinor, record.amountMinor),
-            netRevenueMinor: optionalNumber(record.data.netAmountMinor),
-            currency: stringOrFallback(record.data.currency, record.currency, 'CZK'),
-            expectedSettlementChannels: inferReservationSettlementChannels(record)
-        }))
+        .map(toReservationSourceRecord)
 }
 
 function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): AncillaryRevenueSourceRecord[] {
@@ -325,6 +323,11 @@ function inferReservationSettlementChannels(record: ExtractedRecord): Reservatio
         return [routing]
     }
 
+    const channel = normalizeReservationSettlementChannel(optionalString(record.data.channel))
+    if (channel) {
+        return [channel]
+    }
+
     const reference = `${optionalString(record.data.reference) ?? ''} ${record.rawReference ?? ''}`.toLowerCase()
     if (reference.includes('booking')) return ['booking']
     if (reference.includes('airbnb')) return ['airbnb']
@@ -447,4 +450,100 @@ function firstDefined<T>(values: Array<T | undefined>): T | undefined {
 function uniqueValues<T>(values: T[]): T[] | undefined {
     const unique = Array.from(new Set(values))
     return unique.length > 0 ? unique : undefined
+}
+
+function isPrevioAccommodationReservationRecord(record: ExtractedRecord): boolean {
+    return record.recordType === 'payout-line'
+        && record.data.platform === 'previo'
+        && record.data.rowKind !== 'ancillary'
+        && hasDeterministicPrevioReservationSignals(record)
+}
+
+function hasDeterministicPrevioReservationSignals(record: ExtractedRecord): boolean {
+    return stringOrFallback(record.data.reservationId, record.data.reference, record.rawReference, '').length > 0
+        && stringOrFallback(record.data.bookedAt, record.data.stayStartAt, record.occurredAt, '').length > 0
+        && stringOrFallback(record.data.currency, record.currency, '').length > 0
+    && hasFiniteNumber(record.data.amountMinor, record.amountMinor)
+}
+
+function toReservationSourceRecord(record: ExtractedRecord): ReservationSourceRecord {
+    return {
+        reservationId: stringOrFallback(record.data.reservationId, record.rawReference, record.id),
+        sourceDocumentId: record.sourceDocumentId,
+        sourceSystem: 'previo',
+        bookedAt: stringOrFallback(record.data.bookedAt, record.occurredAt, record.extractedAt.slice(0, 10)),
+        createdAt: optionalString(record.data.createdAt),
+        reference: optionalString(record.data.reference) ?? record.rawReference,
+        guestName: optionalString(record.data.guestName),
+        channel: optionalString(record.data.channel),
+        stayStartAt: optionalString(record.data.stayStartAt) ?? optionalString(record.data.bookedAt) ?? record.occurredAt,
+        stayEndAt: optionalString(record.data.stayEndAt),
+        propertyId: optionalString(record.data.propertyId),
+        grossRevenueMinor: numberOrZero(record.data.amountMinor, record.amountMinor),
+        netRevenueMinor: optionalNumber(record.data.netAmountMinor),
+        outstandingBalanceMinor: optionalNumber(record.data.outstandingBalanceMinor),
+        roomName: optionalString(record.data.roomName),
+        companyName: optionalString(record.data.companyName),
+        currency: stringOrFallback(record.data.currency, record.currency, 'CZK'),
+        expectedSettlementChannels: inferReservationSettlementChannels(record)
+    }
+}
+
+function normalizeReservationSettlementChannel(value: string | undefined): ReservationSettlementChannel | undefined {
+    const normalized = (value ?? '').trim().toLowerCase()
+
+    if (!normalized) {
+        return undefined
+    }
+
+    if (normalized === 'booking' || normalized === 'booking.com') {
+        return 'booking'
+    }
+
+    if (normalized === 'airbnb') {
+        return 'airbnb'
+    }
+
+    if (normalized === 'expedia' || normalized === 'expedia_direct_bank') {
+        return 'expedia_direct_bank'
+    }
+
+    if (
+        normalized === 'comgate'
+        || normalized === 'direct-web'
+        || normalized === 'direct web'
+        || normalized === 'web'
+        || normalized === 'website'
+        || normalized === 'parking'
+    ) {
+        return 'comgate'
+    }
+
+    return undefined
+}
+
+function dedupeReservationSettlementMatches(
+    matches: ReconciliationWorkflowPlan['reservationSettlementMatches']
+): ReconciliationWorkflowPlan['reservationSettlementMatches'] {
+    const uniqueMatches = new Map<string, ReconciliationWorkflowPlan['reservationSettlementMatches'][number]>()
+
+    for (const match of matches) {
+        const key = [
+            match.reservationId,
+            match.platform,
+            match.settlementKind,
+            match.matchedRowId ?? '',
+            match.matchedSettlementId ?? ''
+        ].join(':')
+
+        if (!uniqueMatches.has(key)) {
+            uniqueMatches.set(key, match)
+        }
+    }
+
+    return Array.from(uniqueMatches.values())
+}
+
+function hasFiniteNumber(...values: Array<unknown>): boolean {
+    return values.some((value) => typeof value === 'number' && Number.isFinite(value))
 }
