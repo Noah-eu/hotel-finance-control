@@ -10,7 +10,7 @@ import {
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { inspectPayoutBatchBankDecisions, type PreviousMonthCarryoverSource } from '../reconciliation'
-import { buildReviewScreen } from '../review'
+import { buildReviewScreen, inspectInternalTransferPairSelections } from '../review'
 import { resolveRuntimeBuildInfo } from '../shared/build-provenance'
 import { formatAmountMinorCs } from '../shared/money'
 import type { BrowserRuntimeProgressUpdate, BrowserRuntimeUploadState } from './index.js'
@@ -458,6 +458,10 @@ function buildRuntimeAudit(
   const runtimeUnmatchedTitleSourceValues = review.payoutBatchUnmatched
     .filter((item) => String(item.title).startsWith('Airbnb payout dávka '))
     .map((item) => String(item.title).replace(/^Airbnb payout dávka\s+/, ''))
+  const internalTransferDiagnostics = inspectInternalTransferPairSelections(
+    batch.reconciliation.normalizedTransactions,
+    new Set(batch.reconciliation.supportedExpenseLinks.map((link) => link.expenseTransactionId))
+  )
 
   return {
     payoutDiagnostics: {
@@ -473,6 +477,7 @@ function buildRuntimeAudit(
       runtimeMatchedTitleSourceValues,
       runtimeUnmatchedTitleSourceValues
     },
+    internalTransferDiagnostics,
     fileIntakeDiagnostics: uploadedFiles.map((file, index) => {
       const route = fileRoutes[index]
       const browserTextExtraction = file.sourceDescriptor?.browserTextExtraction

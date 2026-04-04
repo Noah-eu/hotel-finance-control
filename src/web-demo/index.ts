@@ -5526,7 +5526,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const reviewSummary = (state && state.reviewSummary) || {};
         const matchedSectionCount = Array.isArray(reviewSections.payoutBatchMatched) ? reviewSections.payoutBatchMatched.length : 0;
         const unmatchedSectionCount = Array.isArray(reviewSections.payoutBatchUnmatched) ? reviewSections.payoutBatchUnmatched.length : 0;
+        const runtimeAudit = (state && state.runtimeAudit) || {};
         const airbnbHistogram = reconciliationSnapshot.airbnbUnmatchedHistogram || {};
+        const internalTransferDiagnostics = Array.isArray(runtimeAudit.internalTransferDiagnostics)
+          ? runtimeAudit.internalTransferDiagnostics
+          : [];
 
         const reconciliationDecisionMarkup = Array.isArray(reconciliationSnapshot.payoutBatchDecisions) && reconciliationSnapshot.payoutBatchDecisions.length > 0
           ? '<li><strong>Raw reconciliation batch decisions:</strong><ul>'
@@ -5592,6 +5596,49 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ).join('')
             + '</ul></li>'
           : '';
+        const internalTransferTraceMarkup = internalTransferDiagnostics.length > 0
+          ? '<li><strong>Internal transfer trace:</strong><ul>'
+            + internalTransferDiagnostics.map((trace) => {
+              const chosenIncomingLabel = trace.incomingTransactionId
+                ? '<code>' + escapeHtml(String(trace.incomingTransactionId || '')) + '</code>'
+                : 'žádný';
+              const referenceLabel = [trace.outgoingReference, trace.incomingReference]
+                .filter(Boolean)
+                .map((value) => String(value))
+                .join(' ↔ ');
+              const candidateLabel = Array.isArray(trace.candidates) && trace.candidates.length > 0
+                ? trace.candidates.map((candidate) =>
+                  String(candidate.incomingTransactionId || '')
+                  + '@' + String(candidate.dateWindow || 'primary')
+                  + '/' + String(candidate.dateDistance || 0) + 'd'
+                  + '/out:' + (candidate.outgoingMentionsIncomingAccount ? '1' : '0')
+                  + '/in:' + (candidate.incomingMentionsOutgoingAccount ? '1' : '0')
+                ).join(' | ')
+                : '';
+
+              return '<li><code>' + escapeHtml(String(trace.outgoingTransactionId || '')) + '</code>'
+                + ' · ' + escapeHtml(buildAmountDisplay(trace.amountMinor || 0, trace.currency || 'CZK'))
+                + ' · out account ' + escapeHtml(String(trace.outgoingAccountId || 'n/a'))
+                + ' · primary ' + escapeHtml(String(trace.candidateCountWithinPrimaryWindow || 0))
+                + ' · fallback ' + escapeHtml(String(trace.candidateCountWithinExtendedFallbackWindow || 0))
+                + ' · matched ' + escapeHtml(trace.matched ? 'ano' : 'ne')
+                + (trace.selectedDateWindow ? ' · window ' + escapeHtml(String(trace.selectedDateWindow)) : '')
+                + (typeof trace.dateDistance === 'number' ? ' · date ' + escapeHtml(String(trace.dateDistance)) + 'd' : '')
+                + ' · incoming ' + chosenIncomingLabel
+                + (trace.incomingAccountId ? ' · in account ' + escapeHtml(String(trace.incomingAccountId)) : '')
+                + (typeof trace.outgoingMentionsIncomingAccount === 'boolean'
+                  ? ' · out mentions incoming ' + escapeHtml(trace.outgoingMentionsIncomingAccount ? 'ano' : 'ne')
+                  : '')
+                + (typeof trace.incomingMentionsOutgoingAccount === 'boolean'
+                  ? ' · in mentions outgoing ' + escapeHtml(trace.incomingMentionsOutgoingAccount ? 'ano' : 'ne')
+                  : '')
+                + (trace.noMatchReason ? ' · reason ' + escapeHtml(String(trace.noMatchReason)) : '')
+                + (referenceLabel ? ' · refs ' + escapeHtml(referenceLabel) : '')
+                + (candidateLabel ? ' · candidates ' + escapeHtml(candidateLabel) : '')
+                + '</li>';
+            }).join('')
+            + '</ul></li>'
+          : '';
 
         return [
           '<p class="hint">Tento blok čte build marker i finální payout projekci ze stejného state objektu, který používá summary pás i detailní payout sekce.</p>',
@@ -5629,6 +5676,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           buildDiagnosticListMarkup('Raw reconciliation unmatched payout batch ids', reconciliationSnapshot.unmatchedPayoutBatchKeys || []),
           reconciliationDecisionMarkup,
           inboundBankTransactionsMarkup,
+          internalTransferTraceMarkup,
           buildDiagnosticListMarkup('Matched payout batch ids', payoutProjection.matchedIds || []),
           buildDiagnosticListMarkup('Unmatched payout batch ids', payoutProjection.unmatchedIds || []),
           '</ul>'

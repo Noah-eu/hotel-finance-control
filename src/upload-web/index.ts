@@ -180,6 +180,40 @@ export interface BrowserRuntimeUploadState {
       runtimeMatchedTitleSourceValues: string[]
       runtimeUnmatchedTitleSourceValues: string[]
     }
+    internalTransferDiagnostics: Array<{
+      outgoingTransactionId: string
+      outgoingAccountId: string
+      outgoingBookedAt: string
+      outgoingCounterparty?: string
+      outgoingReference?: string
+      amountMinor: number
+      currency: string
+      candidateCountWithinPrimaryWindow: number
+      candidateCountWithinExtendedFallbackWindow: number
+      selectedDateWindow?: 'primary' | 'extended-own-account'
+      matched: boolean
+      incomingTransactionId?: string
+      incomingAccountId?: string
+      incomingBookedAt?: string
+      incomingCounterparty?: string
+      incomingReference?: string
+      dateDistance?: number
+      outgoingMentionsIncomingAccount?: boolean
+      incomingMentionsOutgoingAccount?: boolean
+      noMatchReason?: 'no_candidates' | 'ambiguous'
+      candidates: Array<{
+        incomingTransactionId: string
+        incomingAccountId: string
+        incomingBookedAt: string
+        incomingCounterparty?: string
+        incomingReference?: string
+        dateDistance: number
+        outgoingMentionsIncomingAccount: boolean
+        incomingMentionsOutgoingAccount: boolean
+        score: number
+        dateWindow: 'primary' | 'extended-own-account'
+      }>
+    }>
     fileIntakeDiagnostics: Array<{
       fileName: string
       mimeType?: string

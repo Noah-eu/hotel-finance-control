@@ -1350,6 +1350,106 @@ describe('buildReviewScreen', () => {
     )
   })
 
+  it('pairs delayed own-account Fio → RB transfers when only the fallback own-account window yields a unique candidate', () => {
+    const missingTransferDoc = buildExceptionCase({
+      id: toExceptionCaseId('exc:txn:bank:fio-delayed-own-transfer-out'),
+      ruleCode: 'missing_supporting_document',
+      explanation: 'Outgoing expense-like transaction has no structured supporting invoice or receipt match in the current monthly batch.',
+      severity: 'high',
+      relatedTransactionIds: [toTransactionId('txn:bank:fio-delayed-own-transfer-out')]
+    })
+
+    const outgoingTransfer = buildTransaction({
+      id: toTransactionId('txn:bank:fio-delayed-own-transfer-out'),
+      direction: 'out',
+      source: 'bank',
+      amountMinor: 500000,
+      currency: 'CZK',
+      bookedAt: '2026-03-26T09:00:00.000Z',
+      accountId: '8888997777/2010',
+      counterparty: 'Moneta / 5599955956',
+      reference: '76526712'
+    })
+    const incomingTransfer = buildTransaction({
+      id: toTransactionId('txn:bank:rb-delayed-own-transfer-in'),
+      direction: 'in',
+      source: 'bank',
+      amountMinor: 500000,
+      currency: 'CZK',
+      bookedAt: '2026-03-13T08:14:00.000Z',
+      accountId: '5599955956/5500',
+      counterparty: 'JOKELAND s.r.o.',
+      reference: '71394921'
+    })
+
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-29T19:10:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [outgoingTransfer, incomingTransfer],
+          matching: buildMatchingResult(),
+          supportedExpenseLinks: [],
+          exceptionCases: [missingTransferDoc],
+          matchGroups: [],
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [missingTransferDoc],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 2,
+            matchedGroupCount: 0,
+            exceptionCount: 1,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-29T19:10:00.000Z',
+          summary: {
+            normalizedTransactionCount: 2,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 1,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.expenseMatched).toHaveLength(1)
+    expect(review.expenseNeedsReview).toHaveLength(0)
+    expect(review.expenseUnmatchedDocuments).toHaveLength(0)
+    expect(review.expenseUnmatchedOutflows).toHaveLength(0)
+    expect(review.expenseUnmatchedInflows).toHaveLength(0)
+    expect(review.expenseMatched[0]).toMatchObject({
+      title: 'Vnitřní převod 5 000,00 Kč',
+      expenseComparison: {
+        variant: 'bank-bank',
+        document: expect.objectContaining({
+          bankAccount: '8888997777/2010'
+        }),
+        bank: expect.objectContaining({
+          bankAccount: '5599955956/5500'
+        })
+      }
+    })
+  })
+
   it('keeps a Booking PDF-only consumed RB incoming out of unmatched inflows', () => {
     const review = buildReviewForConsumedPayoutIncomingScenario({
       platform: 'booking',

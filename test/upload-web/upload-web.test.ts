@@ -2825,6 +2825,53 @@ describe('buildUploadWebFlow', () => {
     )).toBe(false)
   })
 
+  it('pairs the exact delayed Fio to RB own-account browser pair through the fallback own-account window instead of leaving both sides unmatched', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithDelayedActualInternalTransferInflowOnly(),
+          'text/csv'
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithDelayedActualInternalTransferOutflowOnly(),
+          'text/csv'
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-04T22:55:00.000Z'
+    })
+
+    expect(result.reviewSections.expenseMatched.some((item) =>
+      item.title === 'Vnitřní převod 5 000,00 Kč'
+      && item.expenseComparison?.variant === 'bank-bank'
+      && item.expenseComparison?.document.bankAccount === '8888997777/2010'
+      && item.expenseComparison?.bank?.bankAccount === '5599955956/5500'
+    )).toBe(true)
+    expect(result.reviewSections.expenseUnmatchedOutflows.some((item) =>
+      item.title.includes('5 000,00 Kč')
+    )).toBe(false)
+    expect(result.reviewSections.expenseUnmatchedInflows.some((item) =>
+      item.title.includes('5 000,00 Kč')
+    )).toBe(false)
+    expect(result.runtimeAudit.internalTransferDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        outgoingAccountId: '8888997777/2010',
+        incomingAccountId: '5599955956/5500',
+        outgoingReference: '76526712',
+        incomingReference: '71394921',
+        candidateCountWithinPrimaryWindow: 0,
+        candidateCountWithinExtendedFallbackWindow: 1,
+        selectedDateWindow: 'extended-own-account',
+        matched: true,
+        dateDistance: 13,
+        outgoingMentionsIncomingAccount: true,
+        incomingMentionsOutgoingAccount: false
+      })
+    ]))
+  })
+
   it('surfaces a generic unmatched incoming bank movement in the dedicated incoming bucket', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -7393,6 +7440,20 @@ function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithDelayedActualInternalTransferInflowOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '13.03.2026 08:14;13.03.2026 08:15;5599955956/5500;8888997777/0008;JOKELAND s.r.o.;5000,00;CZK;71394921'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithDelayedActualInternalTransferOutflowOnly(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '26.03.2026 09:00;-5000,00;CZK;8888997777/2010;266617681/0008;Moneta / 5599955956;76526712'
   ].join('\n')
 }
 

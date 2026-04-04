@@ -5592,6 +5592,39 @@ describe('buildWebDemo', () => {
     )).toBe(false)
   })
 
+  it('shows the delayed internal transfer fallback trace in debug mode for the exact real Fio to RB browser pair', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-04T22:58:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-internal-transfer-delayed-trace',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbContentWithDelayedActualInternalTransferInflowOnly(),
+          'text/csv'
+        ),
+        createWebDemoRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260301-20260331.csv',
+          buildRealUploadedFioContentWithDelayedActualInternalTransferOutflowOnly(),
+          'text/csv'
+        )
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseMatchedContent.innerHTML).toContain('Vnitřní převod 5 000,00 Kč')
+    expect(rendered.expenseUnmatchedOutflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+    expect(rendered.expenseUnmatchedInflowsContent.innerHTML).not.toContain('5 000,00 Kč')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('Internal transfer trace:')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('primary 0')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('fallback 1')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('window extended-own-account')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('76526712')
+    expect(rendered.runtimePayoutProjectionDebugContent.innerHTML).toContain('71394921')
+  })
+
   it('reruns a stale persisted internal-transfer workspace snapshot from stored files during restore', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -7914,6 +7947,20 @@ function buildRealUploadedFioContentWithInternalTransferOutflowOnly(): string {
   return [
     '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
     '27.03.2026 09:00;-5000,00;CZK;8888997777/2010;5599955956/5500;Převod na vlastní RB účet;Převod na RB 5599955956/5500'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithDelayedActualInternalTransferInflowOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '13.03.2026 08:14;13.03.2026 08:15;5599955956/5500;8888997777/0008;JOKELAND s.r.o.;5000,00;CZK;71394921'
+  ].join('\n')
+}
+
+function buildRealUploadedFioContentWithDelayedActualInternalTransferOutflowOnly(): string {
+  return [
+    '"Datum";"Objem";"Měna";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zpráva pro příjemce"',
+    '26.03.2026 09:00;-5000,00;CZK;8888997777/2010;266617681/0008;Moneta / 5599955956;76526712'
   ].join('\n')
 }
 

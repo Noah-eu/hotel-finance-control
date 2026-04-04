@@ -299,6 +299,7 @@ const EXPENSE_REVIEW_STRONG_MAX_DAY_DISTANCE = 14
 const EXPENSE_REVIEW_CANDIDATE_MAX_DAY_DISTANCE = 21
 const EXPENSE_REVIEW_WEAK_AMOUNT_DELTA_MINOR = 1000
 const INTERNAL_TRANSFER_MAX_DAY_DISTANCE = 2
+const INTERNAL_TRANSFER_FALLBACK_MAX_DAY_DISTANCE = 14
 const DOCUMENT_RECORD_TYPE_SET = new Set(['invoice-document', 'receipt-document'])
 
 interface ExpenseDocumentReviewEntry {
@@ -362,11 +363,47 @@ interface InternalTransferCandidateEvaluation {
   outgoingMentionsIncomingAccount: boolean
   incomingMentionsOutgoingAccount: boolean
   score: number
+  dateWindow: 'primary' | 'extended-own-account'
 }
 
 interface InternalTransferPairSelection {
   outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
   incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+}
+
+export interface ReviewInternalTransferDecisionTrace {
+  outgoingTransactionId: string
+  outgoingAccountId: string
+  outgoingBookedAt: string
+  outgoingCounterparty?: string
+  outgoingReference?: string
+  amountMinor: number
+  currency: string
+  candidateCountWithinPrimaryWindow: number
+  candidateCountWithinExtendedFallbackWindow: number
+  selectedDateWindow?: 'primary' | 'extended-own-account'
+  matched: boolean
+  incomingTransactionId?: string
+  incomingAccountId?: string
+  incomingBookedAt?: string
+  incomingCounterparty?: string
+  incomingReference?: string
+  dateDistance?: number
+  outgoingMentionsIncomingAccount?: boolean
+  incomingMentionsOutgoingAccount?: boolean
+  noMatchReason?: 'no_candidates' | 'ambiguous'
+  candidates: Array<{
+    incomingTransactionId: string
+    incomingAccountId: string
+    incomingBookedAt: string
+    incomingCounterparty?: string
+    incomingReference?: string
+    dateDistance: number
+    outgoingMentionsIncomingAccount: boolean
+    incomingMentionsOutgoingAccount: boolean
+    score: number
+    dateWindow: 'primary' | 'extended-own-account'
+  }>
 }
 
 function cloneReviewSectionItems(items: ReviewSectionItem[]): ReviewSectionItem[] {
@@ -1463,6 +1500,23 @@ function buildInternalTransferPairSelections(
   transactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
   linkedExpenseTransactionIds: Set<NormalizedTransaction['id']>
 ): InternalTransferPairSelection[] {
+  return buildInternalTransferPairSelectionResult(transactions, linkedExpenseTransactionIds).pairs
+}
+
+export function inspectInternalTransferPairSelections(
+  transactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
+  linkedExpenseTransactionIds: Set<NormalizedTransaction['id']>
+): ReviewInternalTransferDecisionTrace[] {
+  return buildInternalTransferPairSelectionResult(transactions, linkedExpenseTransactionIds).diagnostics
+}
+
+function buildInternalTransferPairSelectionResult(
+  transactions: MonthlyBatchResult['reconciliation']['normalizedTransactions'],
+  linkedExpenseTransactionIds: Set<NormalizedTransaction['id']>
+): {
+  pairs: InternalTransferPairSelection[]
+  diagnostics: ReviewInternalTransferDecisionTrace[]
+} {
   const bankTransactions = transactions.filter((transaction) =>
     transaction.source === 'bank'
     && transaction.currency
@@ -1477,6 +1531,7 @@ function buildInternalTransferPairSelections(
   const usedOutgoingKeys = new Set<string>()
   const usedIncomingKeys = new Set<string>()
   const pairs: InternalTransferPairSelection[] = []
+  const diagnostics: ReviewInternalTransferDecisionTrace[] = []
 
   for (const outgoingTransaction of outgoingTransactions) {
     const outgoingKey = buildReviewBankTransactionKey(outgoingTransaction)
@@ -1484,21 +1539,66 @@ function buildInternalTransferPairSelections(
       continue
     }
 
-    const evaluations = incomingTransactions
+    const availableIncomingTransactions = incomingTransactions
       .filter((incomingTransaction) => !usedIncomingKeys.has(buildReviewBankTransactionKey(incomingTransaction)))
+    const primaryEvaluations = availableIncomingTransactions
       .map((incomingTransaction) =>
-        evaluateInternalTransferCandidate(outgoingTransaction, incomingTransaction, knownOwnAccountIds)
+        evaluateInternalTransferCandidate(
+          outgoingTransaction,
+          incomingTransaction,
+          knownOwnAccountIds,
+          INTERNAL_TRANSFER_MAX_DAY_DISTANCE,
+          'primary'
+        )
       )
       .filter((evaluation): evaluation is InternalTransferCandidateEvaluation => Boolean(evaluation))
-      .sort((left, right) =>
-        right.score - left.score
-        || left.dateDistance - right.dateDistance
-        || left.incomingTransaction.bookedAt.localeCompare(right.incomingTransaction.bookedAt)
-        || buildReviewBankTransactionKey(left.incomingTransaction).localeCompare(buildReviewBankTransactionKey(right.incomingTransaction))
-      )
+      .sort(compareInternalTransferEvaluations)
+
+    const extendedEvaluations = primaryEvaluations.length === 0
+      ? availableIncomingTransactions
+        .map((incomingTransaction) =>
+          evaluateInternalTransferCandidate(
+            outgoingTransaction,
+            incomingTransaction,
+            knownOwnAccountIds,
+            INTERNAL_TRANSFER_FALLBACK_MAX_DAY_DISTANCE,
+            'extended-own-account'
+          )
+        )
+        .filter((evaluation): evaluation is InternalTransferCandidateEvaluation => Boolean(evaluation))
+        .sort(compareInternalTransferEvaluations)
+      : []
+
+    const evaluations = primaryEvaluations.length > 0 ? primaryEvaluations : extendedEvaluations
+    const candidateTraces = evaluations.map((evaluation) => ({
+      incomingTransactionId: evaluation.incomingTransaction.id,
+      incomingAccountId: evaluation.incomingTransaction.accountId ?? '',
+      incomingBookedAt: evaluation.incomingTransaction.bookedAt,
+      incomingCounterparty: evaluation.incomingTransaction.counterparty,
+      incomingReference: evaluation.incomingTransaction.reference,
+      dateDistance: evaluation.dateDistance,
+      outgoingMentionsIncomingAccount: evaluation.outgoingMentionsIncomingAccount,
+      incomingMentionsOutgoingAccount: evaluation.incomingMentionsOutgoingAccount,
+      score: evaluation.score,
+      dateWindow: evaluation.dateWindow
+    }))
 
     const winner = evaluations[0]
     if (!winner) {
+      diagnostics.push({
+        outgoingTransactionId: outgoingTransaction.id,
+        outgoingAccountId: outgoingTransaction.accountId ?? '',
+        outgoingBookedAt: outgoingTransaction.bookedAt,
+        outgoingCounterparty: outgoingTransaction.counterparty,
+        outgoingReference: outgoingTransaction.reference,
+        amountMinor: outgoingTransaction.amountMinor,
+        currency: outgoingTransaction.currency,
+        candidateCountWithinPrimaryWindow: primaryEvaluations.length,
+        candidateCountWithinExtendedFallbackWindow: extendedEvaluations.length,
+        matched: false,
+        noMatchReason: 'no_candidates',
+        candidates: candidateTraces
+      })
       continue
     }
 
@@ -1508,6 +1608,20 @@ function buildInternalTransferPairSelections(
     ).length
 
     if (ambiguousCount > 1) {
+      diagnostics.push({
+        outgoingTransactionId: outgoingTransaction.id,
+        outgoingAccountId: outgoingTransaction.accountId ?? '',
+        outgoingBookedAt: outgoingTransaction.bookedAt,
+        outgoingCounterparty: outgoingTransaction.counterparty,
+        outgoingReference: outgoingTransaction.reference,
+        amountMinor: outgoingTransaction.amountMinor,
+        currency: outgoingTransaction.currency,
+        candidateCountWithinPrimaryWindow: primaryEvaluations.length,
+        candidateCountWithinExtendedFallbackWindow: extendedEvaluations.length,
+        matched: false,
+        noMatchReason: 'ambiguous',
+        candidates: candidateTraces
+      })
       continue
     }
 
@@ -1518,15 +1632,42 @@ function buildInternalTransferPairSelections(
       outgoingTransaction,
       incomingTransaction: winner.incomingTransaction
     })
+    diagnostics.push({
+      outgoingTransactionId: outgoingTransaction.id,
+      outgoingAccountId: outgoingTransaction.accountId ?? '',
+      outgoingBookedAt: outgoingTransaction.bookedAt,
+      outgoingCounterparty: outgoingTransaction.counterparty,
+      outgoingReference: outgoingTransaction.reference,
+      amountMinor: outgoingTransaction.amountMinor,
+      currency: outgoingTransaction.currency,
+      candidateCountWithinPrimaryWindow: primaryEvaluations.length,
+      candidateCountWithinExtendedFallbackWindow: extendedEvaluations.length,
+      selectedDateWindow: winner.dateWindow,
+      matched: true,
+      incomingTransactionId: winner.incomingTransaction.id,
+      incomingAccountId: winner.incomingTransaction.accountId ?? '',
+      incomingBookedAt: winner.incomingTransaction.bookedAt,
+      incomingCounterparty: winner.incomingTransaction.counterparty,
+      incomingReference: winner.incomingTransaction.reference,
+      dateDistance: winner.dateDistance,
+      outgoingMentionsIncomingAccount: winner.outgoingMentionsIncomingAccount,
+      incomingMentionsOutgoingAccount: winner.incomingMentionsOutgoingAccount,
+      candidates: candidateTraces
+    })
   }
 
-  return pairs
+  return {
+    pairs,
+    diagnostics
+  }
 }
 
 function evaluateInternalTransferCandidate(
   outgoingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   incomingTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
-  knownOwnAccountIds: string[]
+  knownOwnAccountIds: string[],
+  maxDayDistance: number,
+  dateWindow: 'primary' | 'extended-own-account'
 ): InternalTransferCandidateEvaluation | null {
   if (incomingTransaction.direction !== 'in') {
     return null
@@ -1555,15 +1696,15 @@ function evaluateInternalTransferCandidate(
     return null
   }
 
-  const dateDistance = calculateDayDistance(outgoingTransaction.bookedAt, incomingTransaction.bookedAt)
-  if (!Number.isFinite(dateDistance) || dateDistance > INTERNAL_TRANSFER_MAX_DAY_DISTANCE) {
-    return null
-  }
-
   const outgoingMentionsIncomingAccount = bankTransactionMentionsAccount(outgoingTransaction, incomingTransaction.accountId)
   const incomingMentionsOutgoingAccount = bankTransactionMentionsAccount(incomingTransaction, outgoingTransaction.accountId)
 
   if (!outgoingMentionsIncomingAccount && !incomingMentionsOutgoingAccount) {
+    return null
+  }
+
+  const dateDistance = calculateDayDistance(outgoingTransaction.bookedAt, incomingTransaction.bookedAt)
+  if (!Number.isFinite(dateDistance) || dateDistance > maxDayDistance) {
     return null
   }
 
@@ -1588,8 +1729,19 @@ function evaluateInternalTransferCandidate(
     dateDistance,
     outgoingMentionsIncomingAccount,
     incomingMentionsOutgoingAccount,
-    score
+    score,
+    dateWindow
   }
+}
+
+function compareInternalTransferEvaluations(
+  left: InternalTransferCandidateEvaluation,
+  right: InternalTransferCandidateEvaluation
+): number {
+  return right.score - left.score
+    || left.dateDistance - right.dateDistance
+    || left.incomingTransaction.bookedAt.localeCompare(right.incomingTransaction.bookedAt)
+    || buildReviewBankTransactionKey(left.incomingTransaction).localeCompare(buildReviewBankTransactionKey(right.incomingTransaction))
 }
 
 function bankTransactionMentionsAccount(
