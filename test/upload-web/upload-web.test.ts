@@ -4024,6 +4024,8 @@ describe('buildUploadWebFlow', () => {
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-OLIOSSDGKKF3X')
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-IZLCELA7C5EFN')
     expect(uploadedRun.html).toContain('Airbnb payout dávka G-6G5WFOJO5DJCI')
+    expect(uploadedRun.html).toContain('class="review-amount-value"')
+    expect(uploadedRun.html).toContain('class="review-amount-label">částka</span>')
   })
 
   it('preserves Airbnb G references through the browser-upload runtime when localized headers arrive without diacritics', async () => {

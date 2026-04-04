@@ -1583,6 +1583,40 @@ function renderBrowserUploadedMonthlyRunHtml(run: UploadedMonthlyRunResult): str
       .badge.unmatched { background: #fff4dd; color: #946200; }
       .badge.suspicious { background: #ffe3e8; color: #b42318; }
       .badge.missing { background: #ede9fe; color: #6d28d9; }
+      .review-item {
+        margin-bottom: 12px;
+      }
+      .review-amounts {
+        display: grid;
+        gap: 8px;
+        margin: 10px 0 8px;
+      }
+      .review-amount-block {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px;
+        border-left: 3px solid #bfd0ea;
+        border-radius: 10px;
+        background: rgba(23, 78, 166, 0.07);
+      }
+      .review-amount-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #62748f;
+      }
+      .review-amount-value {
+        font-size: 18px;
+        line-height: 1.2;
+        font-weight: 800;
+        color: #1c4879;
+      }
+      .review-detail {
+        display: block;
+        margin-top: 4px;
+        color: #52627a;
+      }
       .expense-item {
         border: 1px solid #e4ebf6;
         border-radius: 12px;
@@ -1888,6 +1922,40 @@ function renderBrowserReviewScreenHtml(preview: UploadedBatchPreviewResult): str
       .badge.unmatched { background: #fff4dd; color: #946200; }
       .badge.suspicious { background: #ffe3e8; color: #b42318; }
       .badge.missing { background: #ede9fe; color: #6d28d9; }
+      .review-item {
+        margin-bottom: 12px;
+      }
+      .review-amounts {
+        display: grid;
+        gap: 8px;
+        margin: 10px 0 8px;
+      }
+      .review-amount-block {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px;
+        border-left: 3px solid #bfd0ea;
+        border-radius: 10px;
+        background: rgba(23, 78, 166, 0.07);
+      }
+      .review-amount-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #62748f;
+      }
+      .review-amount-value {
+        font-size: 18px;
+        line-height: 1.2;
+        font-weight: 800;
+        color: #1c4879;
+      }
+      .review-detail {
+        display: block;
+        margin-top: 4px;
+        color: #52627a;
+      }
       .expense-item {
         border: 1px solid #e4ebf6;
         border-radius: 12px;
@@ -1991,22 +2059,142 @@ function renderReviewSection(
 ): string {
   const body = items.length === 0
     ? '<p class="empty">Žádné položky v této sekci.</p>'
-    : `<ul>${items.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span class="badge ${badgeClass}">${escapeHtml(item.matchStrength)}</span><br />${escapeHtml(item.detail)}${renderStaticReviewAuditMarkup(item)}${item.transactionIds.length > 0 ? `<br /><code>${escapeHtml(item.transactionIds.join(', '))}</code>` : ''}</li>`).join('')}</ul>`
+    : `<ul>${items.map((item) => `<li><strong>${escapeHtml(item.title)}</strong><span class="badge ${badgeClass}">${escapeHtml(item.matchStrength)}</span>${renderReviewDetailMarkup(item)}${renderStaticReviewAuditMarkup(item)}${item.transactionIds.length > 0 ? `<br /><code>${escapeHtml(item.transactionIds.join(', '))}</code>` : ''}</li>`).join('')}</ul>`
 
   return `<section class="section-panel"><h3>${escapeHtml(title)}</h3>${body}</section>`
 }
 
 function renderStaticReviewAuditMarkup(item: ReviewScreenData['matched'][number]): string {
-  const evidence = item.evidenceSummary.length > 0
-    ? item.evidenceSummary.map((entry) => `${entry.label}: ${entry.value}`).join(' · ')
-    : ''
+  const evidenceLines = buildReviewEvidenceLines(item.evidenceSummary)
+  const evidence = evidenceLines.filter((line) => !isReviewAmountEvidenceLine(line)).join(' · ')
+  const renderedEvidence = evidence.length > 0 ? evidence : ''
 
   return [
     item.operatorExplanation ? `<br /><span class="empty"><strong>Vyhodnocení:</strong> ${escapeHtml(item.operatorExplanation)}</span>` : '',
-    evidence ? `<br /><span class="empty"><strong>Důkazy:</strong> ${escapeHtml(evidence)}</span>` : '',
+    renderedEvidence ? `<br /><span class="empty"><strong>Důkazy:</strong> ${escapeHtml(renderedEvidence)}</span>` : '',
     item.documentBankRelation ? `<br /><span class="empty"><strong>Doklad ↔ banka:</strong> ${escapeHtml(item.documentBankRelation)}</span>` : '',
     item.operatorCheckHint ? `<br /><span class="empty"><strong>Ruční kontrola:</strong> ${escapeHtml(item.operatorCheckHint)}</span>` : ''
   ].join('')
+}
+
+function renderReviewAmountMarkup(item: ReviewSectionItem): string {
+  const amountEntries = collectReviewAmountEntries(item)
+
+  return renderReviewAmountEntries(amountEntries)
+}
+
+function renderReviewDetailMarkup(item: ReviewSectionItem): string {
+  const highlightedDetail = renderReviewDetailWithInlineAmount(item.detail)
+
+  if (highlightedDetail) {
+    return `<span class="review-detail">${highlightedDetail}</span>`
+  }
+
+  return `<span class="review-detail">${renderReviewAmountMarkup(item)}${escapeHtml(item.detail)}</span>`
+}
+
+function renderReviewAmountEntries(entries: Array<{ label: string; value: string }>): string {
+  if (entries.length === 0) {
+    return ''
+  }
+
+  return `<span class="review-amounts">${entries.map((entry) => `<span class="review-amount-block"><span class="review-amount-label">${escapeHtml(entry.label)}</span><span class="review-amount-value">${escapeHtml(entry.value)}</span></span>`).join('')}</span>`
+}
+
+function renderReviewDetailWithInlineAmount(detail: string): string {
+  const match = findReviewDetailAmountMatch(detail)
+
+  if (!match) {
+    return ''
+  }
+
+  const before = escapeHtml(detail.slice(0, match.index))
+  const after = escapeHtml(detail.slice(match.index + match.fullMatch.length))
+
+  return `${before}${renderReviewAmountEntries([{ label: match.label, value: match.value }])}${after}`
+}
+
+function findReviewDetailAmountMatch(detail: string): { index: number; fullMatch: string; label: string; value: string } | undefined {
+  const match = /((?:Částka|Castka))\s*:\s*([-+]?\d+(?:[ \u00a0\u202f.]\d{3})*(?:[,.]\d{2})?\s*(?:CZK|EUR|Kč|€))/iu.exec(detail)
+
+  if (!match || typeof match.index !== 'number') {
+    return undefined
+  }
+
+  return {
+    index: match.index,
+    fullMatch: String(match[0]),
+    label: String(match[1]),
+    value: normalizeReviewWhitespace(String(match[2]))
+  }
+}
+
+function collectReviewAmountEntries(item: Pick<ReviewSectionItem, 'detail' | 'evidenceSummary'>): Array<{ label: string; value: string }> {
+  const seen = new Set<string>()
+  const amountEntries: Array<{ label: string; value: string }> = []
+
+  for (const line of buildReviewEvidenceLines(item.evidenceSummary)) {
+    if (!isReviewAmountEvidenceLine(line)) {
+      continue
+    }
+
+    const [rawLabel, ...rest] = line.split(':')
+    const normalizedValue = normalizeReviewWhitespace(rest.join(':'))
+    const normalizedLabel = normalizeReviewLabel(rawLabel)
+    const key = `${normalizedLabel}::${normalizedValue}`
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    amountEntries.push({
+      label: rawLabel.trim(),
+      value: normalizedValue
+    })
+  }
+
+  if (amountEntries.length > 0) {
+    return amountEntries
+  }
+
+  for (const value of extractAmountLikeValues(item.detail)) {
+    const key = `detail::${value}`
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    amountEntries.push({ label: 'Částka', value })
+  }
+
+  return amountEntries
+}
+
+function buildReviewEvidenceLines(entries: ReviewEvidenceEntry[]): string[] {
+  return entries.map((entry) => `${String(entry.label)}: ${String(entry.value)}`)
+}
+
+function isReviewAmountEvidenceLine(line: string): boolean {
+  const [rawLabel, ...rest] = line.split(':')
+  return normalizeReviewLabel(rawLabel).includes('castka')
+    && /\d/.test(rest.join(':'))
+}
+
+function extractAmountLikeValues(text: string): string[] {
+  const matches = text.match(/[-+]?\d+(?:[ \u00a0\u202f.]\d{3})*(?:[,.]\d{2})?\s*(?:CZK|EUR|Kč|€)/giu) ?? []
+  return Array.from(new Set(matches.map((value) => normalizeReviewWhitespace(value))))
+}
+
+function normalizeReviewLabel(value: string): string {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function normalizeReviewWhitespace(value: string): string {
+  return String(value).replace(/\s+/g, ' ').trim()
 }
 
 function renderExpenseReviewSectionHtml(review: Pick<ReviewScreenData, 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows'>): string {

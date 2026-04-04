@@ -1731,7 +1731,8 @@ describe('buildWebDemo', () => {
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Booking payout 010638445054 / 35 530,12 Kč')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> potvrzená shoda')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> slabší shoda')
-    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Důkazy:</strong> částka:')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('class="review-amount-value"')
+    expect(rendered.matchedPayoutBatchesContent.innerHTML).not.toContain('Důkazy:</strong> částka:')
     expect(rendered.matchedPayoutBatchesContent.innerHTML).toContain('Ruční kontrola:</strong>')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).toContain('Stav:</strong> nespárováno')
     expect(rendered.unmatchedPayoutBatchesContent.innerHTML).not.toContain('Booking payout 010638445054 / 35 530,12 Kč')
@@ -3492,6 +3493,7 @@ describe('buildWebDemo', () => {
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMSPW3X3T9')
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMY8K5DYTB')
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Kanál: Airbnb.')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('class="review-amount-value"')
     expect(visibleState.reviewSections.payoutBatchMatched.length).toBe(
       (baseline.getLastVisibleRuntimeState() as { reviewSections: { payoutBatchMatched: unknown[] } }).reviewSections.payoutBatchMatched.length
     )

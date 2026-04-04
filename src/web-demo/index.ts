@@ -134,6 +134,7 @@ function renderOperatorWebDemoHtml(input: {
   debugMode?: boolean
 }): string {
   const buildFingerprintVersion = input.runtimeAssetPath.replace(/^\.\//, '').replace(/\.js$/, '')
+  const formatAmountMinorCsFunctionSource = formatAmountMinorCs.toString()
   const resolvePreviousMonthKeyFunctionSource = resolvePreviousMonthKeyForBrowserFlow.toString()
   const runtimeBuildInfo = {
     ...input.runtimeBuildInfo,
@@ -463,6 +464,40 @@ function renderOperatorWebDemoHtml(input: {
       }
       .amount {
         font-weight: 700;
+      }
+      .review-item {
+        margin-bottom: 12px;
+      }
+      .review-amounts {
+        display: grid;
+        gap: 8px;
+        margin: 10px 0 8px;
+      }
+      .review-amount-block {
+        display: grid;
+        gap: 2px;
+        padding: 8px 10px;
+        border-left: 3px solid #bfd0ea;
+        border-radius: 10px;
+        background: rgba(23, 78, 166, 0.07);
+      }
+      .review-amount-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #62748f;
+      }
+      .review-amount-value {
+        font-size: 18px;
+        line-height: 1.2;
+        font-weight: 800;
+        color: #1c4879;
+      }
+      .review-detail {
+        display: block;
+        margin-top: 4px;
+        color: #52627a;
       }
       .operator-panel {
         border: 1px solid #dce6f5;
@@ -1193,8 +1228,10 @@ ${showRuntimePayoutDiagnostics ? `
     </main>
     <script>
       ${renderBrowserRuntimeClientBootstrap(input.runtimeAssetPath)}
+      ${formatAmountMinorCsFunctionSource}
 
   const fileInput = document.getElementById('monthly-files');
+      ${formatAmountMinorCsFunctionSource}
   const appShell = document.getElementById('app-shell');
       const monthInput = document.getElementById('month-label');
       const monthPickerTriggerButton = document.getElementById('month-picker-trigger-button');
@@ -5424,6 +5461,146 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('')).join('');
       }
 
+      function buildReviewAmountMarkup(item) {
+        const amountEntries = collectReviewAmountEntries(item);
+
+        return renderReviewAmountEntries(amountEntries);
+      }
+
+      function renderReviewAmountEntries(entries) {
+        if (!entries || entries.length === 0) {
+          return '';
+        }
+
+        return '<span class="review-amounts">'
+          + entries.map((entry) =>
+            '<span class="review-amount-block">'
+              + '<span class="review-amount-label">' + escapeHtml(entry.label) + '</span>'
+              + '<span class="review-amount-value">' + escapeHtml(entry.value) + '</span>'
+            + '</span>'
+          ).join('')
+          + '</span>';
+      }
+
+      function buildReviewDetailMarkup(item) {
+        const highlightedDetail = buildReviewDetailWithInlineAmount(String(item && item.detail || ''));
+
+        if (highlightedDetail) {
+          return '<span class="review-detail">'
+            + highlightedDetail
+            + '</span>';
+        }
+
+        return '<span class="review-detail">'
+          + buildReviewAmountMarkup(item)
+          + escapeHtml(String(item && item.detail || ''))
+          + '</span>';
+      }
+
+      function buildReviewDetailWithInlineAmount(detail) {
+        const match = findReviewDetailAmountMatch(detail);
+
+        if (!match) {
+          return '';
+        }
+
+        const before = escapeHtml(String(detail || '').slice(0, match.index));
+        const after = escapeHtml(String(detail || '').slice(match.index + match.fullMatch.length));
+
+        return before
+          + renderReviewAmountEntries([{ label: match.label, value: match.value }])
+          + after;
+      }
+
+      function findReviewDetailAmountMatch(detail) {
+        const match = /((?:Částka|Castka))\\s*:\\s*([-+]?\\d+(?:[ \\u00a0\\u202f.]\\d{3})*(?:[,.]\\d{2})?\\s*(?:CZK|EUR|Kč|€))/iu.exec(String(detail || ''));
+
+        if (!match || typeof match.index !== 'number') {
+          return undefined;
+        }
+
+        return {
+          index: match.index,
+          fullMatch: String(match[0]),
+          label: String(match[1]),
+          value: normalizeReviewWhitespace(String(match[2]))
+        };
+      }
+
+      function collectReviewAmountEntries(item) {
+        const seen = new Set();
+        const amountEntries = [];
+
+        for (const line of buildReviewEvidenceLines(item)) {
+          if (!isReviewAmountEvidenceLine(line)) {
+            continue;
+          }
+
+          const parts = line.split(':');
+          const rawLabel = String(parts.shift() || 'Částka');
+          const normalizedValue = normalizeReviewWhitespace(parts.join(':'));
+          const key = normalizeReviewLabel(rawLabel) + '::' + normalizedValue;
+          if (seen.has(key)) {
+            continue;
+          }
+
+          seen.add(key);
+          amountEntries.push({
+            label: rawLabel.trim(),
+            value: normalizedValue
+          });
+        }
+
+        if (amountEntries.length > 0) {
+          return amountEntries;
+        }
+
+        for (const value of extractAmountLikeValues(String(item && item.detail || ''))) {
+          const key = 'detail::' + value;
+          if (seen.has(key)) {
+            continue;
+          }
+
+          seen.add(key);
+          amountEntries.push({ label: 'Částka', value });
+        }
+
+        return amountEntries;
+      }
+
+      function buildReviewEvidenceLines(item) {
+        const evidence = Array.isArray(item && item.evidenceSummary) ? item.evidenceSummary : [];
+        return evidence.map((entry) => String(entry && entry.label || '') + ': ' + String(entry && entry.value || ''));
+      }
+
+      function isReviewAmountEvidenceLine(line) {
+        const parts = String(line || '').split(':');
+        const rawLabel = String(parts.shift() || '');
+        return normalizeReviewLabel(rawLabel).includes('castka')
+          && /\\d/.test(parts.join(':'));
+      }
+
+      function getNonAmountReviewEvidence(item) {
+        return buildReviewEvidenceLines(item).filter((line) => !isReviewAmountEvidenceLine(line));
+      }
+
+      function extractAmountLikeValues(text) {
+        const matches = String(text || '').match(/[-+]?\\d+(?:[ \\u00a0\\u202f.]\\d{3})*(?:[,.]\\d{2})?\\s*(?:CZK|EUR|Kč|€)/giu) || [];
+        return Array.from(new Set(matches.map((value) => normalizeReviewWhitespace(value))));
+      }
+
+      function normalizeReviewLabel(value) {
+        return String(value || '')
+          .normalize('NFD')
+          .replace(/[\\u0300-\\u036f]/g, '')
+          .toLowerCase()
+          .trim();
+      }
+
+      function normalizeReviewWhitespace(value) {
+        return String(value || '').replace(/\\s+/g, ' ').trim();
+      }
+
       function buildUnmatchedReservationDetailsMarkup(state, pageKey, bucketKey) {
         const items = (state.reviewSections && state.reviewSections.unmatchedReservationSettlements) || [];
 
@@ -5435,13 +5612,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li>'
           + '<strong>' + escapeHtml(item.title) + '</strong>'
           + buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'unmatchedReservationSettlements', item)
-          + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          + buildReviewDetailMarkup(item)
+          + buildReviewAuditMarkup(item)
+          + '</li>'
         ).join('') + '</ul>';
       }
 
       function buildReviewAuditMarkup(item) {
-        const evidence = Array.isArray(item && item.evidenceSummary) && item.evidenceSummary.length > 0
-          ? item.evidenceSummary.map((entry) => String(entry.label || '') + ': ' + String(entry.value || '')).join(' · ')
+        const evidenceEntries = getNonAmountReviewEvidence(item);
+        const evidence = evidenceEntries.length > 0
+          ? evidenceEntries.join(' · ')
           : '';
 
         return [
@@ -5495,13 +5675,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function parseManualMatchAmountEntry(value) {
-        const match = String(value || '').match(/(-?[\d\s.]+,\d{2})\s*(Kč|CZK|EUR|€)/i);
+        const match = String(value || '').match(/(-?[\\d\\s.]+,\\d{2})\\s*(Kč|CZK|EUR|€)/i);
 
         if (!match) {
           return undefined;
         }
 
-        const amountText = String(match[1] || '').replace(/\s+/g, '').replace(/\./g, '').replace(',', '.');
+        const amountText = String(match[1] || '').replace(/\\s+/g, '').replace(/\\./g, '').replace(',', '.');
         const parsed = Number(amountText);
 
         if (!Number.isFinite(parsed)) {
@@ -6824,7 +7004,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return '<ul>' + items.map((item) =>
-          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          '<li><strong>' + escapeHtml(item.title) + '</strong>' + buildReviewDetailMarkup(item) + buildReviewAuditMarkup(item) + '</li>'
         ).join('') + '</ul>';
       }
 
@@ -6837,7 +7017,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<li>'
           + '<strong>' + escapeHtml(item.title) + '</strong>'
           + buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item)
-          + buildReviewAuditMarkup(item) + '<br /><span class="hint">' + escapeHtml(item.detail) + '</span></li>'
+          + buildReviewDetailMarkup(item)
+          + buildReviewAuditMarkup(item)
+          + '</li>'
         ).join('') + '</ul>';
       }
 
