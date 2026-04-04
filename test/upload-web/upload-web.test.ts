@@ -1658,6 +1658,169 @@ describe('buildUploadWebFlow', () => {
     expect(supplierNames).toContain('Dobrá Energie s.r.o.')
   })
 
+  it('routes Save Car and T-Mobile invoice PDFs through the shared browser invoice path and keeps them visible in unmatched expense documents without bank files', async () => {
+    const saveCarInvoice = getRealInputFixture('invoice-document-save-car-pdf')
+    const tmobileInvoice = getRealInputFixture('invoice-document-t-mobile-simplified-tax-pdf')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('Save-Car-260100011.pdf', saveCarInvoice.rawInput.content.split('\n')),
+        createRuntimePdfFileFromToUnicodeTextLines('T-Mobile-SB-4346297271.pdf', tmobileInvoice.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-04T10:25:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'Save-Car-260100011.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1
+      }),
+      expect.objectContaining({
+        fileName: 'T-Mobile-SB-4346297271.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1
+      })
+    ]))
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fileName: 'Save-Car-260100011.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'Save Car s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          referenceNumber: '260100011',
+          issueDate: '2026-03-10',
+          taxableDate: '2026-03-10',
+          dueDate: '2026-03-24',
+          totalAmountMinor: 665500,
+          totalCurrency: 'CZK',
+          finalStatus: 'parsed'
+        })
+      }),
+      expect.objectContaining({
+        fileName: 'T-Mobile-SB-4346297271.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'T-Mobile Czech Republic a.s.',
+          referenceNumber: 'SB-4346297271',
+          issueDate: '2026-03-09',
+          taxableDate: '2026-03-09',
+          totalAmountMinor: 28900,
+          totalCurrency: 'CZK',
+          paymentMethod: 'Platba kartou',
+          finalStatus: 'parsed'
+        })
+      })
+    ]))
+
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Nespárovaný doklad 260100011',
+        expenseComparison: expect.objectContaining({
+          document: expect.objectContaining({
+            supplierOrCounterparty: 'Save Car s.r.o.',
+            reference: '260100011',
+            issueDate: '2026-03-10',
+            dueDate: '2026-03-24',
+            amount: '6 655,00 Kč'
+          })
+        })
+      }),
+      expect.objectContaining({
+        title: 'Nespárovaný doklad SB-4346297271',
+        expenseComparison: expect.objectContaining({
+          document: expect.objectContaining({
+            supplierOrCounterparty: 'T-Mobile Czech Republic a.s.',
+            reference: 'SB-4346297271',
+            issueDate: '2026-03-09',
+            dueDate: '2026-03-09',
+            amount: '289,00 Kč'
+          })
+        })
+      })
+    ]))
+  })
+
+  it('keeps a recognized invoice-like vendor PDF visible in unmatched expense documents even when extraction cannot emit a full invoice record', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('Save-Car-partial.pdf', [
+          'FAKTURA - DAŇOVÝ DOKLAD',
+          'Dodavatel: Save Car s.r.o.',
+          'Číslo: 260100011',
+          'Celkem (Kč): 6 655,00'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-04T10:30:00.000Z'
+    })
+
+    expect(result.extractedRecords).toEqual([
+      expect.objectContaining({
+        fileName: 'Save-Car-partial.pdf',
+        extractedCount: 0
+      })
+    ])
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'Save-Car-partial.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 0
+      })
+    ])
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual([
+      expect.objectContaining({
+        fileName: 'Save-Car-partial.pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parsedSupplierOrCounterparty: 'Save Car s.r.o.',
+        parsedReferenceNumber: '260100011',
+        parsedAmountMinor: 665500,
+        parsedAmountCurrency: 'CZK',
+        noExtractReason: 'missing-usable-date',
+        documentExtractionSummary: expect.objectContaining({
+          documentKind: 'invoice',
+          issuerOrCounterparty: 'Save Car s.r.o.',
+          referenceNumber: '260100011',
+          totalAmountMinor: 665500,
+          totalCurrency: 'CZK',
+          finalStatus: 'needs_review'
+        })
+      })
+    ])
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual([
+      expect.objectContaining({
+        title: 'Nespárovaný doklad 260100011',
+        matchStrength: 'nespárováno',
+        expenseComparison: expect.objectContaining({
+          document: expect.objectContaining({
+            supplierOrCounterparty: 'Save Car s.r.o.',
+            reference: '260100011',
+            amount: '6 655,00 Kč'
+          })
+        }),
+        evidenceSummary: expect.arrayContaining([
+          expect.objectContaining({ label: 'částka', value: '6 655,00 Kč' }),
+          expect.objectContaining({ label: 'reference', value: '260100011' }),
+          expect.objectContaining({ label: 'protistrana / dodavatel', value: 'Save Car s.r.o.' })
+        ])
+      })
+    ])
+  })
+
   it('matches a parsed expense invoice to an outgoing bank candidate on the real browser upload path without changing the 16 / 2 payout baseline', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
 

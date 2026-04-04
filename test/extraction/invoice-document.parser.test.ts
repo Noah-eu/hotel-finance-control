@@ -433,6 +433,87 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('parses Save Car / POHODA-like invoices with supplier and customer blocks without swapping the parties', () => {
+    const invoice = getRealInputFixture('invoice-document-save-car-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-04-04T10:15:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-04-04T10:15:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      issuerOrCounterparty: 'Save Car s.r.o.',
+      customer: 'JOKELAND s.r.o.',
+      referenceNumber: '260100011',
+      issueDate: '2026-03-10',
+      taxableDate: '2026-03-10',
+      dueDate: '2026-03-24',
+      totalAmountMinor: 665500,
+      totalCurrency: 'CZK',
+      confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: [],
+      fieldExtractionDebug: expect.objectContaining({
+        issuerOrCounterparty: expect.objectContaining({
+          winnerValue: 'Save Car s.r.o.'
+        }),
+        customer: expect.objectContaining({
+          winnerValue: 'JOKELAND s.r.o.'
+        }),
+        referenceNumber: expect.objectContaining({
+          winnerValue: '260100011'
+        }),
+        totalAmount: expect.objectContaining({
+          winnerValue: '6 655,00 CZK'
+        })
+      })
+    })
+  })
+
+  it('parses T-Mobile simplified tax documents as invoice-like supplier documents instead of generic unsupported PDFs', () => {
+    const invoice = getRealInputFixture('invoice-document-t-mobile-simplified-tax-pdf')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: invoice.sourceDocument,
+      content: invoice.rawInput.content,
+      extractedAt: '2026-04-04T10:20:00.000Z'
+    })
+
+    expect(records[0]).toEqual({
+      ...invoice.expectedExtractedRecords[0],
+      extractedAt: '2026-04-04T10:20:00.000Z'
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary(invoice.rawInput.content)).toMatchObject({
+      documentKind: 'invoice',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      settlementDirection: 'payable_outgoing',
+      issuerOrCounterparty: 'T-Mobile Czech Republic a.s.',
+      referenceNumber: 'SB-4346297271',
+      issueDate: '2026-03-09',
+      taxableDate: '2026-03-09',
+      dueDate: '2026-03-09',
+      paymentMethod: 'Platba kartou',
+      totalAmountMinor: 28900,
+      totalCurrency: 'CZK',
+      confidence: 'strong',
+      finalStatus: 'parsed',
+      requiredFieldsCheck: 'passed',
+      missingRequiredFields: []
+    })
+  })
+
   it('does not recognize retail tax invoices with terminal-slip wording as strong receipts', () => {
     const invoice = getRealInputFixture('invoice-document-retail-tax-pdf')
 

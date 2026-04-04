@@ -536,6 +536,11 @@ function buildExpenseReviewSections(
       ),
       fileRoute: fileRoutesBySourceDocumentId.get(record.sourceDocumentId)
     }))
+  const fallbackDocumentEntries = buildNoExtractExpenseDocumentEntries(
+    fileRoutes ?? [],
+    new Set(documentEntries.map((entry) => entry.extractedRecord.sourceDocumentId))
+  )
+  const allDocumentEntries = [...documentEntries, ...fallbackDocumentEntries]
   const linkedSupportTransactionIds = new Set(batch.reconciliation.supportedExpenseLinks.map((link) => link.supportTransactionId))
   const linkedExpenseTransactionIds = new Set(batch.reconciliation.supportedExpenseLinks.map((link) => link.expenseTransactionId))
   const missingSupportingOutflowIds = new Set(
@@ -601,7 +606,7 @@ function buildExpenseReviewSections(
 
   const expenseNeedsReview: ReviewSectionItem[] = []
   const expenseUnmatchedDocuments: ReviewSectionItem[] = []
-  const candidatePlans = documentEntries
+  const candidatePlans = allDocumentEntries
     .filter((documentEntry) => !documentEntry.normalizedTransaction || !linkedSupportTransactionIds.has(documentEntry.normalizedTransaction.id))
     .map((documentEntry) => ({
       documentEntry,
@@ -1210,7 +1215,11 @@ function buildExpenseEvidenceSummary(
       label: 'částka',
       value: bankTransaction
         ? (amountDeltaMinor === 0 ? 'sedí' : 'nesedí')
-        : formatAmountMinorCs(documentEntry.extractedRecord.amountMinor ?? 0, documentEntry.extractedRecord.currency ?? 'CZK')
+        : (
+          typeof documentEntry.extractedRecord.amountMinor === 'number' && documentEntry.extractedRecord.currency
+            ? formatAmountMinorCs(documentEntry.extractedRecord.amountMinor, documentEntry.extractedRecord.currency)
+            : 'chybí'
+        )
     },
     maybeEvidenceEntry(
       'rozdíl částky',
@@ -1281,6 +1290,77 @@ function getExpenseDocumentSummaryTotal(documentEntry: ExpenseDocumentReviewEntr
   }
 
   return formatAmountMinorCs(amountMinor, currency)
+}
+
+function buildNoExtractExpenseDocumentEntries(
+  fileRoutes: UploadedMonthlyFileRoute[],
+  existingSourceDocumentIds: Set<string>
+): ExpenseDocumentReviewEntry[] {
+  return fileRoutes.flatMap((route) => {
+    if (
+      route.sourceSystem !== 'invoice'
+      || route.status !== 'supported'
+      || route.intakeStatus !== 'parsed'
+      || !route.sourceDocumentId
+      || existingSourceDocumentIds.has(route.sourceDocumentId)
+      || (route.extractedCount ?? 0) > 0
+      || !route.parseDiagnostics?.noExtractReason
+    ) {
+      return []
+    }
+
+    const summary = route.parseDiagnostics.documentExtractionSummary
+
+    if (!summary || summary.documentKind !== 'invoice') {
+      return []
+    }
+
+    const parsedAmountMinor = typeof route.parseDiagnostics.parsedAmountMinor === 'number'
+      ? route.parseDiagnostics.parsedAmountMinor
+      : summary.totalAmountMinor
+    const parsedAmountCurrency = typeof route.parseDiagnostics.parsedAmountCurrency === 'string'
+      ? route.parseDiagnostics.parsedAmountCurrency as ExpenseDocumentReviewEntry['extractedRecord']['currency']
+      : summary.totalCurrency as ExpenseDocumentReviewEntry['extractedRecord']['currency'] | undefined
+    const parsedDateCandidate = route.parseDiagnostics.parsedDateCandidate
+      ?? summary.issueDate
+      ?? summary.taxableDate
+      ?? summary.dueDate
+    const referenceNumber = route.parseDiagnostics.parsedReferenceNumber ?? summary.referenceNumber
+    const supplier = route.parseDiagnostics.parsedSupplierOrCounterparty ?? summary.issuerOrCounterparty
+    const extractedRecord: ExpenseDocumentReviewEntry['extractedRecord'] = {
+      id: `invoice-review-candidate:${route.sourceDocumentId}`,
+      sourceDocumentId: route.sourceDocumentId,
+      recordType: 'invoice-document',
+      extractedAt: route.uploadedAt,
+      ...(referenceNumber ? { rawReference: referenceNumber } : {}),
+      ...(typeof parsedAmountMinor === 'number' ? { amountMinor: parsedAmountMinor } : {}),
+      ...(parsedAmountCurrency ? { currency: parsedAmountCurrency } : {}),
+      ...(parsedDateCandidate ? { occurredAt: parsedDateCandidate } : {}),
+      data: {
+        sourceSystem: 'invoice',
+        ...(referenceNumber ? { invoiceNumber: referenceNumber, referenceHints: [referenceNumber] } : {}),
+        ...(supplier ? { supplier } : {}),
+        ...(summary.customer ? { customer: summary.customer } : {}),
+        ...(summary.issueDate ? { issueDate: summary.issueDate } : {}),
+        ...(summary.taxableDate ? { taxableDate: summary.taxableDate } : {}),
+        ...(summary.dueDate ? { dueDate: summary.dueDate } : {}),
+        ...(summary.paymentMethod ? { paymentMethod: summary.paymentMethod } : {}),
+        ...(typeof parsedAmountMinor === 'number' ? { amountMinor: parsedAmountMinor } : {}),
+        ...(parsedAmountCurrency ? { currency: parsedAmountCurrency } : {}),
+        ...(summary.settlementDirection ? { settlementDirection: summary.settlementDirection } : {}),
+        ...(summary.ibanHint ? { ibanHint: summary.ibanHint } : {}),
+        ...(summary.targetBankAccountHint ? { targetBankAccountHint: summary.targetBankAccountHint } : {}),
+        ...(typeof summary.summaryTotalAmountMinor === 'number' && summary.summaryTotalCurrency
+          ? { summaryTotalAmountMinor: summary.summaryTotalAmountMinor, summaryTotalCurrency: summary.summaryTotalCurrency }
+          : {})
+      }
+    }
+
+    return [{
+      extractedRecord,
+      fileRoute: route
+    }]
+  })
 }
 
 function buildExpenseOutflowEvidenceSummary(

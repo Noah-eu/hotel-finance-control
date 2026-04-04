@@ -22,6 +22,8 @@ export interface RealInputFixture {
   | 'booking-invoice-pdf'
   | 'invoice-document-czech-pdf'
   | 'invoice-document-retail-tax-pdf'
+  | 'invoice-document-save-car-pdf'
+  | 'invoice-document-t-mobile-simplified-tax-pdf'
   | 'invoice-document-dobra-energie-pdf'
   | 'invoice-document-dobra-energie-refund-pdf'
   | 'invoice-document-dobra-energie-refund-sparse-pdf'
@@ -1893,6 +1895,136 @@ export const realInputFixtures: RealInputFixture[] = [
         invoiceNumber: '358260021513',
         extractedRecordIds: ['invoice-record:doc-invoice-retail-tax-358260021513'],
         sourceDocumentIds: ['doc-invoice-retail-tax-358260021513' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-save-car-pdf',
+    description: 'POHODA-like supplier invoice PDF fixture with explicit supplier and customer blocks plus total in Celkem (Kč).',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-save-car-260100011' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'Save-Car-260100011.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'FAKTURA - DAŇOVÝ DOKLAD',
+        'Dodavatel: Save Car s.r.o.',
+        'Odběratel: JOKELAND s.r.o.',
+        'Číslo: 260100011',
+        'Datum vystavení: 10.03.2026',
+        'Datum uskutečnění plnění: 10.03.2026',
+        'Datum splatnosti: 24.03.2026',
+        'Celkem (Kč): 6 655,00'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record:doc-invoice-save-car-260100011',
+        sourceDocumentId: 'doc-invoice-save-car-260100011' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: '260100011',
+        amountMinor: 665500,
+        currency: 'CZK',
+        occurredAt: '2026-03-10',
+        data: {
+          sourceSystem: 'invoice',
+          invoiceNumber: '260100011',
+          supplier: 'Save Car s.r.o.',
+          customer: 'JOKELAND s.r.o.',
+          issueDate: '2026-03-10',
+          dueDate: '2026-03-24',
+          taxableDate: '2026-03-10',
+          amountMinor: 665500,
+          currency: 'CZK',
+          referenceHints: ['260100011']
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record:doc-invoice-save-car-260100011' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        amountMinor: 665500,
+        currency: 'CZK',
+        bookedAt: '2026-03-10',
+        accountId: 'document-expenses',
+        counterparty: 'Save Car s.r.o.',
+        reference: '260100011',
+        referenceHints: ['260100011'],
+        invoiceNumber: '260100011',
+        extractedRecordIds: ['invoice-record:doc-invoice-save-car-260100011'],
+        sourceDocumentIds: ['doc-invoice-save-car-260100011' as NormalizedTransaction['sourceDocumentIds'][number]]
+      })
+    ]
+  },
+  {
+    key: 'invoice-document-t-mobile-simplified-tax-pdf',
+    description: 'Simplified tax document PDF fixture with invoice-style routing, inline number, and bare supplier header line.',
+    sourceDocument: sourceDocument({
+      id: 'doc-invoice-t-mobile-sb-4346297271' as SourceDocument['id'],
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      fileName: 'T-Mobile-SB-4346297271.pdf'
+    }),
+    rawInput: {
+      format: 'pdf-text',
+      content: [
+        'ZJEDNODUŠENÝ DAŇOVÝ DOKLAD',
+        'T-Mobile Czech Republic a.s.',
+        'č.: SB-4346297271',
+        'Datum vystavení: 09.03.2026',
+        'Datum uskutečnění plnění: 09.03.2026',
+        'Datum splatnosti: 09.03.2026',
+        'Celkem k úhradě: 289,00 Kč',
+        'Forma úhrady: Platba kartou'
+      ].join('\n')
+    },
+    expectedExtractedRecords: [
+      extractedRecord({
+        id: 'invoice-record:doc-invoice-t-mobile-sb-4346297271',
+        sourceDocumentId: 'doc-invoice-t-mobile-sb-4346297271' as ExtractedRecord['sourceDocumentId'],
+        recordType: 'invoice-document',
+        rawReference: 'SB-4346297271',
+        amountMinor: 28900,
+        currency: 'CZK',
+        occurredAt: '2026-03-09',
+        data: {
+          sourceSystem: 'invoice',
+          settlementDirection: 'payable_outgoing',
+          invoiceNumber: 'SB-4346297271',
+          supplier: 'T-Mobile Czech Republic a.s.',
+          issueDate: '2026-03-09',
+          dueDate: '2026-03-09',
+          taxableDate: '2026-03-09',
+          amountMinor: 28900,
+          currency: 'CZK',
+          settlementAmountMinor: 28900,
+          settlementCurrency: 'CZK',
+          paymentMethod: 'Platba kartou',
+          referenceHints: ['SB-4346297271']
+        }
+      })
+    ],
+    expectedNormalizedTransactions: [
+      normalizedTransaction({
+        id: 'txn:document:invoice-record:doc-invoice-t-mobile-sb-4346297271' as NormalizedTransaction['id'],
+        direction: 'out',
+        source: 'invoice',
+        settlementDirection: 'payable_outgoing',
+        amountMinor: 28900,
+        currency: 'CZK',
+        bookedAt: '2026-03-09',
+        accountId: 'document-expenses',
+        counterparty: 'T-Mobile Czech Republic a.s.',
+        reference: 'SB-4346297271',
+        referenceHints: ['SB-4346297271'],
+        invoiceNumber: 'SB-4346297271',
+        extractedRecordIds: ['invoice-record:doc-invoice-t-mobile-sb-4346297271'],
+        sourceDocumentIds: ['doc-invoice-t-mobile-sb-4346297271' as NormalizedTransaction['sourceDocumentIds'][number]]
       })
     ]
   },

@@ -161,8 +161,8 @@ const FIELD_ALIASES = {
   customer: ['Customer', 'Buyer', 'Odběratel'],
   issueDate: ['Issue date', 'Invoice date', 'Issued on', 'Datum vystavení'],
   dueDate: ['Due date', 'Payment due', 'Payment due date', 'Due on', 'Datum splatnosti'],
-  taxableDate: ['Taxable date', 'Tax point date', 'Datum zdanitelného plnění', 'Datum uskutečnění zdanitelného plnění', 'Datum uskutečnění zdaň. plnění'],
-  total: ['Total payable', 'Payable amount', 'Total due', 'Amount due', 'Celkem Kč k úhradě', 'Celkem k úhradě s DPH', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem CZK', 'Celkem', 'Total'],
+  taxableDate: ['Taxable date', 'Tax point date', 'Datum zdanitelného plnění', 'Datum uskutečnění zdanitelného plnění', 'Datum uskutečnění zdaň. plnění', 'Datum uskutečnění plnění'],
+  total: ['Total payable', 'Payable amount', 'Total due', 'Amount due', 'Celkem Kč k úhradě', 'Celkem k úhradě', 'Celkem k úhradě s DPH', 'K úhradě', 'Celkem po zaokrouhlení', 'Celkem CZK', 'Celkem (Kč)', 'Celkem', 'Total'],
   paymentMethod: ['Payment method', 'Forma úhrady'],
   description: ['Service', 'Description', 'Invoice type', 'Položka', 'Předmět plnění'],
   vatBase: ['VAT base', 'Tax base', 'Základ DPH', 'Základ'],
@@ -190,8 +190,10 @@ const STRUCTURED_VALUE_SEPARATOR_PATTERN = /[|¦│┃]/
 const STRUCTURED_VALUE_SEPARATOR_GLOBAL_PATTERN = /[|¦│┃]/g
 const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Faktura', pattern: /\bfaktura\b/i },
+  { label: 'FAKTURA - DAŇOVÝ DOKLAD', pattern: /\bfaktura\s*-\s*daňový\s+doklad\b/i },
   { label: 'Faktura - daňový doklad', pattern: /\bfaktura\s*-\s*daňový\s+doklad\b/i },
   { label: 'Daňový doklad - FAKTURA', pattern: /\bdaňový\s+doklad\s*-\s*faktura\b/i },
+  { label: 'Zjednodušený daňový doklad', pattern: /\bzjednodušený\s+daňový\s+doklad\b/i },
   { label: 'daňový doklad', pattern: /\bdaňový\s+doklad\b/i },
   { label: 'Invoice', pattern: /\binvoice\b/i },
   { label: 'Invoice No', pattern: /\binvoice\s*(?:no|number)\b/i },
@@ -202,11 +204,14 @@ const INVOICE_KEYWORD_PATTERNS: Array<{ label: string, pattern: RegExp }> = [
   { label: 'Datum splatnosti', pattern: /\bdatum\s+splatnosti\b/i },
   { label: 'Datum zdanitelného plnění', pattern: /datum\s+zdanitelného\s+plnění/iu },
   { label: 'Datum uskutečnění zdaň. plnění', pattern: /datum\s+uskutečnění\s+zda[nň]\.??\s+plnění/iu },
+  { label: 'Datum uskutečnění plnění', pattern: /datum\s+uskutečnění\s+plnění/iu },
   { label: 'Forma úhrady', pattern: /\bforma\s+úhrady\b/i },
   { label: 'Rozpis DPH', pattern: /\brozpis\s+dph\b/i },
   { label: 'K úhradě', pattern: /k\s+úhradě/iu },
+  { label: 'Celkem k úhradě', pattern: /celkem\s+k\s+úhradě/iu },
   { label: 'Celkem k úhradě s DPH', pattern: /celkem\s+k\s+úhradě\s+s\s+dph/iu },
   { label: 'Celkem Kč k úhradě', pattern: /\bcelkem(?:\s+kč)?\s+k\s+úhrad[ěe]\b/i },
+  { label: 'Celkem (Kč)', pattern: /celkem\s*\(\s*kč\s*\)/iu },
   { label: 'Celkem po zaokrouhlení', pattern: /celkem\s+po\s+zaokrouhlen[íi]/iu },
   { label: 'IBAN', pattern: /\biban\b/i },
   { label: 'IČ / DIČ', pattern: /\b(?:ič|ičo|dič)\b/i }
@@ -450,6 +455,7 @@ function extractInvoiceDocumentDetails(input: {
   collectFieldSpecificVatCandidates(lines, debugStates)
   collectLineWindowInvoiceCandidates(lines, debugStates)
   collectLeadingInvoicePartyCandidates(lines, debugStates)
+  collectInvoiceTitleSupplierCandidates(lines, debugStates)
   collectFallbackInvoiceCandidates(fields, content, debugStates)
 
   const textExtracted = {
@@ -1064,7 +1070,9 @@ function extractGeneralInvoiceSupplementaryFields(
   const explicitInvoiceNumber = normalizeInvoiceReferenceValue(
     pickRequiredField(fields, FIELD_ALIASES.invoiceNumber)
     ?? extractInvoiceRegexValue(content, [
+      /(?:^|\n)\s*(?:faktura\s*-\s*da[ňn]ový\s+doklad|da[ňn]ový\s+doklad\s*-\s*faktura|zjednodušený\s+da[ňn]ový\s+doklad)\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
       /(?:^|\n)\s*(?:da[ňn]ový\s+doklad\s*-\s*faktura|faktura)\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
+      /(?:^|\n)\s*(?:číslo|č\.)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
       /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*[:\-]?\s*([^\n]+)/iu,
       /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|doklad\s+číslo|číslo\s+dokladu|invoice\s*(?:no|number|#))\s*\n\s*([^\n]+)/iu
     ])
@@ -1078,6 +1086,8 @@ function extractGeneralInvoiceSupplementaryFields(
   ])
   const settlementDetails = extractInvoiceSettlementSupplementaryFields(content, lines)
   const summaryTotalRaw = extractInvoiceRegexValue(content, [
+    /(?:^|\n)\s*celkem\s*(?:\(\s*kč\s*\)|czk)\s*[:\-]\s*([^\n]+)/iu,
+    /(?:^|\n)\s*celkem\s*(?:\(\s*kč\s*\)|czk)\s*\n\s*([^\n]+)/iu,
     /(?:^|\n)\s*celkem\s*[:\-]\s*([^\n]+)/iu,
     /(?:^|\n)\s*celkem\s*\n\s*([^\n]+)/iu,
     /(?:^|\n)\s*s\s*dph\s*[:\-]\s*([^\n]+)/iu,
@@ -3117,7 +3127,9 @@ function collectFallbackInvoiceCandidates(
   recordDirectFieldCandidates(debugStates.vatAmount, fields, FIELD_ALIASES.vat, 'vatAmount', /./)
 
   recordRegexCandidate(debugStates.referenceNumber, content, 'regex-invoice-number', [
+    /(?:^|\n)\s*(?:faktura\s*-\s*da[ňn]ový\s+doklad|da[ňn]ový\s+doklad\s*-\s*faktura|zjednodušený\s+da[ňn]ový\s+doklad)\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
     /(?:^|\n)\s*(?:da[ňn]ový\s+doklad\s*-\s*faktura|faktura)\s+([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
+    /(?:^|\n)\s*(?:číslo|č\.)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)\b/iu,
     /(?:^|\n)\s*(?:faktura\s+číslo|číslo\s+faktury|faktura\s*č\.?|invoice\s*(?:no|number)|doklad\s+číslo|číslo\s+dokladu)\s*[:\-]?\s*([A-Z0-9/-]*\d[A-Z0-9/-]*)/iu
   ], 'referenceNumber')
   recordRegexCandidate(debugStates.issuerOrCounterparty, content, 'regex-supplier', [
@@ -3135,7 +3147,7 @@ function collectFallbackInvoiceCandidates(
     /(?:^|\n)\s*(?:datum\s+splatnosti|due\s+date|payment\s+due)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'dueDate')
   recordRegexCandidate(debugStates.taxableDate, content, 'regex-taxable-date', [
-    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|datum\s+uskute[cč]n[ěe]n[íi]\s+zda[nň]\.??\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
+    /(?:^|\n)\s*(?:datum\s+zdaniteln[eé]ho\s+pln[ěe]n[íi]|datum\s+uskute[cč]n[ěe]n[íi]\s+zda[nň]\.??\s+pln[ěe]n[íi]|datum\s+uskute[cč]n[ěe]n[íi]\s+pln[ěe]n[íi]|taxable\s+date|tax\s+point\s+date)\s*[:\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4})/iu
   ], 'taxableDate')
   recordRegexCandidate(debugStates.paymentMethod, content, 'regex-payment-method', [
     /(?:^|\n)\s*(?:forma\s+úhrady|payment\s+method)\s*[:\-]?\s*([^\n]+)/iu
@@ -3147,7 +3159,8 @@ function collectFallbackInvoiceCandidates(
     /(?:^|\n)\s*iban\s*[:\-]?\s*([A-Z]{2}[0-9A-Z ]{10,})/iu
   ], 'ibanHint')
   recordRegexCandidate(debugStates.totalAmount, content, 'regex-total', [
-    /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|k\s+úhrad[ěe]|total\s+due|amount\s+due)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*(?:celkem(?:\s+kč)?\s+k\s+úhrad[ěe]|celkem\s+k\s+úhrad[ěe]\s+s\s+dph|k\s+úhrad[ěe]|total\s+due|amount\s+due)\s*[:\-]?\s*([^\n]+)/iu,
+    /(?:^|\n)\s*celkem\s*(?:\(\s*kč\s*\)|czk)\s*[:\-]?\s*([^\n]+)/iu,
     /(?:^|\n)\s*(?:celkem\s+po\s+zaokrouhlen[íi])\s*[:\-]?\s*([^\n]+)/iu,
     /(?:^|\n)\s*total\s*[:\-]?\s*([^\n]+)/iu
   ], 'totalAmount')
@@ -3174,6 +3187,46 @@ function collectLeadingInvoicePartyCandidates(
     'Customer',
     'Buyer'
   ])
+}
+
+function collectInvoiceTitleSupplierCandidates(
+  lines: string[],
+  debugStates: Record<InvoiceSummaryFieldKey, InvoiceFieldDebugState>
+): void {
+  const scanLimit = Math.min(lines.length, 10)
+
+  for (let index = 0; index < scanLimit; index += 1) {
+    const line = stripTrailingNoise(lines[index] ?? '')
+
+    if (!isInvoiceTitleOrTaxDocumentHeader(line)) {
+      continue
+    }
+
+    for (let lookahead = 1; lookahead <= 4 && index + lookahead < lines.length; lookahead += 1) {
+      const candidateLine = stripTrailingNoise(lines[index + lookahead] ?? '')
+
+      if (!candidateLine || containsInvoicePageArtifactValue(candidateLine)) {
+        continue
+      }
+
+      if (detectInvoiceSummaryFieldKey(candidateLine) || matchesInvoicePartyBoundaryLine(candidateLine) || isInvoiceSectionBoundary(candidateLine)) {
+        break
+      }
+
+      recordInvoiceFieldAttempt(
+        debugStates.issuerOrCounterparty,
+        'grouped',
+        candidateLine,
+        'invoice-title-supplier-header',
+        `${line} -> ${candidateLine}`,
+        isLikelyInvoiceSupplierHeaderCandidate(candidateLine)
+      )
+
+      if (isLikelyInvoiceSupplierHeaderCandidate(candidateLine)) {
+        break
+      }
+    }
+  }
 }
 
 function collectLeadingInvoicePartyCandidatesForField(
@@ -3369,6 +3422,8 @@ function invoiceFieldCandidatePriority(
       switch (candidate.rule) {
         case 'first-page-party-block':
           return 400
+        case 'invoice-title-supplier-header':
+          return fieldKey === 'issuerOrCounterparty' ? 325 : 50
         case 'direct-labeled-field':
           return 250
         case 'regex-supplier':
@@ -3539,6 +3594,8 @@ function isValidInvoiceFieldValue(fieldKey: InvoiceSummaryFieldKey, value: strin
     case 'description':
       return /[^\d].+/u.test(normalizedValue)
         && !isInvoiceLabelText(normalizedValue)
+        && !safeNormalizeDocumentDate(normalizedValue, 'Invoice party text')
+        && !safeParseDocumentMoney(normalizeDetectedMoneyValue(normalizedValue), 'Invoice party text')
     case 'issueDate':
     case 'dueDate':
     case 'taxableDate':
@@ -3610,7 +3667,10 @@ function isInvoiceLabelText(value: string): boolean {
     Boolean(detectInvoiceSummaryFieldKey(normalized))
     || normalized === 'faktura'
     || normalized === 'faktura danovy doklad'
+    || normalized === 'faktura - danovy doklad'
     || normalized === 'danovy doklad'
+    || normalized === 'danovy doklad - faktura'
+    || normalized === 'zjednoduseny danovy doklad'
     || normalized === 'rozpis dph'
   )
 }
@@ -3631,6 +3691,23 @@ function isInvoiceLabelFragmentText(value: string): boolean {
     || normalized === 'forma uhrady'
     || normalized === 'dodavatel'
     || normalized === 'odberatel'
+}
+
+function isInvoiceTitleOrTaxDocumentHeader(value: string): boolean {
+  const normalized = normalizeLabelSearch(value)
+
+  return normalized === 'faktura - danovy doklad'
+    || normalized === 'faktura danovy doklad'
+    || normalized === 'danovy doklad - faktura'
+    || normalized === 'zjednoduseny danovy doklad'
+}
+
+function isLikelyInvoiceSupplierHeaderCandidate(value: string): boolean {
+  const normalizedValue = stripTrailingNoise(value)
+
+  return isValidInvoiceFieldValue('issuerOrCounterparty', normalizedValue)
+    && !extractReferenceCandidateAfterLabel(normalizedValue)
+    && !extractFirstInvoiceReferenceCandidate(normalizedValue)
 }
 
 function splitDocumentLines(content: string): string[] {
