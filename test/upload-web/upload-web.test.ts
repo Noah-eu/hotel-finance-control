@@ -728,6 +728,209 @@ describe('buildUploadWebFlow', () => {
     ]))
   })
 
+  it('shows exact matched Previo reservations against Booking reservation rows in browser runtime state', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '02.03.2026 09:15',
+              stayStartAt: '03.03.2026',
+              stayEndAt: '04.03.2026',
+              voucher: '5178029336',
+              guestName: 'Booking Guest 1',
+              channel: 'booking',
+              amountText: '44,80 EUR',
+              roomName: 'A101'
+            },
+            {
+              createdAt: '20.02.2026 10:00',
+              stayStartAt: '25.02.2026',
+              stayEndAt: '11.03.2026',
+              voucher: '5212240106',
+              guestName: 'Booking Guest 2',
+              channel: 'booking',
+              amountText: '856,10 EUR',
+              roomName: 'A102'
+            },
+            {
+              createdAt: '22.03.2026 13:30',
+              stayStartAt: '24.03.2026',
+              stayEndAt: '25.03.2026',
+              voucher: '6027430941',
+              guestName: 'Booking Guest 3',
+              channel: 'booking',
+              amountText: '64,00 EUR',
+              roomName: 'A103'
+            }
+          ])
+        ),
+        createRuntimeFile(
+          'booking-exact.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '5178029336',
+              checkIn: '2026-03-03',
+              checkout: '2026-03-04',
+              guestName: 'Booking Guest 1',
+              currency: 'EUR',
+              amountText: '44,80',
+              payoutDate: '12 Mar 2026',
+              payoutId: '015022808386'
+            },
+            {
+              reservationId: '5212240106',
+              checkIn: '2026-02-25',
+              checkout: '2026-03-11',
+              guestName: 'Booking Guest 2',
+              currency: 'EUR',
+              amountText: '856,10',
+              payoutDate: '12 Mar 2026',
+              payoutId: '010638445054'
+            },
+            {
+              reservationId: '6027430941',
+              checkIn: '2026-03-24',
+              checkout: '2026-03-25',
+              guestName: 'Booking Guest 3',
+              currency: 'EUR',
+              amountText: '64,00',
+              payoutDate: '24 Mar 2026',
+              payoutId: '010738140021'
+            }
+          ])
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:00:00.000Z'
+    })
+
+    expect(result.reviewSections.reservationSettlementOverview).toHaveLength(3)
+    expect(result.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Rezervace 5178029336',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-1']
+      }),
+      expect.objectContaining({
+        title: 'Rezervace 5212240106',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-2']
+      }),
+      expect.objectContaining({
+        title: 'Rezervace 6027430941',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-3']
+      })
+    ]))
+    expect(result.reviewSections.reservationSettlementOverview.every((item) => item.detail.includes('Kanál: Booking.'))).toBe(true)
+    expect(result.reviewSections.unmatchedReservationSettlements).toEqual([])
+  })
+
+  it('shows exact Airbnb voucher-code matches from Previo in browser runtime state without changing payout batch totals', async () => {
+    const airbnbContent = buildRealMixedAirbnbVoucherMatchContent()
+    const expectedVoucherTitles = [
+      'Rezervace HM35X35WJ8',
+      'Rezervace HM4S532B32',
+      'Rezervace HMXWSA222M',
+      'Rezervace HMSPW3X3T9',
+      'Rezervace HMY8K5DYTB'
+    ]
+
+    const baseline = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeFile('airbnb.csv', airbnbContent)],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:55:00.000Z'
+    })
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '07.03.2026 09:00',
+              stayStartAt: '07.03.2026 14:00',
+              stayEndAt: '08.03.2026 11:00',
+              voucher: 'HM35X35WJ8',
+              guestName: 'Eliška Geržová',
+              channel: 'airbnb',
+              amountText: '83,70 EUR',
+              roomName: 'B201'
+            },
+            {
+              createdAt: '07.03.2026 09:05',
+              stayStartAt: '07.03.2026 14:00',
+              stayEndAt: '08.03.2026 11:00',
+              voucher: 'HM4S532B32',
+              guestName: 'Tomasz Rybarski',
+              channel: 'airbnb',
+              amountText: '87,00 EUR',
+              roomName: 'B202'
+            },
+            {
+              createdAt: '08.03.2026 08:15',
+              stayStartAt: '08.03.2026 14:00',
+              stayEndAt: '09.03.2026 11:00',
+              voucher: 'HMXWSA222M',
+              guestName: 'Patrik Ševčík',
+              channel: 'airbnb',
+              amountText: '47,00 EUR',
+              roomName: 'B203'
+            },
+            {
+              createdAt: '09.03.2026 07:50',
+              stayStartAt: '09.03.2026 14:00',
+              stayEndAt: '10.03.2026 11:00',
+              voucher: 'HMSPW3X3T9',
+              guestName: 'Sanjar Kakharov',
+              channel: 'airbnb',
+              amountText: '56,00 EUR',
+              roomName: 'B204'
+            },
+            {
+              createdAt: '12.03.2026 08:45',
+              stayStartAt: '12.03.2026 14:00',
+              stayEndAt: '14.03.2026 11:00',
+              voucher: 'HMY8K5DYTB',
+              guestName: 'Yağız Alp Kayhan',
+              channel: 'airbnb',
+              amountText: '144,90 EUR',
+              roomName: 'B205'
+            }
+          ])
+        ),
+        createRuntimeFile('airbnb.csv', airbnbContent)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T11:00:00.000Z'
+    })
+
+    expect(result.reviewSections.reservationSettlementOverview).toHaveLength(expectedVoucherTitles.length)
+    expect(result.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining(
+      expectedVoucherTitles.map((title) =>
+        expect.objectContaining({
+          title,
+          matchStrength: 'potvrzená shoda'
+        })
+      )
+    ))
+    expect(result.reviewSections.reservationSettlementOverview.every((item) => item.detail.includes('Kanál: Airbnb.'))).toBe(true)
+    expect(result.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: 'Rezervace HM35X35WJ8', transactionIds: ['txn:payout:airbnb-payout-8'] }),
+      expect.objectContaining({ title: 'Rezervace HM4S532B32', transactionIds: ['txn:payout:airbnb-payout-9'] }),
+      expect.objectContaining({ title: 'Rezervace HMXWSA222M', transactionIds: ['txn:payout:airbnb-payout-6'] }),
+      expect.objectContaining({ title: 'Rezervace HMSPW3X3T9', transactionIds: ['txn:payout:airbnb-payout-4'] }),
+      expect.objectContaining({ title: 'Rezervace HMY8K5DYTB', transactionIds: ['txn:payout:airbnb-payout-2'] })
+    ]))
+    expect(result.reviewSections.unmatchedReservationSettlements).toEqual([])
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(baseline.reviewSections.payoutBatchMatched.length)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(baseline.reviewSections.payoutBatchUnmatched.length)
+    expect(result.reportSummary.payoutBatchMatchCount).toBe(baseline.reportSummary.payoutBatchMatchCount)
+    expect(result.reportSummary.unmatchedPayoutBatchCount).toBe(baseline.reportSummary.unmatchedPayoutBatchCount)
+  })
+
   it('routes the real JOKELAND client-portal CSV through the Comgate browser-upload path instead of failing as unsupported', async () => {
     const fixture = getRealInputFixture('comgate-export-current-portal')
 
@@ -3077,6 +3280,18 @@ describe('buildUploadWebFlow', () => {
     expect(inboundBankTransactions.map((transaction) => transaction.accountId)).toEqual([
       '5599955956/5500',
       '8888997777/2010'
+    ])
+    expect(batch.reconciliation.workflowPlan?.previoReservationTruth).toEqual([
+      expect.objectContaining({
+        reservationId: 'PREVIO-20260314',
+        reference: 'PREVIO-20260314',
+        sourceSystem: 'previo',
+        grossRevenueMinor: 42000,
+        outstandingBalanceMinor: 3000,
+        currency: 'CZK',
+        channel: 'direct-web',
+        expectedSettlementChannels: ['comgate']
+      })
     ])
     expect(batch.reconciliation.workflowPlan?.reservationSources.length).toBe(0)
     expect(batch.reconciliation.workflowPlan?.ancillaryRevenueSources.length).toBe(0)
@@ -6195,6 +6410,34 @@ function createRuntimeWorkbookFile(name: string, binaryContentBase64: string) {
 }
 
 function buildPrevioBrowserShapeWorkbookBase64(): string {
+  return buildPrevioWorkbookBase64FromRows([
+    {
+      createdAt: '13.03.2026 09:15',
+      stayStartAt: '14.03.2026',
+      stayEndAt: '16.03.2026',
+      voucher: 'PREVIO-20260314',
+      guestName: 'Jan Novak',
+      companyName: 'Acme Travel s.r.o.',
+      channel: 'direct-web',
+      amountText: '420,00',
+      outstandingText: '30,00',
+      roomName: 'A101'
+    }
+  ])
+}
+
+function buildPrevioWorkbookBase64FromRows(rows: Array<{
+  createdAt: string
+  stayStartAt: string
+  stayEndAt: string
+  voucher: string
+  guestName: string
+  companyName?: string
+  channel: string
+  amountText: string
+  outstandingText?: string
+  roomName?: string
+}>): string {
   const workbook = XLSX.utils.book_new()
   const reservationSheet = XLSX.utils.aoa_to_sheet([
     ['Seznam rezervací'],
@@ -6215,30 +6458,73 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       'Saldo',
       'Pokoj'
     ],
-    [
-      '13.03.2026 09:15',
-      '14.03.2026',
-      '16.03.2026',
-      '2',
-      'PREVIO-20260314',
-      '2',
-      'Jan Novak',
+    ...rows.map((row) => [
+      row.createdAt,
+      row.stayStartAt,
+      row.stayEndAt,
+      '1',
+      row.voucher,
+      '1',
+      row.guestName,
       'Ano',
       '',
-      'Acme Travel s.r.o.',
-      'direct-web',
+      row.companyName ?? '',
+      row.channel,
       'confirmed',
-      '420,00',
-      '30,00',
-      'A101'
-    ]
+      row.amountText,
+      row.outstandingText ?? '0,00',
+      row.roomName ?? 'A101'
+    ])
   ])
   XLSX.utils.book_append_sheet(workbook, reservationSheet, 'Seznam rezervací')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ['Přehled rezervací'],
-    ['Počet rezervací', '1']
+    ['Počet rezervací', String(rows.length)]
   ]), 'Přehled rezervací')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
+function buildBookingBrowserUploadContentFromRows(rows: Array<{
+  reservationId: string
+  checkIn: string
+  checkout: string
+  guestName: string
+  currency: string
+  amountText: string
+  payoutDate: string
+  payoutId: string
+}>): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    ...rows.map((row) => [
+      'Reservation',
+      row.reservationId,
+      row.checkIn,
+      row.checkout,
+      row.guestName,
+      'OK',
+      row.currency,
+      'Paid',
+      row.amountText,
+      row.payoutDate,
+      row.payoutId
+    ].join(';'))
+  ].join('\n')
+}
+
+function buildRealMixedAirbnbVoucherMatchContent(): string {
+  return [
+    'Datum,Bude připsán do dne,Typ,Potvrzující kód,Datum zahájení,Datum ukončení,Host,Nabídka,Podrobnosti,Měna,Částka,Vyplaceno,Servisní poplatek,Hrubé výdělky',
+    '03/13/2026,03/20/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,4456.97,,',
+    '03/13/2026,,Rezervace,HMY8K5DYTB,03/12/2026,03/14/2026,Yağız Alp Kayhan,Studio apartmán s balkónem v centru Prahy,,EUR,122.44,,22.46,144.90',
+    '03/10/2026,03/17/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,1152.81,,',
+    '03/10/2026,,Rezervace,HMSPW3X3T9,03/09/2026,03/10/2026,Sanjar Kakharov,Studio apartmán s balkónem v centru Prahy,,EUR,47.32,,8.68,56.00',
+    '03/09/2026,03/16/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,970.36,,',
+    '03/09/2026,,Rezervace,HMXWSA222M,03/08/2026,03/09/2026,Patrik Ševčík,Studio apartmán s balkónem v centru Prahy,,EUR,39.71,,7.29,47.00',
+    '03/09/2026,03/13/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,3518.94,,',
+    '03/09/2026,,Rezervace,HM35X35WJ8,03/07/2026,03/08/2026,Eliška Geržová,Studio apartmán s balkónem v centru Prahy,,EUR,70.73,,12.97,83.70',
+    '03/09/2026,,Rezervace,HM4S532B32,03/07/2026,03/08/2026,Tomasz Rybarski,"Studio apartmán se saunou, vířivkou  v centru",,EUR,73.51,,13.49,87.00'
+  ].join('\n')
 }
 
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {

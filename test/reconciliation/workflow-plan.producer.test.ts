@@ -338,6 +338,22 @@ describe('buildReconciliationWorkflowPlan', () => {
             requestedAt: '2026-03-20T18:41:30.000Z'
         })
 
+        expect(plan.previoReservationTruth).toEqual([
+            expect.objectContaining({
+                reservationId: 'PREVIO-20260314',
+                reference: 'PREVIO-20260314',
+                sourceSystem: 'previo',
+                bookedAt: '2026-03-14',
+                createdAt: '2026-03-13T09:15:00',
+                stayStartAt: '2026-03-14',
+                stayEndAt: '2026-03-16',
+                grossRevenueMinor: 42000,
+                outstandingBalanceMinor: 3000,
+                currency: 'CZK',
+                channel: 'direct-web',
+                expectedSettlementChannels: ['comgate']
+            })
+        ])
         expect(plan.reservationSources).toEqual([])
         expect(plan.reservationSettlementMatches).toEqual([])
     })
@@ -365,7 +381,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         reference: 'PREVIO-BOOK-8841',
                         reservationId: 'PREVIO-BOOK-8841',
                         guestName: 'Jan Novak',
-                        channel: 'booking'
+                        channel: 'booking',
+                        sourceSheet: 'Seznam rezervací'
                     }
                 }
             ],
@@ -400,6 +417,153 @@ describe('buildReconciliationWorkflowPlan', () => {
         expect(plan.reservationSettlementNoMatches).toEqual([])
     })
 
+    it('matches a Previo accommodation reservation to an Airbnb payout row by unique deterministic evidence', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AIR-8841',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-14',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-03-14',
+                        stayStartAt: '2026-03-14',
+                        stayEndAt: '2026-03-16',
+                        amountMinor: 42000,
+                        currency: 'CZK',
+                        reference: 'AIR-8841',
+                        reservationId: 'AIR-8841',
+                        guestName: 'Jan Novak',
+                        channel: 'airbnb',
+                        sourceSheet: 'Seznam rezervací'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:airbnb-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'airbnb',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'AIRBNB-PAYOUT-8841',
+                    reservationId: 'AIR-8841',
+                    extractedRecordIds: ['airbnb-payout-1'],
+                    sourceDocumentIds: ['doc-airbnb-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:45:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'AIR-8841',
+                settlementKind: 'payout_row',
+                matchedRowId: 'txn:payout:airbnb-payout-1',
+                platform: 'airbnb',
+                amountMinor: 42000,
+                reasons: expect.arrayContaining(['reservationIdExact', 'amountExact', 'channelAligned'])
+            })
+        ])
+    })
+
+    it('matches intake-only Previo reservations to Airbnb reservation rows without turning them into payout batches', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'HM35X35WJ8',
+                    amountMinor: 8370,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-07',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        settlementProjectionEligibility: 'intake_only',
+                        bookedAt: '2026-03-07T14:00:00',
+                        stayStartAt: '2026-03-07T14:00:00',
+                        stayEndAt: '2026-03-08T11:00:00',
+                        amountMinor: 8370,
+                        currency: 'EUR',
+                        reference: 'HM35X35WJ8',
+                        reservationId: 'HM35X35WJ8',
+                        guestName: 'Eliška Geržová',
+                        channel: 'airbnb',
+                        sourceSheet: 'Seznam rezervací'
+                    }
+                },
+                {
+                    id: 'airbnb-payout-1',
+                    sourceDocumentId: 'doc-airbnb-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                    amountMinor: 7073,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-09',
+                    data: {
+                        platform: 'airbnb',
+                        rowKind: 'reservation',
+                        bookedAt: '2026-03-09',
+                        amountMinor: 7073,
+                        currency: 'EUR',
+                        accountId: 'expected-payouts',
+                        reference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                        reservationId: 'AIRBNB-RES:hm35x35wj8:2026-03-07:2026-03-08:7073',
+                        stayStartAt: '2026-03-07',
+                        stayEndAt: '2026-03-08',
+                        guestName: 'Eliška Geržová',
+                        grossEarningsMinor: 8370,
+                        serviceFeeMinor: 1297,
+                        confirmationCode: 'HM35X35WJ8'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:airbnb-reservation-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'airbnb',
+                    subtype: 'reservation',
+                    amountMinor: 7073,
+                    currency: 'EUR',
+                    bookedAt: '2026-03-09',
+                    accountId: 'expected-payouts',
+                    reference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                    reservationId: 'AIRBNB-RES:hm35x35wj8:2026-03-07:2026-03-08:7073',
+                    extractedRecordIds: ['airbnb-payout-1'],
+                    sourceDocumentIds: ['doc-airbnb-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:45:30.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'HM35X35WJ8',
+                settlementKind: 'payout_row',
+                matchedRowId: 'txn:payout:airbnb-reservation-1',
+                platform: 'airbnb',
+                amountMinor: 8370,
+                reasons: expect.arrayContaining(['referenceDerivedExact', 'amountExact', 'channelAligned'])
+            })
+        ])
+        expect(plan.reservationSources).toEqual([])
+        expect(plan.payoutRows).toEqual([])
+        expect(plan.payoutBatches).toEqual([])
+    })
+
     it('leaves ambiguous reservation settlement candidates unmatched instead of guessing', () => {
         const plan = buildReconciliationWorkflowPlan({
             extractedRecords: [
@@ -423,7 +587,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         reference: 'PREVIO-BOOK-8841',
                         reservationId: 'PREVIO-BOOK-8841',
                         guestName: 'Jan Novak',
-                        channel: 'booking'
+                        channel: 'booking',
+                        sourceSheet: 'Seznam rezervací'
                     }
                 }
             ],
@@ -491,7 +656,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         reference: 'PREVIO-CG-8841',
                         reservationId: 'PREVIO-CG-8841',
                         guestName: 'Jan Novak',
-                        channel: 'comgate'
+                        channel: 'comgate',
+                        sourceSheet: 'Seznam rezervací'
                     }
                 }
             ],
@@ -535,6 +701,59 @@ describe('buildReconciliationWorkflowPlan', () => {
         ])
     })
 
+    it('does not create a fake match when only amount and payout date align but reservation identity does not', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:47:00.000Z',
+                    rawReference: 'PREVIO-AIR-8841',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-14',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        settlementProjectionEligibility: 'intake_only',
+                        bookedAt: '2026-03-14',
+                        stayStartAt: '2026-03-14',
+                        stayEndAt: '2026-03-16',
+                        amountMinor: 42000,
+                        currency: 'CZK',
+                        reference: 'PREVIO-AIR-8841',
+                        reservationId: 'PREVIO-AIR-8841',
+                        guestName: 'Jan Novak',
+                        channel: 'airbnb',
+                        sourceSheet: 'Seznam rezervací'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:airbnb-payout-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'airbnb',
+                    amountMinor: 42000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-15',
+                    accountId: 'expected-payouts',
+                    reference: 'AIRBNB-PAYOUT-8841',
+                    reservationId: 'AIR-OTHER-8841',
+                    extractedRecordIds: ['airbnb-payout-1'],
+                    sourceDocumentIds: ['doc-airbnb-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:47:30.000Z'
+        })
+
+        expect(plan.previoReservationTruth).toHaveLength(1)
+        expect(plan.reservationSources).toEqual([])
+        expect(plan.reservationSettlementMatches).toEqual([])
+        expect(plan.reservationSettlementNoMatches).toEqual([])
+    })
+
     it('can match the Expedia direct-bank path separately from payout rows', () => {
         const expedia = getRealInputFixture('expedia-payout-export')
 
@@ -560,7 +779,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         reference: 'EXP-RES-1001',
                         reservationId: 'EXP-RES-1001',
                         guestName: 'Jan Novak',
-                        channel: 'expedia_direct_bank'
+                        channel: 'expedia_direct_bank',
+                        sourceSheet: 'Seznam rezervací'
                     }
                 },
                 ...expedia.expectedExtractedRecords

@@ -1482,6 +1482,126 @@ describe('buildReviewScreen', () => {
     expect(review.unmatchedReservationSettlements).toEqual([])
   })
 
+  it('surfaces matched intake-only Previo reservations in the reservation overview without exposing unmatched intake-only rows', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-22T09:05:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            previoReservationTruth: [
+              {
+                reservationId: '5178029336',
+                sourceDocumentId: toDocumentId('doc-previo-1'),
+                sourceSystem: 'previo',
+                bookedAt: '2026-03-03',
+                reference: '5178029336',
+                guestName: 'Booking Guest 1',
+                channel: 'booking',
+                stayStartAt: '2026-03-03',
+                stayEndAt: '2026-03-04',
+                grossRevenueMinor: 4480,
+                currency: 'EUR',
+                roomName: 'A101',
+                expectedSettlementChannels: ['booking']
+              },
+              {
+                reservationId: 'UNMATCHED-PREVIO-ONLY',
+                sourceDocumentId: toDocumentId('doc-previo-1'),
+                sourceSystem: 'previo',
+                bookedAt: '2026-03-05',
+                reference: 'UNMATCHED-PREVIO-ONLY',
+                guestName: 'Hidden Guest',
+                channel: 'booking',
+                stayStartAt: '2026-03-05',
+                stayEndAt: '2026-03-06',
+                grossRevenueMinor: 9999,
+                currency: 'EUR',
+                roomName: 'A102',
+                expectedSettlementChannels: ['booking']
+              }
+            ],
+            reservationSources: [],
+            ancillaryRevenueSources: [],
+            reservationSettlementMatches: [
+              {
+                reservationId: '5178029336',
+                reference: '5178029336',
+                sourceDocumentId: toDocumentId('doc-previo-1'),
+                settlementKind: 'payout_row',
+                matchedRowId: 'txn:payout:booking-payout-1',
+                platform: 'booking',
+                amountMinor: 4480,
+                currency: 'EUR',
+                confidence: 1,
+                reasons: ['reservationIdExact', 'amountExact', 'channelAligned'],
+                evidence: []
+              }
+            ],
+            reservationSettlementNoMatches: [],
+            payoutRows: [],
+            payoutBatches: [],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-22T09:05:00.000Z',
+          summary: {
+            normalizedTransactionCount: 0,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.reservationSettlementOverview).toEqual([
+      expect.objectContaining({
+        title: 'Rezervace 5178029336',
+        matchStrength: 'potvrzená shoda',
+        transactionIds: ['txn:payout:booking-payout-1']
+      })
+    ])
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('Kanál: Booking.')
+    expect(review.reservationSettlementOverview[0]?.detail).toContain('44,80 EUR')
+    expect(review.reservationSettlementOverview.some((item) => item.title === 'Rezervace UNMATCHED-PREVIO-ONLY')).toBe(false)
+    expect(review.unmatchedReservationSettlements).toEqual([])
+  })
+
   it('uses Booking payout supplement display metadata in the unmatched payout review item', () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const bookingPdf = getRealInputFixture('booking-payout-statement-pdf')
