@@ -3373,10 +3373,17 @@ describe('buildWebDemo', () => {
     expect(reloaded.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
   })
 
-  it('renders matched Airbnb reservation-level Previo rows in the visible operator truth without changing Airbnb payout batch totals', async () => {
+  it('renders exact Airbnb voucher-code Previo matches in the visible operator truth without changing payout batch totals', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
-    const airbnb = getRealInputFixture('airbnb-payout-export')
+    const airbnbContent = buildRealMixedAirbnbVoucherMatchContent()
+    const expectedVoucherTitles = [
+      'Rezervace HM35X35WJ8',
+      'Rezervace HM4S532B32',
+      'Rezervace HMXWSA222M',
+      'Rezervace HMSPW3X3T9',
+      'Rezervace HMY8K5DYTB'
+    ]
 
     const baseline = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-29T18:20:00.000Z',
@@ -3386,7 +3393,7 @@ describe('buildWebDemo', () => {
       storageState: new Map<string, string>(),
       workspacePersistenceState: new Map<string, string>(),
       files: [
-        createWebDemoRuntimeFile('airbnb.csv', airbnb.rawInput.content)
+        createWebDemoRuntimeFile('airbnb.csv', airbnbContent)
       ]
     })
 
@@ -3402,18 +3409,58 @@ describe('buildWebDemo', () => {
           'reservations-export-2026-03.xlsx',
           buildPrevioWorkbookBase64FromRows([
             {
-              createdAt: '08.03.2026 08:45',
-              stayStartAt: '10.03.2026',
-              stayEndAt: '12.03.2026',
-              voucher: 'HMA4TR9',
-              guestName: 'Jan Novak',
+              createdAt: '07.03.2026 09:00',
+              stayStartAt: '07.03.2026 14:00',
+              stayEndAt: '08.03.2026 11:00',
+              voucher: 'HM35X35WJ8',
+              guestName: 'Eliška Geržová',
               channel: 'airbnb',
-              amountText: '1 060,00 Kč',
+              amountText: '83,70 EUR',
               roomName: 'B201'
+            },
+            {
+              createdAt: '07.03.2026 09:05',
+              stayStartAt: '07.03.2026 14:00',
+              stayEndAt: '08.03.2026 11:00',
+              voucher: 'HM4S532B32',
+              guestName: 'Tomasz Rybarski',
+              channel: 'airbnb',
+              amountText: '87,00 EUR',
+              roomName: 'B202'
+            },
+            {
+              createdAt: '08.03.2026 08:15',
+              stayStartAt: '08.03.2026 14:00',
+              stayEndAt: '09.03.2026 11:00',
+              voucher: 'HMXWSA222M',
+              guestName: 'Patrik Ševčík',
+              channel: 'airbnb',
+              amountText: '47,00 EUR',
+              roomName: 'B203'
+            },
+            {
+              createdAt: '09.03.2026 07:50',
+              stayStartAt: '09.03.2026 14:00',
+              stayEndAt: '10.03.2026 11:00',
+              voucher: 'HMSPW3X3T9',
+              guestName: 'Sanjar Kakharov',
+              channel: 'airbnb',
+              amountText: '56,00 EUR',
+              roomName: 'B204'
+            },
+            {
+              createdAt: '12.03.2026 08:45',
+              stayStartAt: '12.03.2026 14:00',
+              stayEndAt: '14.03.2026 11:00',
+              voucher: 'HMY8K5DYTB',
+              guestName: 'Yağız Alp Kayhan',
+              channel: 'airbnb',
+              amountText: '144,90 EUR',
+              roomName: 'B205'
             }
           ])
         ),
-        createWebDemoRuntimeFile('airbnb.csv', airbnb.rawInput.content)
+        createWebDemoRuntimeFile('airbnb.csv', airbnbContent)
       ]
     })
 
@@ -3427,14 +3474,23 @@ describe('buildWebDemo', () => {
 
     rendered.openControlDetailPage()
 
-    expect(visibleState.reviewSections.reservationSettlementOverview).toEqual([
-      expect.objectContaining({
-        title: 'Rezervace HMA4TR9',
-        transactionIds: ['txn:payout:airbnb-payout-1']
-      })
-    ])
-    expect(visibleState.reviewSections.reservationSettlementOverview[0]?.detail).toContain('Kanál: Airbnb.')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMA4TR9')
+    expect(visibleState.reviewSections.reservationSettlementOverview).toHaveLength(expectedVoucherTitles.length)
+    expect(visibleState.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining(
+      expectedVoucherTitles.map((title) => expect.objectContaining({ title }))
+    ))
+    expect(visibleState.reviewSections.reservationSettlementOverview.every((item) => item.detail.includes('Kanál: Airbnb.'))).toBe(true)
+    expect(visibleState.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: 'Rezervace HM35X35WJ8', transactionIds: ['txn:payout:airbnb-payout-8'] }),
+      expect.objectContaining({ title: 'Rezervace HM4S532B32', transactionIds: ['txn:payout:airbnb-payout-9'] }),
+      expect.objectContaining({ title: 'Rezervace HMXWSA222M', transactionIds: ['txn:payout:airbnb-payout-6'] }),
+      expect.objectContaining({ title: 'Rezervace HMSPW3X3T9', transactionIds: ['txn:payout:airbnb-payout-4'] }),
+      expect.objectContaining({ title: 'Rezervace HMY8K5DYTB', transactionIds: ['txn:payout:airbnb-payout-2'] })
+    ]))
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HM35X35WJ8')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HM4S532B32')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMXWSA222M')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMSPW3X3T9')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMY8K5DYTB')
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Kanál: Airbnb.')
     expect(visibleState.reviewSections.payoutBatchMatched.length).toBe(
       (baseline.getLastVisibleRuntimeState() as { reviewSections: { payoutBatchMatched: unknown[] } }).reviewSections.payoutBatchMatched.length
@@ -7253,6 +7309,21 @@ function buildPrevioWorkbookBase64FromRows(rows: Array<{
     ['Počet rezervací', String(rows.length)]
   ]), 'Přehled rezervací')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
+function buildRealMixedAirbnbVoucherMatchContent(): string {
+  return [
+    'Datum,Bude připsán do dne,Typ,Potvrzující kód,Datum zahájení,Datum ukončení,Host,Nabídka,Podrobnosti,Měna,Částka,Vyplaceno,Servisní poplatek,Hrubé výdělky',
+    '03/13/2026,03/20/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,4456.97,,',
+    '03/13/2026,,Rezervace,HMY8K5DYTB,03/12/2026,03/14/2026,Yağız Alp Kayhan,Studio apartmán s balkónem v centru Prahy,,EUR,122.44,,22.46,144.90',
+    '03/10/2026,03/17/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,1152.81,,',
+    '03/10/2026,,Rezervace,HMSPW3X3T9,03/09/2026,03/10/2026,Sanjar Kakharov,Studio apartmán s balkónem v centru Prahy,,EUR,47.32,,8.68,56.00',
+    '03/09/2026,03/16/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,970.36,,',
+    '03/09/2026,,Rezervace,HMXWSA222M,03/08/2026,03/09/2026,Patrik Ševčík,Studio apartmán s balkónem v centru Prahy,,EUR,39.71,,7.29,47.00',
+    '03/09/2026,03/13/2026,Payout,,,,,,"Převod Jokeland s.r.o., IBAN 5956 (CZK)",CZK,,3518.94,,',
+    '03/09/2026,,Rezervace,HM35X35WJ8,03/07/2026,03/08/2026,Eliška Geržová,Studio apartmán s balkónem v centru Prahy,,EUR,70.73,,12.97,83.70',
+    '03/09/2026,,Rezervace,HM4S532B32,03/07/2026,03/08/2026,Tomasz Rybarski,"Studio apartmán se saunou, vířivkou  v centru",,EUR,73.51,,13.49,87.00'
+  ].join('\n')
 }
 
 function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, type = 'text/plain') {

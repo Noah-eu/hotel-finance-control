@@ -483,24 +483,50 @@ describe('buildReconciliationWorkflowPlan', () => {
                     sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
                     recordType: 'payout-line',
                     extractedAt: '2026-03-20T18:45:00.000Z',
-                    rawReference: 'AIR8841',
-                    amountMinor: 106000,
-                    currency: 'CZK',
-                    occurredAt: '2026-03-10',
+                    rawReference: 'HM35X35WJ8',
+                    amountMinor: 8370,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-07',
                     data: {
                         platform: 'previo',
                         rowKind: 'accommodation',
                         settlementProjectionEligibility: 'intake_only',
-                        bookedAt: '2026-03-10',
-                        stayStartAt: '2026-03-10',
-                        stayEndAt: '2026-03-12',
-                        amountMinor: 106000,
-                        currency: 'CZK',
-                        reference: 'AIR8841',
-                        reservationId: 'AIR8841',
-                        guestName: 'Jan Novak',
+                        bookedAt: '2026-03-07T14:00:00',
+                        stayStartAt: '2026-03-07T14:00:00',
+                        stayEndAt: '2026-03-08T11:00:00',
+                        amountMinor: 8370,
+                        currency: 'EUR',
+                        reference: 'HM35X35WJ8',
+                        reservationId: 'HM35X35WJ8',
+                        guestName: 'Eliška Geržová',
                         channel: 'airbnb',
                         sourceSheet: 'Seznam rezervací'
+                    }
+                },
+                {
+                    id: 'airbnb-payout-1',
+                    sourceDocumentId: 'doc-airbnb-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                    amountMinor: 7073,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-09',
+                    data: {
+                        platform: 'airbnb',
+                        rowKind: 'reservation',
+                        bookedAt: '2026-03-09',
+                        amountMinor: 7073,
+                        currency: 'EUR',
+                        accountId: 'expected-payouts',
+                        reference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                        reservationId: 'AIRBNB-RES:hm35x35wj8:2026-03-07:2026-03-08:7073',
+                        stayStartAt: '2026-03-07',
+                        stayEndAt: '2026-03-08',
+                        guestName: 'Eliška Geržová',
+                        grossEarningsMinor: 8370,
+                        serviceFeeMinor: 1297,
+                        confirmationCode: 'HM35X35WJ8'
                     }
                 }
             ],
@@ -510,12 +536,12 @@ describe('buildReconciliationWorkflowPlan', () => {
                     direction: 'in',
                     source: 'airbnb',
                     subtype: 'reservation',
-                    amountMinor: 106000,
-                    currency: 'CZK',
-                    bookedAt: '2026-03-12',
+                    amountMinor: 7073,
+                    currency: 'EUR',
+                    bookedAt: '2026-03-09',
                     accountId: 'expected-payouts',
-                    reference: 'AIRBNB-STAY:air8841:2026-03-10:2026-03-12',
-                    reservationId: 'AIRBNB-RES:air8841:2026-03-10:2026-03-12:106000',
+                    reference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                    reservationId: 'AIRBNB-RES:hm35x35wj8:2026-03-07:2026-03-08:7073',
                     extractedRecordIds: ['airbnb-payout-1'],
                     sourceDocumentIds: ['doc-airbnb-1' as NormalizedTransaction['sourceDocumentIds'][number]]
                 }
@@ -525,12 +551,12 @@ describe('buildReconciliationWorkflowPlan', () => {
 
         expect(plan.reservationSettlementMatches).toEqual([
             expect.objectContaining({
-                reservationId: 'AIR8841',
+                reservationId: 'HM35X35WJ8',
                 settlementKind: 'payout_row',
                 matchedRowId: 'txn:payout:airbnb-reservation-1',
                 platform: 'airbnb',
-                amountMinor: 106000,
-                reasons: expect.arrayContaining(['reservationIdDerivedExact', 'amountExact', 'channelAligned'])
+                amountMinor: 8370,
+                reasons: expect.arrayContaining(['referenceDerivedExact', 'amountExact', 'channelAligned'])
             })
         ])
         expect(plan.reservationSources).toEqual([])

@@ -135,10 +135,12 @@ function buildPayoutRows(
         .filter((transaction) => transaction.direction === 'in')
         .filter((transaction) => shouldRemainPayoutPlanTransaction(transaction, options?.includeAirbnbReservationRows === true))
         .map((transaction) => {
+            const reservationMatchingAmountMinor = resolveAirbnbReservationMatchingAmountMinor(transaction, extractedRecordsById)
             const totalFeeMinor = resolveCurrentPortalComgateTotalFeeMinor(transaction, extractedRecordsById)
-            const matchingAmountMinor = typeof totalFeeMinor === 'number'
+            const bankMatchingAmountMinor = typeof totalFeeMinor === 'number'
                 ? transaction.amountMinor - totalFeeMinor
                 : transaction.amountMinor
+            const matchingAmountMinor = reservationMatchingAmountMinor ?? bankMatchingAmountMinor
 
             return {
                 rowId: transaction.id,
@@ -428,6 +430,25 @@ function resolveCurrentPortalComgateTotalFeeMinor(
     }
 
     return fees.reduce((sum, value) => sum + value, 0)
+}
+
+function resolveAirbnbReservationMatchingAmountMinor(
+    transaction: NormalizedTransaction,
+    extractedRecordsById: Map<string, ExtractedRecord>
+): number | undefined {
+    if (transaction.source !== 'airbnb' || transaction.subtype !== 'reservation') {
+        return undefined
+    }
+
+    for (const recordId of transaction.extractedRecordIds) {
+        const grossEarningsMinor = extractedRecordsById.get(recordId)?.data.grossEarningsMinor
+
+        if (typeof grossEarningsMinor === 'number' && Number.isFinite(grossEarningsMinor)) {
+            return grossEarningsMinor
+        }
+    }
+
+    return undefined
 }
 
 function optionalString(value: unknown): string | undefined {
