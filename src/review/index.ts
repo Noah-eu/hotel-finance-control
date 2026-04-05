@@ -1748,7 +1748,12 @@ function bankTransactionMentionsAccount(
   transaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   accountId: string
 ): boolean {
-  const comparableTexts = [transaction.counterparty, transaction.reference, transaction.accountId]
+  const comparableTexts = [
+    transaction.counterparty,
+    transaction.counterpartyAccount,
+    transaction.reference,
+    transaction.accountId
+  ]
 
   return comparableTexts.some((value) => textContainsAccountHint(value, accountId))
 }

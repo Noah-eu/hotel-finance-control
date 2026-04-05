@@ -52,6 +52,7 @@ export interface NormalizedTransaction {
   valueAt?: ISODateString
   accountId: string
   counterparty?: string
+  counterpartyAccount?: string
   reference?: string
   referenceHints?: string[]
   reservationId?: string

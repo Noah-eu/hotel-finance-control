@@ -59,6 +59,7 @@ export class FioParser {
         currency: firstPresent(row, PRIORITIZED_HEADER_ALIASES.currency),
         accountId: firstPresent(row, PRIORITIZED_HEADER_ALIASES.accountId) || fallbackAccountId || '',
         counterparty: firstPresent(row, PRIORITIZED_HEADER_ALIASES.counterparty),
+        counterpartyAccount: resolveDelimitedCounterpartyAccount(row),
         reference: firstPresent(row, PRIORITIZED_HEADER_ALIASES.reference),
         transactionType: firstPresent(row, PRIORITIZED_HEADER_ALIASES.transactionType)
       }
@@ -104,6 +105,7 @@ export class FioParser {
           currency,
           accountId,
           counterparty,
+          counterpartyAccount: row.counterpartyAccount?.trim() || undefined,
           reference,
           transactionType
         }
@@ -256,6 +258,35 @@ function firstPresentWithHeader(row: Record<string, string>, aliases: string[]):
 
 function firstPresent(row: Record<string, string>, aliases: string[]): string {
   return firstPresentWithHeader(row, aliases).value
+}
+
+function resolveDelimitedCounterpartyAccount(row: Record<string, string>): string | undefined {
+  const directCounterpartyAccount = firstPresent(row, [
+    'čísloProtiúčtu',
+    'cisloProtiuctu',
+    'protiúčet',
+    'protiucet',
+    'counterpartyAccount'
+  ]).trim()
+
+  if (looksLikeDelimitedCounterpartyAccount(directCounterpartyAccount)) {
+    return directCounterpartyAccount
+  }
+
+  const counterparty = firstPresent(row, PRIORITIZED_HEADER_ALIASES.counterparty).trim()
+  if (looksLikeDelimitedCounterpartyAccount(counterparty)) {
+    return counterparty
+  }
+
+  return undefined
+}
+
+function looksLikeDelimitedCounterpartyAccount(value: string): boolean {
+  if (!value || /[A-Za-z\u00C0-\u024F]/.test(value)) {
+    return false
+  }
+
+  return value.replace(/\D+/g, '').length >= 6
 }
 
 function normalizeHeaderKey(value: string): string {

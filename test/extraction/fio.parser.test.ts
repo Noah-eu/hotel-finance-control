@@ -261,6 +261,7 @@ describe('parseFioStatement', () => {
         data: expect.objectContaining({
           accountId: '8888997777/2010',
           counterparty: 'Comgate a.s.',
+          counterpartyAccount: '000000-1234567890/0100',
           reference: 'Platba rezervace WEB-2001'
         })
       })
@@ -287,6 +288,7 @@ describe('parseFioStatement', () => {
         occurredAt: '2026-03-19T06:23:00',
         data: expect.objectContaining({
           counterparty: 'Comgate a.s.',
+          counterpartyAccount: '000000-1234567890/0100',
           reference: 'Platba rezervace WEB-2001'
         })
       })

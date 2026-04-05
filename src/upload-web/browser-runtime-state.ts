@@ -668,6 +668,8 @@ function buildExactMovementTrace(input: {
     && candidate.currency === input.transaction.currency
   )
   const ownAccountAndHintCandidates = directionAndAmountCandidates.filter((candidate) =>
+    candidate.accountId !== input.transaction.accountId
+    &&
     input.knownOwnAccountIds.includes(candidate.accountId ?? '')
     && input.knownOwnAccountIds.includes(input.transaction.accountId ?? '')
     && exactTraceMentionsAccount(input.transaction, candidate.accountId ?? '')
@@ -680,9 +682,13 @@ function buildExactMovementTrace(input: {
   )
   const extractedRecord = input.extractedRecordsById.get(input.transaction.extractedRecordIds[0] ?? '')
   const extractedData = extractedRecord?.data as Record<string, unknown> | undefined
+  const counterMovementUsesSameAccountId = input.transaction.accountId === input.counterMovement.accountId
+  const counterMovementMentionsAccount = exactTraceMentionsAccount(input.transaction, input.counterMovement.accountId ?? '')
   const finalMatchedOrUnmatchedReason = input.transaction.id === input.counterMovement.id
     ? 'self'
-    : exactTraceMentionsAccount(input.transaction, input.counterMovement.accountId ?? '')
+    : counterMovementUsesSameAccountId
+      ? 'rejected-by-same-account-id'
+      : counterMovementMentionsAccount
       ? primaryDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
         ? 'matched-within-primary-date-gate'
         : extendedDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
@@ -702,7 +708,7 @@ function buildExactMovementTrace(input: {
     valueDate: readOptionalTraceDate(extractedData?.accountingDate, extractedData?.date),
     ownAccountEvidence: {
       accountRecognizedAsOwnAccount: input.knownOwnAccountIds.includes(input.transaction.accountId ?? ''),
-      accountHintMatchedOnCounterMovement: exactTraceMentionsAccount(input.transaction, input.counterMovement.accountId ?? ''),
+      accountHintMatchedOnCounterMovement: counterMovementMentionsAccount,
       counterMovementRecognizedAsOwnAccount: input.knownOwnAccountIds.includes(input.counterMovement.accountId ?? '')
     },
     candidateCountBeforeFilters: input.allBankTransactions.filter((candidate) => candidate.id !== input.transaction.id).length,
@@ -736,7 +742,12 @@ function exactTraceMentionsAccount(
   accountId: string
 ): boolean {
   const normalizedAccountHints = buildExactTraceAccountHints(accountId)
-  const comparableValues = [transaction.counterparty, transaction.reference, transaction.accountId]
+  const comparableValues = [
+    transaction.counterparty,
+    transaction.counterpartyAccount,
+    transaction.reference,
+    transaction.accountId
+  ]
 
   return comparableValues.some((value) => {
     const normalizedValue = String(value ?? '').toLowerCase().replace(/\s+/g, ' ')

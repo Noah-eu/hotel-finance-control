@@ -2867,7 +2867,7 @@ describe('buildUploadWebFlow', () => {
         matched: true,
         dateDistance: 13,
         outgoingMentionsIncomingAccount: true,
-        incomingMentionsOutgoingAccount: false
+        incomingMentionsOutgoingAccount: true
       })
     ]))
     expect(result.runtimeAudit.exactInternalTransferPairTrace).toMatchObject({
@@ -2901,23 +2901,74 @@ describe('buildUploadWebFlow', () => {
         currency: 'CZK',
         ownAccountEvidence: {
           accountRecognizedAsOwnAccount: true,
-          accountHintMatchedOnCounterMovement: false,
+          accountHintMatchedOnCounterMovement: true,
           counterMovementRecognizedAsOwnAccount: true
         },
         candidateCountBeforeFilters: 1,
         candidateCountAfterAmountFilter: 1,
         candidateCountAfterDirectionFilter: 1,
-        candidateCountAfterOwnAccountAccountHintFilter: 0,
-        candidateCountAfterDateGate: 0,
+        candidateCountAfterOwnAccountAccountHintFilter: 1,
+        candidateCountAfterDateGate: 1,
         candidateCountAfterPrimaryDateGate: 0,
-        candidateCountAfterExtendedDateGate: 0,
-        finalMatchedOrUnmatchedReason: 'rejected-by-own-account-account-hint-filter'
+        candidateCountAfterExtendedDateGate: 1,
+        finalMatchedOrUnmatchedReason: 'matched-within-extended-own-account-date-gate'
       },
       internalTransferPairCreated: true,
       matchedTransferPairId: expect.stringContaining('expense-matched:internal-transfer:'),
       consumedInReviewProjection: true,
       visibleInUnmatchedOutgoing: false,
       visibleInUnmatchedIncoming: false
+    })
+  })
+
+  it('keeps the screenshot-shaped RB same-account 5 000 pair unmatched and traces the real same-account rejection', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '13.03.2026 08:14;13.03.2026 08:15;5599955956/5500;8888997777/0008;JOKELAND s.r.o.;5000,00;CZK;71394921',
+            '26.03.2026 09:00;26.03.2026 09:01;5599955956/5500;266617681/0008;Moneta / 5599955956;-5000,00;CZK;76526712'
+          ].join('\n'),
+          'text/csv'
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-05T10:30:00.000Z'
+    })
+
+    expect(result.reviewSections.expenseMatched.some((item) => item.title.includes('5 000,00 Kč'))).toBe(false)
+    expect(result.reviewSections.expenseUnmatchedOutflows.some((item) => item.title.includes('5 000,00 Kč'))).toBe(true)
+    expect(result.reviewSections.expenseUnmatchedInflows.some((item) => item.title.includes('5 000,00 Kč'))).toBe(true)
+    expect(result.runtimeAudit.exactInternalTransferPairTrace).toMatchObject({
+      outgoing: {
+        rawRowId: 'fio-row-2',
+        bankAccountId: '5599955956/5500',
+        ownAccountEvidence: {
+          accountRecognizedAsOwnAccount: true,
+          accountHintMatchedOnCounterMovement: true,
+          counterMovementRecognizedAsOwnAccount: true
+        },
+        candidateCountAfterOwnAccountAccountHintFilter: 0,
+        finalMatchedOrUnmatchedReason: 'rejected-by-same-account-id'
+      },
+      incoming: {
+        rawRowId: 'fio-row-1',
+        bankAccountId: '5599955956/5500',
+        ownAccountEvidence: {
+          accountRecognizedAsOwnAccount: true,
+          accountHintMatchedOnCounterMovement: true,
+          counterMovementRecognizedAsOwnAccount: true
+        },
+        candidateCountAfterOwnAccountAccountHintFilter: 0,
+        finalMatchedOrUnmatchedReason: 'rejected-by-same-account-id'
+      },
+      internalTransferPairCreated: false,
+      matchedTransferPairId: undefined,
+      consumedInReviewProjection: false,
+      visibleInUnmatchedOutgoing: true,
+      visibleInUnmatchedIncoming: true
     })
   })
 

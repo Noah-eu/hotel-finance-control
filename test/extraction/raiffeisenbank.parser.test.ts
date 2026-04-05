@@ -155,6 +155,7 @@ describe('parseRaiffeisenbankStatement', () => {
           bankParserVariant: 'raiffeisenbank',
           accountId: '5599955956',
           counterparty: '1234567890/2010',
+          counterpartyAccount: '1234567890/2010',
           reference: 'PAYOUT-BOOK-20260310',
           transactionType: 'Příchozí platba'
         })

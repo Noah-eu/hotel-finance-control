@@ -104,6 +104,7 @@ export class BankTransactionNormalizer implements Normalizer {
         valueAt: typeof data.valueAt === 'string' ? data.valueAt : undefined,
         accountId: accountId!,
         counterparty: typeof data.counterparty === 'string' ? data.counterparty : undefined,
+        counterpartyAccount: typeof data.counterpartyAccount === 'string' ? data.counterpartyAccount : undefined,
         reference: typeof data.reference === 'string' ? data.reference : undefined,
         reservationId: typeof data.reservationId === 'string' ? data.reservationId : undefined,
         invoiceNumber: typeof data.invoiceNumber === 'string' ? data.invoiceNumber : undefined,

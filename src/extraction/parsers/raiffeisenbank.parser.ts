@@ -78,6 +78,7 @@ export class RaiffeisenbankParser {
         currency: firstPresent(row, HEADER_ALIASES.currency),
         accountId: firstPresent(row, HEADER_ALIASES.accountId) || fallbackAccountId || '',
         counterparty: resolveCounterparty(row),
+        counterpartyAccount: resolveCounterpartyAccount(row),
         reference: firstPresent(row, HEADER_ALIASES.reference),
         transactionType: firstPresent(row, HEADER_ALIASES.transactionType)
       }
@@ -125,6 +126,7 @@ export class RaiffeisenbankParser {
           currency,
           accountId,
           counterparty,
+          counterpartyAccount: row.counterpartyAccount?.trim() || undefined,
           reference,
           transactionType
         }
@@ -446,6 +448,26 @@ function resolveCounterparty(row: Record<string, string>): string {
   }
 
   return account
+}
+
+function resolveCounterpartyAccount(row: Record<string, string>): string | undefined {
+  const account = firstPresent(row, HEADER_ALIASES.counterparty)
+  const bankCode = firstPresent(row, HEADER_ALIASES.counterpartyBankCode)
+  const normalizedAccount = account.trim()
+
+  if (!normalizedAccount || /[A-Za-z\u00C0-\u024F]/.test(normalizedAccount)) {
+    return undefined
+  }
+
+  if (normalizedAccount.includes('/')) {
+    return normalizedAccount
+  }
+
+  if (/^\d{4}$/.test(bankCode.trim())) {
+    return `${normalizedAccount}/${bankCode.trim()}`
+  }
+
+  return undefined
 }
 
 function normalizeHeaderKey(value: string): string {
