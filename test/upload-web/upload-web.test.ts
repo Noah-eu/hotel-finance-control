@@ -3871,6 +3871,39 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections).toHaveProperty('ancillarySettlementOverview')
   })
 
+  it('surfaces grounded Booking, Expedia, Reservation+, and Parking items when those source files are uploaded together', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const comgate = getRealInputFixture('comgate-export-current-portal')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content),
+        createRuntimeFile(expedia.sourceDocument.fileName, expedia.rawInput.content),
+        createRuntimeFile(comgate.sourceDocument.fileName, comgate.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-25T10:45:00.000Z'
+    })
+
+    expect(result.reservationPaymentOverview.blocks.map((block) => ({
+      key: block.key,
+      itemCount: block.itemCount
+    }))).toEqual([
+      { key: 'airbnb', itemCount: 0 },
+      { key: 'booking', itemCount: 1 },
+      { key: 'expedia', itemCount: 1 },
+      { key: 'reservation_plus', itemCount: 1 },
+      { key: 'parking', itemCount: 1 }
+    ])
+    expect(result.reservationPaymentOverview.summary.statusCounts).toEqual({
+      paid: 4,
+      partial: 0,
+      unverified: 0,
+      missing: 0
+    })
+  })
+
   it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 
