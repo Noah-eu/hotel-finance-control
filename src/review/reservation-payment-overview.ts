@@ -7,6 +7,7 @@ import type {
   ReservationSourceRecord
 } from '../domain'
 import type { MonthlyBatchResult } from '../monthly-batch'
+import { formatAmountMinorCs } from '../shared/money'
 
 export type ReservationPaymentOverviewBlockKey = 'airbnb' | 'booking' | 'expedia' | 'reservation_plus' | 'parking'
 export type ReservationPaymentStatusKey = 'paid' | 'partial' | 'unverified' | 'missing'
@@ -163,7 +164,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         buildDetailEntry(
           'Zbývá uhradit',
           typeof reservation.outstandingBalanceMinor === 'number'
-            ? `${reservation.outstandingBalanceMinor} ${reservation.currency}`
+            ? formatAmountMinorCs(reservation.outstandingBalanceMinor, reservation.currency)
             : undefined
         )
       ]),
@@ -209,7 +210,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         buildDetailEntry(
           'Zbývá uhradit',
           typeof ancillary.outstandingBalanceMinor === 'number'
-            ? `${ancillary.outstandingBalanceMinor} ${ancillary.currency}`
+            ? formatAmountMinorCs(ancillary.outstandingBalanceMinor, ancillary.currency)
             : undefined
         )
       ]),
@@ -303,8 +304,14 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
 
     if (row.platform === 'comgate') {
       const paymentPurpose = normalizeComparable(readString(extractedRecord?.data.paymentPurpose))
-      const blockKey = paymentPurpose === 'parking' ? 'parking' : 'reservation_plus'
-      const title = paymentPurpose === 'parking'
+      const parkingLike = isParkingLike(
+        paymentPurpose,
+        readString(extractedRecord?.data.reference),
+        readString(extractedRecord?.data.transactionId),
+        row.payoutReference
+      )
+      const blockKey = parkingLike ? 'parking' : 'reservation_plus'
+      const title = parkingLike
         ? readString(extractedRecord?.data.reference) ?? row.payoutReference
         : row.reservationId ?? row.payoutReference
 
@@ -322,7 +329,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         currency: row.currency,
         statusKey: 'paid',
         statusLabelCs: STATUS_LABELS.paid,
-        statusDetailCs: paymentPurpose === 'parking'
+        statusDetailCs: parkingLike
           ? 'Zdrojová platba Comgate potvrzuje parkovací úhradu.'
           : 'Zdrojová platba Comgate potvrzuje online úhradu rezervace.',
         evidenceKey: 'comgate',
@@ -330,7 +337,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         sourceDocumentIds: transaction.sourceDocumentIds.slice(),
         transactionIds: [row.rowId],
         detailEntries: compactDetailEntries([
-          buildDetailEntry('Účel platby', paymentPurpose === 'parking' ? 'parking' : paymentPurpose === 'websitereservation' ? 'website-reservation' : readString(extractedRecord?.data.paymentPurpose)),
+          buildDetailEntry('Účel platby', parkingLike ? 'parking' : paymentPurpose === 'websitereservation' ? 'website-reservation' : readString(extractedRecord?.data.paymentPurpose)),
           buildDetailEntry('Comgate reference', row.payoutReference)
         ]),
         sortDate: row.payoutDate
@@ -583,10 +590,21 @@ function resolveAncillaryBlockKey(item: AncillaryRevenueSourceRecord): Reservati
 function inferChannelsFromFallback(channel: string | undefined): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'> {
   const normalized = normalizeComparable(channel)
 
-  if (normalized === 'booking' || normalized === 'bookingcom') return ['booking']
-  if (normalized === 'airbnb') return ['airbnb']
-  if (normalized === 'expediadirectbank' || normalized === 'expedia') return ['expedia_direct_bank']
-  if (normalized === 'comgate' || normalized === 'directweb' || normalized === 'direct' || normalized === 'parking') return ['comgate']
+  if (!normalized) return []
+
+  if (normalized.includes('booking')) return ['booking']
+  if (normalized.includes('airbnb')) return ['airbnb']
+  if (normalized.includes('expedia')) return ['expedia_direct_bank']
+  if (
+    normalized.includes('comgate')
+    || normalized.includes('directweb')
+    || normalized === 'direct'
+    || normalized === 'web'
+    || normalized.includes('website')
+    || normalized.includes('parking')
+    || normalized.includes('parkovani')
+  ) return ['comgate']
+
   return []
 }
 
