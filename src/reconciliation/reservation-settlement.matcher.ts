@@ -23,6 +23,8 @@ type Candidate =
         platform: 'booking' | 'airbnb' | 'comgate'
         rowId: string
         reservationId?: string
+        payoutSupplementReservationIds?: string[]
+        payoutSupplementSourceDocumentIds?: string[]
         amountMinor: number
         matchingAmountMinor?: number
         currency: string
@@ -124,17 +126,15 @@ function evaluateCandidate(
     const reasons: string[] = []
     const candidateReservationAmountMinor = resolveCandidateReservationAmountMinor(candidate)
 
-    const reference = reservation.reference ?? reservation.reservationId
-    const candidateReference = candidate.settlementKind === 'payout_row'
-        ? candidate.reservationId ?? candidate.payoutReference
-        : candidate.reservationId
+    const exactReferenceMatch = resolveExactReferenceMatch(reservation, candidate)
 
-    if (candidateReference && candidateReference === reservation.reservationId) {
-        evidence.push({ key: 'reservationId', value: reservation.reservationId })
-        reasons.push('reservationIdExact')
-    } else if (candidateReference && reference && candidateReference === reference) {
-        evidence.push({ key: 'reference', value: reference })
-        reasons.push('referenceExact')
+    if (exactReferenceMatch) {
+        evidence.push({ key: exactReferenceMatch.key, value: exactReferenceMatch.value })
+        reasons.push(exactReferenceMatch.reason)
+
+        if (exactReferenceMatch.sourceDocumentId) {
+            evidence.push({ key: 'payoutSupplementSourceDocumentId', value: exactReferenceMatch.sourceDocumentId })
+        }
     } else {
         const derivedAirbnbIdentityMatch = matchDerivedAirbnbIdentity(reservation, candidate)
 
@@ -229,6 +229,8 @@ function toPayoutCandidate(row: PayoutRowExpectation): Candidate {
         platform: row.platform,
         rowId: row.rowId,
         reservationId: row.reservationId,
+        payoutSupplementReservationIds: row.payoutSupplementReservationIds?.slice(),
+        payoutSupplementSourceDocumentIds: row.payoutSupplementSourceDocumentIds?.slice(),
         amountMinor: row.amountMinor,
         matchingAmountMinor: row.matchingAmountMinor,
         currency: row.currency,
@@ -289,6 +291,56 @@ function resolveCandidateReservationAmountMinor(candidate: Candidate): number {
     }
 
     return candidate.amountMinor
+}
+
+function resolveExactReferenceMatch(
+    reservation: ReservationSourceRecord,
+    candidate: Candidate
+): { key: string, value: string, reason: string, sourceDocumentId?: string } | null {
+    const reservationId = normalizeComparableValue(reservation.reservationId)
+    const reference = normalizeComparableValue(reservation.reference)
+    const candidateReference = candidate.settlementKind === 'payout_row'
+        ? normalizeComparableValue(candidate.reservationId ?? candidate.payoutReference)
+        : normalizeComparableValue(candidate.reservationId)
+
+    if (candidateReference && candidateReference === reservationId) {
+        return {
+            key: 'reservationId',
+            value: reservation.reservationId,
+            reason: 'reservationIdExact'
+        }
+    }
+
+    if (candidateReference && reference && candidateReference === reference) {
+        return {
+            key: 'reference',
+            value: reservation.reference!,
+            reason: 'referenceExact'
+        }
+    }
+
+    if (candidate.settlementKind === 'payout_row') {
+        const supplementReservationId = (candidate.payoutSupplementReservationIds ?? []).find((value) => {
+            const normalized = normalizeComparableValue(value)
+            return Boolean(normalized) && (normalized === reservationId || (reference ? normalized === reference : false))
+        })
+
+        if (supplementReservationId) {
+            return {
+                key: 'payoutSupplementReservationId',
+                value: supplementReservationId,
+                reason: 'payoutSupplementReservationIdExact',
+                sourceDocumentId: candidate.payoutSupplementSourceDocumentIds?.[0]
+            }
+        }
+    }
+
+    return null
+}
+
+function normalizeComparableValue(value: string | undefined): string | undefined {
+    const normalized = value?.trim()
+    return normalized && normalized.length > 0 ? normalized : undefined
 }
 
 function matchDerivedAirbnbIdentity(

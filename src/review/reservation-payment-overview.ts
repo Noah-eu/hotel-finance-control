@@ -129,8 +129,13 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const match = matchesBySourceKey.get(sourceKey)
     const noMatch = noMatchesBySourceKey.get(sourceKey)
     const paidAmountMinor = resolveMatchedPaidAmountMinor(match, transactionsById) ?? resolvePaidAmountFromOutstanding(reservation)
-    const statusKey = resolveReservationStatus(reservation.grossRevenueMinor, reservation.outstandingBalanceMinor, Boolean(match))
     const blockKey = resolveReservationBlockKey(reservation)
+    const statusKey = resolveReservationStatus({
+      expectedAmountMinor: reservation.grossRevenueMinor,
+      outstandingBalanceMinor: reservation.outstandingBalanceMinor,
+      hasStrongEvidence: Boolean(match),
+      blockKey
+    })
     const evidenceKey = match ? mapEvidenceKeyFromMatch(match) : 'no_evidence'
 
     items.push({
@@ -149,7 +154,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: reservation.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey),
+      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: [reservation.sourceDocumentId],
@@ -179,8 +184,13 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     }
 
     const paidAmountMinor = candidate?.matchingAmountMinor ?? candidate?.amountMinor ?? resolvePaidAmountFromOutstanding(ancillary)
-    const statusKey = resolveReservationStatus(ancillary.grossRevenueMinor, ancillary.outstandingBalanceMinor, Boolean(candidate))
     const blockKey = resolveAncillaryBlockKey(ancillary)
+    const statusKey = resolveReservationStatus({
+      expectedAmountMinor: ancillary.grossRevenueMinor,
+      outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
+      hasStrongEvidence: Boolean(candidate),
+      blockKey
+    })
     const evidenceKey: ReservationPaymentEvidenceKey = candidate ? mapEvidenceKeyFromPlatform(candidate.platform) : 'no_evidence'
 
     items.push({
@@ -506,16 +516,29 @@ function resolvePaidAmountFromOutstanding(
   return paidAmountMinor > 0 ? paidAmountMinor : undefined
 }
 
-function resolveReservationStatus(expectedAmountMinor: number, outstandingBalanceMinor: number | undefined, hasStrongEvidence: boolean): ReservationPaymentStatusKey {
-  if (typeof outstandingBalanceMinor === 'number' && outstandingBalanceMinor > 0 && outstandingBalanceMinor < expectedAmountMinor) {
-    return 'partial'
-  }
-
-  if (hasStrongEvidence) {
+function resolveReservationStatus(input: {
+  expectedAmountMinor: number
+  outstandingBalanceMinor: number | undefined
+  hasStrongEvidence: boolean
+  blockKey?: ReservationPaymentOverviewBlockKey
+}): ReservationPaymentStatusKey {
+  if (input.hasStrongEvidence && input.blockKey === 'booking') {
     return 'paid'
   }
 
-  if (typeof outstandingBalanceMinor === 'number' && outstandingBalanceMinor >= expectedAmountMinor && expectedAmountMinor > 0) {
+  if (typeof input.outstandingBalanceMinor === 'number' && input.outstandingBalanceMinor > 0 && input.outstandingBalanceMinor < input.expectedAmountMinor) {
+    return 'partial'
+  }
+
+  if (input.hasStrongEvidence) {
+    return 'paid'
+  }
+
+  if (input.blockKey === 'booking') {
+    return 'unverified'
+  }
+
+  if (typeof input.outstandingBalanceMinor === 'number' && input.outstandingBalanceMinor >= input.expectedAmountMinor && input.expectedAmountMinor > 0) {
     return 'missing'
   }
 
@@ -526,7 +549,8 @@ function buildReservationStatusDetailCs(
   reservation: ReservationSourceRecord,
   match: ReservationSettlementMatch | undefined,
   noMatch: ReservationSettlementNoMatch | undefined,
-  statusKey: ReservationPaymentStatusKey
+  statusKey: ReservationPaymentStatusKey,
+  blockKey: ReservationPaymentOverviewBlockKey
 ): string {
   if (match) {
     if (statusKey === 'partial') {
@@ -542,6 +566,14 @@ function buildReservationStatusDetailCs(
 
   if (statusKey === 'partial') {
     return 'Zdroj uvádí částečně uhrazenou položku, ale engine zatím nemá dost silnou vazbu na konkrétní úhradu.'
+  }
+
+  if (blockKey === 'booking') {
+    if (noMatch) {
+      return `Booking rezervace existuje, ale current run zatím nemá dost silný payout-row důkaz (${describeNoMatchReason(noMatch.noMatchReason)}).`
+    }
+
+    return 'Booking rezervace existuje, ale current run zatím nemá potvrzený odpovídající Booking payout row.'
   }
 
   if (noMatch) {

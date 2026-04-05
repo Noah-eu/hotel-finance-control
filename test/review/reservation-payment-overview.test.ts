@@ -334,4 +334,107 @@ describe('buildReservationPaymentOverview', () => {
       })
     ])
   })
+
+  it('marks Booking payout-row-confirmed reservations as paid and keeps unmatched Booking reservations unverified', () => {
+    const batch = {
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:booking-greta-row',
+            source: 'booking',
+            subtype: 'payout',
+            amountMinor: 25984,
+            currency: 'EUR',
+            bookedAt: '2026-03-12',
+            reference: '010638445054',
+            sourceDocumentIds: ['doc:booking-csv'],
+            extractedRecordIds: []
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-greta',
+              reservationId: '6622415324',
+              guestName: 'Greta Sieweke',
+              roomName: 'A201',
+              reference: '6622415324',
+              channel: 'booking',
+              bookedAt: '2026-03-01',
+              stayStartAt: '2026-03-10',
+              stayEndAt: '2026-03-12',
+              grossRevenueMinor: 25984,
+              outstandingBalanceMinor: 25984,
+              currency: 'EUR',
+              expectedSettlementChannels: ['booking']
+            },
+            {
+              sourceDocumentId: 'doc:previo-pending',
+              reservationId: '7722415324',
+              guestName: 'Pending Booking Guest',
+              roomName: 'A202',
+              reference: '7722415324',
+              channel: 'booking',
+              bookedAt: '2026-03-05',
+              stayStartAt: '2026-03-14',
+              stayEndAt: '2026-03-16',
+              grossRevenueMinor: 19900,
+              outstandingBalanceMinor: 19900,
+              currency: 'EUR',
+              expectedSettlementChannels: ['booking']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [
+            {
+              sourceDocumentId: 'doc:previo-greta',
+              reservationId: '6622415324',
+              matchedRowId: 'txn:booking-greta-row',
+              settlementKind: 'payout_row',
+              platform: 'booking',
+              amountMinor: 25984,
+              currency: 'EUR',
+              confidence: 1,
+              reasons: ['payoutSupplementReservationIdExact', 'amountExact', 'channelAligned'],
+              evidence: [
+                { key: 'payoutSupplementReservationId', value: '6622415324' },
+                { key: 'payoutSupplementSourceDocumentId', value: 'doc:booking-pdf-greta' }
+              ]
+            }
+          ],
+          reservationSettlementNoMatches: [
+            {
+              sourceDocumentId: 'doc:previo-pending',
+              reservationId: '7722415324',
+              candidateCount: 0,
+              noMatchReason: 'noCandidate'
+            }
+          ],
+          payoutRows: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const bookingItems = overview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Greta Sieweke',
+        primaryReference: '6622415324',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:booking-greta-row']
+      }),
+      expect.objectContaining({
+        title: 'Pending Booking Guest',
+        primaryReference: '7722415324',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence'
+      })
+    ]))
+  })
 })
