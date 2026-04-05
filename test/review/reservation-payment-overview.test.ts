@@ -202,4 +202,136 @@ describe('buildReservationPaymentOverview', () => {
       })
     ])
   })
+
+  it('keeps booking-like fallback channels in the Booking block, formats outstanding minor values, and splits Comgate parking rows robustly', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'record:comgate:web',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 154900,
+          currency: 'CZK',
+          occurredAt: '2026-03-19',
+          data: {
+            paymentPurpose: 'website-reservation',
+            reference: 'CG-WEB-2001',
+            transactionId: 'CG-PORTAL-TRX-2001'
+          }
+        },
+        {
+          id: 'record:comgate:parking',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 4200,
+          currency: 'CZK',
+          occurredAt: '2026-03-19',
+          data: {
+            paymentPurpose: 'parking-fee',
+            reference: 'CG-PARK-2001',
+            transactionId: 'CG-PORTAL-TRX-2002'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:web',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 154000,
+            currency: 'CZK',
+            bookedAt: '2026-03-19',
+            reference: 'CG-WEB-2001',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['record:comgate:web']
+          },
+          {
+            id: 'txn:comgate:parking',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 4000,
+            currency: 'CZK',
+            bookedAt: '2026-03-19',
+            reference: 'CG-PARK-2001',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['record:comgate:parking']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [
+            {
+              sourceDocumentId: 'doc:previo-booking',
+              reservationId: '5178029336',
+              guestName: 'Booking Guest',
+              roomName: 'A101',
+              reference: '5178029336',
+              channel: 'Booking.com Prepaid',
+              bookedAt: '2026-03-02',
+              stayStartAt: '2026-03-03',
+              stayEndAt: '2026-03-04',
+              grossRevenueMinor: 4690,
+              outstandingBalanceMinor: 4690,
+              currency: 'EUR',
+              expectedSettlementChannels: []
+            }
+          ],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:web',
+              platform: 'comgate',
+              reservationId: 'WEB-1',
+              payoutReference: 'CG-WEB-2001',
+              payoutDate: '2026-03-19',
+              amountMinor: 154900,
+              matchingAmountMinor: 154000,
+              currency: 'CZK'
+            },
+            {
+              rowId: 'txn:comgate:parking',
+              platform: 'comgate',
+              reservationId: 'PARK-1',
+              payoutReference: 'CG-PARK-2001',
+              payoutDate: '2026-03-19',
+              amountMinor: 4200,
+              matchingAmountMinor: 4000,
+              currency: 'CZK'
+            }
+          ],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const blockByKey = Object.fromEntries(overview.blocks.map((block) => [block.key, block]))
+
+    expect(blockByKey.booking.items).toEqual([
+      expect.objectContaining({
+        title: 'Booking Guest',
+        primaryReference: '5178029336',
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Zbývá uhradit', value: '46,90 EUR' })
+        ])
+      })
+    ])
+    expect(blockByKey.reservation_plus.items).toEqual([
+      expect.objectContaining({
+        title: 'WEB-1',
+        primaryReference: 'WEB-1'
+      })
+    ])
+    expect(blockByKey.parking.items).toEqual([
+      expect.objectContaining({
+        title: 'CG-PARK-2001',
+        primaryReference: 'PARK-1'
+      })
+    ])
+  })
 })

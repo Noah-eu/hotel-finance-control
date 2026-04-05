@@ -3871,6 +3871,94 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections).toHaveProperty('ancillarySettlementOverview')
   })
 
+  it('surfaces grounded Booking, Expedia, Reservation+, and Parking items when those source files are uploaded together', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const comgate = getRealInputFixture('comgate-export-current-portal')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content),
+        createRuntimeFile(expedia.sourceDocument.fileName, expedia.rawInput.content),
+        createRuntimeFile(comgate.sourceDocument.fileName, comgate.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-25T10:45:00.000Z'
+    })
+
+    expect(result.reservationPaymentOverview.blocks.map((block) => ({
+      key: block.key,
+      itemCount: block.itemCount
+    }))).toEqual([
+      { key: 'airbnb', itemCount: 0 },
+      { key: 'booking', itemCount: 1 },
+      { key: 'expedia', itemCount: 1 },
+      { key: 'reservation_plus', itemCount: 1 },
+      { key: 'parking', itemCount: 1 }
+    ])
+    expect(result.reservationPaymentOverview.summary.statusCounts).toEqual({
+      paid: 4,
+      partial: 0,
+      unverified: 0,
+      missing: 0
+    })
+  })
+
+  it('keeps booking-like Previo channels in Booking, formats outstanding EUR detail values, and splits Comgate parking-like rows from website reservations', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '02.03.2026 09:15',
+              stayStartAt: '03.03.2026',
+              stayEndAt: '04.03.2026',
+              voucher: '5178029336',
+              guestName: 'Booking Guest',
+              channel: 'Booking.com Prepaid',
+              amountText: '46,90 EUR',
+              outstandingText: '46,90 EUR',
+              roomName: 'A101'
+            }
+          ])
+        ),
+        createRuntimeFile(
+          'comgate-portal.csv',
+          [
+            '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+            '"CG-PORTAL-TRX-2001";"CG-WEB-2001";"18.03.2026 09:15";"18.03.2026 09:16";"19.03.2026";"guest@example.com";"CG-WEB-2001";"JOKELAND s.r.o.";"1549,00";"CZK";"website-reservation";"0,00";"0,00";"9,00";"9,00"',
+            '"CG-PORTAL-TRX-2002";"CG-PARK-2001";"18.03.2026 10:20";"18.03.2026 10:21";"19.03.2026";"parking@example.com";"CG-PARK-2001";"JOKELAND s.r.o.";"42,00";"CZK";"parking-fee";"0,00";"0,00";"2,00";"2,00"'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:00:00.000Z'
+    })
+
+    expect(result.reservationPaymentOverview.blocks.map((block) => ({
+      key: block.key,
+      itemCount: block.itemCount
+    }))).toEqual([
+      { key: 'airbnb', itemCount: 0 },
+      { key: 'booking', itemCount: 1 },
+      { key: 'expedia', itemCount: 0 },
+      { key: 'reservation_plus', itemCount: 1 },
+      { key: 'parking', itemCount: 1 }
+    ])
+
+    const bookingItem = result.reservationPaymentOverview.blocks
+      .find((block) => block.key === 'booking')
+      ?.items[0]
+    expect(bookingItem).toEqual(expect.objectContaining({
+      title: 'Booking Guest',
+      currency: 'EUR'
+    }))
+    expect(bookingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Zbývá uhradit', value: '46,90 EUR' })
+    ]))
+  })
+
   it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 

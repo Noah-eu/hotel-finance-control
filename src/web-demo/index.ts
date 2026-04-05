@@ -47,18 +47,7 @@ const WEB_DEMO_PAYOUT_PROJECTION_MARKER = 'payout-projection-v4'
 export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<WebDemoResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
   const debugMode = options.debugMode ?? false
-  const runtimeDemoFiles = [
-    {
-      name: 'airbnb.csv',
-      content: buildActualUploadedAirbnbContent(),
-      uploadedAt: generatedAt
-    },
-    {
-      name: 'Pohyby_5599955956_202603191023.csv',
-      content: buildActualUploadedRbCitiContent(),
-      uploadedAt: generatedAt
-    }
-  ]
+  const runtimeDemoFiles = buildDefaultRuntimeDemoFiles(generatedAt)
 
   const browserRun = buildBrowserUploadedMonthlyRun({
     files: runtimeDemoFiles,
@@ -113,6 +102,38 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
   return {
     html,
     browserRun
+  }
+}
+
+function buildDefaultRuntimeDemoFiles(generatedAt: string) {
+  return [
+    {
+      name: 'airbnb.csv',
+      content: buildActualUploadedAirbnbContent(),
+      uploadedAt: generatedAt
+    },
+    {
+      name: 'Pohyby_5599955956_202603191023.csv',
+      content: buildActualUploadedRbCitiContent(),
+      uploadedAt: generatedAt
+    },
+    buildRuntimeDemoFixtureFile('booking-payout-export-browser-upload-shape', generatedAt),
+    buildRuntimeDemoFixtureFile('expedia-payout-export', generatedAt),
+    buildRuntimeDemoFixtureFile('comgate-export-current-portal', generatedAt)
+  ]
+}
+
+function buildRuntimeDemoFixtureFile(
+  fixtureKey: 'booking-payout-export-browser-upload-shape' | 'expedia-payout-export' | 'comgate-export-current-portal',
+  uploadedAt: string
+) {
+  const fixture = getRealInputFixture(fixtureKey)
+
+  return {
+    name: fixture.sourceDocument.fileName,
+    content: fixture.rawInput.content,
+    binaryContentBase64: fixture.rawInput.binaryContentBase64,
+    uploadedAt
   }
 }
 
