@@ -369,7 +369,30 @@ function renderOperatorWebDemoHtml(input: {
       .detail-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        align-items: start;
         gap: 16px;
+      }
+      @media (min-width: 1180px) {
+        .detail-grid {
+          grid-template-columns: minmax(280px, 0.9fr) minmax(720px, 1.8fr);
+        }
+        #matched-payout-batches-section,
+        #unmatched-payout-batches-section,
+        #reservation-settlement-overview-section {
+          min-width: 0;
+        }
+        #matched-payout-batches-section {
+          grid-column: 1;
+          grid-row: 1;
+        }
+        #unmatched-payout-batches-section {
+          grid-column: 1;
+          grid-row: 2;
+        }
+        #reservation-settlement-overview-section {
+          grid-column: 2;
+          grid-row: 1 / span 2;
+        }
       }
       .expense-detail-grid {
         display: grid;
