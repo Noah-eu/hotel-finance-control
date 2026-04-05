@@ -11,6 +11,7 @@ import type { PreviousMonthCarryoverSource } from '../reconciliation'
 import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import {
   buildReviewScreen,
+  type ReservationPaymentOverview,
   type ReviewEvidenceEntry,
   type ReviewExpenseComparisonSide,
   type ReviewScreenData,
@@ -452,6 +453,7 @@ export interface BrowserRuntimeUploadState {
     status: string
   }>
   reviewSummary: ReviewScreenData['summary']
+  reservationPaymentOverview: ReservationPaymentOverview
   reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{
     labelCs: string

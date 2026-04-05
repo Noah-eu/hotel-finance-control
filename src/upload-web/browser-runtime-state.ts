@@ -10,7 +10,7 @@ import {
   type UploadedMonthlyFile
 } from '../monthly-batch'
 import { inspectPayoutBatchBankDecisions, type PreviousMonthCarryoverSource } from '../reconciliation'
-import { buildReviewScreen, inspectInternalTransferPairSelections } from '../review'
+import { buildReservationPaymentOverview, buildReviewScreen, inspectInternalTransferPairSelections } from '../review'
 import { resolveRuntimeBuildInfo } from '../shared/build-provenance'
 import { formatAmountMinorCs } from '../shared/money'
 import type { BrowserRuntimeProgressUpdate, BrowserRuntimeUploadState } from './index.js'
@@ -90,6 +90,7 @@ function buildBrowserRuntimeUploadStateFromIngestion(
     generatedAt: input.generatedAt,
     fileRoutes: ingestion.fileRoutes
   })
+  const reservationPaymentOverview = buildReservationPaymentOverview(batch)
   const exportFiles = buildExportArtifactsFiles({
     batch,
     review
@@ -180,6 +181,7 @@ function buildBrowserRuntimeUploadStateFromIngestion(
       status: transaction.status
     })),
     reviewSummary: review.summary,
+    reservationPaymentOverview,
     reviewSections: {
       matched: review.matched,
       reservationSettlementOverview: review.reservationSettlementOverview,

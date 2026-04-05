@@ -3386,16 +3386,16 @@ describe('buildWebDemo', () => {
     expect(reloaded.preparedFilesContent.innerHTML).toContain('Previo rezervační export')
   })
 
-  it('renders exact Airbnb voucher-code Previo matches in the visible operator truth without changing payout batch totals', async () => {
+  it('renders exact Airbnb voucher-code Previo matches in the reservation-payment overview without changing payout batch totals', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
     const airbnbContent = buildRealMixedAirbnbVoucherMatchContent()
-    const expectedVoucherTitles = [
-      'Rezervace HM35X35WJ8',
-      'Rezervace HM4S532B32',
-      'Rezervace HMXWSA222M',
-      'Rezervace HMSPW3X3T9',
-      'Rezervace HMY8K5DYTB'
+    const expectedAirbnbItems = [
+      { title: 'Eliška Geržová', primaryReference: 'HM35X35WJ8', transactionId: 'txn:payout:airbnb-payout-8' },
+      { title: 'Tomasz Rybarski', primaryReference: 'HM4S532B32', transactionId: 'txn:payout:airbnb-payout-9' },
+      { title: 'Patrik Ševčík', primaryReference: 'HMXWSA222M', transactionId: 'txn:payout:airbnb-payout-6' },
+      { title: 'Sanjar Kakharov', primaryReference: 'HMSPW3X3T9', transactionId: 'txn:payout:airbnb-payout-4' },
+      { title: 'Yağız Alp Kayhan', primaryReference: 'HMY8K5DYTB', transactionId: 'txn:payout:airbnb-payout-2' }
     ]
 
     const baseline = await executeWebDemoMainWorkflow({
@@ -3478,34 +3478,60 @@ describe('buildWebDemo', () => {
     })
 
     const visibleState = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverview: {
+        summary: {
+          itemCount: number
+          statusCounts: {
+            paid: number
+            partial: number
+            unverified: number
+            missing: number
+          }
+        }
+        blocks: Array<{
+          key: string
+          itemCount: number
+          items: Array<{
+            title: string
+            primaryReference?: string
+            transactionIds: string[]
+            statusKey: string
+            evidenceKey: string
+          }>
+        }>
+      }
       reviewSections: {
-        reservationSettlementOverview: Array<{ title: string; detail: string; transactionIds: string[] }>
         payoutBatchMatched: unknown[]
         payoutBatchUnmatched: unknown[]
       }
     }
+    const airbnbBlock = visibleState.reservationPaymentOverview.blocks.find((block) => block.key === 'airbnb')
 
     rendered.openControlDetailPage()
 
-    expect(visibleState.reviewSections.reservationSettlementOverview).toHaveLength(expectedVoucherTitles.length)
-    expect(visibleState.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining(
-      expectedVoucherTitles.map((title) => expect.objectContaining({ title }))
+    expect(visibleState.reservationPaymentOverview.summary.itemCount).toBe(expectedAirbnbItems.length)
+    expect(visibleState.reservationPaymentOverview.summary.statusCounts).toEqual({
+      paid: expectedAirbnbItems.length,
+      partial: 0,
+      unverified: 0,
+      missing: 0
+    })
+    expect(airbnbBlock).toEqual(expect.objectContaining({ itemCount: expectedAirbnbItems.length }))
+    expect(airbnbBlock?.items).toEqual(expect.arrayContaining(
+      expectedAirbnbItems.map((item) => expect.objectContaining({
+        title: item.title,
+        primaryReference: item.primaryReference,
+        transactionIds: [item.transactionId],
+        statusKey: 'paid',
+        evidenceKey: 'payout'
+      }))
     ))
-    expect(visibleState.reviewSections.reservationSettlementOverview.every((item) => item.detail.includes('Kanál: Airbnb.'))).toBe(true)
-    expect(visibleState.reviewSections.reservationSettlementOverview).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: 'Rezervace HM35X35WJ8', transactionIds: ['txn:payout:airbnb-payout-8'] }),
-      expect.objectContaining({ title: 'Rezervace HM4S532B32', transactionIds: ['txn:payout:airbnb-payout-9'] }),
-      expect.objectContaining({ title: 'Rezervace HMXWSA222M', transactionIds: ['txn:payout:airbnb-payout-6'] }),
-      expect.objectContaining({ title: 'Rezervace HMSPW3X3T9', transactionIds: ['txn:payout:airbnb-payout-4'] }),
-      expect.objectContaining({ title: 'Rezervace HMY8K5DYTB', transactionIds: ['txn:payout:airbnb-payout-2'] })
-    ]))
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HM35X35WJ8')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HM4S532B32')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMXWSA222M')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMSPW3X3T9')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Rezervace HMY8K5DYTB')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Kanál: Airbnb.')
-    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('class="review-amount-value"')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Airbnb')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Eliška Geržová')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('HM35X35WJ8')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('zaplaceno')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('payout')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('reservation-overview-grid')
     expect(visibleState.reviewSections.payoutBatchMatched.length).toBe(
       (baseline.getLastVisibleRuntimeState() as { reviewSections: { payoutBatchMatched: unknown[] } }).reviewSections.payoutBatchMatched.length
     )
@@ -6293,21 +6319,17 @@ describe('buildWebDemo', () => {
     })
   })
 
-  it('renders dedicated accommodation and ancillary settlement overview panels in the main browser UI', async () => {
+  it('renders the reservation-payment overview shell in the main browser UI', async () => {
     const result = await buildWebDemo({
       generatedAt: '2026-03-22T10:15:00.000Z'
     })
 
     expect(result.html).toContain('id="reservation-settlement-overview-section"')
     expect(result.html).toContain('id="reservation-settlement-overview-content"')
-    expect(result.html).toContain('Hlavní ubytovací rezervace')
-    expect(result.html).toContain('id="ancillary-settlement-overview-section"')
-    expect(result.html).toContain('id="ancillary-settlement-overview-content"')
-    expect(result.html).toContain('Doplňkové položky / ancillary revenue')
-    expect(result.html).toContain('buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || [])')
-    expect(result.html).toContain('buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || [])')
-    expect(result.html).toContain('Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…')
-    expect(result.html).toContain('Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…')
+    expect(result.html).toContain('Rezervace a úhrady')
+    expect(result.html).toContain('Po spuštění se zde zobrazí kompaktní bloky Airbnb, Booking, Expedia, Reservation+ / vlastní web a Parkování.')
+    expect(result.html).toContain('buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview)')
+    expect(result.html).toContain('Přehled Rezervace a úhrady se právě načítá ze sdíleného runtime běhu…')
   })
 
   it('keeps the exact Fio GPC upload out of ingest failure after the preview workspace roundtrip', async () => {

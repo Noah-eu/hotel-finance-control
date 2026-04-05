@@ -499,6 +499,117 @@ function renderOperatorWebDemoHtml(input: {
         margin-top: 4px;
         color: #52627a;
       }
+      .reservation-overview-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 14px;
+      }
+      .reservation-overview-block {
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        background: #fbfdff;
+        padding: 16px;
+      }
+      .reservation-overview-block-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .reservation-overview-block-header h4 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .reservation-overview-count {
+        display: inline-block;
+        min-width: 34px;
+        text-align: center;
+        border-radius: 999px;
+        padding: 5px 11px;
+        background: #eaf2ff;
+        color: #174ea6;
+        font-weight: 700;
+      }
+      .reservation-overview-totals {
+        margin: 0 0 12px;
+        color: #52627a;
+        line-height: 1.5;
+      }
+      .reservation-payment-item {
+        border-top: 1px solid #e4ebf6;
+        padding-top: 12px;
+        margin-top: 12px;
+      }
+      .reservation-payment-item:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+        margin-top: 0;
+      }
+      .reservation-payment-item-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .reservation-payment-item-title {
+        margin: 0;
+        font-size: 16px;
+        line-height: 1.4;
+      }
+      .reservation-payment-item-subtitle {
+        margin-top: 4px;
+        color: #52627a;
+      }
+      .reservation-payment-item-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+      .reservation-payment-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .reservation-payment-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #eef3f9;
+        color: #274160;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .reservation-payment-chip strong {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .reservation-payment-detail {
+        margin-top: 10px;
+      }
+      .reservation-payment-detail summary {
+        cursor: pointer;
+        color: #174ea6;
+        font-weight: 700;
+      }
+      .reservation-payment-detail ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+      }
+      .reservation-payment-detail li {
+        margin-bottom: 6px;
+        color: #52627a;
+      }
+      .status-badge.paid { background: #e7f6ec; color: #0f7a32; }
+      .status-badge.partial { background: #fff4dd; color: #946200; }
+      .status-badge.unverified { background: #eef3f9; color: #38506b; }
+      .status-badge.missing { background: #ffe3e8; color: #b42318; }
+      .status-badge.evidence { background: #edf2ff; color: #174ea6; }
       .operator-panel {
         border: 1px solid #dce6f5;
         border-radius: 14px;
@@ -1005,12 +1116,12 @@ ${input.debugMode ? `
               </div>
             </section>
             <section id="control-detail-summary-section" class="metric" data-runtime-phase="placeholder">
-              <h3>Detail kontrolních sekcí</h3>
+              <h3>Rezervace a úhrady</h3>
               <div id="control-detail-launcher-summary-content">
-                <p class="hint">Po spuštění se zde ukážou souhrnné počty pro payout dávky, rezervace a kontrolní sekce.</p>
+                <p class="hint">Po spuštění se zde ukážou souhrnné počty pro payout dávky a reservation-centric bloky podle zdroje.</p>
               </div>
-              <p><button id="open-control-detail-button" type="button">Detail kontrolních sekcí</button></p>
-              <p class="hint">Otevře interní detail payout a kontrolních bucketů bez dlouhého scrollování na hlavní stránce.</p>
+              <p><button id="open-control-detail-button" type="button">Rezervace a úhrady</button></p>
+              <p class="hint">Otevře kompaktní reservation-centric přehled se zachovanými payout bloky a rozklikem detailu.</p>
             </section>
             <section id="expense-review-summary-section" class="metric" data-runtime-phase="placeholder">
               <h3>Kontrola výdajů a dokladů</h3>
@@ -1067,14 +1178,14 @@ ${showRuntimePayoutDiagnostics ? `
         <div class="detail-page-actions">
           <button id="back-from-control-detail-button" type="button" class="secondary-button">Zpět na hlavní přehled</button>
         </div>
-        <h2>Detail kontrolních sekcí</h2>
+        <h2>Rezervace a úhrady</h2>
         <div id="control-detail-page-summary-content" class="detail-summary-block">
-          <p class="hint">Po spuštění se zde zobrazí souhrn počtů pro payout dávky a kontrolní bucket sekce.</p>
+          <p class="hint">Po spuštění se zde zobrazí souhrn payout dávek a reservation-centric bloků podle zdroje.</p>
         </div>
         <div id="control-manual-match-summary" class="detail-summary-block manual-match-summary" hidden>
           <p class="hint">Ruční spárování se zobrazí po výběru nespárovaných položek.</p>
         </div>
-        <section class="detail-panel detail-page-table">
+        <section class="detail-panel detail-page-table" hidden>
           <h3>Náhled reportu</h3>
           <table>
             <thead>
@@ -1089,7 +1200,7 @@ ${showRuntimePayoutDiagnostics ? `
           </table>
         </section>
         <div class="detail-grid">
-          <section id="control-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder">
+          <section id="control-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder" hidden>
             <h3>Ručně spárováno</h3>
             <div id="control-manual-matched-content">
               <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
@@ -1108,18 +1219,18 @@ ${showRuntimePayoutDiagnostics ? `
             </div>
           </section>
           <section id="reservation-settlement-overview-section" class="detail-panel" data-runtime-phase="placeholder">
-            <h3>Hlavní ubytovací rezervace</h3>
+            <h3>Rezervace a úhrady</h3>
             <div id="reservation-settlement-overview-content">
-              <p class="hint">Po spuštění se zde zobrazí hlavní Previo rezervace, očekávaná cesta úhrady a stav kandidáta.</p>
+              <p class="hint">Po spuštění se zde zobrazí kompaktní bloky Airbnb, Booking, Expedia, Reservation+ / vlastní web a Parkování.</p>
             </div>
           </section>
-          <section id="ancillary-settlement-overview-section" class="detail-panel" data-runtime-phase="placeholder">
+          <section id="ancillary-settlement-overview-section" class="detail-panel" data-runtime-phase="placeholder" hidden>
             <h3>Doplňkové položky / ancillary revenue</h3>
             <div id="ancillary-settlement-overview-content">
               <p class="hint">Po spuštění se zde zobrazí doplňkové položky jako parkování a jejich očekávaná cesta úhrady.</p>
             </div>
           </section>
-          <section id="unmatched-reservations-section" class="detail-panel" data-runtime-phase="placeholder">
+          <section id="unmatched-reservations-section" class="detail-panel" data-runtime-phase="placeholder" hidden>
             <h3>Nespárované rezervace k úhradě</h3>
             <div id="unmatched-reservations-content">
               <p class="hint">Výchozí ukázkový snapshot před spuštěním runtime běhu.</p>
@@ -7117,30 +7228,30 @@ ${showRuntimePayoutDiagnostics ? '' : `
       function buildControlDetailSummaryMarkup(state, phase) {
         const normalizedState = state || initialRuntimeState;
         const payoutProjection = getVisiblePayoutProjection(normalizedState);
-        const sections = normalizedState.reviewSections || {};
-        const manualMatchGroups = Array.isArray(normalizedState && normalizedState.manualMatchGroups) ? normalizedState.manualMatchGroups : [];
+        const overview = getVisibleReservationPaymentOverview(normalizedState);
 
         if (phase === 'running') {
-          return '<p class="hint">Detail kontrolních sekcí se právě připravuje ze stejného runtime běhu…</p>';
+          return '<p class="hint">Přehled Rezervace a úhrady se právě připravuje ze stejného runtime běhu…</p>';
         }
 
         if (phase === 'failed') {
-          return '<p class="hint">Detail kontrolních sekcí není k dispozici, protože runtime běh selhal.</p>';
+          return '<p class="hint">Přehled Rezervace a úhrady není k dispozici, protože runtime běh selhal.</p>';
         }
 
         if (phase === 'placeholder') {
-          return '<p class="hint">Po spuštění se zde ukážou souhrnné počty pro payout dávky, rezervace a kontrolní bucket sekce.</p>';
+          return '<p class="hint">Po spuštění se zde ukážou souhrnné počty pro payout dávky a reservation-centric bloky podle zdroje.</p>';
         }
 
         return [
-          '<p class="hint">Souhrnné počty musí přesně sedět na detailní bucket sekce v interním přehledu.</p>',
+          '<p class="hint">Souhrnné počty musí přesně sedět na detailní payout bloky a reservation-centric přehled.</p>',
           '<ul>',
           '<li><strong>Spárované payout dávky:</strong> ' + escapeHtml(String((payoutProjection.matchedItems || []).length)) + '</li>',
           '<li><strong>Nespárované payout dávky:</strong> ' + escapeHtml(String((payoutProjection.unmatchedItems || []).length)) + '</li>',
-          '<li><strong>Hlavní ubytovací rezervace:</strong> ' + escapeHtml(String(((sections && sections.reservationSettlementOverview) || []).length)) + '</li>',
-          '<li><strong>Doplňkové položky:</strong> ' + escapeHtml(String(((sections && sections.ancillarySettlementOverview) || []).length)) + '</li>',
-          '<li><strong>Nespárované rezervace k úhradě:</strong> ' + escapeHtml(String(((sections && sections.unmatchedReservationSettlements) || []).length)) + '</li>',
-          '<li><strong>Ručně spárované skupiny:</strong> ' + escapeHtml(String(manualMatchGroups.length)) + '</li>',
+          overview.blocks.map((block) => '<li><strong>' + escapeHtml(String(block.labelCs || 'Blok')) + ':</strong> ' + escapeHtml(String(block.itemCount || 0)) + '</li>').join(''),
+          '<li><strong>Zaplaceno:</strong> ' + escapeHtml(String((overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.paid) || 0)) + '</li>',
+          '<li><strong>Částečně zaplaceno:</strong> ' + escapeHtml(String((overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.partial) || 0)) + '</li>',
+          '<li><strong>Neověřeno:</strong> ' + escapeHtml(String((overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.unverified) || 0)) + '</li>',
+          '<li><strong>Chybí platba:</strong> ' + escapeHtml(String((overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.missing) || 0)) + '</li>',
           '</ul>'
         ].join('');
       }
@@ -7387,6 +7498,153 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ).join('') + '</ul>';
       }
 
+      function buildEmptyReservationPaymentOverview() {
+        return {
+          blocks: [
+            { key: 'airbnb', labelCs: 'Airbnb', itemCount: 0, expectedTotals: [], paidTotals: [], items: [] },
+            { key: 'booking', labelCs: 'Booking', itemCount: 0, expectedTotals: [], paidTotals: [], items: [] },
+            { key: 'expedia', labelCs: 'Expedia', itemCount: 0, expectedTotals: [], paidTotals: [], items: [] },
+            { key: 'reservation_plus', labelCs: 'Reservation+ / vlastní web', itemCount: 0, expectedTotals: [], paidTotals: [], items: [] },
+            { key: 'parking', labelCs: 'Parkování', itemCount: 0, expectedTotals: [], paidTotals: [], items: [] }
+          ],
+          summary: {
+            itemCount: 0,
+            statusCounts: {
+              paid: 0,
+              partial: 0,
+              unverified: 0,
+              missing: 0
+            }
+          }
+        };
+      }
+
+      function getVisibleReservationPaymentOverview(state) {
+        const overview = state && state.reservationPaymentOverview;
+
+        if (!overview || !Array.isArray(overview.blocks)) {
+          return buildEmptyReservationPaymentOverview();
+        }
+
+        return overview;
+      }
+
+      function formatReservationPaymentTotals(totals, emptyLabel) {
+        if (!Array.isArray(totals) || totals.length === 0) {
+          return emptyLabel;
+        }
+
+        return totals.map((entry) => formatAmountMinorCs(Number(entry.totalMinor || 0), String(entry.currency || 'CZK'))).join(' · ');
+      }
+
+      function buildReservationPaymentAmountMarkup(item) {
+        const entries = [];
+
+        if (typeof item.expectedAmountMinor === 'number') {
+          entries.push({
+            label: 'Očekáváno',
+            value: formatAmountMinorCs(item.expectedAmountMinor, item.currency)
+          });
+        }
+
+        if (typeof item.paidAmountMinor === 'number') {
+          entries.push({
+            label: 'Uhrazeno',
+            value: formatAmountMinorCs(item.paidAmountMinor, item.currency)
+          });
+        }
+
+        if (entries.length === 0 && item.currency) {
+          entries.push({
+            label: 'Měna',
+            value: escapeHtml(String(item.currency))
+          });
+        }
+
+        return entries.map((entry) =>
+          '<span class="reservation-payment-chip"><strong>' + escapeHtml(entry.label) + '</strong><span>' + escapeHtml(entry.value) + '</span></span>'
+        ).join('');
+      }
+
+      function buildReservationPaymentCompactMeta(item) {
+        const chips = [
+          item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
+          item.subtitle ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(String(item.subtitle)) + '</span></span>' : '',
+          item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
+        ].filter(Boolean);
+
+        return chips.join('') + buildReservationPaymentAmountMarkup(item);
+      }
+
+      function buildReservationPaymentDetailMarkup(item) {
+        const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
+        const detailLines = detailEntries.map((entry) =>
+          '<li><strong>' + escapeHtml(String(entry.labelCs || 'Detail')) + ':</strong> ' + escapeHtml(String(entry.value || '')) + '</li>'
+        );
+
+        if (item.statusDetailCs) {
+          detailLines.unshift('<li><strong>Vyhodnocení:</strong> ' + escapeHtml(String(item.statusDetailCs)) + '</li>');
+        }
+
+        if (item.secondaryReference) {
+          detailLines.push('<li><strong>Další reference:</strong> ' + escapeHtml(String(item.secondaryReference)) + '</li>');
+        }
+
+        if (Array.isArray(item.sourceDocumentIds) && item.sourceDocumentIds.length > 0) {
+          detailLines.push('<li><strong>Zdrojové doklady:</strong> ' + escapeHtml(item.sourceDocumentIds.join(', ')) + '</li>');
+        }
+
+        if (Array.isArray(item.transactionIds) && item.transactionIds.length > 0) {
+          detailLines.push('<li><strong>Transakce:</strong> ' + escapeHtml(item.transactionIds.join(', ')) + '</li>');
+        }
+
+        if (detailLines.length === 0) {
+          return '';
+        }
+
+        return '<details class="reservation-payment-detail"><summary>Detail</summary><ul>' + detailLines.join('') + '</ul></details>';
+      }
+
+      function buildReservationPaymentItemMarkup(item) {
+        return [
+          '<article class="reservation-payment-item">',
+          '<div class="reservation-payment-item-header">',
+          '<div>',
+          '<h5 class="reservation-payment-item-title">' + escapeHtml(String(item.title || 'Bez názvu')) + '</h5>',
+          item.secondaryReference ? '<div class="reservation-payment-item-subtitle">' + escapeHtml(String(item.secondaryReference)) + '</div>' : '',
+          '</div>',
+          '<div class="reservation-payment-item-badges">',
+          '<span class="status-badge ' + escapeHtml(String(item.statusKey || 'unverified')) + '">' + escapeHtml(String(item.statusLabelCs || 'neověřeno')) + '</span>',
+          '<span class="status-badge evidence">' + escapeHtml(String(item.evidenceLabelCs || 'bez důkazu')) + '</span>',
+          '</div>',
+          '</div>',
+          '<div class="reservation-payment-meta">' + buildReservationPaymentCompactMeta(item) + '</div>',
+          buildReservationPaymentDetailMarkup(item),
+          '</article>'
+        ].join('');
+      }
+
+      function buildReservationPaymentOverviewMarkup(overview) {
+        const normalizedOverview = overview && Array.isArray(overview.blocks)
+          ? overview
+          : buildEmptyReservationPaymentOverview();
+
+        return '<div class="reservation-overview-grid">' + normalizedOverview.blocks.map((block) => [
+          '<section class="reservation-overview-block">',
+          '<div class="reservation-overview-block-header">',
+          '<div>',
+          '<h4>' + escapeHtml(String(block.labelCs || 'Blok')) + '</h4>',
+          '<p class="reservation-overview-totals">Očekáváno: ' + escapeHtml(formatReservationPaymentTotals(block.expectedTotals, 'bez částky')) + '<br />Potvrzeno: ' + escapeHtml(formatReservationPaymentTotals(block.paidTotals, 'bez potvrzené úhrady')) + '</p>',
+          '</div>',
+          '<span class="reservation-overview-count">' + escapeHtml(String(block.itemCount || 0)) + '</span>',
+          '</div>',
+          (!Array.isArray(block.items) || block.items.length === 0
+            ? '<p class="hint">Žádné položky v tomto bloku.</p>'
+            : block.items.map((item) => buildReservationPaymentItemMarkup(item)).join('')),
+          '</section>'
+        ].join('')).join('') + '</div>';
+      }
+
       function buildPayoutBatchDetailMarkup(items, pageKey, bucketKey) {
         if (!items || items.length === 0) {
           return '<p class="hint">Žádné položky v této sekci.</p>';
@@ -7395,7 +7653,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return '<ul>' + items.map((item) =>
           '<li>'
           + '<strong>' + escapeHtml(item.title) + '</strong>'
-          + buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item)
+          + (pageKey === 'control' ? '' : buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item))
           + buildReviewDetailMarkup(item)
           + buildReviewAuditMarkup(item)
           + '</li>'
@@ -7486,6 +7744,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const fileRoutes = Array.isArray(state.fileRoutes) ? state.fileRoutes : [];
         const hasRoutedFiles = fileRoutes.length > 0;
         const payoutProjection = collectVisiblePayoutProjection(state);
+        const reservationPaymentOverview = getVisibleReservationPaymentOverview(state);
 
         return {
           ...state,
@@ -7530,6 +7789,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           },
           manualMatchGroups: [],
           finalPayoutProjection: payoutProjection,
+          reservationPaymentOverview,
           reportTransactions: (state.reportTransactions || []).map((transaction) => ({
             ...transaction,
             labelCs: buildVisibleTransactionLabel(transaction.transactionId, transaction.source)
@@ -7625,7 +7885,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ...(manualMatchProjection.reviewSections || {})
           },
           manualMatchGroups: manualMatchProjection.groups,
-          finalPayoutProjection: adjustedPayoutProjection
+          finalPayoutProjection: adjustedPayoutProjection,
+          reservationPaymentOverview: getVisibleReservationPaymentOverview(payoutResolutionState)
         };
         const payoutProjection = getVisiblePayoutProjection(visibleState);
         const expenseReviewBuckets = buildExpenseReviewBuckets(visibleState.reviewSections);
@@ -7678,13 +7939,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(visibleState);
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
-          controlManualMatchSummary.hidden = false;
-          controlManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('control', visibleState);
+        controlManualMatchSummary.hidden = true;
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
-        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || [], visibleState);
         matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
         unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
-        reservationSettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.reservationSettlementOverview) || []);
+        reservationSettlementOverviewContent.innerHTML = buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview);
         ancillarySettlementOverviewContent.innerHTML = buildSettlementOverviewMarkup((visibleState.reviewSections && visibleState.reviewSections.ancillarySettlementOverview) || []);
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(expenseReviewBuckets, phase);
         expenseDetailSummaryContent.innerHTML = buildExpenseDetailSummaryMarkup(visibleState, expenseReviewBuckets);
@@ -7705,16 +7964,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         wireExpenseReviewActionButtons('expenseUnmatchedDocuments', (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [], visibleState);
         wireExpenseReviewActionButtons('expenseUnmatchedOutflows', (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [], visibleState);
         wireExpenseReviewActionButtons('expenseUnmatchedInflows', (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [], visibleState);
-        wireManualMatchSelectionControls('control', [
-          { key: 'payoutBatchUnmatched', items: payoutProjection.unmatchedItems || [] },
-          { key: 'unmatchedReservationSettlements', items: (visibleState.reviewSections && visibleState.reviewSections.unmatchedReservationSettlements) || [] }
-        ]);
         wireManualMatchSelectionControls('expense', [
           { key: 'expenseUnmatchedDocuments', items: (expenseBucketMap.expenseUnmatchedDocuments && expenseBucketMap.expenseUnmatchedDocuments.visibleItems) || [] },
           { key: 'expenseUnmatchedOutflows', items: (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [] },
           { key: 'expenseUnmatchedInflows', items: (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [] }
         ]);
-        wireManualMatchSummaryControls('control', visibleState);
         wireManualMatchSummaryControls('expense', visibleState);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState, 'control', 'unmatchedReservationSettlements');
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
@@ -7860,13 +8114,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = '<p class="hint">Kontrolní přehled se teď počítá ze sdíleného browser runtime běhu…</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
-        controlManualMatchSummary.hidden = false;
-        controlManualMatchSummary.innerHTML = '<p class="hint">Ruční spárování bude dostupné po dokončení běhu.</p>';
-        controlManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups se načtou po dokončení běhu.</p>';
+          controlManualMatchSummary.hidden = true;
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Report preview se právě nahrazuje runtime výsledkem…</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
-        reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací se právě načítá ze sdíleného runtime běhu…</p>';
+          reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled Rezervace a úhrady se právě načítá ze sdíleného runtime běhu…</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek se právě načítá ze sdíleného runtime běhu…</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'running');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů se právě připravuje ze stejného runtime běhu…</p>';
@@ -7949,13 +8201,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
-        controlManualMatchSummary.hidden = false;
-        controlManualMatchSummary.innerHTML = '<p class="hint">Ruční spárování není k dispozici, protože runtime běh selhal.</p>';
-        controlManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups nejsou k dispozici, protože runtime běh selhal.</p>';
+          controlManualMatchSummary.hidden = true;
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Runtime běh selhal: ' + message + '</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
-        reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled hlavních rezervací není k dispozici, protože runtime běh selhal.</p>';
+          reservationSettlementOverviewContent.innerHTML = '<p class="hint">Přehled Rezervace a úhrady není k dispozici, protože runtime běh selhal.</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Přehled doplňkových položek není k dispozici, protože runtime běh selhal.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'failed');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Detail výdajů není k dispozici, protože runtime běh selhal.</p>';
@@ -8019,13 +8269,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Kontrolní přehled se naplní až po spuštění nad vybranými soubory.</p>';
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
-        controlManualMatchSummary.hidden = false;
-        controlManualMatchSummary.innerHTML = '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
-        controlManualMatchedContent.innerHTML = '<p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>';
+        controlManualMatchSummary.hidden = true;
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr>';
         matchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.</p>';
         unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované payout dávky.</p>';
-        reservationSettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro hlavní rezervace.</p>';
+        reservationSettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro přehled Rezervace a úhrady.</p>';
         ancillarySettlementOverviewContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro doplňkové položky.</p>';
         expenseReviewSummaryContent.innerHTML = buildExpenseReviewSummaryMarkup(undefined, 'placeholder');
         expenseDetailSummaryContent.innerHTML = '<p class="hint">Po spuštění se zde zobrazí souhrnné počty pro doklady a odchozí bankovní platby.</p>';

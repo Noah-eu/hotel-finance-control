@@ -3859,6 +3859,14 @@ describe('buildUploadWebFlow', () => {
       'Comgate platební report',
       'Airbnb payout report'
     ])
+    expect(result).toHaveProperty('reservationPaymentOverview')
+    expect(result.reservationPaymentOverview.blocks.map((block) => block.key)).toEqual([
+      'airbnb',
+      'booking',
+      'expedia',
+      'reservation_plus',
+      'parking'
+    ])
     expect(result.reviewSections).toHaveProperty('reservationSettlementOverview')
     expect(result.reviewSections).toHaveProperty('ancillarySettlementOverview')
   })
