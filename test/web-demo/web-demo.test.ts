@@ -2007,6 +2007,18 @@ describe('buildWebDemo', () => {
 
     rendered.openExpenseReviewPage()
 
+    const renderedExpenseDetailHtml = rendered.expenseMatchedContent.innerHTML
+      + rendered.expenseReviewContent.innerHTML
+      + rendered.expenseUnmatchedDocumentsContent.innerHTML
+      + rendered.expenseUnmatchedOutflowsContent.innerHTML
+      + rendered.expenseUnmatchedInflowsContent.innerHTML
+
+    expect(renderedExpenseDetailHtml).toContain('class="review-amount-block"')
+    expect(renderedExpenseDetailHtml).toContain('class="review-amount-label">Částka k párování</span>')
+    expect(renderedExpenseDetailHtml).toContain('class="review-amount-label">Částka</span>')
+    expect(renderedExpenseDetailHtml).not.toContain('<li><strong>Částka k párování:</strong>')
+    expect(renderedExpenseDetailHtml).not.toContain('<li><strong>Částka:</strong>')
+
     expect(rendered.expenseDetailSummaryContent.innerHTML).toContain('data-expense-bucket-key="expenseNeedsReview"')
     expect(rendered.expenseDetailVisibleCount.textContent).toBe('Zobrazeno položek: 2')
 

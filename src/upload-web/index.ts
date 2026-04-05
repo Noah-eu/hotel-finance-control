@@ -1226,6 +1226,10 @@ ${renderBrowserRuntimeClientBootstrap()}
           '.expense-comparison { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 380px) minmax(280px, 1fr); gap: 18px; align-items: start; }',
           '.expense-side, .expense-status { border-radius: 14px; background: #f6f9fc; padding: 16px; overflow-wrap: anywhere; word-break: break-word; }',
           '.expense-side h6, .expense-status h6 { margin: 0 0 10px; font-size: 14px; }',
+          '.review-amounts { display: grid; gap: 8px; margin: 10px 0 8px; }',
+          '.review-amount-block { display: grid; gap: 2px; padding: 8px 10px; border-left: 3px solid #bfd0ea; border-radius: 10px; background: rgba(23, 78, 166, 0.07); }',
+          '.review-amount-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #62748f; }',
+          '.review-amount-value { font-size: 18px; line-height: 1.2; font-weight: 800; color: #1c4879; }',
           '.expense-side ul, .expense-status ul { margin: 0; padding-left: 20px; }',
           '.expense-side li, .expense-status li { margin-bottom: 6px; }',
           '.hint { color: #52627a; line-height: 1.5; }',
@@ -1277,34 +1281,109 @@ ${renderBrowserRuntimeClientBootstrap()}
         });
       }
 
+      function renderReviewAmountEntries(entries) {
+        if (!Array.isArray(entries) || entries.length === 0) {
+          return '';
+        }
+
+        return '<span class="review-amounts">' + entries.map((entry) =>
+          '<span class="review-amount-block"><span class="review-amount-label">' + escapeHtml(String(entry.label || '')) + '</span><span class="review-amount-value">' + escapeHtml(String(entry.value || '')) + '</span></span>'
+        ).join('') + '</span>';
+      }
+
       function buildRuntimeExpenseSideMarkup(title, side, isDocument) {
-        const fields = isDocument
+        const amountEntries = collectExpenseComparisonAmountEntries(side, isDocument ? 'document' : 'bank', false);
+        const visibleFields = collectExpenseComparisonMetadataFields(side, isDocument ? 'document' : 'bank', amountEntries.length > 0, false);
+        const hasVisibleContent = amountEntries.length > 0 || visibleFields.length > 0;
+
+        return '<div class="expense-side"><h6>' + escapeHtml(title) + '</h6>'
+          + (!hasVisibleContent
+            ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
+            : (amountEntries.length > 0 ? renderReviewAmountEntries(amountEntries) : '')
+              + (visibleFields.length > 0
+                ? '<ul>' + visibleFields.map((entry) =>
+                  '<li><strong>' + escapeHtml(String(entry[0])) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>'
+                ).join('') + '</ul>'
+                : ''))
+          + '</div>';
+      }
+
+      function collectExpenseComparisonAmountEntries(side, sideMode, includeSummaryTotal) {
+        const amountEntries = [];
+        const primaryAmount = formatExpenseComparisonAmountValue(side && side.amount, side && side.currency);
+
+        if (primaryAmount) {
+          amountEntries.push({
+            label: 'Částka',
+            value: primaryAmount
+          });
+        }
+
+        if (includeSummaryTotal) {
+          const summaryTotal = formatExpenseComparisonAmountValue(side && side.summaryTotal, side && side.currency);
+
+          if (summaryTotal) {
+            amountEntries.push({
+              label: 'Celkem na faktuře',
+              value: summaryTotal
+            });
+          }
+        }
+
+        return amountEntries;
+      }
+
+      function collectExpenseComparisonMetadataFields(side, sideMode, hideCurrency, includeSummaryTotal) {
+        const fields = sideMode === 'document'
           ? [
               ['Dodavatel', side && side.supplierOrCounterparty],
               ['Číslo faktury / reference', side && side.reference],
               ['Datum vystavení', side && side.issueDate],
               ['Datum splatnosti', side && side.dueDate],
-              ['Částka', side && side.amount],
+              ...(includeSummaryTotal ? [['Celkem na faktuře', side && side.summaryTotal]] : []),
               ['Měna', side && side.currency],
               ['IBAN hint', side && side.ibanHint]
             ]
           : [
               ['Datum pohybu', side && side.bookedAt],
-              ['Částka', side && side.amount],
               ['Měna', side && side.currency],
               ['Protistrana / název účtu', side && side.supplierOrCounterparty],
               ['Reference / zpráva / VS', side && side.reference],
               ['Bankovní účet', side && side.bankAccount]
             ];
-        const visibleFields = fields.filter((entry) => Boolean(entry[1]));
 
-        return '<div class="expense-side"><h6>' + escapeHtml(title) + '</h6>'
-          + (visibleFields.length === 0
-            ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
-            : '<ul>' + visibleFields.map((entry) =>
-              '<li><strong>' + escapeHtml(String(entry[0])) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>'
-            ).join('') + '</ul>')
-          + '</div>';
+        return fields.filter((entry) => Boolean(entry[1]) && (!hideCurrency || entry[0] !== 'Měna'));
+      }
+
+      function formatExpenseComparisonAmountValue(amount, currency) {
+        const normalizedAmount = normalizeRuntimeReviewWhitespace(String(amount || ''));
+        const normalizedCurrency = normalizeRuntimeReviewWhitespace(String(currency || ''));
+        const upperAmount = normalizedAmount.toUpperCase();
+        const upperCurrency = normalizedCurrency.toUpperCase();
+
+        if (!normalizedAmount) {
+          return undefined;
+        }
+
+        if (!normalizedCurrency) {
+          return normalizedAmount;
+        }
+
+        const currencyIndicators = upperCurrency === 'CZK'
+          ? ['CZK', 'KČ', 'KC']
+          : upperCurrency === 'EUR'
+            ? ['EUR', '€']
+            : [upperCurrency];
+
+        if (currencyIndicators.some((indicator) => upperAmount.includes(indicator))) {
+          return normalizedAmount;
+        }
+
+        return normalizedAmount + ' ' + normalizedCurrency;
+      }
+
+      function normalizeRuntimeReviewWhitespace(value) {
+        return value.replace(/\s+/g, ' ').trim();
       }
 
       function buildRuntimeExpenseEvidenceListMarkup(item) {
@@ -2337,34 +2416,101 @@ function renderExpenseComparisonSideHtml(
   sideMode: 'document' | 'bank'
 ): string {
   const isDocument = sideMode === 'document'
-  const fields = isDocument
+  const amountEntries = collectExpenseComparisonAmountEntries(side, sideMode, false)
+  const visibleFields = collectExpenseComparisonMetadataFields(side, sideMode, amountEntries.length > 0, false)
+  const hasVisibleContent = amountEntries.length > 0 || visibleFields.length > 0
+
+  return [
+    '<div class="expense-side">',
+    `<h6>${escapeHtml(title)}</h6>`,
+    !hasVisibleContent
+      ? `<p class="empty">${escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.')}</p>`
+      : `${amountEntries.length > 0 ? renderReviewAmountEntries(amountEntries) : ''}${visibleFields.length > 0 ? `<ul>${visibleFields.map((entry) => `<li><strong>${escapeHtml(String(entry[0]))}:</strong> ${escapeHtml(String(entry[1]))}</li>`).join('')}</ul>` : ''}`,
+    '</div>'
+  ].join('')
+}
+
+function collectExpenseComparisonAmountEntries(
+  side: ReviewExpenseComparisonSide | undefined,
+  sideMode: 'document' | 'bank',
+  includeSummaryTotal: boolean
+): Array<{ label: string; value: string }> {
+  const amountEntries: Array<{ label: string; value: string }> = []
+  const primaryAmount = formatExpenseComparisonAmountValue(side?.amount, side?.currency)
+
+  if (primaryAmount) {
+    amountEntries.push({
+      label: sideMode === 'document' ? 'Částka' : 'Částka',
+      value: primaryAmount
+    })
+  }
+
+  if (includeSummaryTotal) {
+    const summaryTotal = formatExpenseComparisonAmountValue(side?.summaryTotal, side?.currency)
+
+    if (summaryTotal) {
+      amountEntries.push({
+        label: 'Celkem na faktuře',
+        value: summaryTotal
+      })
+    }
+  }
+
+  return amountEntries
+}
+
+function collectExpenseComparisonMetadataFields(
+  side: ReviewExpenseComparisonSide | undefined,
+  sideMode: 'document' | 'bank',
+  hideCurrency: boolean,
+  includeSummaryTotal: boolean
+): Array<[string, string | undefined]> {
+  const fields: Array<[string, string | undefined]> = sideMode === 'document'
     ? [
       ['Dodavatel', side?.supplierOrCounterparty],
       ['Číslo faktury / reference', side?.reference],
       ['Datum vystavení', side?.issueDate],
       ['Datum splatnosti', side?.dueDate],
-      ['Částka', side?.amount],
+      ...(includeSummaryTotal ? [['Celkem na faktuře', side?.summaryTotal] as [string, string | undefined]] : []),
       ['Měna', side?.currency],
       ['IBAN hint', side?.ibanHint]
     ]
     : [
       ['Datum pohybu', side?.bookedAt],
-      ['Částka', side?.amount],
       ['Měna', side?.currency],
       ['Protistrana / název účtu', side?.supplierOrCounterparty],
       ['Reference / zpráva / VS', side?.reference],
       ['Bankovní účet', side?.bankAccount]
     ]
-  const visibleFields = fields.filter((entry) => Boolean(entry[1]))
 
-  return [
-    '<div class="expense-side">',
-    `<h6>${escapeHtml(title)}</h6>`,
-    visibleFields.length === 0
-      ? `<p class="empty">${escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.')}</p>`
-      : `<ul>${visibleFields.map((entry) => `<li><strong>${escapeHtml(String(entry[0]))}:</strong> ${escapeHtml(String(entry[1]))}</li>`).join('')}</ul>`,
-    '</div>'
-  ].join('')
+  return fields.filter((entry) => Boolean(entry[1]) && (!hideCurrency || entry[0] !== 'Měna'))
+}
+
+function formatExpenseComparisonAmountValue(amount: string | undefined, currency: string | undefined): string | undefined {
+  const normalizedAmount = normalizeReviewWhitespace(String(amount ?? ''))
+  const normalizedCurrency = normalizeReviewWhitespace(String(currency ?? ''))
+  const upperAmount = normalizedAmount.toUpperCase()
+  const upperCurrency = normalizedCurrency.toUpperCase()
+
+  if (!normalizedAmount) {
+    return undefined
+  }
+
+  if (!normalizedCurrency) {
+    return normalizedAmount
+  }
+
+  const currencyIndicators = upperCurrency === 'CZK'
+    ? ['CZK', 'KČ', 'KC']
+    : upperCurrency === 'EUR'
+      ? ['EUR', '€']
+      : [upperCurrency]
+
+  if (currencyIndicators.some((indicator) => upperAmount.includes(indicator))) {
+    return normalizedAmount
+  }
+
+  return `${normalizedAmount} ${normalizedCurrency}`
 }
 
 function renderExpenseEvidenceHtml(evidence: ReviewEvidenceEntry[]): string {

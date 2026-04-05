@@ -6208,6 +6208,9 @@ describe('buildUploadWebFlow', () => {
     expect(expenseReviewPageHtml).toContain('Lenner Motors s.r.o.')
     expect(expenseReviewPageHtml).toContain('141260183')
     expect(expenseReviewPageHtml).toContain('Doklad ↔ banka:')
+    expect(expenseReviewPageHtml).toContain('class="review-amount-block"')
+    expect(expenseReviewPageHtml).toContain('class="review-amount-label">Částka</span>')
+    expect(expenseReviewPageHtml).not.toContain('<li><strong>Částka:</strong>')
     expect(expenseReviewPageHtml).not.toContain('Airbnb payout dávka')
   })
 

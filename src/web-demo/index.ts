@@ -5532,7 +5532,6 @@ ${showRuntimePayoutDiagnostics ? '' : `
           ? runtimeAudit.internalTransferDiagnostics
           : [];
         const exactInternalTransferPairTrace = runtimeAudit.exactInternalTransferPairTrace || undefined;
-
         const reconciliationDecisionMarkup = Array.isArray(reconciliationSnapshot.payoutBatchDecisions) && reconciliationSnapshot.payoutBatchDecisions.length > 0
           ? '<li><strong>Raw reconciliation batch decisions:</strong><ul>'
             + reconciliationSnapshot.payoutBatchDecisions.map((decision) => {
@@ -5692,7 +5691,6 @@ ${showRuntimePayoutDiagnostics ? '' : `
             + '</li>'
             + '</ul></li>'
           : '';
-
         return [
           '<p class="hint">Tento blok čte build marker i finální payout projekci ze stejného state objektu, který používá summary pás i detailní payout sekce.</p>',
           '<ul class="diagnostic-list">',
@@ -6417,34 +6415,95 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildExpenseReviewSideMarkup(title, side, sideMode) {
         const isDocument = sideMode === 'document';
+        const amountEntries = collectExpenseSideAmountEntries(side, sideMode);
+        const visibleFields = collectExpenseSideMetadataFields(side, sideMode, amountEntries.length > 0);
+        const hasVisibleContent = amountEntries.length > 0 || visibleFields.length > 0;
+
+        return '<div class="expense-zone"><h6>' + escapeHtml(title) + '</h6>'
+          + (!hasVisibleContent
+            ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
+            : (amountEntries.length > 0 ? renderReviewAmountEntries(amountEntries) : '')
+              + (visibleFields.length > 0
+                ? '<ul>' + visibleFields.map((entry) =>
+                  '<li><strong>' + escapeHtml(String(entry[0])) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>'
+                ).join('') + '</ul>'
+                : ''))
+          + '</div>';
+      }
+
+      function collectExpenseSideAmountEntries(side, sideMode) {
+        const isDocument = sideMode === 'document';
+        const amountEntries = [];
+        const primaryAmount = formatExpenseSideAmountValue(side && side.amount, side && side.currency);
+
+        if (primaryAmount) {
+          amountEntries.push({
+            label: isDocument ? 'Částka k párování' : 'Částka',
+            value: primaryAmount
+          });
+        }
+
+        if (isDocument) {
+          const summaryTotal = formatExpenseSideAmountValue(side && side.summaryTotal, side && side.currency);
+
+          if (summaryTotal) {
+            amountEntries.push({
+              label: 'Celkem na faktuře',
+              value: summaryTotal
+            });
+          }
+        }
+
+        return amountEntries;
+      }
+
+      function collectExpenseSideMetadataFields(side, sideMode, hideCurrency) {
+        const isDocument = sideMode === 'document';
         const fields = isDocument
           ? [
               ['Dodavatel', side && side.supplierOrCounterparty],
               ['Číslo faktury / reference', side && side.reference],
               ['Datum vystavení', side && side.issueDate],
               ['Datum splatnosti', side && side.dueDate],
-              ['Částka k párování', side && side.amount],
-              ['Celkem na faktuře', side && side.summaryTotal],
               ['Měna', side && side.currency],
               ['IBAN hint', side && side.ibanHint]
             ]
           : [
               ['Datum pohybu', side && side.bookedAt],
-              ['Částka', side && side.amount],
               ['Měna', side && side.currency],
               ['Protistrana / název účtu', side && side.supplierOrCounterparty],
               ['Reference / zpráva / VS', side && side.reference],
               ['Bankovní účet', side && side.bankAccount]
             ];
-        const visibleFields = fields.filter((entry) => Boolean(entry[1]));
 
-        return '<div class="expense-zone"><h6>' + escapeHtml(title) + '</h6>'
-          + (visibleFields.length === 0
-            ? '<p class="hint">' + escapeHtml(isDocument ? 'Zatím bez načteného dokladu.' : 'Zatím bez kandidátního bankovního pohybu.') + '</p>'
-            : '<ul>' + visibleFields.map((entry) =>
-              '<li><strong>' + escapeHtml(String(entry[0])) + ':</strong> ' + escapeHtml(String(entry[1])) + '</li>'
-            ).join('') + '</ul>')
-          + '</div>';
+        return fields.filter((entry) => Boolean(entry[1]) && (!hideCurrency || entry[0] !== 'Měna'));
+      }
+
+      function formatExpenseSideAmountValue(amount, currency) {
+        const normalizedAmount = normalizeReviewWhitespace(String(amount || ''));
+        const normalizedCurrency = normalizeReviewWhitespace(String(currency || ''));
+        const upperAmount = normalizedAmount.toUpperCase();
+        const upperCurrency = normalizedCurrency.toUpperCase();
+
+        if (!normalizedAmount) {
+          return '';
+        }
+
+        if (!normalizedCurrency) {
+          return normalizedAmount;
+        }
+
+        const currencyIndicators = upperCurrency === 'CZK'
+          ? ['CZK', 'KČ', 'KC']
+          : upperCurrency === 'EUR'
+            ? ['EUR', '€']
+            : [upperCurrency];
+
+        if (currencyIndicators.some((indicator) => upperAmount.includes(indicator))) {
+          return normalizedAmount;
+        }
+
+        return normalizedAmount + ' ' + normalizedCurrency;
       }
 
       function buildExpenseEvidenceMarkup(item) {
