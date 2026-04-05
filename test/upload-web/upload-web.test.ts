@@ -4952,7 +4952,12 @@ describe('buildUploadWebFlow', () => {
       })
     ])
     expect(result.reviewSections.payoutBatchMatched).toHaveLength(15)
-    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(2)
+    expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(3)
+    expect(result.reviewSections.payoutBatchUnmatched.map((item) => item.title)).toEqual([
+      'Airbnb payout dávka G-IZLCELA7C5EFN',
+      'Airbnb payout dávka G-6G5WFOJO5DJCI',
+      'Booking payout PAYOUT-BOOK-20260310 / 1 250,00 Kč'
+    ])
   })
 
   it('accounts for all four selected files in the real mixed browser monthly flow when the Booking PDF requires ToUnicode decoding', async () => {

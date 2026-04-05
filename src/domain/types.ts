@@ -203,6 +203,8 @@ export interface PayoutBatchExpectation {
   feeTotalMinor?: number
   netSettlementTotalMinor?: number
   currency: CurrencyCode
+  componentReservationIds?: string[]
+  sourceEvidenceSummary?: string[]
   payoutSupplementPaymentId?: string
   payoutSupplementPayoutDate?: ISODateString
   payoutSupplementPayoutTotalAmountMinor?: number

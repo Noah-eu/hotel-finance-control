@@ -645,6 +645,181 @@ describe('buildReconciliationWorkflowPlan', () => {
         expect(plan.payoutBatches).toEqual([])
     })
 
+    it('rolls up matched Airbnb reservation truths into one source-driven payout batch even without bank rows', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'HM35X35WJ8',
+                    amountMinor: 8370,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-07',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        settlementProjectionEligibility: 'intake_only',
+                        bookedAt: '2026-03-07T14:00:00',
+                        stayStartAt: '2026-03-07T14:00:00',
+                        stayEndAt: '2026-03-08T11:00:00',
+                        amountMinor: 8370,
+                        currency: 'EUR',
+                        reference: 'HM35X35WJ8',
+                        reservationId: 'HM35X35WJ8',
+                        guestName: 'Eliška Geržová',
+                        channel: 'airbnb',
+                        sourceSheet: 'Seznam rezervací'
+                    }
+                },
+                {
+                    id: 'previo-reservation-2',
+                    sourceDocumentId: 'doc-previo-2' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AB12CD34EF',
+                    amountMinor: 4300,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-08',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        settlementProjectionEligibility: 'intake_only',
+                        bookedAt: '2026-03-08T14:00:00',
+                        stayStartAt: '2026-03-08T14:00:00',
+                        stayEndAt: '2026-03-09T11:00:00',
+                        amountMinor: 4300,
+                        currency: 'EUR',
+                        reference: 'AB12CD34EF',
+                        reservationId: 'AB12CD34EF',
+                        guestName: 'Eva Nová',
+                        channel: 'airbnb',
+                        sourceSheet: 'Seznam rezervací'
+                    }
+                },
+                {
+                    id: 'airbnb-payout-1',
+                    sourceDocumentId: 'doc-airbnb-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                    amountMinor: 7073,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-09',
+                    data: {
+                        platform: 'airbnb',
+                        rowKind: 'reservation',
+                        bookedAt: '2026-03-09',
+                        availableUntilDate: '2026-03-10',
+                        amountMinor: 7073,
+                        currency: 'EUR',
+                        accountId: 'expected-payouts',
+                        reference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                        payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+                        reservationId: 'AIRBNB-RES:hm35x35wj8:2026-03-07:2026-03-08:7073',
+                        stayStartAt: '2026-03-07',
+                        stayEndAt: '2026-03-08',
+                        guestName: 'Eliška Geržová',
+                        grossEarningsMinor: 8370,
+                        serviceFeeMinor: 1297,
+                        confirmationCode: 'HM35X35WJ8'
+                    }
+                },
+                {
+                    id: 'airbnb-payout-2',
+                    sourceDocumentId: 'doc-airbnb-2' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T18:45:00.000Z',
+                    rawReference: 'AIRBNB-STAY:ab12cd34ef:2026-03-08:2026-03-09',
+                    amountMinor: 3700,
+                    currency: 'EUR',
+                    occurredAt: '2026-03-09',
+                    data: {
+                        platform: 'airbnb',
+                        rowKind: 'reservation',
+                        bookedAt: '2026-03-09',
+                        availableUntilDate: '2026-03-10',
+                        amountMinor: 3700,
+                        currency: 'EUR',
+                        accountId: 'expected-payouts',
+                        reference: 'AIRBNB-STAY:ab12cd34ef:2026-03-08:2026-03-09',
+                        payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+                        reservationId: 'AIRBNB-RES:ab12cd34ef:2026-03-08:2026-03-09:3700',
+                        stayStartAt: '2026-03-08',
+                        stayEndAt: '2026-03-09',
+                        guestName: 'Eva Nová',
+                        grossEarningsMinor: 4300,
+                        serviceFeeMinor: 600,
+                        confirmationCode: 'AB12CD34EF'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:payout:airbnb-reservation-1' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'airbnb',
+                    subtype: 'reservation',
+                    amountMinor: 7073,
+                    currency: 'EUR',
+                    bookedAt: '2026-03-09',
+                    accountId: 'expected-payouts',
+                    reference: 'AIRBNB-STAY:hm35x35wj8:2026-03-07:2026-03-08',
+                    reservationId: 'AIRBNB-RES:hm35x35wj8:2026-03-07:2026-03-08:7073',
+                    extractedRecordIds: ['airbnb-payout-1'],
+                    sourceDocumentIds: ['doc-airbnb-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                },
+                {
+                    id: 'txn:payout:airbnb-reservation-2' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'airbnb',
+                    subtype: 'reservation',
+                    amountMinor: 3700,
+                    currency: 'EUR',
+                    bookedAt: '2026-03-09',
+                    accountId: 'expected-payouts',
+                    reference: 'AIRBNB-STAY:ab12cd34ef:2026-03-08:2026-03-09',
+                    reservationId: 'AIRBNB-RES:ab12cd34ef:2026-03-08:2026-03-09:3700',
+                    extractedRecordIds: ['airbnb-payout-2'],
+                    sourceDocumentIds: ['doc-airbnb-2' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-20T18:45:30.000Z'
+        })
+
+        expect(plan.payoutRows).toEqual([])
+        expect(plan.reservationSettlementMatches).toEqual([
+            expect.objectContaining({
+                reservationId: 'HM35X35WJ8',
+                matchedRowId: 'txn:payout:airbnb-reservation-1',
+                platform: 'airbnb'
+            }),
+            expect.objectContaining({
+                reservationId: 'AB12CD34EF',
+                matchedRowId: 'txn:payout:airbnb-reservation-2',
+                platform: 'airbnb'
+            })
+        ])
+        expect(plan.payoutBatches).toEqual([
+            expect.objectContaining({
+                payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+                payoutDate: '2026-03-10',
+                rowIds: ['txn:payout:airbnb-reservation-1', 'txn:payout:airbnb-reservation-2'],
+                expectedTotalMinor: 12670,
+                currency: 'EUR',
+                componentReservationIds: ['HM35X35WJ8', 'AB12CD34EF'],
+                sourceEvidenceSummary: expect.arrayContaining([
+                    'identity source: payoutReference',
+                    'payout date: 2026-03-10',
+                    'reservation truths: 2'
+                ])
+            })
+        ])
+    })
+
     it('leaves ambiguous reservation settlement candidates unmatched instead of guessing', () => {
         const plan = buildReconciliationWorkflowPlan({
             extractedRecords: [

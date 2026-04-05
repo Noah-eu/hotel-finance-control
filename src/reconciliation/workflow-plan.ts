@@ -34,7 +34,7 @@ export function buildReconciliationWorkflowPlan(
         input.extractedRecords
     )
     const rowBasedPayoutBatches = buildPayoutBatches(payoutRows)
-    const payoutBatches = rowBasedPayoutBatches
+    const rowAndFallbackPayoutBatches = rowBasedPayoutBatches
         .concat(buildBookingPayoutStatementFallbackBatches(input.extractedRecords, payoutRows, rowBasedPayoutBatches))
         .concat(
         buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
@@ -50,6 +50,18 @@ export function buildReconciliationWorkflowPlan(
         payoutRows: reservationMatchingPayoutRows,
         directBankSettlements
     })
+    const reservationSettlementMatches = dedupeReservationSettlementMatches(
+        reservationSettlementMatching.matches.concat(previoReservationTruthMatching.matches)
+    )
+    const payoutBatches = mergePayoutBatches(
+        rowAndFallbackPayoutBatches,
+        buildAirbnbReservationRollupBatches({
+            reservationSettlementMatches,
+            payoutRows: reservationMatchingPayoutRows,
+            normalizedTransactions: input.normalizedTransactions,
+            extractedRecords: input.extractedRecords
+        })
+    )
     const expenseDocuments = buildExpenseDocuments(input.normalizedTransactions)
     const bankFeeClassifications = buildBankFeeClassifications(input.normalizedTransactions)
 
@@ -57,9 +69,7 @@ export function buildReconciliationWorkflowPlan(
         previoReservationTruth,
         reservationSources,
         ancillaryRevenueSources,
-        reservationSettlementMatches: dedupeReservationSettlementMatches(
-            reservationSettlementMatching.matches.concat(previoReservationTruthMatching.matches)
-        ),
+        reservationSettlementMatches,
         reservationSettlementNoMatches: reservationSettlementMatching.noMatches,
         payoutRows,
         payoutBatches,
@@ -236,6 +246,255 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
             )
         }
     })
+}
+
+function buildAirbnbReservationRollupBatches(input: {
+    reservationSettlementMatches: ReconciliationWorkflowPlan['reservationSettlementMatches']
+    payoutRows: PayoutRowExpectation[]
+    normalizedTransactions: NormalizedTransaction[]
+    extractedRecords: ExtractedRecord[]
+}): PayoutBatchExpectation[] {
+    const payoutRowsById = new Map(input.payoutRows.map((row) => [row.rowId, row]))
+    const transactionsById = new Map<string, NormalizedTransaction>(
+        input.normalizedTransactions.map((transaction) => [transaction.id, transaction])
+    )
+    const extractedRecordsById = new Map(input.extractedRecords.map((record) => [record.id, record]))
+    const grouped = new Map<string, {
+        payoutBatchKey: string
+        payoutReference: string
+        payoutDate: string
+        currency: string
+        rowIds: string[]
+        componentReservationIds: string[]
+        expectedTotalMinor: number
+        sourceEvidenceSummary: string[]
+    }>()
+
+    for (const match of input.reservationSettlementMatches) {
+        if (match.platform !== 'airbnb' || match.settlementKind !== 'payout_row' || !match.matchedRowId) {
+            continue
+        }
+
+        const row = payoutRowsById.get(match.matchedRowId)
+
+        if (!row) {
+            continue
+        }
+
+        const transaction = transactionsById.get(row.rowId)
+
+        if (!transaction || transaction.source !== 'airbnb') {
+            continue
+        }
+
+        const extractedRecord = transaction.extractedRecordIds
+            .map((recordId) => extractedRecordsById.get(recordId))
+            .find((record): record is ExtractedRecord => Boolean(record))
+
+        const rollupIdentity = resolveAirbnbReservationRollupIdentity(row, transaction, extractedRecord)
+
+        if (!rollupIdentity) {
+            continue
+        }
+
+        const existing = grouped.get(rollupIdentity.payoutBatchKey) ?? {
+            payoutBatchKey: rollupIdentity.payoutBatchKey,
+            payoutReference: rollupIdentity.payoutReference,
+            payoutDate: rollupIdentity.payoutDate,
+            currency: row.currency,
+            rowIds: [],
+            componentReservationIds: [],
+            expectedTotalMinor: 0,
+            sourceEvidenceSummary: [...rollupIdentity.sourceEvidenceSummary]
+        }
+
+        existing.rowIds = Array.from(new Set(existing.rowIds.concat(row.rowId)))
+        existing.expectedTotalMinor += row.matchingAmountMinor ?? row.amountMinor
+        existing.componentReservationIds = Array.from(new Set(
+            existing.componentReservationIds.concat(
+                match.reservationId
+                    ? [match.reservationId]
+                    : [row.reservationId].filter((value): value is string => Boolean(value))
+            )
+        ))
+        existing.sourceEvidenceSummary = Array.from(
+            new Set(existing.sourceEvidenceSummary.concat(rollupIdentity.sourceEvidenceSummary))
+        )
+
+        grouped.set(rollupIdentity.payoutBatchKey, existing)
+    }
+
+    return Array.from(grouped.values()).map((group) => ({
+        payoutBatchKey: group.payoutBatchKey,
+        platform: 'airbnb',
+        payoutReference: group.payoutReference,
+        payoutDate: group.payoutDate,
+        bankRoutingTarget: 'rb_bank_inflow',
+        rowIds: group.rowIds,
+        expectedTotalMinor: group.expectedTotalMinor,
+        currency: group.currency,
+        componentReservationIds: group.componentReservationIds,
+        sourceEvidenceSummary: uniqueValues([
+            ...group.sourceEvidenceSummary,
+            `reservation truths: ${group.rowIds.length}`
+        ])
+    }))
+}
+
+function resolveAirbnbReservationRollupIdentity(
+    row: PayoutRowExpectation,
+    transaction: NormalizedTransaction,
+    extractedRecord: ExtractedRecord | undefined
+): {
+    payoutBatchKey: string
+    payoutReference: string
+    payoutDate: string
+    sourceEvidenceSummary: string[]
+} | undefined {
+    if (row.platform !== 'airbnb') {
+        return undefined
+    }
+
+    const payoutDate = optionalString(extractedRecord?.data.availableUntilDate)
+        ?? optionalString(extractedRecord?.data.bookedAt)
+        ?? row.payoutDate
+    const explicitPayoutReference = resolveExplicitAirbnbPayoutReference(row, transaction, extractedRecord)
+
+    if (explicitPayoutReference) {
+        return {
+            payoutBatchKey: buildGenericPayoutBatchKey('airbnb', payoutDate, explicitPayoutReference),
+            payoutReference: explicitPayoutReference,
+            payoutDate,
+            sourceEvidenceSummary: [
+                'identity source: payoutReference',
+                `payout date: ${payoutDate}`
+            ]
+        }
+    }
+
+    const sourceDerivedIdentity = resolveExplicitAirbnbSourceBatchIdentity(transaction, extractedRecord)
+
+    if (!sourceDerivedIdentity) {
+        return undefined
+    }
+
+    return {
+        payoutBatchKey: buildGenericPayoutBatchKey('airbnb', payoutDate, sourceDerivedIdentity),
+        payoutReference: sourceDerivedIdentity,
+        payoutDate,
+        sourceEvidenceSummary: [
+            'identity source: payoutBatchIdentity',
+            `payout date: ${payoutDate}`
+        ]
+    }
+}
+
+function resolveExplicitAirbnbPayoutReference(
+    row: PayoutRowExpectation,
+    transaction: NormalizedTransaction,
+    extractedRecord: ExtractedRecord | undefined
+): string | undefined {
+    const candidates = [
+        row.payoutReference,
+        optionalString(extractedRecord?.data.payoutReference),
+        optionalString(extractedRecord?.data.referenceCode),
+        transaction.reference
+    ]
+
+    return candidates.find((candidate): candidate is string => isDeterministicAirbnbProviderReference(candidate))
+}
+
+function resolveExplicitAirbnbSourceBatchIdentity(
+    transaction: NormalizedTransaction,
+    extractedRecord: ExtractedRecord | undefined
+): string | undefined {
+    const candidates = [
+        transaction.payoutBatchIdentity,
+        optionalString(extractedRecord?.data.payoutBatchIdentity)
+    ]
+
+    return candidates.find((candidate): candidate is string => Boolean(candidate && candidate.trim().length > 0))
+}
+
+function isDeterministicAirbnbProviderReference(value: string | undefined): boolean {
+    const normalized = (value ?? '').trim()
+
+    if (!normalized) {
+        return false
+    }
+
+    if (normalized.toUpperCase().startsWith('AIRBNB-STAY:')) {
+        return false
+    }
+
+    if (normalized.toUpperCase().startsWith('AIRBNB-TRANSFER:')) {
+        return false
+    }
+
+    return true
+}
+
+function mergePayoutBatches(
+    base: PayoutBatchExpectation[],
+    additions: PayoutBatchExpectation[]
+): PayoutBatchExpectation[] {
+    const merged = base.map((batch) => ({
+        ...batch,
+        rowIds: batch.rowIds.slice(),
+        componentReservationIds: batch.componentReservationIds?.slice(),
+        sourceEvidenceSummary: batch.sourceEvidenceSummary?.slice(),
+        payoutSupplementReferenceHints: batch.payoutSupplementReferenceHints?.slice(),
+        payoutSupplementSourceDocumentIds: batch.payoutSupplementSourceDocumentIds?.slice(),
+        payoutSupplementReservationIds: batch.payoutSupplementReservationIds?.slice()
+    }))
+    const batchIndexes = new Map(merged.map((batch, index) => [batch.payoutBatchKey, index]))
+
+    for (const addition of additions) {
+        const existingIndex = batchIndexes.get(addition.payoutBatchKey)
+
+        if (existingIndex === undefined) {
+            merged.push({
+                ...addition,
+                rowIds: addition.rowIds.slice(),
+                componentReservationIds: addition.componentReservationIds?.slice(),
+                sourceEvidenceSummary: addition.sourceEvidenceSummary?.slice(),
+                payoutSupplementReferenceHints: addition.payoutSupplementReferenceHints?.slice(),
+                payoutSupplementSourceDocumentIds: addition.payoutSupplementSourceDocumentIds?.slice(),
+                payoutSupplementReservationIds: addition.payoutSupplementReservationIds?.slice()
+            })
+            batchIndexes.set(addition.payoutBatchKey, merged.length - 1)
+            continue
+        }
+
+        const existing = merged[existingIndex]!
+        merged[existingIndex] = {
+            ...existing,
+            payoutReference: shouldPreferAirbnbSourceDrivenReference(existing, addition)
+                ? addition.payoutReference
+                : existing.payoutReference,
+            rowIds: Array.from(new Set(existing.rowIds.concat(addition.rowIds))),
+            componentReservationIds: uniqueValues(
+                (existing.componentReservationIds ?? []).concat(addition.componentReservationIds ?? [])
+            ),
+            sourceEvidenceSummary: uniqueValues(
+                (existing.sourceEvidenceSummary ?? []).concat(addition.sourceEvidenceSummary ?? [])
+            )
+        }
+    }
+
+    return merged
+}
+
+function shouldPreferAirbnbSourceDrivenReference(
+    existing: PayoutBatchExpectation,
+    addition: PayoutBatchExpectation
+): boolean {
+    if (existing.platform !== 'airbnb' || addition.platform !== 'airbnb') {
+        return false
+    }
+
+    return !isDeterministicAirbnbProviderReference(existing.payoutReference)
+        && isDeterministicAirbnbProviderReference(addition.payoutReference)
 }
 
 function buildBookingPayoutStatementFallbackBatches(

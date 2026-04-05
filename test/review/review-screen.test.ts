@@ -519,6 +519,275 @@ describe('buildReviewScreen', () => {
     expect(review.payoutBatchUnmatched[0]?.detail).not.toContain('noExactAmount')
   })
 
+  it('projects a source-driven Airbnb payout batch as one unmatched review card and keeps its source evidence', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-19T09:26:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [
+            buildTransaction({
+              id: toTransactionId('txn:payout:airbnb-res-1'),
+              direction: 'in',
+              source: 'airbnb',
+              amountMinor: 7073,
+              currency: 'EUR',
+              bookedAt: '2026-03-09',
+              accountId: 'expected-payouts',
+              sourceDocumentIds: [toDocumentId('doc-airbnb-1')]
+            }),
+            buildTransaction({
+              id: toTransactionId('txn:payout:airbnb-res-2'),
+              direction: 'in',
+              source: 'airbnb',
+              amountMinor: 3700,
+              currency: 'EUR',
+              bookedAt: '2026-03-09',
+              accountId: 'expected-payouts',
+              sourceDocumentIds: [toDocumentId('doc-airbnb-2')]
+            })
+          ],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            ancillaryRevenueSources: [],
+            reservationSettlementMatches: [],
+            reservationSettlementNoMatches: [],
+            payoutRows: [],
+            payoutBatches: [
+              {
+                payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+                payoutDate: '2026-03-10',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:airbnb-res-1', 'txn:payout:airbnb-res-2'],
+                expectedTotalMinor: 12670,
+                currency: 'EUR',
+                componentReservationIds: ['HM35X35WJ8', 'AB12CD34EF'],
+                sourceEvidenceSummary: ['identity source: payoutReference', 'reservation truths: 2']
+              }
+            ],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [],
+          payoutBatchNoMatchDiagnostics: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+              payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+              platform: 'airbnb',
+              expectedTotalMinor: 12670,
+              currency: 'EUR',
+              payoutDate: '2026-03-10',
+              bankRoutingTarget: 'rb_bank_inflow',
+              eligibleCandidates: [],
+              allInboundBankCandidates: [],
+              noMatchReason: 'noExactAmount',
+              matched: false
+            }
+          ],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 2,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-19T09:26:00.000Z',
+          summary: {
+            normalizedTransactionCount: 2,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 1,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+              platform: 'Airbnb',
+              payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+              payoutDate: '2026-03-10',
+              bankRoutingLabel: 'RB účet',
+              amountMinor: 12670,
+              currency: 'EUR',
+              status: 'unmatched',
+              reason: 'Žádná bankovní položka se stejnou částkou.',
+              display: {
+                title: 'Airbnb payout dávka AIRBNB-PAYOUT-2026-03-10-001',
+                context: 'rezervace: 2 · zdroj identity: payoutReference'
+              }
+            }
+          ],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.payoutBatchUnmatched).toHaveLength(1)
+    expect(review.reservationSettlementOverview).toHaveLength(0)
+    expect(review.payoutBatchUnmatched[0]).toMatchObject({
+      title: 'Airbnb payout dávka AIRBNB-PAYOUT-2026-03-10-001',
+      sourceDocumentIds: ['doc-airbnb-1', 'doc-airbnb-2']
+    })
+    expect(review.payoutBatchUnmatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: '126,70 EUR' }),
+        expect.objectContaining({ label: 'provenience', value: expect.stringContaining('rezervace 2') })
+      ])
+    )
+  })
+
+  it('keeps matched Airbnb payout review cards on the rolled-up source batch when the bank inflow exists', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-19T09:27:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [
+            buildTransaction({
+              id: toTransactionId('txn:bank:airbnb-inflow-1'),
+              direction: 'in',
+              source: 'bank',
+              amountMinor: 12670,
+              currency: 'EUR',
+              bookedAt: '2026-03-10',
+              accountId: 'raiffeisen-main',
+              reference: 'AIRBNB-PAYOUT-2026-03-10-001'
+            })
+          ],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            ancillaryRevenueSources: [],
+            reservationSettlementMatches: [],
+            reservationSettlementNoMatches: [],
+            payoutRows: [],
+            payoutBatches: [
+              {
+                payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+                platform: 'airbnb',
+                payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+                payoutDate: '2026-03-10',
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: ['txn:payout:airbnb-res-1', 'txn:payout:airbnb-res-2'],
+                expectedTotalMinor: 12670,
+                currency: 'EUR',
+                componentReservationIds: ['HM35X35WJ8', 'AB12CD34EF'],
+                sourceEvidenceSummary: ['identity source: payoutReference', 'reservation truths: 2']
+              }
+            ],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+              payoutBatchRowIds: [toTransactionId('txn:payout:airbnb-res-1'), toTransactionId('txn:payout:airbnb-res-2')],
+              bankTransactionId: toTransactionId('txn:bank:airbnb-inflow-1'),
+              bankAccountId: 'raiffeisen-main',
+              amountMinor: 12670,
+              currency: 'EUR',
+              confidence: 0.97,
+              ruleKey: 'deterministic:payout-batch-bank:1to1:v1',
+              matched: true,
+              reasons: ['amountExact', 'currencyExact'],
+              evidence: []
+            }
+          ],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 1,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          }
+        },
+        report: {
+          generatedAt: '2026-03-19T09:27:00.000Z',
+          summary: {
+            normalizedTransactionCount: 1,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 1,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 0
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [
+            {
+              payoutBatchKey: 'airbnb-batch:2026-03-10:AIRBNB-PAYOUT-2026-03-10-001',
+              platform: 'Airbnb',
+              payoutReference: 'AIRBNB-PAYOUT-2026-03-10-001',
+              payoutDate: '2026-03-10',
+              bankAccountId: 'raiffeisen-main',
+              amountMinor: 12670,
+              currency: 'EUR',
+              status: 'matched',
+              confidence: 0.97,
+              reason: 'Shoda dávky a bankovního přípisu podle částky, měny a povoleného směrování.',
+              evidence: [],
+              display: {
+                title: 'Airbnb payout dávka AIRBNB-PAYOUT-2026-03-10-001',
+                context: 'rezervace: 2 · zdroj identity: payoutReference'
+              }
+            }
+          ],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.payoutBatchMatched).toHaveLength(1)
+    expect(review.payoutBatchMatched[0]).toMatchObject({
+      title: 'Airbnb payout dávka AIRBNB-PAYOUT-2026-03-10-001'
+    })
+    expect(review.payoutBatchMatched[0]?.evidenceSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'částka', value: '126,70 EUR · měna sedí' }),
+        expect.objectContaining({ label: 'provenience', value: expect.stringContaining('rezervace 2') })
+      ])
+    )
+  })
+
   it('shows the matched bank-line summary on Booking payout review items resolved from supplement reference hints', () => {
     const review = buildReviewScreen({
       generatedAt: '2026-03-25T11:30:00.000Z',

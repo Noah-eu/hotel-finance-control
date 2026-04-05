@@ -2030,9 +2030,20 @@ function collectSourceDocumentIdsForPayoutBatch(batch: MonthlyBatchResult, payou
   const ids = new Set<string>()
   const payoutRows = batch.reconciliation.workflowPlan?.payoutRows.filter((row) => row.payoutBatchKey === payoutBatchKey) ?? []
   const payoutBatch = batch.reconciliation.workflowPlan?.payoutBatches.find((item) => item.payoutBatchKey === payoutBatchKey)
+  const batchRowIds = new Set(payoutBatch?.rowIds ?? [])
 
   for (const row of payoutRows) {
     ids.add(row.sourceDocumentId)
+  }
+
+  for (const transaction of batch.reconciliation.normalizedTransactions) {
+    if (!batchRowIds.has(transaction.id)) {
+      continue
+    }
+
+    for (const sourceDocumentId of transaction.sourceDocumentIds) {
+      ids.add(sourceDocumentId)
+    }
   }
 
   for (const sourceDocumentId of payoutBatch?.payoutSupplementSourceDocumentIds ?? []) {
@@ -2186,6 +2197,7 @@ function buildPayoutBatchMatchEvidenceSummary(
   reasons: string[]
 ): ReviewEvidenceEntry[] {
   const bankSummary = parseMatchedBankSummary(match.matchedBankSummary)
+  const payoutBatch = findPayoutBatchExpectation(batch, match.payoutBatchKey)
   const referenceParts = [
     hasVisiblePayoutReference(match.platform, match.payoutReference) ? match.payoutReference : undefined,
     reasons.includes('supplementPaymentIdAligned') ? 'ID payoutu z dokladu sedí' : undefined,
@@ -2221,7 +2233,8 @@ function buildPayoutBatchMatchEvidenceSummary(
           ? 'payout doklad potvrdil vazbu'
           : undefined
       ]).join(' · ')
-    )
+    ),
+    maybeEvidenceEntry('provenience', buildPayoutBatchSourceEvidenceText(payoutBatch))
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
 }
 
@@ -2230,6 +2243,8 @@ function buildPayoutBatchUnmatchedEvidenceSummary(
   unmatched: MonthlyBatchResult['report']['unmatchedPayoutBatches'][number],
   sourceDocumentIds: string[]
 ): ReviewEvidenceEntry[] {
+  const payoutBatch = findPayoutBatchExpectation(batch, unmatched.payoutBatchKey)
+
   return [
     {
       label: 'částka',
@@ -2239,7 +2254,13 @@ function buildPayoutBatchUnmatchedEvidenceSummary(
     maybeEvidenceEntry('reference', hasVisiblePayoutReference(unmatched.platform, unmatched.payoutReference) ? unmatched.payoutReference : undefined),
     maybeEvidenceEntry('protistrana / účet', unmatched.bankRoutingLabel),
     maybeEvidenceEntry('dokument', describeSourceDocuments(sourceDocumentIds)),
-    maybeEvidenceEntry('provenience', findTransferBatchDescriptor(batch, unmatched.payoutBatchKey) ? 'textový payout export' : undefined)
+    maybeEvidenceEntry(
+      'provenience',
+      uniqueTextValues([
+        findTransferBatchDescriptor(batch, unmatched.payoutBatchKey) ? 'textový payout export' : undefined,
+        buildPayoutBatchSourceEvidenceText(payoutBatch)
+      ]).join(' · ')
+    )
   ].filter((entry): entry is ReviewEvidenceEntry => Boolean(entry))
 }
 
@@ -2380,6 +2401,28 @@ function buildPayoutBatchUnmatchedDetail(
   }
 
   return detailParts.join(' ')
+}
+
+function findPayoutBatchExpectation(
+  batch: MonthlyBatchResult,
+  payoutBatchKey: string
+): NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutBatches'][number] | undefined {
+  return batch.reconciliation.workflowPlan?.payoutBatches.find((item) => item.payoutBatchKey === payoutBatchKey)
+}
+
+function buildPayoutBatchSourceEvidenceText(
+  payoutBatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutBatches'][number] | undefined
+): string | undefined {
+  if (!payoutBatch) {
+    return undefined
+  }
+
+  return uniqueTextValues([
+    typeof payoutBatch.componentReservationIds?.length === 'number' && payoutBatch.componentReservationIds.length > 0
+      ? `rezervace ${payoutBatch.componentReservationIds.length}`
+      : undefined,
+    ...(payoutBatch.sourceEvidenceSummary ?? [])
+  ]).join(' · ')
 }
 
 function findTransferBatchDescriptor(batch: MonthlyBatchResult, payoutBatchKey: string): string | undefined {

@@ -186,6 +186,8 @@ function buildUnmatchedPayoutBatchEntries(
         payoutDate: diagnostic.payoutDate,
         amountMinor: diagnostic.expectedTotalMinor,
         currency: diagnostic.currency,
+        componentReservationIds: batch?.componentReservationIds,
+        sourceEvidenceSummary: batch?.sourceEvidenceSummary,
         payoutSupplementPaymentId: batch?.payoutSupplementPaymentId,
         payoutSupplementPayoutDate: batch?.payoutSupplementPayoutDate,
         payoutSupplementPayoutTotalAmountMinor: batch?.payoutSupplementPayoutTotalAmountMinor,
@@ -234,6 +236,8 @@ function buildPayoutBatchMatchEntries(
         payoutDate: batch.payoutDate,
         amountMinor: match.amountMinor,
         currency: match.currency,
+        componentReservationIds: batch.componentReservationIds,
+        sourceEvidenceSummary: batch.sourceEvidenceSummary,
         payoutSupplementPaymentId: batch.payoutSupplementPaymentId,
         payoutSupplementPayoutDate: batch.payoutSupplementPayoutDate,
         payoutSupplementPayoutTotalAmountMinor: batch.payoutSupplementPayoutTotalAmountMinor,
@@ -255,6 +259,8 @@ function buildPayoutBatchDisplayMetadata(input: {
   payoutDate?: string
   amountMinor: number
   currency: string
+  componentReservationIds?: string[]
+  sourceEvidenceSummary?: string[]
   payoutSupplementPaymentId?: string
   payoutSupplementPayoutDate?: string
   payoutSupplementPayoutTotalAmountMinor?: number
@@ -274,9 +280,14 @@ function buildPayoutBatchDisplayMetadata(input: {
   const supplementLocalCurrency = input.payoutSupplementLocalCurrency?.trim()
   const supplementIbanSuffix = input.payoutSupplementIbanSuffix?.trim()
   const supplementReservationCount = input.payoutSupplementReservationIds?.length ?? 0
+  const sourceReservationCount = input.componentReservationIds?.length ?? 0
   const supplementExchangeRate = input.payoutSupplementExchangeRate?.trim()
   const titleAmountMinor = supplementLocalAmountMinor ?? input.amountMinor
   const titleCurrency = supplementLocalCurrency ?? input.currency
+  const sourceContextParts = [
+    sourceReservationCount > 0 ? `rezervace: ${sourceReservationCount}` : undefined,
+    input.sourceEvidenceSummary?.find((entry) => entry.startsWith('identity source:'))?.replace('identity source:', 'zdroj identity:').trim()
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
   const shouldShowSupplementPayoutTotal = Boolean(
     supplementPayoutTotalAmountMinor !== undefined
     && supplementPayoutTotalCurrency
@@ -307,14 +318,22 @@ function buildPayoutBatchDisplayMetadata(input: {
 
   if (hasNonSyntheticProviderReference(input.platform, normalizedReference)) {
     return {
-      title: `${input.platformLabel} payout dávka ${normalizedReference}`
+      title: `${input.platformLabel} payout dávka ${normalizedReference}`,
+      ...(sourceContextParts.length > 0 ? { context: sourceContextParts.join(' · ') } : {})
     }
   }
 
   if (input.payoutDate) {
     return {
       title: `${input.platformLabel} payout dávka ${input.payoutDate} / ${formatAmountMinorCs(input.amountMinor, input.currency)}`,
-      ...(normalizedReference ? { context: `Reference payoutu: ${normalizedReference}` } : {})
+      ...((normalizedReference || sourceContextParts.length > 0)
+        ? {
+          context: [
+            normalizedReference ? `Reference payoutu: ${normalizedReference}` : undefined,
+            ...sourceContextParts
+          ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(' · ')
+        }
+        : {})
     }
   }
 
