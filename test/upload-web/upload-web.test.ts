@@ -4077,6 +4077,83 @@ describe('buildUploadWebFlow', () => {
     ]))
   })
 
+  it('marks Greta as paid in browser runtime from a matched Booking payout PDF batch without Booking CSV rows and keeps Tatiana unverified', async () => {
+    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '06.03.2026 08:00',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: 'RES-BOOK-9901',
+              guestName: 'Greta-like Booking Guest',
+              channel: 'Booking.com Prepaid',
+              amountText: '2 160,77 EUR',
+              outstandingText: '2 160,77 EUR',
+              roomName: 'A201'
+            },
+            {
+              createdAt: '06.03.2026 08:10',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: 'RES-BOOK-UNVERIFIED',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '0,00 EUR',
+              roomName: 'A202'
+            }
+          ])
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603270912.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '27.03.2026 09:10;27.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;52938,86;CZK;Settlement credit'
+          ].join('\n'),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines(bookingPdf.sourceDocument.fileName, bookingPdf.rawInput.content.split('\n'))
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-06T10:15:00.000Z'
+    })
+
+    expect(result.reviewSections.payoutBatchMatched).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: expect.stringContaining('Booking payout 010738140021')
+      })
+    ]))
+
+    const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Greta-like Booking Guest',
+        primaryReference: 'RES-BOOK-9901',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: [],
+        sourceDocumentIds: expect.arrayContaining([
+          expect.stringMatching(/^uploaded:previo:/),
+          expect.stringMatching(/^uploaded:booking:.*pdf$/)
+        ]),
+        statusDetailCs: expect.stringContaining('Booking payout statement PDF')
+      }),
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: 'RES-BOOK-UNVERIFIED',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+  })
+
   it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 

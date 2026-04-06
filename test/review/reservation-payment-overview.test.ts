@@ -443,4 +443,150 @@ describe('buildReservationPaymentOverview', () => {
       })
     ]))
   })
+
+  it('promotes Booking reservations to paid from a matched payout batch only when the PDF supplement explicitly proves batch membership', () => {
+    const batch = {
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions: [],
+        payoutBatchMatches: [
+          {
+            payoutBatchKey: 'booking-batch:2026-03-12:010638445054',
+            payoutBatchRowIds: [],
+            bankTransactionId: 'txn:bank:booking-batch-1',
+            bankAccountId: '5599955956/5500',
+            amountMinor: 633707,
+            currency: 'CZK',
+            confidence: 1,
+            ruleKey: 'booking-batch-bank-match',
+            matched: true,
+            reasons: ['amountExact', 'currencyExact', 'directionInbound', 'routingAllowed'],
+            evidence: []
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-greta',
+              reservationId: '6622415324',
+              guestName: 'Greta Sieweke',
+              roomName: 'A201',
+              reference: '6622415324',
+              channel: 'booking',
+              bookedAt: '2026-03-01',
+              stayStartAt: '2026-03-06',
+              stayEndAt: '2026-03-08',
+              grossRevenueMinor: 25984,
+              outstandingBalanceMinor: 25984,
+              currency: 'EUR',
+              expectedSettlementChannels: ['booking']
+            },
+            {
+              sourceDocumentId: 'doc:previo-denisa',
+              reservationId: '5178029336',
+              guestName: 'Denisa Hypiusová',
+              roomName: 'A202',
+              reference: '5178029336',
+              channel: 'booking',
+              bookedAt: '2026-03-03',
+              stayStartAt: '2026-03-07',
+              stayEndAt: '2026-03-09',
+              grossRevenueMinor: 4480,
+              outstandingBalanceMinor: 0,
+              currency: 'EUR',
+              expectedSettlementChannels: ['booking']
+            },
+            {
+              sourceDocumentId: 'doc:previo-tatiana',
+              reservationId: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              roomName: 'A203',
+              reference: '5280445951',
+              channel: 'booking',
+              bookedAt: '2026-03-05',
+              stayStartAt: '2026-03-14',
+              stayEndAt: '2026-03-16',
+              grossRevenueMinor: 5226,
+              outstandingBalanceMinor: 0,
+              currency: 'EUR',
+              expectedSettlementChannels: ['booking']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [
+            {
+              sourceDocumentId: 'doc:previo-greta',
+              reservationId: '6622415324',
+              candidateCount: 0,
+              noMatchReason: 'noCandidate'
+            },
+            {
+              sourceDocumentId: 'doc:previo-denisa',
+              reservationId: '5178029336',
+              candidateCount: 0,
+              noMatchReason: 'noCandidate'
+            },
+            {
+              sourceDocumentId: 'doc:previo-tatiana',
+              reservationId: '5280445951',
+              candidateCount: 0,
+              noMatchReason: 'noCandidate'
+            }
+          ],
+          payoutRows: [],
+          payoutBatches: [
+            {
+              payoutBatchKey: 'booking-batch:2026-03-12:010638445054',
+              platform: 'booking',
+              payoutReference: '010638445054',
+              payoutDate: '2026-03-12',
+              bankRoutingTarget: 'rb_bank_inflow',
+              rowIds: [],
+              expectedTotalMinor: 633707,
+              currency: 'CZK',
+              componentReservationIds: ['6622415324', '5178029336'],
+              payoutSupplementReservationIds: ['6622415324', '5178029336'],
+              payoutSupplementSourceDocumentIds: ['uploaded:booking:25:015022808386-pdf']
+            }
+          ],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const bookingItems = overview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Greta Sieweke',
+        primaryReference: '6622415324',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: [],
+        sourceDocumentIds: ['doc:previo-greta', 'uploaded:booking:25:015022808386-pdf'],
+        statusDetailCs: expect.stringContaining('Booking payout statement PDF'),
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Booking payout batch', value: '010638445054 (2026-03-12)' })
+        ])
+      }),
+      expect.objectContaining({
+        title: 'Denisa Hypiusová',
+        primaryReference: '5178029336',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        paidAmountMinor: 4480,
+        transactionIds: []
+      }),
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+  })
 })
