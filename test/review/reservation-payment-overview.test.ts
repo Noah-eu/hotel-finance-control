@@ -335,7 +335,7 @@ describe('buildReservationPaymentOverview', () => {
     ])
   })
 
-  it('marks Booking payout-row-confirmed reservations as paid and keeps unmatched Booking reservations unverified', () => {
+  it('marks Greta as paid from unique Booking payout-row evidence and keeps Tatiana unverified without payout-row evidence', () => {
     const batch = {
       extractedRecords: [],
       reconciliation: {
@@ -355,7 +355,7 @@ describe('buildReservationPaymentOverview', () => {
         workflowPlan: {
           reservationSources: [
             {
-              sourceDocumentId: 'doc:previo-greta',
+              sourceDocumentId: 'doc:booking-reservations-greta',
               reservationId: '6622415324',
               guestName: 'Greta Sieweke',
               roomName: 'A201',
@@ -370,17 +370,17 @@ describe('buildReservationPaymentOverview', () => {
               expectedSettlementChannels: ['booking']
             },
             {
-              sourceDocumentId: 'doc:previo-pending',
-              reservationId: '7722415324',
-              guestName: 'Pending Booking Guest',
+              sourceDocumentId: 'doc:booking-reservations-tatiana',
+              reservationId: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
               roomName: 'A202',
-              reference: '7722415324',
+              reference: '5280445951',
               channel: 'booking',
               bookedAt: '2026-03-05',
               stayStartAt: '2026-03-14',
               stayEndAt: '2026-03-16',
-              grossRevenueMinor: 19900,
-              outstandingBalanceMinor: 19900,
+              grossRevenueMinor: 5226,
+              outstandingBalanceMinor: 5226,
               currency: 'EUR',
               expectedSettlementChannels: ['booking']
             }
@@ -389,7 +389,7 @@ describe('buildReservationPaymentOverview', () => {
           ancillaryRevenueSources: [],
           reservationSettlementMatches: [
             {
-              sourceDocumentId: 'doc:previo-greta',
+              sourceDocumentId: 'doc:booking-payout-pdf-greta',
               reservationId: '6622415324',
               matchedRowId: 'txn:booking-greta-row',
               settlementKind: 'payout_row',
@@ -406,8 +406,14 @@ describe('buildReservationPaymentOverview', () => {
           ],
           reservationSettlementNoMatches: [
             {
-              sourceDocumentId: 'doc:previo-pending',
-              reservationId: '7722415324',
+              sourceDocumentId: 'doc:booking-reservations-greta',
+              reservationId: '6622415324',
+              candidateCount: 0,
+              noMatchReason: 'noCandidate'
+            },
+            {
+              sourceDocumentId: 'doc:booking-reservations-tatiana',
+              reservationId: '5280445951',
               candidateCount: 0,
               noMatchReason: 'noCandidate'
             }
@@ -430,8 +436,8 @@ describe('buildReservationPaymentOverview', () => {
         transactionIds: ['txn:booking-greta-row']
       }),
       expect.objectContaining({
-        title: 'Pending Booking Guest',
-        primaryReference: '7722415324',
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
         statusKey: 'unverified',
         evidenceKey: 'no_evidence'
       })

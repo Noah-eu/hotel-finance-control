@@ -125,11 +125,14 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
   )
 
   for (const reservation of reservationSources) {
+    const blockKey = resolveReservationBlockKey(reservation)
     const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
     const match = matchesBySourceKey.get(sourceKey)
-    const noMatch = noMatchesBySourceKey.get(sourceKey)
+      ?? resolveBookingConfirmedPayoutMatch(workflowPlan.reservationSettlementMatches, reservation, blockKey)
+    const noMatch = !match
+      ? noMatchesBySourceKey.get(sourceKey)
+      : undefined
     const paidAmountMinor = resolveMatchedPaidAmountMinor(match, transactionsById) ?? resolvePaidAmountFromOutstanding(reservation)
-    const blockKey = resolveReservationBlockKey(reservation)
     const statusKey = resolveReservationStatus({
       expectedAmountMinor: reservation.grossRevenueMinor,
       outstandingBalanceMinor: reservation.outstandingBalanceMinor,
@@ -483,6 +486,48 @@ function mergeReservationSources(primary: ReservationSourceRecord[], secondary: 
 
 function buildReservationSourceKey(sourceDocumentId: string, reservationId: string): string {
   return `${sourceDocumentId}:${reservationId}`
+}
+
+function resolveBookingConfirmedPayoutMatch(
+  matches: ReservationSettlementMatch[],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): ReservationSettlementMatch | undefined {
+  if (blockKey !== 'booking') {
+    return undefined
+  }
+
+  const reservationId = normalizeComparable(reservation.reservationId)
+  const reference = normalizeComparable(reservation.reference)
+  const candidates = matches.filter((match) => {
+    if (match.platform !== 'booking' || match.settlementKind !== 'payout_row') {
+      return false
+    }
+
+    if (match.amountMinor !== reservation.grossRevenueMinor || match.currency !== reservation.currency) {
+      return false
+    }
+
+    const matchReference = normalizeComparable(match.reference)
+    const hasIdentityMatch = match.reservationId === reservation.reservationId
+      || (Boolean(reference) && matchReference === reference)
+
+    if (!hasIdentityMatch) {
+      return false
+    }
+
+    return hasExplicitBookingRowEvidence(match)
+  })
+
+  return candidates.length === 1 ? candidates[0] : undefined
+}
+
+function hasExplicitBookingRowEvidence(match: ReservationSettlementMatch): boolean {
+  return match.reasons.some((reason) => (
+    reason === 'reservationIdExact'
+    || reason === 'referenceExact'
+    || reason === 'payoutSupplementReservationIdExact'
+  ))
 }
 
 function resolveMatchedPaidAmountMinor(
