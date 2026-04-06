@@ -3979,6 +3979,104 @@ describe('buildUploadWebFlow', () => {
     ).toBe(true)
   })
 
+  it('marks Greta as paid in browser runtime when a Booking payout row exists and keeps Tatiana unverified without one', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '06.03.2026 08:00',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '6622415324',
+              guestName: 'Greta Sieweke',
+              channel: 'Booking.com Prepaid',
+              amountText: '259,84 EUR',
+              outstandingText: '259,84 EUR',
+              roomName: 'A201'
+            },
+            {
+              createdAt: '06.03.2026 08:10',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '52,26 EUR',
+              roomName: 'A202'
+            }
+          ])
+        ),
+        createRuntimeArrayBufferTextFile(
+          'booking-greta.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '6622415324',
+              checkIn: '2026-03-06',
+              checkout: '2026-03-08',
+              guestName: 'Greta Sieweke',
+              currency: 'EUR',
+              amountText: '259,84',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            }
+          ]),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('booking-greta.pdf', [
+          'Chill apartments',
+          'Sokolská 64',
+          '120 00 Prague',
+          'ID ubytování 2206371',
+          'Booking.com B.V.',
+          'Výkaz plateb',
+          'Datum vyplacení částky 12. března 2026',
+          'ID platby 010638445054',
+          'Typ faktury',
+          'Referenční číslo',
+          'Typ platby',
+          'Příjezd',
+          'Odjezd',
+          'Jméno hosta',
+          'Měna',
+          'Částka',
+          'Rezervace 6622415324',
+          'Reservation 6. března 2026 8. března 2026',
+          'Greta Sieweke',
+          'Celkem (CZK) 6,337.07 Kč',
+          'Celková částka k vyplacení € 259.84',
+          'Celková částka k vyplacení (CZK)',
+          'Směnný kurz 24.3955',
+          'Bankovní údaje',
+          'IBAN CZ65 5500 0000 0000 5599 555956'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-06T08:20:00.000Z'
+    })
+
+    const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Greta Sieweke',
+        primaryReference: '6622415324',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-1']
+      }),
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+  })
+
   it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 
