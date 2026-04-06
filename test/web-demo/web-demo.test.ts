@@ -1106,10 +1106,13 @@ describe('buildWebDemo', () => {
 
     expect(defaultRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(true)
     expect(defaultRendered.runtimePayoutProjectionDebugSection.hidden).toBe(true)
+    expect(defaultRendered.runtimeWorkspaceTruthExportSection.hidden).toBe(true)
     expect(debugRendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
     expect(debugRendered.runtimePayoutProjectionDebugSection.hidden).toBe(false)
+    expect(debugRendered.runtimeWorkspaceTruthExportSection.hidden).toBe(false)
     expect(debugRendered.html).toContain('id="runtime-file-intake-diagnostics-section"')
     expect(debugRendered.html).toContain('id="runtime-payout-projection-debug-section"')
+    expect(debugRendered.html).toContain('id="runtime-workspace-truth-export-section"')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Bookinng35k.pdf')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('MIME: application/pdf')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Browser extraction: extracted / pdf-text')
@@ -1127,6 +1130,173 @@ describe('buildWebDemo', () => {
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: žádné')
     expect(debugRendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: supplemental supported · Podporovaný doplňkový payout dokument')
     expect(debugRendered.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 4 · Nepodporováno: 0 · Selhání ingestu: 0')
+  })
+
+  it('exports debug workspace truth JSON with build marker, file list, source block counts, and Booking payout evidence fields', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-06T10:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-debug-workspace-truth-export',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '06.03.2026 08:00',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '6622415324',
+              guestName: 'Greta Sieweke',
+              channel: 'Booking.com Prepaid',
+              amountText: '259,84 EUR',
+              outstandingText: '259,84 EUR',
+              roomName: 'A201'
+            },
+            {
+              createdAt: '06.03.2026 08:10',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '52,26 EUR',
+              roomName: 'A202'
+            }
+          ])
+        ),
+        createWebDemoRuntimeFile(
+          'booking-greta.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '6622415324',
+              checkIn: '2026-03-06',
+              checkout: '2026-03-08',
+              guestName: 'Greta Sieweke',
+              currency: 'EUR',
+              amountText: '259,84',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            }
+          ])
+        ),
+        createWebDemoRuntimePdfFileFromToUnicodeTextLines('booking-greta.pdf', [
+          'Chill apartments',
+          'Sokolská 64',
+          '120 00 Prague',
+          'ID ubytování 2206371',
+          'Booking.com B.V.',
+          'Výkaz plateb',
+          'Datum vyplacení částky 12. března 2026',
+          'ID platby 010638445054',
+          'Typ faktury',
+          'Referenční číslo',
+          'Typ platby',
+          'Příjezd',
+          'Odjezd',
+          'Jméno hosta',
+          'Měna',
+          'Částka',
+          'Rezervace 6622415324',
+          'Reservation 6. března 2026 8. března 2026',
+          'Greta Sieweke',
+          'Celkem (CZK) 6,337.07 Kč',
+          'Celková částka k vyplacení € 259.84',
+          'Celková částka k vyplacení (CZK)',
+          'Směnný kurz 24.3955',
+          'Bankovní údaje',
+          'IBAN CZ65 5500 0000 0000 5599 555956'
+        ])
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      fileName: string
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      buildMarker: {
+        gitCommitShortSha: string
+        buildBranch: string
+        runtimeModuleVersion: string
+        rendererVersion: string
+      }
+      location: {
+        origin: string
+        host: string
+      }
+      monthKey: string
+      uploadedFiles: Array<{ fileName: string }>
+      sourceDocumentIds: string[]
+      payoutRelatedFileIds: string[]
+      reservationLikeItemIdsBySource: Record<string, string[]>
+      bookingReservationItems: Array<{
+        reservationReference: string
+        guestName: string
+        currency: string
+        payoutRowEvidenceExists: boolean
+        linkedPayoutRowIds: string[]
+        linkedSourceDocumentIds: string[]
+        finalStatus: { key: string }
+      }>
+      reservationCentricView: {
+        blocks: Array<{
+          key: string
+          itemCount: number
+          statusCounts: Record<string, number>
+        }>
+      }
+    }
+
+    expect(artifact.fileName).toContain('debug-workspace-truth-2026-03-')
+    expect(payload.buildMarker.gitCommitShortSha.length).toBeGreaterThan(0)
+    expect(payload.buildMarker.buildBranch.length).toBeGreaterThan(0)
+    expect(payload.buildMarker.runtimeModuleVersion.length).toBeGreaterThan(0)
+    expect(payload.buildMarker.rendererVersion.length).toBeGreaterThan(0)
+    expect(payload.location.origin).toBe('https://hotel-finance-control.netlify.app')
+    expect(payload.location.host).toBe('hotel-finance-control.netlify.app')
+    expect(payload.monthKey).toBe('2026-03')
+    expect(payload.uploadedFiles.map((file) => file.fileName)).toEqual([
+      'reservations-export-2026-03.xlsx',
+      'booking-greta.csv',
+      'booking-greta.pdf'
+    ])
+    expect(payload.sourceDocumentIds.length).toBeGreaterThan(0)
+    expect(payload.payoutRelatedFileIds.length).toBeGreaterThan(0)
+    expect(payload.reservationLikeItemIdsBySource.booking).toHaveLength(2)
+    expect(payload.reservationCentricView.blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        key: 'booking',
+        itemCount: 2,
+        statusCounts: expect.objectContaining({
+          paid: 1,
+          unverified: 1
+        })
+      })
+    ]))
+    expect(payload.bookingReservationItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reservationReference: '6622415324',
+        guestName: 'Greta Sieweke',
+        currency: 'EUR',
+        payoutRowEvidenceExists: true,
+        linkedPayoutRowIds: ['txn:payout:booking-payout-1'],
+        linkedSourceDocumentIds: expect.any(Array),
+        finalStatus: expect.objectContaining({ key: 'paid' })
+      }),
+      expect.objectContaining({
+        reservationReference: '5280445951',
+        guestName: 'Tatiana Trakaliuk',
+        currency: 'EUR',
+        payoutRowEvidenceExists: false,
+        linkedPayoutRowIds: [],
+        linkedSourceDocumentIds: expect.any(Array),
+        finalStatus: expect.objectContaining({ key: 'unverified' })
+      })
+    ]))
   })
 
   it('renders the final operator page with a real-like Czech Booking payout PDF as a supported supplement instead of unsupported even when the head preview is just property details', async () => {
@@ -6462,6 +6632,8 @@ async function executeWebDemoMainWorkflow(input: {
   runtimePayoutProjectionDebugContent: StubDomElement
   runtimeWorkspaceMergeDebugSection: StubDomElement
   runtimeWorkspaceMergeDebugContent: StubDomElement
+  runtimeWorkspaceTruthExportSection: StubDomElement
+  runtimeWorkspaceTruthExportContent: StubDomElement
   getConfirmMessages: () => string[]
   getPrintCallCount: () => number
   getLastDocumentPreviewState: () => unknown
@@ -6509,6 +6681,8 @@ async function executeWebDemoMainWorkflow(input: {
   setWorkspaceExportPreset: (preset: 'complete' | 'review-needed' | 'matched-only') => void
   downloadWorkspaceExcelExport: () => void
   getLastExcelExport: () => unknown
+  downloadDebugWorkspaceTruthExport: () => void
+  getLastDebugWorkspaceTruthExport: () => unknown
   setSelectedFiles: (files: Array<{
     name: string
     type?: string
@@ -6576,7 +6750,7 @@ async function executeWebDemoMainWorkflow(input: {
   setMonthPickerShowPickerAvailable(true)
   const localStorageSetItemLimitBytes = input.localStorageSetItemLimitBytes ?? Number.POSITIVE_INFINITY
   const windowObject: {
-    location: { search: string; hash: string }
+    location: { href: string; origin: string; host: string; pathname: string; search: string; hash: string }
     confirm: (message?: string) => boolean
     localStorage: {
       getItem: (key: string) => string | null
@@ -6602,6 +6776,7 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceExpenseReviewOverrides?: unknown
     __hotelFinanceExpenseReviewOverrideStorageKey?: unknown
     __hotelFinanceLastExcelExport?: unknown
+    __hotelFinanceLastDebugWorkspaceTruthExport?: unknown
     __hotelFinanceMonthlyWorkspacePersistence?: {
       backendName: string
       loadWorkspace: (month: string) => Promise<unknown>
@@ -6619,6 +6794,10 @@ async function executeWebDemoMainWorkflow(input: {
     }
   } = {
     location: {
+      href: 'https://hotel-finance-control.netlify.app/' + String(input.locationSearch ?? '') + String(input.locationHash ?? ''),
+      origin: 'https://hotel-finance-control.netlify.app',
+      host: 'hotel-finance-control.netlify.app',
+      pathname: '/',
       search: input.locationSearch ?? '',
       hash: input.locationHash ?? ''
     },
@@ -6876,6 +7055,8 @@ async function executeWebDemoMainWorkflow(input: {
     runtimePayoutProjectionDebugContent: elements['runtime-payout-projection-debug-content'],
     runtimeWorkspaceMergeDebugSection: elements['runtime-workspace-merge-debug-section'],
     runtimeWorkspaceMergeDebugContent: elements['runtime-workspace-merge-debug-content'],
+    runtimeWorkspaceTruthExportSection: elements['runtime-workspace-truth-export-section'],
+    runtimeWorkspaceTruthExportContent: elements['runtime-workspace-truth-export-content'],
     getConfirmMessages() {
       return confirmMessages.slice()
     },
@@ -7030,6 +7211,12 @@ async function executeWebDemoMainWorkflow(input: {
     },
     getLastExcelExport() {
       return windowObject.__hotelFinanceLastExcelExport
+    },
+    downloadDebugWorkspaceTruthExport() {
+      elements['download-debug-workspace-truth-button'].listeners.click()
+    },
+    getLastDebugWorkspaceTruthExport() {
+      return windowObject.__hotelFinanceLastDebugWorkspaceTruthExport
     },
     setSelectedFiles(files) {
       elements['monthly-files'].files = files
@@ -7202,7 +7389,10 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'runtime-payout-projection-debug-section',
     'runtime-payout-projection-debug-content',
     'runtime-workspace-merge-debug-section',
-    'runtime-workspace-merge-debug-content'
+    'runtime-workspace-merge-debug-content',
+    'runtime-workspace-truth-export-section',
+    'runtime-workspace-truth-export-content',
+    'download-debug-workspace-truth-button'
   ]
 
   for (const id of ids) {
@@ -7507,6 +7697,34 @@ function buildPrevioWorkbookBase64FromRows(rows: Array<{
     ['Počet rezervací', String(rows.length)]
   ]), 'Přehled rezervací')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' })
+}
+
+function buildBookingBrowserUploadContentFromRows(rows: Array<{
+  reservationId: string
+  checkIn: string
+  checkout: string
+  guestName: string
+  currency: string
+  amountText: string
+  payoutDate: string
+  payoutId: string
+}>): string {
+  return [
+    'Type;Reference number;Check-in;Checkout;Guest name;Reservation status;Currency;Payment status;Amount;Payout date;Payout ID',
+    ...rows.map((row) => [
+      'Reservation',
+      row.reservationId,
+      row.checkIn,
+      row.checkout,
+      row.guestName,
+      'OK',
+      row.currency,
+      'Paid',
+      row.amountText,
+      row.payoutDate,
+      row.payoutId
+    ].join(';'))
+  ].join('\n')
 }
 
 function buildRealMixedAirbnbVoucherMatchContent(): string {
