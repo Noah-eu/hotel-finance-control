@@ -5842,8 +5842,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
             .map((transactionId) => String(transactionId || ''))
             .filter(Boolean);
           const linkedSourceDocumentIds = collectUniqueTruthyStrings(Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds : []);
+          const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
           const payoutRowEvidenceExists = String(item && item.evidenceKey || '') === 'payout'
             || linkedPayoutRowIds.some((transactionId) => transactionId.indexOf('txn:payout:') === 0);
+          const confirmationTrace = buildBookingConfirmationTraceDebugPayload(detailEntries);
 
           return {
             id: String(item && item.id || ''),
@@ -5864,7 +5866,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
               labelCs: String(item && item.evidenceLabelCs || '')
             },
             linkedPayoutRowIds,
-            linkedSourceDocumentIds
+            linkedSourceDocumentIds,
+            ...(confirmationTrace ? { confirmationTrace } : {})
           };
         });
 
@@ -9473,6 +9476,36 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
+}
+
+function buildBookingConfirmationTraceDebugPayload(
+  detailEntries: Array<{ labelCs?: string, value?: string }>
+): {
+  matchedBatchReference?: string
+  matchedBatchCandidateCount?: number
+  membershipHit?: boolean
+  amountHit?: boolean
+  finalConfirmationSource?: string
+} | undefined {
+  const entries = Array.isArray(detailEntries) ? detailEntries : []
+  const readEntry = (labelCs: string) => entries.find((entry) => String(entry && entry.labelCs || '') === labelCs)?.value
+  const matchedBatchReference = readEntry('DEBUG Booking matched batch')
+  const candidateCountValue = readEntry('DEBUG Booking candidate count')
+  const membershipHitValue = readEntry('DEBUG Booking membership hit')
+  const amountHitValue = readEntry('DEBUG Booking amount hit')
+  const finalConfirmationSource = readEntry('DEBUG Booking confirmation source')
+
+  if (!matchedBatchReference && !candidateCountValue && !membershipHitValue && !amountHitValue && !finalConfirmationSource) {
+    return undefined
+  }
+
+  return {
+    ...(matchedBatchReference ? { matchedBatchReference: String(matchedBatchReference) } : {}),
+    ...(candidateCountValue ? { matchedBatchCandidateCount: Number(candidateCountValue) } : {}),
+    ...(membershipHitValue ? { membershipHit: membershipHitValue === 'yes' } : {}),
+    ...(amountHitValue ? { amountHit: amountHitValue === 'yes' } : {}),
+    ...(finalConfirmationSource ? { finalConfirmationSource: String(finalConfirmationSource) } : {})
+  }
 }
 
 function buildActualUploadedAirbnbContent(): string {

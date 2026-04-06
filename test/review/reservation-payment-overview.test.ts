@@ -444,18 +444,80 @@ describe('buildReservationPaymentOverview', () => {
     ]))
   })
 
-  it('keeps Booking reservations unverified when only matched payout-batch and PDF evidence exists without an exact Booking row', () => {
+  it('marks the six explicit Booking payout PDF membership reservations as paid and keeps non-members outside the batch unverified', () => {
+    const previousDebugReference = (globalThis as { __HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__?: string })
+      .__HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__
+      ; (globalThis as { __HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__?: string })
+        .__HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__ = '6529631423'
+
+    const explicitMembershipReservations = [
+      {
+        reservationId: '6529631423',
+        guestName: 'Sedláček Jan',
+        roomName: 'A201',
+        bookedAt: '2026-03-18',
+        stayStartAt: '2026-03-26',
+        stayEndAt: '2026-03-28',
+        grossRevenueMinor: 37888
+      },
+      {
+        reservationId: '6008299863',
+        guestName: 'Anatoliy Chebotaryov',
+        roomName: 'A202',
+        bookedAt: '2026-03-18',
+        stayStartAt: '2026-03-26',
+        stayEndAt: '2026-03-27',
+        grossRevenueMinor: 15104
+      },
+      {
+        reservationId: '6415593183',
+        guestName: 'Aryna Ponomarenko',
+        roomName: 'A203',
+        bookedAt: '2026-03-19',
+        stayStartAt: '2026-03-27',
+        stayEndAt: '2026-03-29',
+        grossRevenueMinor: 16512
+      },
+      {
+        reservationId: '5159718129',
+        guestName: 'Jozef Kluvanec',
+        roomName: 'A204',
+        bookedAt: '2026-03-20',
+        stayStartAt: '2026-03-27',
+        stayEndAt: '2026-03-30',
+        grossRevenueMinor: 27648
+      },
+      {
+        reservationId: '6126906663',
+        guestName: 'Ronny Ronald Gündel',
+        roomName: 'A205',
+        bookedAt: '2026-03-21',
+        stayStartAt: '2026-03-28',
+        stayEndAt: '2026-03-30',
+        grossRevenueMinor: 16640
+      },
+      {
+        reservationId: '6354636438',
+        guestName: 'Amir Fetratnejad',
+        roomName: 'A206',
+        bookedAt: '2026-03-21',
+        stayStartAt: '2026-03-28',
+        stayEndAt: '2026-03-31',
+        grossRevenueMinor: 29440
+      }
+    ]
+
     const batch = {
       extractedRecords: [],
       reconciliation: {
         normalizedTransactions: [],
         payoutBatchMatches: [
           {
-            payoutBatchKey: 'booking-batch:2026-03-12:010638445054',
+            payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
             payoutBatchRowIds: [],
             bankTransactionId: 'txn:bank:booking-batch-1',
             bankAccountId: '5599955956/5500',
-            amountMinor: 633707,
+            amountMinor: 5293886,
             currency: 'CZK',
             confidence: 1,
             ruleKey: 'booking-batch-bank-match',
@@ -466,48 +528,33 @@ describe('buildReservationPaymentOverview', () => {
         ],
         workflowPlan: {
           reservationSources: [
-            {
-              sourceDocumentId: 'doc:previo-greta',
-              reservationId: '6622415324',
-              guestName: 'Greta Sieweke',
-              roomName: 'A201',
-              reference: '6622415324',
+            ...explicitMembershipReservations.map((reservation) => ({
+              sourceDocumentId: `doc:previo:${reservation.reservationId}`,
+              reservationId: reservation.reservationId,
+              guestName: reservation.guestName,
+              roomName: reservation.roomName,
+              reference: reservation.reservationId,
               channel: 'booking',
-              bookedAt: '2026-03-01',
-              stayStartAt: '2026-03-06',
-              stayEndAt: '2026-03-08',
-              grossRevenueMinor: 25984,
-              outstandingBalanceMinor: 25984,
+              bookedAt: reservation.bookedAt,
+              stayStartAt: reservation.stayStartAt,
+              stayEndAt: reservation.stayEndAt,
+              grossRevenueMinor: reservation.grossRevenueMinor,
+              outstandingBalanceMinor: reservation.grossRevenueMinor,
               currency: 'EUR',
               expectedSettlementChannels: ['booking']
-            },
-            {
-              sourceDocumentId: 'doc:previo-denisa',
-              reservationId: '5178029336',
-              guestName: 'Denisa Hypiusová',
-              roomName: 'A202',
-              reference: '5178029336',
-              channel: 'booking',
-              bookedAt: '2026-03-03',
-              stayStartAt: '2026-03-07',
-              stayEndAt: '2026-03-09',
-              grossRevenueMinor: 4480,
-              outstandingBalanceMinor: 0,
-              currency: 'EUR',
-              expectedSettlementChannels: ['booking']
-            },
+            })),
             {
               sourceDocumentId: 'doc:previo-tatiana',
               reservationId: '5280445951',
               guestName: 'Tatiana Trakaliuk',
-              roomName: 'A203',
+              roomName: 'A207',
               reference: '5280445951',
               channel: 'booking',
-              bookedAt: '2026-03-05',
-              stayStartAt: '2026-03-14',
-              stayEndAt: '2026-03-16',
+              bookedAt: '2026-03-22',
+              stayStartAt: '2026-03-31',
+              stayEndAt: '2026-04-02',
               grossRevenueMinor: 5226,
-              outstandingBalanceMinor: 0,
+              outstandingBalanceMinor: 5226,
               currency: 'EUR',
               expectedSettlementChannels: ['booking']
             }
@@ -516,18 +563,12 @@ describe('buildReservationPaymentOverview', () => {
           ancillaryRevenueSources: [],
           reservationSettlementMatches: [],
           reservationSettlementNoMatches: [
-            {
-              sourceDocumentId: 'doc:previo-greta',
-              reservationId: '6622415324',
+            ...explicitMembershipReservations.map((reservation) => ({
+              sourceDocumentId: `doc:previo:${reservation.reservationId}`,
+              reservationId: reservation.reservationId,
               candidateCount: 0,
-              noMatchReason: 'noCandidate'
-            },
-            {
-              sourceDocumentId: 'doc:previo-denisa',
-              reservationId: '5178029336',
-              candidateCount: 0,
-              noMatchReason: 'noCandidate'
-            },
+              noMatchReason: 'noCandidate' as const
+            })),
             {
               sourceDocumentId: 'doc:previo-tatiana',
               reservationId: '5280445951',
@@ -538,17 +579,18 @@ describe('buildReservationPaymentOverview', () => {
           payoutRows: [],
           payoutBatches: [
             {
-              payoutBatchKey: 'booking-batch:2026-03-12:010638445054',
+              payoutBatchKey: 'booking-batch:2026-03-26:010738140021',
               platform: 'booking',
-              payoutReference: '010638445054',
-              payoutDate: '2026-03-12',
+              payoutReference: '010738140021',
+              payoutDate: '2026-03-26',
               bankRoutingTarget: 'rb_bank_inflow',
               rowIds: [],
-              expectedTotalMinor: 633707,
+              expectedTotalMinor: 5293886,
               currency: 'CZK',
-              componentReservationIds: ['6622415324', '5178029336'],
-              payoutSupplementReservationIds: ['6622415324', '5178029336'],
-              payoutSupplementSourceDocumentIds: ['uploaded:booking:25:015022808386-pdf']
+              componentReservationIds: [],
+              payoutSupplementReferenceHints: explicitMembershipReservations.map((reservation) => reservation.reservationId),
+              payoutSupplementReservationIds: [],
+              payoutSupplementSourceDocumentIds: ['uploaded:booking:25:010738140021-pdf']
             }
           ],
           directBankSettlements: []
@@ -556,32 +598,56 @@ describe('buildReservationPaymentOverview', () => {
       }
     } as unknown as MonthlyBatchResult
 
-    const overview = buildReservationPaymentOverview(batch)
-    const bookingItems = overview.blocks.find((block) => block.key === 'booking')?.items ?? []
+    try {
+      const overview = buildReservationPaymentOverview(batch)
+      const bookingItems = overview.blocks.find((block) => block.key === 'booking')?.items ?? []
 
-    expect(bookingItems).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        title: 'Greta Sieweke',
-        primaryReference: '6622415324',
-        statusKey: 'unverified',
-        evidenceKey: 'no_evidence',
-        transactionIds: []
-      }),
-      expect.objectContaining({
-        title: 'Denisa Hypiusová',
-        primaryReference: '5178029336',
-        statusKey: 'unverified',
-        evidenceKey: 'no_evidence',
-        transactionIds: []
-      }),
-      expect.objectContaining({
-        title: 'Tatiana Trakaliuk',
-        primaryReference: '5280445951',
-        statusKey: 'unverified',
-        evidenceKey: 'no_evidence',
-        transactionIds: []
-      })
-    ]))
+      expect(bookingItems).toEqual(expect.arrayContaining(
+        explicitMembershipReservations.map((reservation) => expect.objectContaining({
+          title: reservation.guestName,
+          primaryReference: reservation.reservationId,
+          statusKey: 'paid',
+          evidenceKey: 'payout',
+          transactionIds: [],
+          paidAmountMinor: reservation.grossRevenueMinor,
+          sourceDocumentIds: expect.arrayContaining([
+            `doc:previo:${reservation.reservationId}`,
+            'uploaded:booking:25:010738140021-pdf'
+          ])
+        }))
+      ))
+      expect(bookingItems).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Sedláček Jan',
+          statusDetailCs: expect.stringContaining('010738140021'),
+          detailEntries: expect.arrayContaining([
+            expect.objectContaining({ labelCs: 'Booking payout batch', value: '010738140021 (2026-03-26)' }),
+            expect.objectContaining({ labelCs: 'Potvrzení', value: 'spárovaná Booking payout dávka + Booking payout statement PDF' }),
+            expect.objectContaining({ labelCs: 'DEBUG Booking matched batch', value: '010738140021' }),
+            expect.objectContaining({ labelCs: 'DEBUG Booking candidate count', value: '1' }),
+            expect.objectContaining({ labelCs: 'DEBUG Booking membership hit', value: 'yes' }),
+            expect.objectContaining({ labelCs: 'DEBUG Booking amount hit', value: 'yes' }),
+            expect.objectContaining({ labelCs: 'DEBUG Booking confirmation source', value: 'matched_batch_reference_hint' })
+          ])
+        }),
+        expect.objectContaining({
+          title: 'Tatiana Trakaliuk',
+          primaryReference: '5280445951',
+          statusKey: 'unverified',
+          evidenceKey: 'no_evidence',
+          transactionIds: []
+        })
+      ]))
+      expect(bookingItems).toHaveLength(7)
+    } finally {
+      if (previousDebugReference) {
+        ; (globalThis as { __HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__?: string })
+          .__HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__ = previousDebugReference
+      } else {
+        delete (globalThis as { __HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__?: string })
+          .__HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__
+      }
+    }
   })
 
   it('does not render raw Booking payout rows in the reservation column and marks Denisa paid only from exact Booking row evidence', () => {

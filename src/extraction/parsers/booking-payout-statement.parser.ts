@@ -344,9 +344,34 @@ function extractIbanSuffix(value: string | undefined): string | undefined {
   return digits.slice(-4).join('')
 }
 
-function extractReservationIds(content: string): string[] {
-  const matches = content.match(/\bRES-[A-Z0-9-]+\b/gi) ?? []
-  return Array.from(new Set(matches.map((value) => value.trim())))
+function extractReservationIds(content: string, paymentId?: string): string[] {
+  const prefixedNumericMatches = Array.from(
+    content.matchAll(/\b(?:rezervace|reservation)\s*:?\s*(\d{10,16})\b/gi)
+  ).map((match) => match[1]?.trim())
+  const referenceMatches = content.match(/\bRES-[A-Z0-9-]+\b/gi) ?? []
+  const standaloneNumericMatches = normalizeBookingPayoutStatementStructuredContent(content)
+    .split('\n')
+    .flatMap((line) => {
+      const normalizedLine = line.trim()
+      if (!normalizedLine.match(/\b\d{10,16}\b/)) {
+        return []
+      }
+
+      const asciiLine = foldToAscii(normalizedLine).toUpperCase()
+      if (asciiLine.includes('ID PLATBY') || asciiLine.includes('PAYMENT ID') || asciiLine.includes('PAYOUT ID') || asciiLine.includes('IBAN')) {
+        return []
+      }
+
+      return Array.from(normalizedLine.matchAll(/\b\d{10,16}\b/g)).map((match) => match[0]?.trim())
+    })
+    .filter((value): value is string => Boolean(value))
+    .filter((value) => value !== paymentId)
+
+  return Array.from(new Set([
+    ...referenceMatches.map((value) => value.trim()),
+    ...prefixedNumericMatches.filter((value): value is string => Boolean(value)),
+    ...standaloneNumericMatches
+  ]))
 }
 
 function collectBookingPayoutStatementFieldCandidates(content: string): {
@@ -387,7 +412,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
       /\bid\s+platby\b.{0,120}?([A-Z0-9-]{6,})/i,
       /\bid\s+vyplaty\b.{0,120}?([A-Z0-9-]{6,})/i
     ]) ?? captureStandaloneBookingPaymentId(scan.normalized, scan.compact)
-      ?? captureDenseBookingPaymentId(scan.denseAsciiNormalized)
+    ?? captureDenseBookingPaymentId(scan.denseAsciiNormalized)
   )
   const payoutDateRaw = normalizeBookingStatementDateValue(
     pickRequiredField(fields, [
@@ -417,8 +442,8 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
       /\bdatum\s+vyplaceni\s+castky\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i,
       /\bdatum\s+platby\b.{0,120}?([0-9]{4}-[0-9]{2}-[0-9]{2}|\d{1,2}[./]\d{1,2}[./]\d{4}|\d{1,2}\.\s*[a-z]+\s+\d{4})/i
     ]) ?? captureStandaloneBookingPayoutDate(scan.normalized, scan.asciiNormalized)
-      ?? captureDenseBookingPayoutDate(scan.denseAsciiNormalized)
-      ?? captureCompactBookingPayoutDate(scan.compact)
+    ?? captureDenseBookingPayoutDate(scan.denseAsciiNormalized)
+    ?? captureCompactBookingPayoutDate(scan.compact)
   )
   const propertyId = normalizeBookingStatementReferenceValue(
     pickRequiredField(fields, [
@@ -472,7 +497,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
       /\bcelkova\s+castka\s+k\s+vyplaceni\s*\(\s*(?:czk|eur|usd)\s*\)/i,
       /\b(?:total\s+(?:payout|payment|transfer)|(?:payout|payment|transfer)\s*total)\s*\(\s*(?:czk|eur|usd)\s*\)/i
     ], 'CZK') ?? captureBookingLocalCurrencyTotal(scan.normalized, scan.asciiNormalized)
-      ?? captureDenseBookingLocalCurrencyTotal(scan.denseNormalized, scan.denseAsciiNormalized)
+    ?? captureDenseBookingLocalCurrencyTotal(scan.denseNormalized, scan.denseAsciiNormalized)
   )
   const payoutTotalRaw = resolveBookingPrimaryPayoutTotalCandidate(
     normalizeBookingStatementMoneyValue(
@@ -508,7 +533,7 @@ function collectBookingPayoutStatementFieldCandidates(content: string): {
     ?? captureBookingExchangeRate(scan.normalized, scan.asciiNormalized)
     ?? captureDenseBookingExchangeRate(scan.denseAsciiNormalized)
   )
-  const reservationIds = extractReservationIds(scan.normalized)
+  const reservationIds = extractReservationIds(scan.normalized, paymentId)
 
   return {
     scan,

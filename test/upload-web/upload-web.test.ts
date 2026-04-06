@@ -4077,35 +4077,90 @@ describe('buildUploadWebFlow', () => {
     ]))
   })
 
-  it('marks Greta as paid in browser runtime from a matched Booking payout PDF batch without Booking CSV rows and keeps Tatiana unverified', async () => {
-    const bookingPdf = getRealInputFixture('booking-payout-statement-pdf-czk-main-total')
+  it('marks the six explicit Booking payout PDF membership reservations as paid in browser runtime and keeps non-members unverified', async () => {
+    const explicitMembershipReservations = [
+      {
+        reservationId: '6529631423',
+        guestName: 'Sedláček Jan',
+        amountText: '378,88 EUR',
+        roomName: 'A201',
+        createdAt: '18.03.2026 08:00',
+        stayStartAt: '26.03.2026',
+        stayEndAt: '28.03.2026'
+      },
+      {
+        reservationId: '6008299863',
+        guestName: 'Anatoliy Chebotaryov',
+        amountText: '151,04 EUR',
+        roomName: 'A202',
+        createdAt: '18.03.2026 08:10',
+        stayStartAt: '26.03.2026',
+        stayEndAt: '27.03.2026'
+      },
+      {
+        reservationId: '6415593183',
+        guestName: 'Aryna Ponomarenko',
+        amountText: '165,12 EUR',
+        roomName: 'A203',
+        createdAt: '19.03.2026 08:20',
+        stayStartAt: '27.03.2026',
+        stayEndAt: '29.03.2026'
+      },
+      {
+        reservationId: '5159718129',
+        guestName: 'Jozef Kluvanec',
+        amountText: '276,48 EUR',
+        roomName: 'A204',
+        createdAt: '20.03.2026 08:30',
+        stayStartAt: '27.03.2026',
+        stayEndAt: '30.03.2026'
+      },
+      {
+        reservationId: '6126906663',
+        guestName: 'Ronny Ronald Gündel',
+        amountText: '166,40 EUR',
+        roomName: 'A205',
+        createdAt: '21.03.2026 08:40',
+        stayStartAt: '28.03.2026',
+        stayEndAt: '30.03.2026'
+      },
+      {
+        reservationId: '6354636438',
+        guestName: 'Amir Fetratnejad',
+        amountText: '294,40 EUR',
+        roomName: 'A206',
+        createdAt: '21.03.2026 08:50',
+        stayStartAt: '28.03.2026',
+        stayEndAt: '31.03.2026'
+      }
+    ]
 
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [
         createRuntimeWorkbookFile(
           'reservations-export-2026-03.xlsx',
           buildPrevioWorkbookBase64FromRows([
-            {
-              createdAt: '06.03.2026 08:00',
-              stayStartAt: '06.03.2026',
-              stayEndAt: '08.03.2026',
-              voucher: 'RES-BOOK-9901',
-              guestName: 'Greta-like Booking Guest',
+            ...explicitMembershipReservations.map((reservation) => ({
+              createdAt: reservation.createdAt,
+              stayStartAt: reservation.stayStartAt,
+              stayEndAt: reservation.stayEndAt,
+              voucher: reservation.reservationId,
+              guestName: reservation.guestName,
               channel: 'Booking.com Prepaid',
-              amountText: '2 160,77 EUR',
-              outstandingText: '2 160,77 EUR',
-              roomName: 'A201'
-            },
+              amountText: reservation.amountText,
+              outstandingText: reservation.amountText,
+              roomName: reservation.roomName
+            })),
             {
-              createdAt: '06.03.2026 08:10',
-              stayStartAt: '06.03.2026',
-              stayEndAt: '08.03.2026',
-              voucher: 'RES-BOOK-UNVERIFIED',
+              createdAt: '22.03.2026 09:00',
+              stayStartAt: '31.03.2026',
+              stayEndAt: '02.04.2026',
+              voucher: '5280445951',
               guestName: 'Tatiana Trakaliuk',
               channel: 'Booking.com Prepaid',
               amountText: '52,26 EUR',
-              outstandingText: '0,00 EUR',
-              roomName: 'A202'
+              outstandingText: '52,26 EUR',
+              roomName: 'A207'
             }
           ])
         ),
@@ -4117,7 +4172,18 @@ describe('buildUploadWebFlow', () => {
           ].join('\n'),
           'text/csv'
         ),
-        createRuntimePdfFileFromToUnicodeTextLines(bookingPdf.sourceDocument.fileName, bookingPdf.rawInput.content.split('\n'))
+        createRuntimePdfFileFromToUnicodeTextLines(
+          'booking-payout-statement-010738140021.pdf',
+          [
+            'Booking.com B.V.',
+            'Výkaz plateb',
+            'Datum vyplacení částky 26. března 2026',
+            'ID platby 010738140021',
+            'Celková částka k vyplacení 52,938.86 CZK',
+            'IBAN CZ65 5500 0000 0000 5599 555956',
+            ...explicitMembershipReservations.map((reservation) => `Rezervace ${reservation.reservationId}`)
+          ]
+        )
       ],
       month: '2026-03',
       generatedAt: '2026-04-06T10:15:00.000Z'
@@ -4128,28 +4194,33 @@ describe('buildUploadWebFlow', () => {
         title: expect.stringContaining('Booking payout 010738140021')
       })
     ]))
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
 
     const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
 
-    expect(bookingItems).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        title: 'Greta-like Booking Guest',
-        primaryReference: 'RES-BOOK-9901',
-        statusKey: 'unverified',
-        evidenceKey: 'no_evidence',
+    expect(bookingItems).toEqual(expect.arrayContaining(
+      explicitMembershipReservations.map((reservation) => expect.objectContaining({
+        title: reservation.guestName,
+        primaryReference: reservation.reservationId,
+        statusKey: 'paid',
+        evidenceKey: 'payout',
         transactionIds: [],
         sourceDocumentIds: expect.arrayContaining([
-          expect.stringMatching(/^uploaded:previo:/)
+          expect.stringMatching(/^uploaded:previo:/),
+          expect.stringMatching(/^uploaded:booking:.*010738140021.*pdf$/)
         ])
-      }),
+      }))
+    ))
+    expect(bookingItems).toEqual(expect.arrayContaining([
       expect.objectContaining({
         title: 'Tatiana Trakaliuk',
-        primaryReference: 'RES-BOOK-UNVERIFIED',
+        primaryReference: '5280445951',
         statusKey: 'unverified',
         evidenceKey: 'no_evidence',
         transactionIds: []
       })
     ]))
+    expect(bookingItems).toHaveLength(7)
   })
 
   it('keeps raw Booking payout rows out of the reservation column and marks Denisa paid only from exact Booking row evidence', async () => {
