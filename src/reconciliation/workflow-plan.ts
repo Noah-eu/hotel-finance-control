@@ -206,6 +206,11 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
             (sum, row) => sum + (row.matchingAmountMinor ?? row.amountMinor),
             0
         )
+        const componentReservationIds = uniqueValues(
+            batchRows
+                .map((row) => row.reservationId)
+                .filter((value): value is string => Boolean(value && value.trim().length > 0))
+        ) ?? []
 
         return {
             payoutBatchKey,
@@ -219,6 +224,7 @@ function buildPayoutBatches(rows: PayoutRowExpectation[]): PayoutBatchExpectatio
             ...(feeTotalMinor > 0 ? { feeTotalMinor } : {}),
             ...(grossTotalMinor !== netSettlementTotalMinor ? { netSettlementTotalMinor } : {}),
             currency: batchRows[0]!.currency,
+            ...(componentReservationIds.length > 0 ? { componentReservationIds } : {}),
             payoutSupplementPaymentId: firstDefined(batchRows.map((row) => row.payoutSupplementPaymentId)),
             payoutSupplementPayoutDate: firstDefined(batchRows.map((row) => row.payoutSupplementPayoutDate)),
             payoutSupplementPayoutTotalAmountMinor: firstDefined(

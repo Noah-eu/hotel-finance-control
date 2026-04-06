@@ -4154,6 +4154,176 @@ describe('buildUploadWebFlow', () => {
     ]))
   })
 
+  it('marks Greta, Denisa, Elif, and Magdalena as paid in browser runtime from exact Booking CSV rows inside a matched payout batch and keeps one reservation without CSV evidence unverified', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '06.03.2026 08:00',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '6622415324',
+              guestName: 'Greta Sieweke',
+              channel: 'Booking.com Prepaid',
+              amountText: '259,84 EUR',
+              outstandingText: '259,84 EUR',
+              roomName: 'A201'
+            },
+            {
+              createdAt: '06.03.2026 08:10',
+              stayStartAt: '07.03.2026',
+              stayEndAt: '09.03.2026',
+              voucher: '5178029336',
+              guestName: 'Denisa Hypiusová',
+              channel: 'Booking.com Prepaid',
+              amountText: '44,80 EUR',
+              outstandingText: '44,80 EUR',
+              roomName: 'A202'
+            },
+            {
+              createdAt: '06.03.2026 08:20',
+              stayStartAt: '09.03.2026',
+              stayEndAt: '12.03.2026',
+              voucher: '6909220799',
+              guestName: 'Elif Erol',
+              channel: 'Booking.com Prepaid',
+              amountText: '537,93 EUR',
+              outstandingText: '537,93 EUR',
+              roomName: 'A203'
+            },
+            {
+              createdAt: '06.03.2026 08:30',
+              stayStartAt: '10.03.2026',
+              stayEndAt: '13.03.2026',
+              voucher: '5029129741',
+              guestName: 'Magdalena Kozak',
+              channel: 'Booking.com Prepaid',
+              amountText: '613,85 EUR',
+              outstandingText: '613,85 EUR',
+              roomName: 'A204'
+            },
+            {
+              createdAt: '06.03.2026 08:40',
+              stayStartAt: '14.03.2026',
+              stayEndAt: '16.03.2026',
+              voucher: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '52,26 EUR',
+              roomName: 'A205'
+            }
+          ])
+        ),
+        createRuntimeArrayBufferTextFile(
+          'booking-batch.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '6622415324',
+              checkIn: '2026-03-06',
+              checkout: '2026-03-08',
+              guestName: 'Greta Sieweke',
+              currency: 'EUR',
+              amountText: '259,84',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            },
+            {
+              reservationId: '5178029336',
+              checkIn: '2026-03-07',
+              checkout: '2026-03-09',
+              guestName: 'Denisa Hypiusová',
+              currency: 'EUR',
+              amountText: '44,80',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            },
+            {
+              reservationId: '6909220799',
+              checkIn: '2026-03-09',
+              checkout: '2026-03-12',
+              guestName: 'Elif Erol',
+              currency: 'EUR',
+              amountText: '537,93',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            },
+            {
+              reservationId: '5029129741',
+              checkIn: '2026-03-10',
+              checkout: '2026-03-13',
+              guestName: 'Magdalena Kozak',
+              currency: 'EUR',
+              amountText: '613,85',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            }
+          ]),
+          'text/csv'
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '12.03.2026 09:10;12.03.2026 09:12;5599955956/5500;000000-9876543210/0300;BOOKING.COM B.V.;35530,12;CZK;010638445054'
+          ].join('\n'),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('booking-batch.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-06T11:30:00.000Z'
+    })
+
+    expect(result.reviewSections.payoutBatchMatched).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: expect.stringContaining('Booking payout 010638445054')
+      })
+    ]))
+
+    const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Greta Sieweke',
+        primaryReference: '6622415324',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-1']
+      }),
+      expect.objectContaining({
+        title: 'Denisa Hypiusová',
+        primaryReference: '5178029336',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-2']
+      }),
+      expect.objectContaining({
+        title: 'Elif Erol',
+        primaryReference: '6909220799',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-3']
+      }),
+      expect.objectContaining({
+        title: 'Magdalena Kozak',
+        primaryReference: '5029129741',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-4']
+      }),
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+  })
+
   it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 
