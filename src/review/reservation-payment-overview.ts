@@ -139,10 +139,8 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
     const directMatch = matchesBySourceKey.get(sourceKey)
       ?? resolveBookingConfirmedPayoutMatch(workflowPlan.reservationSettlementMatches, reservation, blockKey)
-    const bookingPayoutBatchBridge = !directMatch
-      ? resolveBookingConfirmedPayoutBatchBridge(batch, reservation, blockKey)
-      : undefined
-    const match = directMatch ?? bookingPayoutBatchBridge?.match
+      ?? resolveBookingExactPayoutRowMatch(workflowPlan.payoutRows, reservation, blockKey)
+    const match = directMatch
     if (match?.matchedRowId) {
       consumedRowIds.add(match.matchedRowId)
     }
@@ -179,10 +177,10 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: reservation.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
+      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, undefined),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
-      sourceDocumentIds: collectReservationSourceDocumentIds(reservation, match, bookingPayoutBatchBridge),
+      sourceDocumentIds: collectReservationSourceDocumentIds(reservation, match, undefined),
       transactionIds: collectTransactionIds(match),
       detailEntries: compactDetailEntries([
         buildDetailEntry('Kanál', toChannelLabel(reservation.channel, blockKey)),
@@ -191,24 +189,6 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         buildDetailEntry('Vytvořeno', reservation.createdAt),
         buildDetailEntry('Rezervace', reservation.reservationId),
         buildDetailEntry('Reference', reservation.reference && reservation.reference !== reservation.reservationId ? reservation.reference : undefined),
-        buildDetailEntry(
-          'Booking payout batch',
-          bookingPayoutBatchBridge
-            ? `${bookingPayoutBatchBridge.payoutReference} (${bookingPayoutBatchBridge.payoutDate})`
-            : undefined
-        ),
-        buildDetailEntry(
-          'Potvrzení',
-          bookingPayoutBatchBridge
-            ? bookingPayoutBatchBridge.hasCsvRowEvidence
-              ? bookingPayoutBatchBridge.hasPayoutStatementSupplement
-                ? 'spárovaný Booking CSV row + Booking payout dávka + Booking payout statement PDF'
-                : 'spárovaný Booking CSV row + Booking payout dávka'
-              : bookingPayoutBatchBridge.hasPayoutStatementSupplement
-                ? 'spárovaná Booking payout dávka + Booking payout statement PDF'
-                : 'spárovaná Booking payout dávka'
-            : undefined
-        ),
         buildDetailEntry(
           'Zbývá uhradit',
           typeof reservation.outstandingBalanceMinor === 'number'
@@ -327,31 +307,6 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordsById)
 
     if (row.platform === 'booking') {
-      items.push({
-        id: `reservation-payment:native:${row.rowId}`,
-        blockKey: 'booking',
-        title: row.reservationId ?? row.payoutReference,
-        subtitle: readString(extractedRecord?.data.propertyId),
-        primaryReference: row.reservationId ?? row.payoutReference,
-        secondaryReference: row.payoutReference !== row.reservationId ? row.payoutReference : undefined,
-        dateLabelCs: 'Datum payoutu',
-        dateValue: row.payoutDate,
-        expectedAmountMinor: row.matchingAmountMinor ?? row.amountMinor,
-        paidAmountMinor: transaction.amountMinor,
-        currency: row.currency,
-        statusKey: 'paid',
-        statusLabelCs: STATUS_LABELS.paid,
-        statusDetailCs: 'Zdrojový Booking payout potvrzuje úhradu této rezervace.',
-        evidenceKey: 'payout',
-        evidenceLabelCs: EVIDENCE_LABELS.payout,
-        sourceDocumentIds: transaction.sourceDocumentIds.slice(),
-        transactionIds: [row.rowId],
-        detailEntries: compactDetailEntries([
-          buildDetailEntry('Payout reference', row.payoutReference),
-          buildDetailEntry('Rezervace', row.reservationId)
-        ]),
-        sortDate: row.payoutDate
-      })
       continue
     }
 
@@ -560,6 +515,73 @@ function resolveBookingConfirmedPayoutMatch(
   })
 
   return candidates.length === 1 ? candidates[0] : undefined
+}
+
+function resolveBookingExactPayoutRowMatch(
+  payoutRows: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): ReservationSettlementMatch | undefined {
+  if (blockKey !== 'booking') {
+    return undefined
+  }
+
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return undefined
+  }
+
+  const candidates = payoutRows.filter((row) => {
+    if (row.platform !== 'booking') {
+      return false
+    }
+
+    if (row.amountMinor !== reservation.grossRevenueMinor || row.currency !== reservation.currency) {
+      return false
+    }
+
+    const comparableRowReservationId = normalizeComparable(row.reservationId)
+    return Boolean(comparableRowReservationId) && comparableReservationValues.includes(comparableRowReservationId)
+  })
+
+  if (candidates.length !== 1) {
+    return undefined
+  }
+
+  const candidate = candidates[0]!
+  const comparableRowReservationId = normalizeComparable(candidate.reservationId)
+  const comparableReference = normalizeComparable(reservation.reference)
+
+  return {
+    sourceDocumentId: reservation.sourceDocumentId,
+    reservationId: reservation.reservationId,
+    reference: reservation.reference,
+    settlementKind: 'payout_row',
+    matchedRowId: candidate.rowId,
+    platform: 'booking',
+    amountMinor: candidate.amountMinor,
+    currency: candidate.currency,
+    confidence: 1,
+    reasons: [
+      comparableRowReservationId === normalizeComparable(reservation.reservationId)
+        ? 'reservationIdExact'
+        : 'referenceExact',
+      'amountExact',
+      'channelAligned'
+    ],
+    evidence: compactEvidence([
+      { key: 'reservationId', value: reservation.reservationId },
+      comparableReference && comparableRowReservationId === comparableReference && reservation.reference
+        ? { key: 'reference', value: reservation.reference }
+        : undefined,
+      { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
+      { key: 'payoutRowId', value: candidate.rowId }
+    ])
+  }
 }
 
 function resolveBookingConfirmedPayoutBatchBridge(
@@ -961,7 +983,10 @@ function collectReservationSourceDocumentIds(
   return collectUniqueTruthyStrings([
     reservation.sourceDocumentId,
     ...((match?.evidence ?? [])
-      .filter((entry) => entry.key === 'payoutSupplementSourceDocumentId' && typeof entry.value === 'string')
+      .filter((entry) => (
+        (entry.key === 'payoutSupplementSourceDocumentId' || entry.key === 'payoutRowSourceDocumentId')
+        && typeof entry.value === 'string'
+      ))
       .map((entry) => String(entry.value))),
     ...(bookingPayoutBatchBridge?.sourceDocumentIds ?? [])
   ])
@@ -1009,6 +1034,12 @@ function buildDetailEntry(labelCs: string, value: string | undefined): Reservati
 
 function compactDetailEntries(entries: Array<ReservationPaymentDetailEntry | undefined>): ReservationPaymentDetailEntry[] {
   return entries.filter((entry): entry is ReservationPaymentDetailEntry => Boolean(entry))
+}
+
+function compactEvidence(
+  entries: Array<ReservationSettlementMatch['evidence'][number] | undefined>
+): ReservationSettlementMatch['evidence'] {
+  return entries.filter((entry): entry is ReservationSettlementMatch['evidence'][number] => Boolean(entry))
 }
 
 function describeNoMatchReason(reason: ReservationSettlementNoMatch['noMatchReason']): string {
