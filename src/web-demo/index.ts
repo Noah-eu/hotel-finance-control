@@ -547,7 +547,7 @@ function renderOperatorWebDemoHtml(input: {
       }
       .reservation-overview-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 14px;
       }
       .reservation-overview-block {
@@ -830,7 +830,10 @@ function renderOperatorWebDemoHtml(input: {
       }
       @media (max-width: 1080px) {
         .document-preview-overlay {
-          padding: 12px;
+          grid-template-columns: minmax(220px, 0.46fr) minmax(220px, 0.46fr) minmax(720px, 2.08fr);
+        }
+        .reservation-overview-grid {
+          grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
         }
         .document-preview-shell {
           max-height: calc(100vh - 24px);
