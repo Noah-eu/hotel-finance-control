@@ -395,7 +395,12 @@ function renderOperatorWebDemoHtml(input: {
       }
       @media (min-width: 1180px) {
         .detail-grid {
-          grid-template-columns: minmax(280px, 0.9fr) minmax(720px, 1.8fr);
+          grid-template-columns: minmax(260px, 0.72fr) minmax(260px, 0.72fr) minmax(620px, 1.56fr);
+        }
+        #control-manual-matched-section,
+        #ancillary-settlement-overview-section,
+        #unmatched-reservations-section {
+          grid-column: 1 / -1;
         }
         #matched-payout-batches-section,
         #unmatched-payout-batches-section,
@@ -404,15 +409,12 @@ function renderOperatorWebDemoHtml(input: {
         }
         #matched-payout-batches-section {
           grid-column: 1;
-          grid-row: 1;
         }
         #unmatched-payout-batches-section {
-          grid-column: 1;
-          grid-row: 2;
+          grid-column: 2;
         }
         #reservation-settlement-overview-section {
-          grid-column: 2;
-          grid-row: 1 / span 2;
+          grid-column: 3;
         }
       }
       .expense-detail-grid {
