@@ -7,6 +7,7 @@ import type {
   ReservationSourceRecord
 } from '../domain'
 import type { MonthlyBatchResult } from '../monthly-batch'
+import { formatAmountMinorCs } from '../shared/money'
 
 export type ReservationPaymentOverviewBlockKey = 'airbnb' | 'booking' | 'expedia' | 'reservation_plus' | 'parking'
 export type ReservationPaymentStatusKey = 'paid' | 'partial' | 'unverified' | 'missing'
@@ -60,6 +61,42 @@ export interface ReservationPaymentOverview {
     itemCount: number
     statusCounts: Record<ReservationPaymentStatusKey, number>
   }
+}
+
+interface BookingConfirmedPayoutBatchBridge {
+  match: ReservationSettlementMatch
+  payoutBatchKey: string
+  payoutReference: string
+  payoutDate: string
+  hasCsvRowEvidence: boolean
+  hasPayoutStatementSupplement: boolean
+  sourceDocumentIds: string[]
+  confirmationSource: 'matched_batch_csv_row' | 'matched_batch_pdf_membership' | 'matched_batch_reference_hint'
+  matchedBatchCandidateCount: number
+  membershipHit: boolean
+  amountHit: boolean
+}
+
+interface BookingPayoutBatchMembershipResolution {
+  value: string
+  source: 'component_reservation_id' | 'payout_supplement_reservation_id' | 'payout_supplement_reference_hint'
+}
+
+interface BookingConfirmedPayoutBatchCandidate {
+  payoutBatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutBatches'][number]
+  matchedPayoutBatch: NonNullable<MonthlyBatchResult['reconciliation']['payoutBatchMatches']>[number]
+  matchedRow?: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number]
+  matchedReservationMembership: BookingPayoutBatchMembershipResolution
+  sourceDocumentIds: string[]
+  amountHit: boolean
+}
+
+interface BookingReservationConfirmationTrace {
+  matchedBatchReference?: string
+  matchedBatchCandidateCount: number
+  membershipHit: boolean
+  amountHit: boolean
+  finalConfirmationSource: 'matched_batch_csv_row' | 'matched_batch_pdf_membership' | 'matched_batch_reference_hint' | 'none'
 }
 
 const BLOCK_DEFINITIONS: Array<{ key: ReservationPaymentOverviewBlockKey, labelCs: string }> = [
@@ -124,13 +161,40 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
   )
 
   for (const reservation of reservationSources) {
-    const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
-    const match = matchesBySourceKey.get(sourceKey)
-    const noMatch = noMatchesBySourceKey.get(sourceKey)
-    const paidAmountMinor = resolveMatchedPaidAmountMinor(match, transactionsById) ?? resolvePaidAmountFromOutstanding(reservation)
-    const statusKey = resolveReservationStatus(reservation.grossRevenueMinor, reservation.outstandingBalanceMinor, Boolean(match))
     const blockKey = resolveReservationBlockKey(reservation)
+    const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
+    const directMatch = matchesBySourceKey.get(sourceKey)
+      ?? resolveBookingConfirmedPayoutMatch(workflowPlan.reservationSettlementMatches, reservation, blockKey)
+      ?? resolveBookingExactPayoutRowMatch(workflowPlan.payoutRows, reservation, blockKey)
+    const bookingPayoutBatchBridge = !directMatch
+      ? resolveBookingConfirmedPayoutBatchBridge(batch, reservation, blockKey)
+      : undefined
+    const match = directMatch ?? bookingPayoutBatchBridge?.match
+    if (match?.matchedRowId) {
+      consumedRowIds.add(match.matchedRowId)
+    }
+
+    if (match?.matchedSettlementId) {
+      consumedSettlementIds.add(match.matchedSettlementId)
+    }
+
+    const noMatch = !match
+      ? noMatchesBySourceKey.get(sourceKey)
+      : undefined
+    const paidAmountMinor = resolveMatchedPaidAmountMinor(match, transactionsById) ?? resolvePaidAmountFromOutstanding(reservation)
+    const statusKey = resolveReservationStatus({
+      expectedAmountMinor: reservation.grossRevenueMinor,
+      outstandingBalanceMinor: reservation.outstandingBalanceMinor,
+      hasStrongEvidence: Boolean(match),
+      blockKey
+    })
     const evidenceKey = match ? mapEvidenceKeyFromMatch(match) : 'no_evidence'
+    const bookingConfirmationTrace = buildBookingReservationConfirmationTrace(
+      batch,
+      reservation,
+      blockKey,
+      bookingPayoutBatchBridge
+    )
 
     items.push({
       id: `reservation-payment:${sourceKey}`,
@@ -148,10 +212,10 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: reservation.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey),
+      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
-      sourceDocumentIds: [reservation.sourceDocumentId],
+      sourceDocumentIds: collectReservationSourceDocumentIds(reservation, match, bookingPayoutBatchBridge),
       transactionIds: collectTransactionIds(match),
       detailEntries: compactDetailEntries([
         buildDetailEntry('Kanál', toChannelLabel(reservation.channel, blockKey)),
@@ -161,9 +225,28 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         buildDetailEntry('Rezervace', reservation.reservationId),
         buildDetailEntry('Reference', reservation.reference && reservation.reference !== reservation.reservationId ? reservation.reference : undefined),
         buildDetailEntry(
+          'Booking payout batch',
+          bookingPayoutBatchBridge
+            ? `${bookingPayoutBatchBridge.payoutReference} (${bookingPayoutBatchBridge.payoutDate})`
+            : undefined
+        ),
+        buildDetailEntry(
+          'Potvrzení',
+          bookingPayoutBatchBridge
+            ? bookingPayoutBatchBridge.hasCsvRowEvidence
+              ? bookingPayoutBatchBridge.hasPayoutStatementSupplement
+                ? 'spárovaný Booking CSV row + Booking payout dávka + Booking payout statement PDF'
+                : 'spárovaný Booking CSV row + Booking payout dávka'
+              : bookingPayoutBatchBridge.hasPayoutStatementSupplement
+                ? 'spárovaná Booking payout dávka + Booking payout statement PDF'
+                : 'spárovaná Booking payout dávka'
+            : undefined
+        ),
+        ...buildBookingConfirmationTraceEntries(bookingConfirmationTrace),
+        buildDetailEntry(
           'Zbývá uhradit',
           typeof reservation.outstandingBalanceMinor === 'number'
-            ? `${reservation.outstandingBalanceMinor} ${reservation.currency}`
+            ? formatAmountMinorCs(reservation.outstandingBalanceMinor, reservation.currency)
             : undefined
         )
       ]),
@@ -178,8 +261,13 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     }
 
     const paidAmountMinor = candidate?.matchingAmountMinor ?? candidate?.amountMinor ?? resolvePaidAmountFromOutstanding(ancillary)
-    const statusKey = resolveReservationStatus(ancillary.grossRevenueMinor, ancillary.outstandingBalanceMinor, Boolean(candidate))
     const blockKey = resolveAncillaryBlockKey(ancillary)
+    const statusKey = resolveReservationStatus({
+      expectedAmountMinor: ancillary.grossRevenueMinor,
+      outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
+      hasStrongEvidence: Boolean(candidate),
+      blockKey
+    })
     const evidenceKey: ReservationPaymentEvidenceKey = candidate ? mapEvidenceKeyFromPlatform(candidate.platform) : 'no_evidence'
 
     items.push({
@@ -209,7 +297,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         buildDetailEntry(
           'Zbývá uhradit',
           typeof ancillary.outstandingBalanceMinor === 'number'
-            ? `${ancillary.outstandingBalanceMinor} ${ancillary.currency}`
+            ? formatAmountMinorCs(ancillary.outstandingBalanceMinor, ancillary.currency)
             : undefined
         )
       ]),
@@ -273,38 +361,19 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordsById)
 
     if (row.platform === 'booking') {
-      items.push({
-        id: `reservation-payment:native:${row.rowId}`,
-        blockKey: 'booking',
-        title: row.reservationId ?? row.payoutReference,
-        subtitle: readString(extractedRecord?.data.propertyId),
-        primaryReference: row.reservationId ?? row.payoutReference,
-        secondaryReference: row.payoutReference !== row.reservationId ? row.payoutReference : undefined,
-        dateLabelCs: 'Datum payoutu',
-        dateValue: row.payoutDate,
-        expectedAmountMinor: row.matchingAmountMinor ?? row.amountMinor,
-        paidAmountMinor: transaction.amountMinor,
-        currency: row.currency,
-        statusKey: 'paid',
-        statusLabelCs: STATUS_LABELS.paid,
-        statusDetailCs: 'Zdrojový Booking payout potvrzuje úhradu této rezervace.',
-        evidenceKey: 'payout',
-        evidenceLabelCs: EVIDENCE_LABELS.payout,
-        sourceDocumentIds: transaction.sourceDocumentIds.slice(),
-        transactionIds: [row.rowId],
-        detailEntries: compactDetailEntries([
-          buildDetailEntry('Payout reference', row.payoutReference),
-          buildDetailEntry('Rezervace', row.reservationId)
-        ]),
-        sortDate: row.payoutDate
-      })
       continue
     }
 
     if (row.platform === 'comgate') {
       const paymentPurpose = normalizeComparable(readString(extractedRecord?.data.paymentPurpose))
-      const blockKey = paymentPurpose === 'parking' ? 'parking' : 'reservation_plus'
-      const title = paymentPurpose === 'parking'
+      const parkingLike = isParkingLike(
+        paymentPurpose,
+        readString(extractedRecord?.data.reference),
+        readString(extractedRecord?.data.transactionId),
+        row.payoutReference
+      )
+      const blockKey = parkingLike ? 'parking' : 'reservation_plus'
+      const title = parkingLike
         ? readString(extractedRecord?.data.reference) ?? row.payoutReference
         : row.reservationId ?? row.payoutReference
 
@@ -322,7 +391,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         currency: row.currency,
         statusKey: 'paid',
         statusLabelCs: STATUS_LABELS.paid,
-        statusDetailCs: paymentPurpose === 'parking'
+        statusDetailCs: parkingLike
           ? 'Zdrojová platba Comgate potvrzuje parkovací úhradu.'
           : 'Zdrojová platba Comgate potvrzuje online úhradu rezervace.',
         evidenceKey: 'comgate',
@@ -330,7 +399,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         sourceDocumentIds: transaction.sourceDocumentIds.slice(),
         transactionIds: [row.rowId],
         detailEntries: compactDetailEntries([
-          buildDetailEntry('Účel platby', paymentPurpose === 'parking' ? 'parking' : paymentPurpose === 'websitereservation' ? 'website-reservation' : readString(extractedRecord?.data.paymentPurpose)),
+          buildDetailEntry('Účel platby', parkingLike ? 'parking' : paymentPurpose === 'websitereservation' ? 'website-reservation' : readString(extractedRecord?.data.paymentPurpose)),
           buildDetailEntry('Comgate reference', row.payoutReference)
         ]),
         sortDate: row.payoutDate
@@ -468,6 +537,419 @@ function buildReservationSourceKey(sourceDocumentId: string, reservationId: stri
   return `${sourceDocumentId}:${reservationId}`
 }
 
+function resolveBookingConfirmedPayoutMatch(
+  matches: ReservationSettlementMatch[],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): ReservationSettlementMatch | undefined {
+  if (blockKey !== 'booking') {
+    return undefined
+  }
+
+  const reservationId = normalizeComparable(reservation.reservationId)
+  const reference = normalizeComparable(reservation.reference)
+  const candidates = matches.filter((match) => {
+    if (match.platform !== 'booking' || match.settlementKind !== 'payout_row') {
+      return false
+    }
+
+    if (match.amountMinor !== reservation.grossRevenueMinor || match.currency !== reservation.currency) {
+      return false
+    }
+
+    const matchReference = normalizeComparable(match.reference)
+    const hasIdentityMatch = match.reservationId === reservation.reservationId
+      || (Boolean(reference) && matchReference === reference)
+
+    if (!hasIdentityMatch) {
+      return false
+    }
+
+    return hasExplicitBookingRowEvidence(match)
+  })
+
+  return candidates.length === 1 ? candidates[0] : undefined
+}
+
+function resolveBookingExactPayoutRowMatch(
+  payoutRows: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): ReservationSettlementMatch | undefined {
+  if (blockKey !== 'booking') {
+    return undefined
+  }
+
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return undefined
+  }
+
+  const candidates = payoutRows.filter((row) => {
+    if (row.platform !== 'booking') {
+      return false
+    }
+
+    if (row.amountMinor !== reservation.grossRevenueMinor || row.currency !== reservation.currency) {
+      return false
+    }
+
+    const comparableRowReservationId = normalizeComparable(row.reservationId)
+    return Boolean(comparableRowReservationId) && comparableReservationValues.includes(comparableRowReservationId)
+  })
+
+  if (candidates.length !== 1) {
+    return undefined
+  }
+
+  const candidate = candidates[0]!
+  const comparableRowReservationId = normalizeComparable(candidate.reservationId)
+  const comparableReference = normalizeComparable(reservation.reference)
+
+  return {
+    sourceDocumentId: reservation.sourceDocumentId,
+    reservationId: reservation.reservationId,
+    reference: reservation.reference,
+    settlementKind: 'payout_row',
+    matchedRowId: candidate.rowId,
+    platform: 'booking',
+    amountMinor: candidate.amountMinor,
+    currency: candidate.currency,
+    confidence: 1,
+    reasons: [
+      comparableRowReservationId === normalizeComparable(reservation.reservationId)
+        ? 'reservationIdExact'
+        : 'referenceExact',
+      'amountExact',
+      'channelAligned'
+    ],
+    evidence: compactEvidence([
+      { key: 'reservationId', value: reservation.reservationId },
+      comparableReference && comparableRowReservationId === comparableReference && reservation.reference
+        ? { key: 'reference', value: reservation.reference }
+        : undefined,
+      { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
+      { key: 'payoutRowId', value: candidate.rowId }
+    ])
+  }
+}
+
+function resolveBookingConfirmedPayoutBatchBridge(
+  batch: MonthlyBatchResult,
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): BookingConfirmedPayoutBatchBridge | undefined {
+  if (blockKey !== 'booking') {
+    return undefined
+  }
+
+  const matchedPayoutBatchByKey = new Map(
+    (batch.reconciliation.payoutBatchMatches ?? [])
+      .filter((item) => item.matched)
+      .map((item) => [item.payoutBatchKey, item] as const)
+  )
+
+  if (matchedPayoutBatchByKey.size === 0) {
+    return undefined
+  }
+
+  const payoutRowsById = new Map(
+    (batch.reconciliation.workflowPlan?.payoutRows ?? []).map((row) => [row.rowId, row] as const)
+  )
+
+  const candidates = collectBookingConfirmedPayoutBatchCandidates(
+    batch,
+    reservation,
+    blockKey,
+    matchedPayoutBatchByKey,
+    payoutRowsById
+  )
+
+  if (candidates.length !== 1) {
+    return undefined
+  }
+
+  const candidate = candidates[0]!
+  const confirmationSource = candidate.matchedRow
+    ? 'matched_batch_csv_row'
+    : candidate.matchedReservationMembership.source === 'payout_supplement_reference_hint'
+      ? 'matched_batch_reference_hint'
+      : 'matched_batch_pdf_membership'
+
+  return {
+    payoutBatchKey: candidate.payoutBatch.payoutBatchKey,
+    payoutReference: candidate.payoutBatch.payoutReference,
+    payoutDate: candidate.payoutBatch.payoutDate,
+    hasCsvRowEvidence: Boolean(candidate.matchedRow),
+    hasPayoutStatementSupplement: candidate.sourceDocumentIds.some(
+      (sourceDocumentId) => sourceDocumentId !== candidate.matchedRow?.sourceDocumentId
+    ),
+    sourceDocumentIds: candidate.sourceDocumentIds,
+    confirmationSource,
+    matchedBatchCandidateCount: candidates.length,
+    membershipHit: true,
+    amountHit: candidate.amountHit,
+    match: {
+      sourceDocumentId: reservation.sourceDocumentId,
+      reservationId: reservation.reservationId,
+      reference: reservation.reference,
+      settlementKind: 'payout_row',
+      matchedRowId: candidate.matchedRow?.rowId,
+      platform: 'booking',
+      amountMinor: candidate.matchedRow?.amountMinor ?? reservation.grossRevenueMinor,
+      currency: reservation.currency,
+      confidence: 1,
+      reasons: [
+        ...(candidate.matchedRow ? ['bookingPayoutBatchRowReservationIdExact'] : []),
+        'bookingPayoutBatchReservationMembershipExact',
+        'bookingPayoutBatchBankMatched',
+        ...(candidate.matchedReservationMembership.source === 'payout_supplement_reference_hint'
+          ? ['bookingPayoutBatchReferenceHintExact']
+          : []),
+        ...(candidate.sourceDocumentIds.some((sourceDocumentId) => sourceDocumentId !== candidate.matchedRow?.sourceDocumentId)
+          ? ['bookingPayoutStatementSupplementPresent']
+          : [])
+      ],
+      evidence: [
+        { key: 'bookingPayoutBatchKey', value: candidate.payoutBatch.payoutBatchKey },
+        { key: 'bookingPayoutReference', value: candidate.payoutBatch.payoutReference },
+        { key: 'bookingPayoutBatchMatchedBankTransactionId', value: candidate.matchedPayoutBatch.bankTransactionId },
+        ...(candidate.matchedRow
+          ? [
+            { key: 'bookingPayoutRowId', value: candidate.matchedRow.rowId },
+            { key: 'bookingPayoutRowSourceDocumentId', value: candidate.matchedRow.sourceDocumentId }
+          ]
+          : []),
+        { key: 'bookingPayoutBatchReservationId', value: candidate.matchedReservationMembership.value },
+        ...candidate.sourceDocumentIds.map((sourceDocumentId) => ({
+          key: sourceDocumentId === candidate.matchedRow?.sourceDocumentId
+            ? 'payoutRowSourceDocumentId'
+            : 'payoutSupplementSourceDocumentId',
+          value: sourceDocumentId
+        }))
+      ]
+    }
+  }
+}
+
+function collectBookingConfirmedPayoutBatchCandidates(
+  batch: MonthlyBatchResult,
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  matchedPayoutBatchByKey?: Map<string, NonNullable<MonthlyBatchResult['reconciliation']['payoutBatchMatches']>[number]>,
+  payoutRowsById?: Map<string, NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number]>
+): BookingConfirmedPayoutBatchCandidate[] {
+  if (blockKey !== 'booking') {
+    return []
+  }
+
+  const localMatchedPayoutBatchByKey = matchedPayoutBatchByKey ?? new Map(
+    (batch.reconciliation.payoutBatchMatches ?? [])
+      .filter((item) => item.matched)
+      .map((item) => [item.payoutBatchKey, item] as const)
+  )
+
+  if (localMatchedPayoutBatchByKey.size === 0) {
+    return []
+  }
+
+  const localPayoutRowsById = payoutRowsById ?? new Map(
+    (batch.reconciliation.workflowPlan?.payoutRows ?? []).map((row) => [row.rowId, row] as const)
+  )
+
+  return (batch.reconciliation.workflowPlan?.payoutBatches ?? []).flatMap((payoutBatch) => {
+    if (payoutBatch.platform !== 'booking' || payoutBatch.fromPreviousMonth) {
+      return []
+    }
+
+    const matchedPayoutBatch = localMatchedPayoutBatchByKey.get(payoutBatch.payoutBatchKey)
+    if (!matchedPayoutBatch) {
+      return []
+    }
+
+    const matchedRow = resolveBookingConfirmedPayoutBatchRow(payoutBatch, localPayoutRowsById, reservation)
+    const matchedReservationMembership = matchedRow?.reservationId
+      ? { value: matchedRow.reservationId, source: 'component_reservation_id' as const }
+      : resolveBookingPayoutBatchReservationMembership(payoutBatch, reservation)
+
+    if (!matchedReservationMembership) {
+      return []
+    }
+
+    const sourceDocumentIds = collectUniqueTruthyStrings([
+      matchedRow?.sourceDocumentId,
+      ...(payoutBatch.payoutSupplementSourceDocumentIds ?? [])
+    ])
+
+    if (!matchedRow && sourceDocumentIds.length === 0) {
+      return []
+    }
+
+    return [{
+      payoutBatch,
+      matchedPayoutBatch,
+      matchedRow,
+      matchedReservationMembership,
+      sourceDocumentIds,
+      amountHit: matchedRow ? matchedRow.amountMinor === reservation.grossRevenueMinor && matchedRow.currency === reservation.currency : true
+    }]
+  })
+}
+
+function resolveBookingConfirmedPayoutBatchRow(
+  payoutBatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutBatches'][number],
+  payoutRowsById: Map<string, NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number]>,
+  reservation: ReservationSourceRecord
+): NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number] | undefined {
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return undefined
+  }
+
+  const candidates = payoutBatch.rowIds
+    .map((rowId) => payoutRowsById.get(rowId))
+    .filter((row): row is NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number] => Boolean(row))
+    .filter((row) => row.platform === 'booking')
+    .filter((row) => row.currency === reservation.currency)
+    .filter((row) => row.amountMinor === reservation.grossRevenueMinor)
+    .filter((row) => {
+      const comparableRowReservationId = normalizeComparable(row.reservationId)
+      return Boolean(comparableRowReservationId) && comparableReservationValues.includes(comparableRowReservationId)
+    })
+
+  return candidates.length === 1 ? candidates[0] : undefined
+}
+
+function resolveBookingPayoutBatchReservationMembership(
+  payoutBatch: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutBatches'][number],
+  reservation: ReservationSourceRecord
+): BookingPayoutBatchMembershipResolution | undefined {
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return undefined
+  }
+
+  const componentReservationId = collectUniqueTruthyStrings(
+    (payoutBatch.componentReservationIds ?? []).map((value) => normalizeComparable(value))
+  ).find((value) => comparableReservationValues.includes(value))
+
+  if (componentReservationId) {
+    return { value: componentReservationId, source: 'component_reservation_id' }
+  }
+
+  const supplementReservationId = collectUniqueTruthyStrings(
+    (payoutBatch.payoutSupplementReservationIds ?? []).map((value) => normalizeComparable(value))
+  ).find((value) => comparableReservationValues.includes(value))
+
+  if (supplementReservationId) {
+    return { value: supplementReservationId, source: 'payout_supplement_reservation_id' }
+  }
+
+  const supplementReferenceHint = collectUniqueTruthyStrings(
+    (payoutBatch.payoutSupplementReferenceHints ?? []).map((value) => normalizeComparable(value))
+  ).find((value) => comparableReservationValues.includes(value))
+
+  if (supplementReferenceHint) {
+    return { value: supplementReferenceHint, source: 'payout_supplement_reference_hint' }
+  }
+
+  return undefined
+}
+
+function buildBookingReservationConfirmationTrace(
+  batch: MonthlyBatchResult,
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  bookingPayoutBatchBridge: BookingConfirmedPayoutBatchBridge | undefined
+): BookingReservationConfirmationTrace | undefined {
+  if (!shouldIncludeBookingConfirmationTrace(reservation, blockKey)) {
+    return undefined
+  }
+
+  const candidates = collectBookingConfirmedPayoutBatchCandidates(batch, reservation, blockKey)
+
+  if (bookingPayoutBatchBridge) {
+    return {
+      matchedBatchReference: bookingPayoutBatchBridge.payoutReference,
+      matchedBatchCandidateCount: candidates.length,
+      membershipHit: bookingPayoutBatchBridge.membershipHit,
+      amountHit: bookingPayoutBatchBridge.amountHit,
+      finalConfirmationSource: bookingPayoutBatchBridge.confirmationSource
+    }
+  }
+
+  return {
+    matchedBatchReference: candidates[0]?.payoutBatch.payoutReference,
+    matchedBatchCandidateCount: candidates.length,
+    membershipHit: candidates.length > 0,
+    amountHit: candidates.some((candidate) => candidate.amountHit),
+    finalConfirmationSource: 'none'
+  }
+}
+
+function buildBookingConfirmationTraceEntries(
+  trace: BookingReservationConfirmationTrace | undefined
+): ReservationPaymentDetailEntry[] {
+  if (!trace) {
+    return []
+  }
+
+  return compactDetailEntries([
+    buildDetailEntry('DEBUG Booking matched batch', trace.matchedBatchReference),
+    buildDetailEntry('DEBUG Booking candidate count', String(trace.matchedBatchCandidateCount)),
+    buildDetailEntry('DEBUG Booking membership hit', trace.membershipHit ? 'yes' : 'no'),
+    buildDetailEntry('DEBUG Booking amount hit', trace.amountHit ? 'yes' : 'no'),
+    buildDetailEntry('DEBUG Booking confirmation source', trace.finalConfirmationSource)
+  ])
+}
+
+function shouldIncludeBookingConfirmationTrace(
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): boolean {
+  if (blockKey !== 'booking') {
+    return false
+  }
+
+  const gateValue = readBookingConfirmationTraceReference()
+  if (!gateValue) {
+    return false
+  }
+
+  const comparableGateValue = normalizeComparable(gateValue)
+  return comparableGateValue === normalizeComparable(reservation.reservationId)
+    || comparableGateValue === normalizeComparable(reservation.reference)
+}
+
+function readBookingConfirmationTraceReference(): string | undefined {
+  const globalValue = (globalThis as { __HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__?: unknown })
+    .__HOTEL_FINANCE_BOOKING_CONFIRMATION_TRACE_REFERENCE__
+
+  return typeof globalValue === 'string' && globalValue.trim().length > 0
+    ? globalValue.trim()
+    : undefined
+}
+
+function hasExplicitBookingRowEvidence(match: ReservationSettlementMatch): boolean {
+  return match.reasons.some((reason) => (
+    reason === 'reservationIdExact'
+    || reason === 'referenceExact'
+    || reason === 'payoutSupplementReservationIdExact'
+  ))
+}
+
 function resolveMatchedPaidAmountMinor(
   match: ReservationSettlementMatch | undefined,
   transactionsById: Map<string, NormalizedTransaction>
@@ -499,16 +981,29 @@ function resolvePaidAmountFromOutstanding(
   return paidAmountMinor > 0 ? paidAmountMinor : undefined
 }
 
-function resolveReservationStatus(expectedAmountMinor: number, outstandingBalanceMinor: number | undefined, hasStrongEvidence: boolean): ReservationPaymentStatusKey {
-  if (typeof outstandingBalanceMinor === 'number' && outstandingBalanceMinor > 0 && outstandingBalanceMinor < expectedAmountMinor) {
-    return 'partial'
-  }
-
-  if (hasStrongEvidence) {
+function resolveReservationStatus(input: {
+  expectedAmountMinor: number
+  outstandingBalanceMinor: number | undefined
+  hasStrongEvidence: boolean
+  blockKey?: ReservationPaymentOverviewBlockKey
+}): ReservationPaymentStatusKey {
+  if (input.hasStrongEvidence && input.blockKey === 'booking') {
     return 'paid'
   }
 
-  if (typeof outstandingBalanceMinor === 'number' && outstandingBalanceMinor >= expectedAmountMinor && expectedAmountMinor > 0) {
+  if (typeof input.outstandingBalanceMinor === 'number' && input.outstandingBalanceMinor > 0 && input.outstandingBalanceMinor < input.expectedAmountMinor) {
+    return 'partial'
+  }
+
+  if (input.hasStrongEvidence) {
+    return 'paid'
+  }
+
+  if (input.blockKey === 'booking') {
+    return 'unverified'
+  }
+
+  if (typeof input.outstandingBalanceMinor === 'number' && input.outstandingBalanceMinor >= input.expectedAmountMinor && input.expectedAmountMinor > 0) {
     return 'missing'
   }
 
@@ -519,8 +1014,20 @@ function buildReservationStatusDetailCs(
   reservation: ReservationSourceRecord,
   match: ReservationSettlementMatch | undefined,
   noMatch: ReservationSettlementNoMatch | undefined,
-  statusKey: ReservationPaymentStatusKey
+  statusKey: ReservationPaymentStatusKey,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  bookingPayoutBatchBridge?: BookingConfirmedPayoutBatchBridge
 ): string {
+  if (bookingPayoutBatchBridge) {
+    if (bookingPayoutBatchBridge.hasCsvRowEvidence) {
+      return bookingPayoutBatchBridge.hasPayoutStatementSupplement
+        ? `Spárovaný Booking CSV row, Booking payout dávka ${bookingPayoutBatchBridge.payoutReference} a Booking payout statement PDF potvrzují, že tato rezervace patří do potvrzeného payoutu.`
+        : `Spárovaný Booking CSV row a Booking payout dávka ${bookingPayoutBatchBridge.payoutReference} potvrzují, že tato rezervace patří do bankou potvrzeného payoutu.`
+    }
+
+    return `Spárovaná Booking payout dávka ${bookingPayoutBatchBridge.payoutReference} a Booking payout statement PDF potvrzují, že tato rezervace patří do potvrzeného payoutu.`
+  }
+
   if (match) {
     if (statusKey === 'partial') {
       return 'Zdroj rezervace potvrzuje jen částečné uhrazení a zůstává otevřený doplatek.'
@@ -535,6 +1042,14 @@ function buildReservationStatusDetailCs(
 
   if (statusKey === 'partial') {
     return 'Zdroj uvádí částečně uhrazenou položku, ale engine zatím nemá dost silnou vazbu na konkrétní úhradu.'
+  }
+
+  if (blockKey === 'booking') {
+    if (noMatch) {
+      return `Booking rezervace existuje, ale current run zatím nemá dost silný payout-row důkaz (${describeNoMatchReason(noMatch.noMatchReason)}).`
+    }
+
+    return 'Booking rezervace existuje, ale current run zatím nemá potvrzený odpovídající Booking payout row.'
   }
 
   if (noMatch) {
@@ -583,10 +1098,21 @@ function resolveAncillaryBlockKey(item: AncillaryRevenueSourceRecord): Reservati
 function inferChannelsFromFallback(channel: string | undefined): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'> {
   const normalized = normalizeComparable(channel)
 
-  if (normalized === 'booking' || normalized === 'bookingcom') return ['booking']
-  if (normalized === 'airbnb') return ['airbnb']
-  if (normalized === 'expediadirectbank' || normalized === 'expedia') return ['expedia_direct_bank']
-  if (normalized === 'comgate' || normalized === 'directweb' || normalized === 'direct' || normalized === 'parking') return ['comgate']
+  if (!normalized) return []
+
+  if (normalized.includes('booking')) return ['booking']
+  if (normalized.includes('airbnb')) return ['airbnb']
+  if (normalized.includes('expedia')) return ['expedia_direct_bank']
+  if (
+    normalized.includes('comgate')
+    || normalized.includes('directweb')
+    || normalized === 'direct'
+    || normalized === 'web'
+    || normalized.includes('website')
+    || normalized.includes('parking')
+    || normalized.includes('parkovani')
+  ) return ['comgate']
+
   return []
 }
 
@@ -644,8 +1170,29 @@ function mapEvidenceKeyFromPlatform(platform: string): ReservationPaymentEvidenc
   return 'bank'
 }
 
+function collectReservationSourceDocumentIds(
+  reservation: ReservationSourceRecord,
+  match: ReservationSettlementMatch | undefined,
+  bookingPayoutBatchBridge: BookingConfirmedPayoutBatchBridge | undefined
+): string[] {
+  return collectUniqueTruthyStrings([
+    reservation.sourceDocumentId,
+    ...((match?.evidence ?? [])
+      .filter((entry) => (
+        (entry.key === 'payoutSupplementSourceDocumentId' || entry.key === 'payoutRowSourceDocumentId')
+        && typeof entry.value === 'string'
+      ))
+      .map((entry) => String(entry.value))),
+    ...(bookingPayoutBatchBridge?.sourceDocumentIds ?? [])
+  ])
+}
+
 function collectTransactionIds(match: ReservationSettlementMatch | undefined): string[] {
   return [match?.matchedRowId, match?.matchedSettlementId].filter((value): value is string => Boolean(value))
+}
+
+function collectUniqueTruthyStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))]
 }
 
 function buildStayOrDateValue(startAt: string | undefined, endAt: string | undefined, fallbackDate: string | undefined): string | undefined {
@@ -682,6 +1229,12 @@ function buildDetailEntry(labelCs: string, value: string | undefined): Reservati
 
 function compactDetailEntries(entries: Array<ReservationPaymentDetailEntry | undefined>): ReservationPaymentDetailEntry[] {
   return entries.filter((entry): entry is ReservationPaymentDetailEntry => Boolean(entry))
+}
+
+function compactEvidence(
+  entries: Array<ReservationSettlementMatch['evidence'][number] | undefined>
+): ReservationSettlementMatch['evidence'] {
+  return entries.filter((entry): entry is ReservationSettlementMatch['evidence'][number] => Boolean(entry))
 }
 
 function describeNoMatchReason(reason: ReservationSettlementNoMatch['noMatchReason']): string {

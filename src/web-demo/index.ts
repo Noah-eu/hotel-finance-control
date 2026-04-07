@@ -47,18 +47,7 @@ const WEB_DEMO_PAYOUT_PROJECTION_MARKER = 'payout-projection-v4'
 export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<WebDemoResult> {
   const generatedAt = options.generatedAt ?? new Date().toISOString()
   const debugMode = options.debugMode ?? false
-  const runtimeDemoFiles = [
-    {
-      name: 'airbnb.csv',
-      content: buildActualUploadedAirbnbContent(),
-      uploadedAt: generatedAt
-    },
-    {
-      name: 'Pohyby_5599955956_202603191023.csv',
-      content: buildActualUploadedRbCitiContent(),
-      uploadedAt: generatedAt
-    }
-  ]
+  const runtimeDemoFiles = buildDefaultRuntimeDemoFiles(generatedAt)
 
   const browserRun = buildBrowserUploadedMonthlyRun({
     files: runtimeDemoFiles,
@@ -113,6 +102,38 @@ export async function buildWebDemo(options: BuildWebDemoOptions = {}): Promise<W
   return {
     html,
     browserRun
+  }
+}
+
+function buildDefaultRuntimeDemoFiles(generatedAt: string) {
+  return [
+    {
+      name: 'airbnb.csv',
+      content: buildActualUploadedAirbnbContent(),
+      uploadedAt: generatedAt
+    },
+    {
+      name: 'Pohyby_5599955956_202603191023.csv',
+      content: buildActualUploadedRbCitiContent(),
+      uploadedAt: generatedAt
+    },
+    buildRuntimeDemoFixtureFile('booking-payout-export-browser-upload-shape', generatedAt),
+    buildRuntimeDemoFixtureFile('expedia-payout-export', generatedAt),
+    buildRuntimeDemoFixtureFile('comgate-export-current-portal', generatedAt)
+  ]
+}
+
+function buildRuntimeDemoFixtureFile(
+  fixtureKey: 'booking-payout-export-browser-upload-shape' | 'expedia-payout-export' | 'comgate-export-current-portal',
+  uploadedAt: string
+) {
+  const fixture = getRealInputFixture(fixtureKey)
+
+  return {
+    name: fixture.sourceDocument.fileName,
+    content: fixture.rawInput.content,
+    binaryContentBase64: fixture.rawInput.binaryContentBase64,
+    uploadedAt
   }
 }
 
@@ -1195,6 +1216,15 @@ ${showRuntimePayoutDiagnostics ? `
             <p class="hint">Po spuštění zde uvidíte month key, persisted count, selected count, merged count, visible trace count a render source.</p>
           </div>
         </section>
+        <section id="runtime-workspace-truth-export-section" class="card" data-runtime-phase="placeholder" hidden>
+          <h2>Export debug workspace truth</h2>
+          <div id="runtime-workspace-truth-export-content">
+            <p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p>
+            <p class="hint">V debug režimu zde stáhnete JSON snapshot přesně z aktuálně viditelného workspace state.</p>
+          </div>
+          <p><button id="download-debug-workspace-truth-button" type="button" class="secondary-button">Stáhnout debug workspace JSON</button></p>
+          <p class="hint">Export je dostupný jen v debug režimu a bere stejný workspace state jako přehled, detail i exportní handoff.</p>
+        </section>
       </section>
 
       <section id="control-detail-view" class="card detail-view" hidden>
@@ -1437,6 +1467,9 @@ ${showRuntimePayoutDiagnostics ? `
   const runtimePayoutProjectionDebugContent = document.getElementById('runtime-payout-projection-debug-content');
   const runtimeWorkspaceMergeDebugSection = document.getElementById('runtime-workspace-merge-debug-section');
   const runtimeWorkspaceMergeDebugContent = document.getElementById('runtime-workspace-merge-debug-content');
+  const runtimeWorkspaceTruthExportSection = document.getElementById('runtime-workspace-truth-export-section');
+  const runtimeWorkspaceTruthExportContent = document.getElementById('runtime-workspace-truth-export-content');
+  const downloadDebugWorkspaceTruthButton = document.getElementById('download-debug-workspace-truth-button');
       const generatedAt = ${JSON.stringify(input.generatedAt)};
   const buildFingerprintVersion = ${JSON.stringify(buildFingerprintVersion)};
   const initialRuntimeState = ${JSON.stringify(initialRuntimeState)};
@@ -1459,6 +1492,7 @@ ${showRuntimePayoutDiagnostics ? `
       let currentExpenseDetailSort = 'newest';
       let currentVisibleRuntimePhase = 'placeholder';
       let expenseDetailControlsWired = false;
+      let debugWorkspaceTruthExportControlsWired = false;
       let currentWorkspaceMonth = '';
       let currentClearedWorkspaceMonth = '';
       let currentWorkspaceFiles = [];
@@ -2046,6 +2080,96 @@ ${showRuntimePayoutDiagnostics ? `
         }
 
         return 'selectedFiles only';
+      }
+
+      function buildWorkspaceSourceKindForDebugExport(state) {
+        const renderSource = String(currentWorkspaceRenderDebug && currentWorkspaceRenderDebug.renderSource || '');
+
+        if (renderSource === 'persistedWorkspace') {
+          return 'persistedWorkspace';
+        }
+
+        if (renderSource === 'persistedWorkspaceRerun') {
+          return 'persistedWorkspaceRerun';
+        }
+
+        if (renderSource === 'mergedWorkspace') {
+          return 'mergedWorkspace';
+        }
+
+        if (state && state.runId && initialRuntimeState && state.runId === initialRuntimeState.runId) {
+          return 'seededPreview';
+        }
+
+        return 'selectedFiles';
+      }
+
+      function collectUniqueTruthyStrings(values) {
+        return Array.from(new Set((Array.isArray(values) ? values : [])
+          .map((value) => String(value || ''))
+          .filter(Boolean)));
+      }
+
+      function buildReservationStatusCounts(items) {
+        const statusCounts = {
+          paid: 0,
+          partial: 0,
+          unverified: 0,
+          missing: 0
+        };
+
+        (Array.isArray(items) ? items : []).forEach((item) => {
+          const statusKey = String(item && item.statusKey || '');
+
+          if (Object.prototype.hasOwnProperty.call(statusCounts, statusKey)) {
+            statusCounts[statusKey] += 1;
+          }
+        });
+
+        return statusCounts;
+      }
+
+      function buildAnnotatedWorkspaceFilesForDebugExport(state) {
+        return buildAnnotatedWorkspaceFileRoutes(state).map((file) => {
+          const workspaceRecord = file && file.workspaceRecord ? file.workspaceRecord : undefined;
+
+          return {
+            workspaceFileId: String(file && file.workspaceFileId || workspaceRecord && workspaceRecord.id || ''),
+            fileName: String(file && file.fileName || workspaceRecord && workspaceRecord.fileName || ''),
+            mimeType: String(workspaceRecord && workspaceRecord.mimeType || ''),
+            encoding: String(workspaceRecord && workspaceRecord.encoding || ''),
+            uploadedAt: String(workspaceRecord && workspaceRecord.uploadedAt || ''),
+            contentHash: String(workspaceRecord && workspaceRecord.contentHash || ''),
+            sourceDocumentId: String(file && file.sourceDocumentId || ''),
+            sourceSystem: String(file && file.sourceSystem || ''),
+            documentType: String(file && file.documentType || ''),
+            parserId: String(file && file.parserId || ''),
+            classificationBasis: String(file && file.classificationBasis || ''),
+            role: String(file && file.role || ''),
+            status: String(file && file.status || ''),
+            intakeStatus: String(file && file.intakeStatus || ''),
+            extractedCount: Number(file && file.extractedCount || 0),
+            extractedRecordIds: Array.isArray(file && file.extractedRecordIds) ? file.extractedRecordIds.slice() : [],
+            warnings: Array.isArray(file && file.warnings) ? file.warnings.slice() : [],
+            reason: typeof (file && file.reason) === 'string' ? String(file.reason) : '',
+            errorMessage: typeof (file && file.errorMessage) === 'string' ? String(file.errorMessage) : '',
+            decision: typeof (file && file.decision) === 'string' ? String(file.decision) : ''
+          };
+        });
+      }
+
+      function isPayoutRelatedWorkspaceFileForDebugExport(file) {
+        const sourceSystem = String(file && file.sourceSystem || '').toLowerCase();
+        const documentType = String(file && file.documentType || '').toLowerCase();
+        const fileName = String(file && file.fileName || '').toLowerCase();
+
+        return sourceSystem === 'airbnb'
+          || sourceSystem === 'booking'
+          || sourceSystem === 'expedia'
+          || sourceSystem === 'comgate'
+          || documentType === 'ota_report'
+          || documentType === 'payout_statement'
+          || fileName.includes('payout');
       }
 
       function normalizeRuntimeBuildInfoForWorkspaceRestore(buildInfo) {
@@ -5647,6 +5771,258 @@ ${showRuntimePayoutDiagnostics ? '' : `
         runtimeWorkspaceMergeDebugContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">Po spuštění zde uvidíte month key, persisted count, selected count, merged count, visible trace count a render source.</p>';
       }
 
+      function syncRuntimeWorkspaceTruthExportVisibility() {
+        runtimeWorkspaceTruthExportSection.hidden = !runtimeOperatorDebugMode;
+      }
+
+      function buildRuntimeWorkspaceTruthExportMarkup(state) {
+        if (!runtimeOperatorDebugMode) {
+          return '<p class="hint">Debug workspace truth export je dostupný jen v debug režimu.</p>';
+        }
+
+        const payload = buildDebugWorkspaceTruthPayload(state);
+        const bookingCount = Array.isArray(payload.bookingReservationItems) ? payload.bookingReservationItems.length : 0;
+        const payoutFileCount = Array.isArray(payload.payoutRelatedFiles) ? payload.payoutRelatedFiles.length : 0;
+        const fileCount = Array.isArray(payload.uploadedFiles) ? payload.uploadedFiles.length : 0;
+
+        return [
+          '<p class="hint">Tlačítko stáhne JSON snapshot ze stejného visible runtime state, který právě napájí reservation-centric přehled i exportní handoff.</p>',
+          '<ul class="diagnostic-list">',
+          '<li><strong>Month key:</strong> ' + escapeHtml(String(payload.monthKey || 'neuvedeno')) + '</li>',
+          '<li><strong>Source marker:</strong> ' + escapeHtml(String(payload.workspaceSource && payload.workspaceSource.renderSourceMarker || 'selectedFiles only')) + '</li>',
+          '<li><strong>Current origin:</strong> ' + escapeHtml(String(payload.location && payload.location.origin || '')) + '</li>',
+          '<li><strong>Uploaded file count:</strong> ' + escapeHtml(String(fileCount)) + '</li>',
+          '<li><strong>Payout-related file count:</strong> ' + escapeHtml(String(payoutFileCount)) + '</li>',
+          '<li><strong>Booking reservation item count:</strong> ' + escapeHtml(String(bookingCount)) + '</li>',
+          '<li><strong>Build marker:</strong> ' + escapeHtml(String(payload.buildMarker && payload.buildMarker.gitCommitShortSha || 'unknown')) + ' / ' + escapeHtml(String(payload.buildMarker && payload.buildMarker.buildBranch || 'unknown')) + ' / ' + escapeHtml(String(payload.buildMarker && payload.buildMarker.rendererVersion || 'unknown')) + '</li>',
+          '</ul>'
+        ].join('');
+      }
+
+      function syncRuntimeWorkspaceTruthExportPhase(phase) {
+        runtimeWorkspaceTruthExportSection.setAttribute('data-runtime-phase', phase);
+        syncRuntimeWorkspaceTruthExportVisibility();
+      }
+
+      function renderCompletedRuntimeWorkspaceTruthExport(state) {
+        if (!runtimeOperatorDebugMode) {
+          renderInitialRuntimeWorkspaceTruthExport();
+          return;
+        }
+
+        runtimeWorkspaceTruthExportContent.innerHTML = buildRuntimeWorkspaceTruthExportMarkup(state);
+      }
+
+      function renderRunningRuntimeWorkspaceTruthExport() {
+        runtimeWorkspaceTruthExportContent.innerHTML = '<p class="hint">Debug workspace truth export se připraví po dokončení aktuálního runtime běhu.</p>';
+      }
+
+      function renderFailedRuntimeWorkspaceTruthExport() {
+        runtimeWorkspaceTruthExportContent.innerHTML = '<p class="hint">Debug workspace truth export není k dispozici, protože poslední runtime běh selhal.</p>';
+      }
+
+      function renderInitialRuntimeWorkspaceTruthExport() {
+        runtimeWorkspaceTruthExportContent.innerHTML = '<p class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek.</p><p class="hint">V debug režimu zde stáhnete JSON snapshot přesně z aktuálně viditelného workspace state.</p>';
+      }
+
+      function buildDebugWorkspaceTruthPayload(state) {
+        function readBookingConfirmationTrace(detailEntries) {
+          const entries = Array.isArray(detailEntries) ? detailEntries : [];
+          const readEntry = (labelCs) => entries.find((entry) => String(entry && entry.labelCs || '') === labelCs)?.value;
+          const matchedBatchReference = readEntry('DEBUG Booking matched batch');
+          const candidateCountValue = readEntry('DEBUG Booking candidate count');
+          const membershipHitValue = readEntry('DEBUG Booking membership hit');
+          const amountHitValue = readEntry('DEBUG Booking amount hit');
+          const finalConfirmationSource = readEntry('DEBUG Booking confirmation source');
+
+          if (!matchedBatchReference && !candidateCountValue && !membershipHitValue && !amountHitValue && !finalConfirmationSource) {
+            return undefined;
+          }
+
+          return {
+            ...(matchedBatchReference ? { matchedBatchReference: String(matchedBatchReference) } : {}),
+            ...(candidateCountValue ? { matchedBatchCandidateCount: Number(candidateCountValue) } : {}),
+            ...(membershipHitValue ? { membershipHit: membershipHitValue === 'yes' } : {}),
+            ...(amountHitValue ? { amountHit: amountHitValue === 'yes' } : {}),
+            ...(finalConfirmationSource ? { finalConfirmationSource: String(finalConfirmationSource) } : {})
+          };
+        }
+
+        const visibleState = state || currentExportVisibleState || currentExpenseReviewState || initialRuntimeState || {};
+        const buildInfo = visibleState.runtimeBuildInfo || initialRuntimeState.runtimeBuildInfo || {};
+        const overview = getVisibleReservationPaymentOverview(visibleState);
+        const blocks = Array.isArray(overview && overview.blocks) ? overview.blocks : [];
+        const uploadedFiles = buildAnnotatedWorkspaceFilesForDebugExport(visibleState);
+        const payoutRelatedFiles = uploadedFiles.filter((file) => isPayoutRelatedWorkspaceFileForDebugExport(file));
+        const reservationLikeItemIdsBySource = blocks.reduce((accumulator, block) => {
+          const blockKey = String(block && block.key || '');
+          accumulator[blockKey] = (Array.isArray(block && block.items) ? block.items : [])
+            .map((item) => String(item && item.id || ''))
+            .filter(Boolean);
+          return accumulator;
+        }, {
+          airbnb: [],
+          booking: [],
+          expedia: [],
+          reservation_plus: [],
+          parking: []
+        });
+        const bookingBlock = blocks.find((block) => String(block && block.key || '') === 'booking');
+        const bookingReservationItems = (Array.isArray(bookingBlock && bookingBlock.items) ? bookingBlock.items : []).map((item) => {
+          const linkedPayoutRowIds = (Array.isArray(item && item.transactionIds) ? item.transactionIds : [])
+            .map((transactionId) => String(transactionId || ''))
+            .filter(Boolean);
+          const linkedSourceDocumentIds = collectUniqueTruthyStrings(Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds : []);
+          const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
+          const payoutRowEvidenceExists = String(item && item.evidenceKey || '') === 'payout'
+            || linkedPayoutRowIds.some((transactionId) => transactionId.indexOf('txn:payout:') === 0);
+          const confirmationTrace = readBookingConfirmationTrace(detailEntries);
+
+          return {
+            id: String(item && item.id || ''),
+            reservationReference: String(item && item.primaryReference || ''),
+            guestName: String(item && item.title || ''),
+            subtitle: String(item && item.subtitle || ''),
+            expectedAmountMinor: typeof (item && item.expectedAmountMinor) === 'number' ? item.expectedAmountMinor : null,
+            paidAmountMinor: typeof (item && item.paidAmountMinor) === 'number' ? item.paidAmountMinor : null,
+            currency: String(item && item.currency || ''),
+            finalStatus: {
+              key: String(item && item.statusKey || ''),
+              labelCs: String(item && item.statusLabelCs || ''),
+              detailCs: String(item && item.statusDetailCs || '')
+            },
+            payoutRowEvidenceExists,
+            evidence: {
+              key: String(item && item.evidenceKey || ''),
+              labelCs: String(item && item.evidenceLabelCs || '')
+            },
+            linkedPayoutRowIds,
+            linkedSourceDocumentIds,
+            ...(confirmationTrace ? { confirmationTrace } : {})
+          };
+        });
+
+        return {
+          exportedAt: new Date().toISOString(),
+          debugExportVersion: 'workspace-truth-v1',
+          buildMarker: {
+            gitCommitShortSha: String(buildInfo.gitCommitShortSha || ''),
+            gitCommitHash: String(buildInfo.gitCommitHash || ''),
+            buildBranch: String(buildInfo.buildBranch || ''),
+            runtimeModuleVersion: String(buildInfo.runtimeModuleVersion || ''),
+            rendererVersion: String(buildInfo.rendererVersion || ''),
+            payoutProjectionVersion: String(buildInfo.payoutProjectionVersion || '')
+          },
+          location: {
+            href: String(window && window.location && window.location.href || ''),
+            origin: String(window && window.location && window.location.origin || ''),
+            host: String(window && window.location && window.location.host || ''),
+            pathname: String(window && window.location && window.location.pathname || ''),
+            search: String(window && window.location && window.location.search || ''),
+            hash: String(window && window.location && window.location.hash || '')
+          },
+          monthKey: String(currentWorkspaceMonth || visibleState.monthLabel || ''),
+          runId: String(visibleState.runId || ''),
+          workspaceSource: {
+            sourceKind: buildWorkspaceSourceKindForDebugExport(visibleState),
+            renderSource: String(currentWorkspaceRenderDebug && currentWorkspaceRenderDebug.renderSource || 'selectedFiles'),
+            renderSourceMarker: buildWorkspaceRenderSourceMarker(String(currentWorkspaceRenderDebug && currentWorkspaceRenderDebug.renderSource || 'selectedFiles')),
+            restoreSource: String(currentWorkspaceRenderDebug && currentWorkspaceRenderDebug.restoreSource || 'not-applicable'),
+            persistenceBackend: String(currentWorkspacePersistenceState && currentWorkspacePersistenceState.backendName || 'none'),
+            storageKeyUsed: String(currentWorkspacePersistenceState && currentWorkspacePersistenceState.storageKeyUsed || monthlyWorkspaceStorageKey),
+            saveCompletedBeforeRerunInputAssembly: String(currentWorkspacePersistenceState && currentWorkspacePersistenceState.saveCompletedBeforeRerunInputAssembly || 'not-applicable')
+          },
+          uploadedFiles,
+          sourceDocumentIds: collectUniqueTruthyStrings(uploadedFiles.map((file) => file.sourceDocumentId)),
+          payoutRelatedFiles,
+          payoutRelatedFileIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.workspaceFileId)),
+          payoutRelatedSourceDocumentIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.sourceDocumentId)),
+          reservationLikeItemIdsBySource,
+          bookingReservationItems,
+          reservationCentricView: {
+            summary: {
+              itemCount: Number(overview && overview.summary && overview.summary.itemCount || 0),
+              statusCounts: {
+                paid: Number(overview && overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.paid || 0),
+                partial: Number(overview && overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.partial || 0),
+                unverified: Number(overview && overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.unverified || 0),
+                missing: Number(overview && overview.summary && overview.summary.statusCounts && overview.summary.statusCounts.missing || 0)
+              }
+            },
+            blocks: blocks.map((block) => ({
+              key: String(block && block.key || ''),
+              labelCs: String(block && block.labelCs || ''),
+              itemCount: Number(block && block.itemCount || 0),
+              statusCounts: buildReservationStatusCounts(block && block.items),
+              reservationLikeItemIds: (Array.isArray(block && block.items) ? block.items : []).map((item) => String(item && item.id || '')).filter(Boolean),
+              expectedTotals: Array.isArray(block && block.expectedTotals) ? block.expectedTotals.map((entry) => ({
+                currency: String(entry && entry.currency || ''),
+                totalMinor: Number(entry && entry.totalMinor || 0)
+              })) : [],
+              paidTotals: Array.isArray(block && block.paidTotals) ? block.paidTotals.map((entry) => ({
+                currency: String(entry && entry.currency || ''),
+                totalMinor: Number(entry && entry.totalMinor || 0)
+              })) : []
+            }))
+          },
+          workspaceRenderDebug: buildWorkspaceRenderDebugState(currentWorkspaceRenderDebug),
+          persistence: buildWorkspacePersistenceState(currentWorkspacePersistenceState)
+        };
+      }
+
+      function buildDebugWorkspaceTruthExportFileName(payload) {
+        const normalizedMonth = String(payload && payload.monthKey || 'workspace').replace(/[^a-zA-Z0-9_-]+/g, '-');
+        const normalizedSha = String(payload && payload.buildMarker && payload.buildMarker.gitCommitShortSha || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-');
+
+        return 'debug-workspace-truth-' + normalizedMonth + '-' + normalizedSha + '.json';
+      }
+
+      function triggerDebugWorkspaceTruthDownload() {
+        if (!runtimeOperatorDebugMode) {
+          return;
+        }
+
+        const payload = buildDebugWorkspaceTruthPayload(currentExportVisibleState);
+        const jsonContent = JSON.stringify(payload, null, 2);
+        const artifact = {
+          fileName: buildDebugWorkspaceTruthExportFileName(payload),
+          mimeType: 'application/json',
+          jsonContent,
+          payload
+        };
+
+        window.__hotelFinanceLastDebugWorkspaceTruthExport = artifact;
+
+        if (typeof document.createElement === 'function') {
+          const anchor = document.createElement('a');
+
+          if (anchor) {
+            anchor.href = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonContent);
+            anchor.download = artifact.fileName;
+            anchor.rel = 'noopener';
+
+            if (typeof anchor.click === 'function') {
+              anchor.click();
+            }
+          }
+        }
+      }
+
+      function wireDebugWorkspaceTruthExportControls() {
+        if (debugWorkspaceTruthExportControlsWired) {
+          return;
+        }
+
+        if (!downloadDebugWorkspaceTruthButton || typeof downloadDebugWorkspaceTruthButton.addEventListener !== 'function') {
+          return;
+        }
+
+        downloadDebugWorkspaceTruthButton.addEventListener('click', () => {
+          triggerDebugWorkspaceTruthDownload();
+        });
+        debugWorkspaceTruthExportControlsWired = true;
+      }
+
       function syncRuntimePayoutProjectionDebugVisibility() {
         runtimePayoutProjectionDebugSection.hidden = !runtimePayoutProjectionDebugMode;
       }
@@ -7940,6 +8316,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimeFileIntakeDiagnosticsPhase(phase);
         syncRuntimePayoutProjectionDebugPhase(phase);
         syncRuntimeWorkspaceMergeDebugPhase(phase);
+        syncRuntimeWorkspaceTruthExportPhase(phase);
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(visibleState.routingSummary?.uploadedFileCount ?? (visibleState.fileRoutes || []).length ?? (visibleState.preparedFiles || []).length);
@@ -8000,6 +8377,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderCompletedRuntimePayoutDiagnostics(visibleState);
         renderCompletedRuntimeFileIntakeDiagnostics(visibleState);
         renderCompletedRuntimePayoutProjectionDebug(visibleState);
+        renderCompletedRuntimeWorkspaceTruthExport(visibleState);
         const completedWorkspaceRenderDebug = buildWorkspaceRenderDebugState({
           requestToken: currentWorkspaceRenderDebug.requestToken,
           restoreToken: currentWorkspaceRenderDebug.restoreToken,
@@ -8121,6 +8499,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimeFileIntakeDiagnosticsPhase('running');
         syncRuntimePayoutProjectionDebugPhase('running');
         syncRuntimeWorkspaceMergeDebugPhase('running');
+        syncRuntimeWorkspaceTruthExportPhase('running');
 
         if (runtimeSummaryUploadedFiles) {
           runtimeSummaryUploadedFiles.textContent = String(files.length);
@@ -8163,6 +8542,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderRunningRuntimeFileIntakeDiagnostics();
         renderRunningRuntimePayoutProjectionDebug();
         renderRunningRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
+        renderRunningRuntimeWorkspaceTruthExport();
         currentLaterMonthCarryoverResolutionState = buildLaterMonthCarryoverResolutionState();
         currentExportVisibleState = initialRuntimeState;
       }
@@ -8219,6 +8599,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimeFileIntakeDiagnosticsPhase('failed');
         syncRuntimePayoutProjectionDebugPhase('failed');
         syncRuntimeWorkspaceMergeDebugPhase('failed');
+        syncRuntimeWorkspaceTruthExportPhase('failed');
 
         preparedFilesContent.innerHTML = '<p><strong>Runtime běh selhal.</strong></p><p class="hint">Viditelné sekce nebylo možné aktualizovat, protože sdílený browser runtime skončil chybou.</p>';
         reviewSummaryContent.innerHTML = '<p class="hint">Chyba runtime běhu: ' + message + '</p>';
@@ -8250,6 +8631,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderFailedRuntimeFileIntakeDiagnostics();
         renderFailedRuntimePayoutProjectionDebug();
         renderFailedRuntimeWorkspaceMergeDebug(currentWorkspaceRenderDebug);
+        renderFailedRuntimeWorkspaceTruthExport();
         currentExportVisibleState = initialRuntimeState;
         if (buildFingerprint) {
           buildFingerprint.innerHTML = 'Build: <strong>' + escapeHtml(buildFingerprintVersion) + '</strong> · Renderer: <strong>' + escapeHtml(${JSON.stringify(WEB_DEMO_RENDERER_MARKER)}) + '</strong> · Payout matched: <strong>chyba</strong> · Payout unmatched: <strong>chyba</strong>';
@@ -8278,6 +8660,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         syncRuntimeFileIntakeDiagnosticsPhase('placeholder');
         syncRuntimePayoutProjectionDebugPhase('placeholder');
         syncRuntimeWorkspaceMergeDebugPhase('placeholder');
+        syncRuntimeWorkspaceTruthExportPhase('placeholder');
 
         runtimeStageCopy.innerHTML = 'Stav stránky: <strong>čeká na uploadovaný runtime běh</strong>. Bez vybraných souborů se nezobrazuje žádný předvyplněný payout výsledek.';
         if (runtimeSummaryUploadedFiles) runtimeSummaryUploadedFiles.textContent = '0';
@@ -8319,6 +8702,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         renderInitialRuntimePayoutProjectionDebug();
         setWorkspaceRenderDebugState({});
         renderInitialRuntimeWorkspaceMergeDebug();
+        renderInitialRuntimeWorkspaceTruthExport();
+        wireDebugWorkspaceTruthExportControls();
         currentExpenseReviewState = initialRuntimeState;
         currentExportVisibleState = initialRuntimeState;
         currentExpenseReviewOverrides = [];

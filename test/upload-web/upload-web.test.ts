@@ -3871,6 +3871,453 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections).toHaveProperty('ancillarySettlementOverview')
   })
 
+  it('surfaces grounded Booking, Expedia, Reservation+, and Parking items when those source files are uploaded together', async () => {
+    const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
+    const expedia = getRealInputFixture('expedia-payout-export')
+    const comgate = getRealInputFixture('comgate-export-current-portal')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile(booking.sourceDocument.fileName, booking.rawInput.content),
+        createRuntimeFile(expedia.sourceDocument.fileName, expedia.rawInput.content),
+        createRuntimeFile(comgate.sourceDocument.fileName, comgate.rawInput.content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-25T10:45:00.000Z'
+    })
+
+    expect(result.reservationPaymentOverview.blocks.map((block) => ({
+      key: block.key,
+      itemCount: block.itemCount
+    }))).toEqual([
+      { key: 'airbnb', itemCount: 0 },
+      { key: 'booking', itemCount: 0 },
+      { key: 'expedia', itemCount: 1 },
+      { key: 'reservation_plus', itemCount: 1 },
+      { key: 'parking', itemCount: 1 }
+    ])
+    expect(result.reservationPaymentOverview.summary.statusCounts).toEqual({
+      paid: 3,
+      partial: 0,
+      unverified: 0,
+      missing: 0
+    })
+  })
+
+  it('keeps booking-like Previo channels in Booking, formats outstanding EUR detail values, and splits Comgate parking-like rows from website reservations', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '02.03.2026 09:15',
+              stayStartAt: '03.03.2026',
+              stayEndAt: '04.03.2026',
+              voucher: '5178029336',
+              guestName: 'Booking Guest',
+              channel: 'Booking.com Prepaid',
+              amountText: '46,90 EUR',
+              outstandingText: '46,90 EUR',
+              roomName: 'A101'
+            }
+          ])
+        ),
+        createRuntimeFile(
+          'comgate-portal.csv',
+          [
+            '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"VS platby";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+            '"CG-PORTAL-TRX-2001";"CG-WEB-2001";"18.03.2026 09:15";"18.03.2026 09:16";"19.03.2026";"guest@example.com";"CG-WEB-2001";"JOKELAND s.r.o.";"1549,00";"CZK";"website-reservation";"0,00";"0,00";"9,00";"9,00"',
+            '"CG-PORTAL-TRX-2002";"CG-PARK-2001";"18.03.2026 10:20";"18.03.2026 10:21";"19.03.2026";"parking@example.com";"CG-PARK-2001";"JOKELAND s.r.o.";"42,00";"CZK";"parking-fee";"0,00";"0,00";"2,00";"2,00"'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T10:00:00.000Z'
+    })
+
+    expect(result.reservationPaymentOverview.blocks.map((block) => ({
+      key: block.key,
+      itemCount: block.itemCount
+    }))).toEqual([
+      { key: 'airbnb', itemCount: 0 },
+      { key: 'booking', itemCount: 1 },
+      { key: 'expedia', itemCount: 0 },
+      { key: 'reservation_plus', itemCount: 1 },
+      { key: 'parking', itemCount: 1 }
+    ])
+
+    const bookingItem = result.reservationPaymentOverview.blocks
+      .find((block) => block.key === 'booking')
+      ?.items[0]
+    expect(bookingItem).toEqual(expect.objectContaining({
+      title: 'Booking Guest',
+      currency: 'EUR'
+    }))
+    expect(bookingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Zbývá uhradit', value: '46,90 EUR' })
+    ]))
+  })
+
+  it('keeps the existing Booking payout batch baseline stable while reservation-centric Booking confirmation logic changes', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeArrayBufferTextFile('booking35k.csv', buildBooking35kBrowserUploadContent(), 'text/csv'),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603191023.csv',
+          buildRealUploadedRbGenericContentForSharedAirbnbPayoutsWithBookingReferenceHintMatch(),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines())
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-26T11:30:00.000Z'
+    })
+
+    expect(
+      result.reviewSections.payoutBatchMatched.some((item) => item.title === 'Booking payout 010638445054 / 35 530,12 Kč')
+    ).toBe(true)
+  })
+
+  it('marks Greta as paid in browser runtime when a Booking payout row exists and keeps Tatiana unverified without one', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '06.03.2026 08:00',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '6622415324',
+              guestName: 'Greta Sieweke',
+              channel: 'Booking.com Prepaid',
+              amountText: '259,84 EUR',
+              outstandingText: '259,84 EUR',
+              roomName: 'A201'
+            },
+            {
+              createdAt: '06.03.2026 08:10',
+              stayStartAt: '06.03.2026',
+              stayEndAt: '08.03.2026',
+              voucher: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '52,26 EUR',
+              roomName: 'A202'
+            }
+          ])
+        ),
+        createRuntimeArrayBufferTextFile(
+          'booking-greta.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '6622415324',
+              checkIn: '2026-03-06',
+              checkout: '2026-03-08',
+              guestName: 'Greta Sieweke',
+              currency: 'EUR',
+              amountText: '259,84',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            }
+          ]),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines('booking-greta.pdf', [
+          'Chill apartments',
+          'Sokolská 64',
+          '120 00 Prague',
+          'ID ubytování 2206371',
+          'Booking.com B.V.',
+          'Výkaz plateb',
+          'Datum vyplacení částky 12. března 2026',
+          'ID platby 010638445054',
+          'Typ faktury',
+          'Referenční číslo',
+          'Typ platby',
+          'Příjezd',
+          'Odjezd',
+          'Jméno hosta',
+          'Měna',
+          'Částka',
+          'Rezervace 6622415324',
+          'Reservation 6. března 2026 8. března 2026',
+          'Greta Sieweke',
+          'Celkem (CZK) 6,337.07 Kč',
+          'Celková částka k vyplacení € 259.84',
+          'Celková částka k vyplacení (CZK)',
+          'Směnný kurz 24.3955',
+          'Bankovní údaje',
+          'IBAN CZ65 5500 0000 0000 5599 555956'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-06T08:20:00.000Z'
+    })
+
+    const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Greta Sieweke',
+        primaryReference: '6622415324',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-1']
+      }),
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+  })
+
+  it('marks the six explicit Booking payout PDF membership reservations as paid in browser runtime and keeps non-members unverified', async () => {
+    const explicitMembershipReservations = [
+      {
+        reservationId: '6529631423',
+        guestName: 'Sedláček Jan',
+        amountText: '378,88 EUR',
+        roomName: 'A201',
+        createdAt: '18.03.2026 08:00',
+        stayStartAt: '26.03.2026',
+        stayEndAt: '28.03.2026'
+      },
+      {
+        reservationId: '6008299863',
+        guestName: 'Anatoliy Chebotaryov',
+        amountText: '151,04 EUR',
+        roomName: 'A202',
+        createdAt: '18.03.2026 08:10',
+        stayStartAt: '26.03.2026',
+        stayEndAt: '27.03.2026'
+      },
+      {
+        reservationId: '6415593183',
+        guestName: 'Aryna Ponomarenko',
+        amountText: '165,12 EUR',
+        roomName: 'A203',
+        createdAt: '19.03.2026 08:20',
+        stayStartAt: '27.03.2026',
+        stayEndAt: '29.03.2026'
+      },
+      {
+        reservationId: '5159718129',
+        guestName: 'Jozef Kluvanec',
+        amountText: '276,48 EUR',
+        roomName: 'A204',
+        createdAt: '20.03.2026 08:30',
+        stayStartAt: '27.03.2026',
+        stayEndAt: '30.03.2026'
+      },
+      {
+        reservationId: '6126906663',
+        guestName: 'Ronny Ronald Gündel',
+        amountText: '166,40 EUR',
+        roomName: 'A205',
+        createdAt: '21.03.2026 08:40',
+        stayStartAt: '28.03.2026',
+        stayEndAt: '30.03.2026'
+      },
+      {
+        reservationId: '6354636438',
+        guestName: 'Amir Fetratnejad',
+        amountText: '294,40 EUR',
+        roomName: 'A206',
+        createdAt: '21.03.2026 08:50',
+        stayStartAt: '28.03.2026',
+        stayEndAt: '31.03.2026'
+      }
+    ]
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            ...explicitMembershipReservations.map((reservation) => ({
+              createdAt: reservation.createdAt,
+              stayStartAt: reservation.stayStartAt,
+              stayEndAt: reservation.stayEndAt,
+              voucher: reservation.reservationId,
+              guestName: reservation.guestName,
+              channel: 'Booking.com Prepaid',
+              amountText: reservation.amountText,
+              outstandingText: reservation.amountText,
+              roomName: reservation.roomName
+            })),
+            {
+              createdAt: '22.03.2026 09:00',
+              stayStartAt: '31.03.2026',
+              stayEndAt: '02.04.2026',
+              voucher: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '52,26 EUR',
+              roomName: 'A207'
+            }
+          ])
+        ),
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_5599955956_202603270912.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '27.03.2026 09:10;27.03.2026 09:12;5599955956/5500;000000-9876543210/0300;Incoming bank transfer;52938,86;CZK;Settlement credit'
+          ].join('\n'),
+          'text/csv'
+        ),
+        createRuntimePdfFileFromToUnicodeTextLines(
+          'booking-payout-statement-010738140021.pdf',
+          [
+            'Booking.com B.V.',
+            'Výkaz plateb',
+            'Datum vyplacení částky 26. března 2026',
+            'ID platby 010738140021',
+            'Celková částka k vyplacení 52,938.86 CZK',
+            'IBAN CZ65 5500 0000 0000 5599 555956',
+            ...explicitMembershipReservations.map((reservation) => `Rezervace ${reservation.reservationId}`)
+          ]
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-06T10:15:00.000Z'
+    })
+
+    expect(result.reviewSections.payoutBatchMatched).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: expect.stringContaining('Booking payout 010738140021')
+      })
+    ]))
+    expect(result.reviewSections.payoutBatchMatched).toHaveLength(1)
+
+    const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining(
+      explicitMembershipReservations.map((reservation) => expect.objectContaining({
+        title: reservation.guestName,
+        primaryReference: reservation.reservationId,
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: [],
+        sourceDocumentIds: expect.arrayContaining([
+          expect.stringMatching(/^uploaded:previo:/),
+          expect.stringMatching(/^uploaded:booking:.*010738140021.*pdf$/)
+        ])
+      }))
+    ))
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+    expect(bookingItems).toHaveLength(7)
+  })
+
+  it('keeps raw Booking payout rows out of the reservation column and marks Denisa paid only from exact Booking row evidence', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '06.03.2026 08:10',
+              stayStartAt: '07.03.2026',
+              stayEndAt: '09.03.2026',
+              voucher: '5178029336',
+              guestName: 'Denisa Hypiusová',
+              channel: 'Booking.com Prepaid',
+              amountText: '44,80 EUR',
+              outstandingText: '44,80 EUR',
+              roomName: 'A202'
+            },
+            {
+              createdAt: '06.03.2026 08:40',
+              stayStartAt: '14.03.2026',
+              stayEndAt: '16.03.2026',
+              voucher: '5280445951',
+              guestName: 'Tatiana Trakaliuk',
+              channel: 'Booking.com Prepaid',
+              amountText: '52,26 EUR',
+              outstandingText: '52,26 EUR',
+              roomName: 'A205'
+            }
+          ])
+        ),
+        createRuntimeArrayBufferTextFile(
+          'booking-batch.csv',
+          buildBookingBrowserUploadContentFromRows([
+            {
+              reservationId: '5178029336',
+              checkIn: '2026-03-07',
+              checkout: '2026-03-09',
+              guestName: 'Denisa Hypiusová',
+              currency: 'EUR',
+              amountText: '44,80',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            },
+            {
+              reservationId: '6748282290',
+              checkIn: '2026-03-09',
+              checkout: '2026-03-12',
+              guestName: 'Anonymous Booking Row 1',
+              currency: 'EUR',
+              amountText: '62,11',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            },
+            {
+              reservationId: '6797262580',
+              checkIn: '2026-03-10',
+              checkout: '2026-03-13',
+              guestName: 'Anonymous Booking Row 2',
+              currency: 'EUR',
+              amountText: '99,80',
+              payoutDate: '12 Mar 2026',
+              payoutId: 'PAYOUT-BOOK-20260310'
+            }
+          ]),
+          'text/csv'
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-06T11:30:00.000Z'
+    })
+
+    const bookingItems = result.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')?.items ?? []
+
+    expect(bookingItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: 'Denisa Hypiusová',
+        primaryReference: '5178029336',
+        statusKey: 'paid',
+        evidenceKey: 'payout',
+        transactionIds: ['txn:payout:booking-payout-1']
+      }),
+      expect.objectContaining({
+        title: 'Tatiana Trakaliuk',
+        primaryReference: '5280445951',
+        statusKey: 'unverified',
+        evidenceKey: 'no_evidence',
+        transactionIds: []
+      })
+    ]))
+
+    expect(bookingItems).toHaveLength(2)
+    expect(bookingItems.map((item) => item.primaryReference)).not.toEqual(expect.arrayContaining(['6748282290', '6797262580']))
+    expect(result.reviewSections.payoutBatchMatched).toEqual([])
+  })
+
   it('parses the grounded real Airbnb file on its own in browser runtime state and keeps reservation and transfer rows separate', async () => {
     const airbnb = getRealInputFixture('airbnb-payout-export')
 
