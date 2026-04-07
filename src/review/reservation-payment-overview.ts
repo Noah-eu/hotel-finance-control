@@ -1088,6 +1088,7 @@ function resolveReservationBlockKey(reservation: ReservationSourceRecord): Reser
   if (channels.includes('airbnb')) return 'airbnb'
   if (channels.includes('booking')) return 'booking'
   if (channels.includes('expedia_direct_bank')) return 'expedia'
+  if (isParkingLike(reservation.channel, reservation.roomName, reservation.reference)) return 'parking'
   return 'reservation_plus'
 }
 
@@ -1246,8 +1247,18 @@ function describeNoMatchReason(reason: ReservationSettlementNoMatch['noMatchReas
 
 function isParkingLike(...values: Array<string | undefined>): boolean {
   return values.some((value) => {
-    const normalized = normalizeComparable(value)
-    return normalized.includes('parking') || normalized.includes('parkovani') || normalized.includes('park')
+    const normalized = normalizeComparableForSignal(value)
+    const compactNormalized = normalized.replace(/[^a-z0-9]+/g, '')
+
+    if (!normalized) {
+      return false
+    }
+
+    return compactNormalized.includes('parking')
+      || compactNormalized.includes('parkovani')
+      || compactNormalized.includes('parkovaci')
+      || /^park(?:[-_:0-9]|$)/.test(normalized)
+      || /(?:^|[-_:])park(?:[-_:0-9]|$)/.test(normalized)
   })
 }
 
@@ -1260,9 +1271,14 @@ function readNumber(value: unknown): number | undefined {
 }
 
 function normalizeComparable(value: string | undefined): string {
+  return normalizeComparableForSignal(value)
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+function normalizeComparableForSignal(value: string | undefined): string {
   return (value ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
+    .trim()
 }
