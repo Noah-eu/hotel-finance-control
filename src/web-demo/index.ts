@@ -5776,6 +5776,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function buildRuntimeWorkspaceTruthExportMarkup(state) {
+        if (!runtimeOperatorDebugMode) {
+          return '<p class="hint">Debug workspace truth export je dostupný jen v debug režimu.</p>';
+        }
+
         const payload = buildDebugWorkspaceTruthPayload(state);
         const bookingCount = Array.isArray(payload.bookingReservationItems) ? payload.bookingReservationItems.length : 0;
         const payoutFileCount = Array.isArray(payload.payoutRelatedFiles) ? payload.payoutRelatedFiles.length : 0;
@@ -5801,6 +5805,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function renderCompletedRuntimeWorkspaceTruthExport(state) {
+        if (!runtimeOperatorDebugMode) {
+          renderInitialRuntimeWorkspaceTruthExport();
+          return;
+        }
+
         runtimeWorkspaceTruthExportContent.innerHTML = buildRuntimeWorkspaceTruthExportMarkup(state);
       }
 
@@ -5817,6 +5826,28 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function buildDebugWorkspaceTruthPayload(state) {
+        function readBookingConfirmationTrace(detailEntries) {
+          const entries = Array.isArray(detailEntries) ? detailEntries : [];
+          const readEntry = (labelCs) => entries.find((entry) => String(entry && entry.labelCs || '') === labelCs)?.value;
+          const matchedBatchReference = readEntry('DEBUG Booking matched batch');
+          const candidateCountValue = readEntry('DEBUG Booking candidate count');
+          const membershipHitValue = readEntry('DEBUG Booking membership hit');
+          const amountHitValue = readEntry('DEBUG Booking amount hit');
+          const finalConfirmationSource = readEntry('DEBUG Booking confirmation source');
+
+          if (!matchedBatchReference && !candidateCountValue && !membershipHitValue && !amountHitValue && !finalConfirmationSource) {
+            return undefined;
+          }
+
+          return {
+            ...(matchedBatchReference ? { matchedBatchReference: String(matchedBatchReference) } : {}),
+            ...(candidateCountValue ? { matchedBatchCandidateCount: Number(candidateCountValue) } : {}),
+            ...(membershipHitValue ? { membershipHit: membershipHitValue === 'yes' } : {}),
+            ...(amountHitValue ? { amountHit: amountHitValue === 'yes' } : {}),
+            ...(finalConfirmationSource ? { finalConfirmationSource: String(finalConfirmationSource) } : {})
+          };
+        }
+
         const visibleState = state || currentExportVisibleState || currentExpenseReviewState || initialRuntimeState || {};
         const buildInfo = visibleState.runtimeBuildInfo || initialRuntimeState.runtimeBuildInfo || {};
         const overview = getVisibleReservationPaymentOverview(visibleState);
@@ -5845,7 +5876,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
           const payoutRowEvidenceExists = String(item && item.evidenceKey || '') === 'payout'
             || linkedPayoutRowIds.some((transactionId) => transactionId.indexOf('txn:payout:') === 0);
-          const confirmationTrace = buildBookingConfirmationTraceDebugPayload(detailEntries);
+          const confirmationTrace = readBookingConfirmationTrace(detailEntries);
 
           return {
             id: String(item && item.id || ''),
@@ -5947,6 +5978,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function triggerDebugWorkspaceTruthDownload() {
+        if (!runtimeOperatorDebugMode) {
+          return;
+        }
+
         const payload = buildDebugWorkspaceTruthPayload(currentExportVisibleState);
         const jsonContent = JSON.stringify(payload, null, 2);
         const artifact = {
@@ -9476,36 +9511,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
-}
-
-function buildBookingConfirmationTraceDebugPayload(
-  detailEntries: Array<{ labelCs?: string, value?: string }>
-): {
-  matchedBatchReference?: string
-  matchedBatchCandidateCount?: number
-  membershipHit?: boolean
-  amountHit?: boolean
-  finalConfirmationSource?: string
-} | undefined {
-  const entries = Array.isArray(detailEntries) ? detailEntries : []
-  const readEntry = (labelCs: string) => entries.find((entry) => String(entry && entry.labelCs || '') === labelCs)?.value
-  const matchedBatchReference = readEntry('DEBUG Booking matched batch')
-  const candidateCountValue = readEntry('DEBUG Booking candidate count')
-  const membershipHitValue = readEntry('DEBUG Booking membership hit')
-  const amountHitValue = readEntry('DEBUG Booking amount hit')
-  const finalConfirmationSource = readEntry('DEBUG Booking confirmation source')
-
-  if (!matchedBatchReference && !candidateCountValue && !membershipHitValue && !amountHitValue && !finalConfirmationSource) {
-    return undefined
-  }
-
-  return {
-    ...(matchedBatchReference ? { matchedBatchReference: String(matchedBatchReference) } : {}),
-    ...(candidateCountValue ? { matchedBatchCandidateCount: Number(candidateCountValue) } : {}),
-    ...(membershipHitValue ? { membershipHit: membershipHitValue === 'yes' } : {}),
-    ...(amountHitValue ? { amountHit: amountHitValue === 'yes' } : {}),
-    ...(finalConfirmationSource ? { finalConfirmationSource: String(finalConfirmationSource) } : {})
-  }
 }
 
 function buildActualUploadedAirbnbContent(): string {
