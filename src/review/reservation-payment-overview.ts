@@ -262,6 +262,10 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
 
     const paidAmountMinor = candidate?.matchingAmountMinor ?? candidate?.amountMinor ?? resolvePaidAmountFromOutstanding(ancillary)
     const blockKey = resolveAncillaryBlockKey(ancillary)
+    const linkedReservation = resolveLinkedReservationForAncillary(ancillary, reservationSources)
+    const linkedStayValue = linkedReservation
+      ? buildStayOrDateValue(linkedReservation.stayStartAt, linkedReservation.stayEndAt, undefined)
+      : undefined
     const statusKey = resolveReservationStatus({
       expectedAmountMinor: ancillary.grossRevenueMinor,
       outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
@@ -274,7 +278,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       id: `reservation-payment:ancillary:${ancillary.sourceDocumentId}:${ancillary.reference}`,
       blockKey,
       title: ancillary.itemLabel ?? ancillary.reference,
-      subtitle: ancillary.reservationId ? `Rezervace ${ancillary.reservationId}` : undefined,
+      subtitle: linkedReservation?.roomName ?? (ancillary.reservationId ? `Rezervace ${ancillary.reservationId}` : undefined),
       primaryReference: ancillary.reference,
       secondaryReference: ancillary.reservationId && ancillary.reservationId !== ancillary.reference
         ? ancillary.reservationId
@@ -292,6 +296,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       sourceDocumentIds: [ancillary.sourceDocumentId],
       transactionIds: candidate ? [candidate.rowId] : [],
       detailEntries: compactDetailEntries([
+        buildDetailEntry('Host', linkedReservation?.guestName),
+        buildDetailEntry('Pobyt', linkedStayValue),
+        buildDetailEntry('Jednotka', linkedReservation?.roomName),
         buildDetailEntry('Kanál', toChannelLabel(ancillary.channel, blockKey)),
         buildDetailEntry('Rezervace', ancillary.reservationId),
         buildDetailEntry(
@@ -1151,6 +1158,35 @@ function findAncillaryCandidate(
 
     return row.payoutReference === ancillary.reference || row.reservationId === ancillary.reservationId
   })
+}
+
+function resolveLinkedReservationForAncillary(
+  ancillary: AncillaryRevenueSourceRecord,
+  reservationSources: ReservationSourceRecord[]
+): ReservationSourceRecord | undefined {
+  const comparableAncillaryValues = collectUniqueTruthyStrings([
+    normalizeComparable(ancillary.reservationId),
+    normalizeComparable(ancillary.reference)
+  ])
+
+  if (comparableAncillaryValues.length === 0) {
+    return undefined
+  }
+
+  const candidates = reservationSources.filter((reservation) => {
+    if (reservation.sourceDocumentId !== ancillary.sourceDocumentId) {
+      return false
+    }
+
+    const comparableReservationValues = collectUniqueTruthyStrings([
+      normalizeComparable(reservation.reservationId),
+      normalizeComparable(reservation.reference)
+    ])
+
+    return comparableReservationValues.some((value) => comparableAncillaryValues.includes(value))
+  })
+
+  return candidates.length === 1 ? candidates[0] : undefined
 }
 
 function findFirstExtractedRecord(transaction: NormalizedTransaction, extractedRecordsById: Map<string, ExtractedRecord>): ExtractedRecord | undefined {

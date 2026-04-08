@@ -84,7 +84,7 @@ describe('buildReservationPaymentOverview', () => {
           previoReservationTruth: [],
           ancillaryRevenueSources: [
             {
-              sourceDocumentId: 'doc:previo-parking',
+              sourceDocumentId: 'doc:previo-web',
               reservationId: 'WEB-1',
               reference: 'PARK-1',
               itemLabel: 'Parkování',
@@ -195,10 +195,16 @@ describe('buildReservationPaymentOverview', () => {
     expect(blockByKey.parking.items).toEqual([
       expect.objectContaining({
         title: 'Parkování',
+        subtitle: 'C301',
         primaryReference: 'PARK-1',
         statusKey: 'paid',
         evidenceKey: 'comgate',
-        transactionIds: ['txn:parking-row-1']
+        transactionIds: ['txn:parking-row-1'],
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Host', value: 'Wendy Web' }),
+          expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-18 – 2026-03-20' }),
+          expect.objectContaining({ labelCs: 'Jednotka', value: 'C301' })
+        ])
       })
     ])
   })

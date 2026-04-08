@@ -7966,14 +7966,30 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function buildReservationPaymentCompactMeta(item) {
-        const chips = [
-          item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
-          item.subtitle ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(String(item.subtitle)) + '</span></span>' : '',
-          item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
-        ].filter(Boolean);
+          const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
+          const parkingHost = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Host') : '';
+          const parkingStay = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Pobyt') : '';
+          const parkingUnit = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Jednotka') : '';
+          const subtitleValue = item.blockKey === 'parking'
+            ? parkingUnit || (String(item.subtitle || '').startsWith('Rezervace ') ? '' : String(item.subtitle || ''))
+            : String(item.subtitle || '');
+          const chips = [
+            parkingHost ? '<span class="reservation-payment-chip"><strong>Host</strong><span>' + escapeHtml(parkingHost) + '</span></span>' : '',
+            parkingStay
+              ? '<span class="reservation-payment-chip"><strong>Pobyt</strong><span>' + escapeHtml(parkingStay) + '</span></span>'
+              : item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
+            subtitleValue ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(subtitleValue) + '</span></span>' : '',
+            item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
+          ].filter(Boolean);
 
         return chips.join('') + buildReservationPaymentAmountMarkup(item);
       }
+
+        function readReservationPaymentDetailValue(detailEntries, label) {
+          const match = (Array.isArray(detailEntries) ? detailEntries : []).find((entry) => String(entry && entry.labelCs || '') === label);
+          const value = String(match && match.value || '');
+          return value ? value : '';
+        }
 
       function buildReservationPaymentDetailMarkup(item) {
         const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];

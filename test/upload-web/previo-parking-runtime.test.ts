@@ -157,6 +157,7 @@ describe('Previo parking runtime', () => {
 
     const parkingTitles = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items.map((item) => item.title) ?? []
     const reservationPlusTitles = state.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items.map((item) => item.title) ?? []
+    const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items.find((item) => item.title === 'Parkování 1')
 
     expect(parkingTitles).toEqual(expect.arrayContaining([
       'Parkování 1',
@@ -164,10 +165,56 @@ describe('Previo parking runtime', () => {
       'Parking Deck A',
       'Parkovaci misto P3'
     ]))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Jan Novak' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-14 – 2026-03-16' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'A101' })
+    ]))
     expect(reservationPlusTitles).toEqual(expect.arrayContaining([
       'Jan Novak',
       'Pozdní check-out'
     ]))
+  })
+
+  it('keeps the current fallback when a parking row has no unique linked main reservation', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', [
+          {
+            createdAt: '13.03.2026 09:15',
+            stayStartAt: '14.03.2026',
+            stayEndAt: '16.03.2026',
+            voucher: 'PREVIO-STAY-OTHER',
+            guestName: 'Jana Svobodova',
+            companyName: 'Acme Travel',
+            channel: 'direct-web',
+            amountText: '420,00',
+            outstandingText: '30,00',
+            roomName: 'B202'
+          },
+          {
+            createdAt: '13.03.2026 09:20',
+            voucher: 'PREVIO-PARK-ONLY',
+            channel: 'comgate',
+            amountText: '200,00',
+            outstandingText: '0,00',
+            roomName: 'Parkování bez pobytu'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-07T10:21:00.000Z'
+    })
+
+    const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování bez pobytu',
+      primaryReference: 'PREVIO-PARK-ONLY'
+    }))
+    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Host')
+    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
+    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
   })
 
   it('lets a Comgate parking payment confirm a Previo parking item without creating a duplicate parking identity', async () => {
