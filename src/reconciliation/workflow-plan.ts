@@ -116,7 +116,6 @@ function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): Anci
     return extractedRecords
         .filter((record) => record.data.platform === 'previo')
         .filter((record) => record.data.rowKind === 'ancillary')
-        .filter(isSettlementProjectionEligible)
         .map((record) => ({
             sourceDocumentId: record.sourceDocumentId,
             sourceSystem: 'previo',

@@ -659,7 +659,18 @@ describe('parsePrevioReservationExport', () => {
       })
     ])
     expect(plan.reservationSources).toEqual([])
-    expect(plan.ancillaryRevenueSources).toEqual([])
+    expect(plan.ancillaryRevenueSources).toEqual([
+      expect.objectContaining({
+        sourceSystem: 'previo',
+        reference: 'PREVIO-20260314',
+        reservationId: 'PREVIO-20260314',
+        itemLabel: 'Parkování 1',
+        channel: 'comgate',
+        grossRevenueMinor: 20000,
+        outstandingBalanceMinor: 0,
+        currency: 'CZK'
+      })
+    ])
   })
 
   it('parses the real short Czech workbook date-time format like `01.03.26 12:30` deterministically', () => {
