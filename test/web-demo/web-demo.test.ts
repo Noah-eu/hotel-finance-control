@@ -4299,7 +4299,7 @@ describe('buildWebDemo', () => {
     }))
   })
 
-  it('replaces stale persisted Previo reservation exports before mergedWorkspace rerun for reference 20250650', async () => {
+  it('preserves multiple distinct Previo reservation exports during mergedWorkspace rerun for the same month', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
 
@@ -4312,18 +4312,34 @@ describe('buildWebDemo', () => {
       workspacePersistenceState,
       files: [
         createWebDemoRuntimeWorkbookFile(
-          'prehled-rezervaci-2.xlsx',
+          'prehled-rezervaci-1.xlsx',
           buildPrevioWorkbookBase64FromRows([
             {
-              createdAt: '18.03.26 09:29',
-              stayStartAt: '19.03.26 14:00',
-              stayEndAt: '20.03.26 11:00',
-              voucher: 'OLD-111',
-              guestName: 'Old Guest',
+              createdAt: '18.03.26 09:25',
+              stayStartAt: '18.03.26 14:00',
+              stayEndAt: '19.03.26 11:00',
+              voucher: '5159718101',
+              guestName: 'Guest One',
               channel: 'Booking.com XML',
               amountText: '420,00EUR',
               outstandingText: '0,00EUR',
-              roomName: 'A204'
+              roomName: 'A201'
+            }
+          ])
+        ),
+        createWebDemoRuntimeWorkbookFile(
+          'prehled-rezervaci-2.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
             },
             {
               createdAt: '18.03.26 09:31',
@@ -4352,24 +4368,24 @@ describe('buildWebDemo', () => {
           'prehled-rezervaci-3.xlsx',
           buildPrevioWorkbookBase64FromRows([
             {
-              createdAt: '18.03.26 09:30',
-              stayStartAt: '20.03.26 14:00',
-              stayEndAt: '22.03.26 11:00',
-              voucher: '5159718129',
-              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              createdAt: '18.03.26 09:40',
+              stayStartAt: '23.03.26 14:00',
+              stayEndAt: '24.03.26 11:00',
+              voucher: '5159718130',
+              guestName: 'Guest Three',
               channel: 'Booking.com XML',
               amountText: '420,00EUR',
               outstandingText: '0,00EUR',
-              roomName: 'A205'
+              roomName: 'A206'
             },
             {
-              createdAt: '18.03.26 09:31',
-              voucher: '20250650',
+              createdAt: '18.03.26 09:41',
+              voucher: '20250651',
               guestName: '',
               channel: 'Alfred',
               amountText: '60,00EUR',
               outstandingText: '0,00EUR',
-              roomName: 'Parkování 1'
+              roomName: 'Parkování 2'
             }
           ])
         )
@@ -4382,6 +4398,21 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
 
     await rendered.waitForWorkflowCompletion()
+
+    const visibleState = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ primaryReference?: string }>
+        }>
+      }
+    }
+    const bookingBlock = visibleState.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')
+    const parkingBlock = visibleState.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')
+
+    expect(bookingBlock?.items).toHaveLength(3)
+    expect(parkingBlock?.items).toHaveLength(2)
+
     rendered.downloadDebugWorkspaceTruthExport()
 
     const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
@@ -4392,36 +4423,30 @@ describe('buildWebDemo', () => {
         sourceKind: string
         renderSource: string
       }
-      uploadedFiles: Array<{ fileName: string; sourceDocumentId: string }>
+      uploadedFiles: Array<{ fileName: string; sourceDocumentId: string; sourceSystem: string }>
+      sourceDocumentIds: string[]
+      reservationLikeItemIdsBySource: {
+        booking: string[]
+        parking: string[]
+      }
       parkingItemProbe: {
         targetReference: string
         finalBlockKey: string
         explicitFields: {
-          linkedGuestName: string
-          linkedStayStartAt: string
-          linkedStayEndAt: string
-          linkedMainReservationId: string
           sourceDocumentIds: string[]
         }
         matchingAncillaryLinkTraces: Array<{
           sourceDocumentId: string
-          linkedGuestName: string
           linkedMainReservationId: string
-          linkedRoomName: string
-          chosenCandidateReason: string
         }>
       }
       mergedWorkspaceReferenceTrace: {
         targetReference: string
+        distinctPrevioWorkbookCountBeforeMerge: number
+        distinctPrevioWorkbookCountAfterMerge: number
         persistedWorkspaceFilesBeforeMerge: Array<{ fileName: string }>
         mergedWorkspaceFilesUsedForRerun: Array<{ fileName: string }>
-        restoredAncillaryLinkTraces: Array<{
-          sourceDocumentId: string
-          linkedGuestName: string
-          linkedMainReservationId: string
-          linkedRoomName: string
-          chosenCandidateReason: string
-        }>
+        restoredAncillaryLinkTraces: Array<{ sourceDocumentId: string; linkedMainReservationId: string }>
       }
     }
 
@@ -4429,35 +4454,42 @@ describe('buildWebDemo', () => {
       sourceKind: 'mergedWorkspace',
       renderSource: 'mergedWorkspace'
     }))
-    expect(payload.uploadedFiles.map((file) => file.fileName)).toEqual(['prehled-rezervaci-3.xlsx'])
+    expect(payload.uploadedFiles.filter((file) => file.sourceSystem === 'previo').map((file) => file.fileName)).toEqual([
+      'prehled-rezervaci-1.xlsx',
+      'prehled-rezervaci-2.xlsx',
+      'prehled-rezervaci-3.xlsx'
+    ])
+    expect(payload.sourceDocumentIds.filter((id) => id.startsWith('uploaded:previo:'))).toHaveLength(3)
+    expect(payload.reservationLikeItemIdsBySource.booking).toHaveLength(3)
+    expect(payload.reservationLikeItemIdsBySource.parking).toHaveLength(2)
     expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
       targetReference: '20250650',
       finalBlockKey: 'parking',
       explicitFields: expect.objectContaining({
-        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
-        linkedStayStartAt: '2026-03-20T14:00:00',
-        linkedStayEndAt: '2026-03-22T11:00:00',
         linkedMainReservationId: '5159718129',
-        sourceDocumentIds: ['uploaded:previo:1:prehled-rezervaci-3-xlsx']
+        sourceDocumentIds: ['uploaded:previo:2:prehled-rezervaci-2-xlsx']
       }),
       matchingAncillaryLinkTraces: [expect.objectContaining({
-        sourceDocumentId: 'uploaded:previo:1:prehled-rezervaci-3-xlsx',
-        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
-        linkedMainReservationId: '5159718129',
-        linkedRoomName: 'A205',
-        chosenCandidateReason: 'unique_exact_stay_interval'
+        sourceDocumentId: 'uploaded:previo:2:prehled-rezervaci-2-xlsx',
+        linkedMainReservationId: '5159718129'
       })]
     }))
     expect(payload.mergedWorkspaceReferenceTrace).toEqual(expect.objectContaining({
       targetReference: '20250650',
-      persistedWorkspaceFilesBeforeMerge: [expect.objectContaining({ fileName: 'prehled-rezervaci-2.xlsx' })],
-      mergedWorkspaceFilesUsedForRerun: [expect.objectContaining({ fileName: 'prehled-rezervaci-3.xlsx' })],
+      distinctPrevioWorkbookCountBeforeMerge: 2,
+      distinctPrevioWorkbookCountAfterMerge: 3,
+      persistedWorkspaceFilesBeforeMerge: [
+        expect.objectContaining({ fileName: 'prehled-rezervaci-1.xlsx' }),
+        expect.objectContaining({ fileName: 'prehled-rezervaci-2.xlsx' })
+      ],
+      mergedWorkspaceFilesUsedForRerun: [
+        expect.objectContaining({ fileName: 'prehled-rezervaci-1.xlsx' }),
+        expect.objectContaining({ fileName: 'prehled-rezervaci-2.xlsx' }),
+        expect.objectContaining({ fileName: 'prehled-rezervaci-3.xlsx' })
+      ],
       restoredAncillaryLinkTraces: [expect.objectContaining({
-        sourceDocumentId: 'uploaded:previo:1:prehled-rezervaci-2-xlsx',
-        linkedGuestName: 'Old Guest',
-        linkedMainReservationId: 'OLD-111',
-        linkedRoomName: 'A204',
-        chosenCandidateReason: 'unique_exact_stay_interval'
+        sourceDocumentId: 'uploaded:previo:2:prehled-rezervaci-2-xlsx',
+        linkedMainReservationId: '5159718129'
       })]
     }))
   })

@@ -2147,7 +2147,7 @@ ${showRuntimePayoutDiagnostics ? `
           || /\.(xlsx|xls)$/i.test(normalizedName);
       }
 
-      function inferWorkspaceMergeReplacementBucket(record) {
+      function isLikelyPrevioReservationWorkbookRecord(record) {
         const sourceSystem = String(record && record.sourceSystem || '').toLowerCase();
         const documentType = String(record && record.documentType || '').toLowerCase();
         const fileName = String(record && (record.fileName || record.name) || '');
@@ -2156,24 +2156,70 @@ ${showRuntimePayoutDiagnostics ? `
         const spreadsheetLike = isSpreadsheetWorkspaceRecordLike(fileName, mimeType);
 
         if (sourceSystem === 'previo' && documentType === 'reservation_export') {
-          return 'previo-reservation-export';
+          return true;
         }
 
         if (!spreadsheetLike) {
-          return '';
+          return false;
         }
 
-        if (
+        return (
           (normalizedName.includes('rezervac') || normalizedName.includes('reservation'))
           && !normalizedName.includes('booking')
           && !normalizedName.includes('airbnb')
           && !normalizedName.includes('expedia')
           && !normalizedName.includes('comgate')
-        ) {
-          return 'previo-reservation-export';
+        );
+      }
+
+      function buildWorkspaceMergeStrongIdentityKeys(record) {
+        const normalizedId = String(record && record.id || '');
+        const contentHash = String(record && record.contentHash || '');
+
+        return collectUniqueTruthyStrings([
+          contentHash ? 'content-hash:' + contentHash : '',
+          normalizedId ? 'workspace-id:' + normalizedId : ''
+        ]);
+      }
+
+      function findWorkspaceFileByStrongIdentityIndex(records, candidateRecord) {
+        const candidateKeys = buildWorkspaceMergeStrongIdentityKeys(candidateRecord);
+
+        if (candidateKeys.length === 0) {
+          return -1;
         }
 
-        return '';
+        return (Array.isArray(records) ? records : []).findIndex((record) => {
+          const existingKeys = buildWorkspaceMergeStrongIdentityKeys(record);
+          return existingKeys.some((key) => candidateKeys.includes(key));
+        });
+      }
+
+      function collectDistinctWorkspaceFilesByStrongIdentity(records) {
+        const distinctRecords = [];
+        const seenKeys = new Set();
+
+        (Array.isArray(records) ? records : []).forEach((record) => {
+          const identityKeys = buildWorkspaceMergeStrongIdentityKeys(record);
+          const hasSeenIdentity = identityKeys.some((key) => seenKeys.has(key));
+
+          if (hasSeenIdentity) {
+            return;
+          }
+
+          identityKeys.forEach((key) => {
+            seenKeys.add(key);
+          });
+          distinctRecords.push(record);
+        });
+
+        return distinctRecords;
+      }
+
+      function countDistinctPrevioReservationWorkbooks(records) {
+        return collectDistinctWorkspaceFilesByStrongIdentity(
+          (Array.isArray(records) ? records : []).filter((record) => isLikelyPrevioReservationWorkbookRecord(record))
+        ).length;
       }
 
       function collectUniqueTruthyStrings(values) {
@@ -2721,55 +2767,16 @@ ${showRuntimePayoutDiagnostics ? `
       }
 
       function mergeWorkspaceFiles(existingFiles, incomingFiles) {
-        const merged = [];
-        const seenIds = new Set();
-        const incomingReplacementBuckets = new Set(
-          (Array.isArray(incomingFiles) ? incomingFiles : [])
-            .map((file) => inferWorkspaceMergeReplacementBucket(file))
-            .filter(Boolean)
-        );
-
-        (Array.isArray(existingFiles) ? existingFiles : []).forEach((file) => {
-          const normalizedId = String(file && file.id || '');
-          const replacementBucket = inferWorkspaceMergeReplacementBucket(file);
-
-          if (replacementBucket && incomingReplacementBuckets.has(replacementBucket)) {
-            return;
-          }
-
-          if (!normalizedId || seenIds.has(normalizedId)) {
-            return;
-          }
-
-          seenIds.add(normalizedId);
-          merged.push(file);
-        });
+        const merged = collectDistinctWorkspaceFilesByStrongIdentity(existingFiles);
 
         (Array.isArray(incomingFiles) ? incomingFiles : []).forEach((file) => {
-          const normalizedId = String(file && file.id || '');
-          const replacementBucket = inferWorkspaceMergeReplacementBucket(file);
+          const identityKeys = buildWorkspaceMergeStrongIdentityKeys(file);
 
-          if (!normalizedId) {
+          if (identityKeys.length === 0) {
             return;
           }
 
-          if (replacementBucket) {
-            for (let index = merged.length - 1; index >= 0; index -= 1) {
-              const existingBucket = inferWorkspaceMergeReplacementBucket(merged[index]);
-
-              if (existingBucket === replacementBucket) {
-                const existingId = String(merged[index] && merged[index].id || '');
-
-                if (existingId) {
-                  seenIds.delete(existingId);
-                }
-
-                merged.splice(index, 1);
-              }
-            }
-          }
-
-          const existingIndex = merged.findIndex((item) => String(item && item.id || '') === normalizedId);
+          const existingIndex = findWorkspaceFileByStrongIdentityIndex(merged, file);
 
           if (existingIndex >= 0) {
             merged.splice(existingIndex, 1, file);
@@ -6288,9 +6295,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
             persistedWorkspaceFilesBeforeMerge: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge)
               ? currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge
               : []).map((record) => buildWorkspaceFileRecordDebugPayload(record)),
+            distinctPrevioWorkbookCountBeforeMerge: countDistinctPrevioReservationWorkbooks(
+              Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge)
+                ? currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge
+                : []
+            ),
             mergedWorkspaceFilesUsedForRerun: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun)
               ? currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun
               : []).map((record) => buildWorkspaceFileRecordDebugPayload(record)),
+            distinctPrevioWorkbookCountAfterMerge: countDistinctPrevioReservationWorkbooks(
+              Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun)
+                ? currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun
+                : []
+            ),
             restoredAncillaryLinkTraces: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.restoredAncillaryLinkTraces)
               ? currentMergedWorkspaceParkingReferenceDebug.restoredAncillaryLinkTraces
               : []).map((entry) => buildAncillaryLinkTraceDebugPayload(entry))
