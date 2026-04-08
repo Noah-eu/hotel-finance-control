@@ -465,6 +465,69 @@ describe('Previo parking runtime', () => {
     }))
   })
 
+  it('emits parser-level ancillary trace rows for the workbook that contains 20250650', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03-grouped.xlsx', [
+          {
+            createdAt: '18.03.26 09:30',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '5159718129',
+            guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '420,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'A205'
+          },
+          {
+            createdAt: '18.03.26 09:30',
+            voucher: 'A205-MEAL',
+            channel: 'Booking.com XML',
+            amountText: '15,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Snídaně'
+          },
+          {
+            createdAt: '18.03.26 09:31',
+            voucher: '20250650',
+            channel: 'Alfred',
+            amountText: '60,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Parkování 1'
+          },
+          {
+            createdAt: '18.03.26 09:40',
+            stayStartAt: '23.03.26 14:00',
+            stayEndAt: '24.03.26 11:00',
+            voucher: '5159718130',
+            guestName: 'Guest Three',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '210,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'A206'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-08T13:20:00.000Z'
+    })
+
+    expect(state.previoAncillaryParserTrace).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sourceDocumentId: expect.stringMatching(/^uploaded:previo:/),
+        reference: '20250650',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      })
+    ]))
+  })
+
   it('lets a Comgate parking payment confirm a Previo parking item without creating a duplicate parking identity', async () => {
     const state = await createBrowserRuntime().buildRuntimeState({
       files: [

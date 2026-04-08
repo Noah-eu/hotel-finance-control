@@ -5974,6 +5974,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const buildInfo = visibleState.runtimeBuildInfo || initialRuntimeState.runtimeBuildInfo || {};
         const overview = getVisibleReservationPaymentOverview(visibleState);
         const overviewDebug = visibleState.reservationPaymentOverviewDebug || {};
+        const previoAncillaryParserTrace = Array.isArray(visibleState.previoAncillaryParserTrace)
+          ? visibleState.previoAncillaryParserTrace
+          : [];
         const blocks = Array.isArray(overview && overview.blocks) ? overview.blocks : [];
         const uploadedFiles = buildAnnotatedWorkspaceFilesForDebugExport(visibleState);
         const payoutRelatedFiles = uploadedFiles.filter((file) => isPayoutRelatedWorkspaceFileForDebugExport(file));
@@ -6051,6 +6054,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
             stayStartAt: String(candidate && candidate.stayStartAt || ''),
             stayEndAt: String(candidate && candidate.stayEndAt || ''),
             roomName: String(candidate && candidate.roomName || '')
+          };
+        }
+
+        function buildPrevioAncillaryParserTracePayload(entry) {
+          return {
+            sourceRecordId: String(entry && entry.sourceRecordId || ''),
+            sourceDocumentId: String(entry && entry.sourceDocumentId || ''),
+            reference: String(entry && entry.reference || ''),
+            itemLabel: String(entry && entry.itemLabel || ''),
+            roomName: String(entry && entry.roomName || ''),
+            channel: String(entry && entry.channel || ''),
+            stayStartAt: String(entry && entry.stayStartAt || ''),
+            stayEndAt: String(entry && entry.stayEndAt || '')
           };
         }
 
@@ -6190,6 +6206,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
             || (finalOverviewItem && finalOverviewItem.subtitle)
             || ''
           );
+          const parsedPrevioAncillaryRowsForSourceDocument = previoAncillaryParserTrace
+            .filter((entry) => collectUniqueTruthyStrings([entry && entry.sourceDocumentId]).some((sourceDocumentId) => finalOverviewSourceDocumentIds.includes(sourceDocumentId)))
+            .map((entry) => buildPrevioAncillaryParserTracePayload(entry));
 
           return {
             targetReference: normalizedTargetReference,
@@ -6217,6 +6236,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             rawParsedAncillaryRow: trace ? buildAncillaryLinkTraceDebugPayload(trace).rawParsedAncillaryRow : null,
             normalizedAncillaryRow: trace ? buildAncillaryLinkTraceDebugPayload(trace).normalizedAncillaryRow : null,
             overviewLinkingInput: trace ? buildAncillaryLinkTraceDebugPayload(trace).overviewLinkingInput : null,
+            parsedPrevioAncillaryRowsForSourceDocument,
             matchingAncillaryLinkTraces: matchingAncillaryLinkTraces.map((entry) => buildAncillaryLinkTraceDebugPayload(entry)),
             linkedCandidateChain: {
               candidateSetBeforeFiltering: trace ? buildAncillaryLinkTraceDebugPayload(trace).candidateSetBeforeFiltering : [],
@@ -6290,6 +6310,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               : [],
             ancillaryLinkTraces: ancillaryLinkTraces.map((trace) => buildAncillaryLinkTraceDebugPayload(trace))
           },
+          previoAncillaryParserTrace: previoAncillaryParserTrace.map((entry) => buildPrevioAncillaryParserTracePayload(entry)),
           mergedWorkspaceReferenceTrace: {
             targetReference: String(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.targetReference || '20250650'),
             persistedWorkspaceFilesBeforeMerge: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge)

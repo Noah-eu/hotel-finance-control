@@ -4360,6 +4360,15 @@ describe('buildWebDemo', () => {
       jsonContent: string
     }
     const payload = JSON.parse(artifact.jsonContent) as {
+      previoAncillaryParserTrace: Array<{
+        sourceDocumentId: string
+        reference: string
+        itemLabel: string
+        roomName: string
+        channel: string
+        stayStartAt: string
+        stayEndAt: string
+      }>
       parkingItemProbe: {
         targetReference: string
         finalBlockKey: string
@@ -4383,6 +4392,15 @@ describe('buildWebDemo', () => {
           stayStartAt: string
           stayEndAt: string
         } | null
+        parsedPrevioAncillaryRowsForSourceDocument: Array<{
+          sourceDocumentId: string
+          reference: string
+          itemLabel: string
+          roomName: string
+          channel: string
+          stayStartAt: string
+          stayEndAt: string
+        }>
         linkedCandidateChain: {
           candidateCount: number
           exactStayIntervalHits: Array<{ reservationId: string }>
@@ -4420,6 +4438,26 @@ describe('buildWebDemo', () => {
         chosenCandidateReason: 'unique_exact_stay_interval'
       })
     }))
+    expect(payload.parkingItemProbe.parsedPrevioAncillaryRowsForSourceDocument).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reference: '20250650',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      })
+    ]))
+    expect(payload.previoAncillaryParserTrace).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reference: '20250650',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      })
+    ]))
 
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Parkování 1')
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova</span>')

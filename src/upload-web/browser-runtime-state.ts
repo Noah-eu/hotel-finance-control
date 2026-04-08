@@ -97,6 +97,33 @@ function buildBrowserRuntimeUploadStateFromIngestion(
   })
   const reservationPaymentOverview = buildReservationPaymentOverview(batch)
   const reservationPaymentOverviewDebug = inspectReservationPaymentOverviewClassification(batch)
+  const previoAncillaryParserTrace = batch.extractedRecords
+    .filter((record) => record.data.platform === 'previo')
+    .filter((record) => record.data.rowKind === 'ancillary')
+    .map((record) => ({
+      sourceRecordId: record.id,
+      sourceDocumentId: record.sourceDocumentId,
+      reference: typeof record.data.reference === 'string' && record.data.reference.trim().length > 0
+        ? record.data.reference.trim()
+        : typeof record.rawReference === 'string' && record.rawReference.trim().length > 0
+          ? record.rawReference.trim()
+          : record.id,
+      itemLabel: typeof record.data.itemLabel === 'string' && record.data.itemLabel.trim().length > 0
+        ? record.data.itemLabel.trim()
+        : undefined,
+      roomName: typeof record.data.roomName === 'string' && record.data.roomName.trim().length > 0
+        ? record.data.roomName.trim()
+        : undefined,
+      channel: typeof record.data.channel === 'string' && record.data.channel.trim().length > 0
+        ? record.data.channel.trim()
+        : undefined,
+      stayStartAt: typeof record.data.stayStartAt === 'string' && record.data.stayStartAt.trim().length > 0
+        ? record.data.stayStartAt.trim()
+        : undefined,
+      stayEndAt: typeof record.data.stayEndAt === 'string' && record.data.stayEndAt.trim().length > 0
+        ? record.data.stayEndAt.trim()
+        : undefined
+    }))
   const exportFiles = buildExportArtifactsFiles({
     batch,
     review
@@ -115,6 +142,8 @@ function buildBrowserRuntimeUploadStateFromIngestion(
     }),
     reconciliationSnapshot: buildReconciliationSnapshot(batch),
     carryoverSourceSnapshot: buildCarryoverSourceSnapshot(batch, deriveMonthLabel(input.runId)),
+    reservationPaymentOverviewDebug,
+    previoAncillaryParserTrace,
     carryoverDebug: buildCarryoverDebugState(batch, input),
     routingSummary: {
       uploadedFileCount: ingestion.fileRoutes.length,
