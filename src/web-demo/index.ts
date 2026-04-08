@@ -5975,7 +5975,67 @@ ${showRuntimePayoutDiagnostics ? '' : `
               linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
               detailEntries
             },
+            rawParsedAncillaryRow: trace && trace.rawParsedAncillaryRow ? {
+              sourceRecordId: String(trace.rawParsedAncillaryRow.sourceRecordId || ''),
+              sourceDocumentId: String(trace.rawParsedAncillaryRow.sourceDocumentId || ''),
+              recordType: String(trace.rawParsedAncillaryRow.recordType || ''),
+              rawReference: String(trace.rawParsedAncillaryRow.rawReference || ''),
+              occurredAt: String(trace.rawParsedAncillaryRow.occurredAt || ''),
+              amountMinor: typeof trace.rawParsedAncillaryRow.amountMinor === 'number' ? trace.rawParsedAncillaryRow.amountMinor : null,
+              currency: String(trace.rawParsedAncillaryRow.currency || ''),
+              data: {
+                rowKind: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.rowKind || ''),
+                reference: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.reference || ''),
+                reservationId: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.reservationId || ''),
+                createdAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.createdAt || ''),
+                bookedAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.bookedAt || ''),
+                stayStartAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.stayStartAt || ''),
+                stayEndAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.stayEndAt || ''),
+                itemLabel: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.itemLabel || ''),
+                roomName: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.roomName || ''),
+                guestName: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.guestName || ''),
+                channel: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.channel || ''),
+                outstandingBalanceMinor: typeof (trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.outstandingBalanceMinor) === 'number'
+                  ? trace.rawParsedAncillaryRow.data.outstandingBalanceMinor
+                  : null
+              }
+            } : null,
+            normalizedAncillaryRow: trace && trace.normalizedAncillaryRow ? {
+              sourceRecordId: String(trace.normalizedAncillaryRow.sourceRecordId || ''),
+              sourceDocumentId: String(trace.normalizedAncillaryRow.sourceDocumentId || ''),
+              reference: String(trace.normalizedAncillaryRow.reference || ''),
+              reservationId: String(trace.normalizedAncillaryRow.reservationId || ''),
+              createdAt: String(trace.normalizedAncillaryRow.createdAt || ''),
+              bookedAt: String(trace.normalizedAncillaryRow.bookedAt || ''),
+              stayStartAt: String(trace.normalizedAncillaryRow.stayStartAt || ''),
+              stayEndAt: String(trace.normalizedAncillaryRow.stayEndAt || ''),
+              itemLabel: String(trace.normalizedAncillaryRow.itemLabel || ''),
+              channel: String(trace.normalizedAncillaryRow.channel || ''),
+              grossRevenueMinor: Number(trace.normalizedAncillaryRow.grossRevenueMinor || 0),
+              outstandingBalanceMinor: typeof trace.normalizedAncillaryRow.outstandingBalanceMinor === 'number'
+                ? trace.normalizedAncillaryRow.outstandingBalanceMinor
+                : null,
+              currency: String(trace.normalizedAncillaryRow.currency || '')
+            } : null,
+            overviewLinkingInput: trace && trace.overviewLinkingInput ? {
+              sourceDocumentId: String(trace.overviewLinkingInput.sourceDocumentId || ''),
+              reference: String(trace.overviewLinkingInput.reference || ''),
+              reservationId: String(trace.overviewLinkingInput.reservationId || ''),
+              stayStartAt: String(trace.overviewLinkingInput.stayStartAt || ''),
+              stayEndAt: String(trace.overviewLinkingInput.stayEndAt || '')
+            } : null,
             linkedCandidateChain: {
+              candidateSetBeforeFiltering: Array.isArray(trace && trace.candidateSetBeforeFiltering)
+                ? trace.candidateSetBeforeFiltering.map((candidate) => ({
+                  sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                  reservationId: String(candidate && candidate.reservationId || ''),
+                  reference: String(candidate && candidate.reference || ''),
+                  guestName: String(candidate && candidate.guestName || ''),
+                  stayStartAt: String(candidate && candidate.stayStartAt || ''),
+                  stayEndAt: String(candidate && candidate.stayEndAt || ''),
+                  roomName: String(candidate && candidate.roomName || '')
+                }))
+                : [],
               candidateCount: Number(trace && trace.candidateCount || 0),
               exactIdentityHits: Array.isArray(trace && trace.exactIdentityHits)
                 ? trace.exactIdentityHits.map((candidate) => ({
@@ -6066,6 +6126,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               : [],
             ancillaryLinkTraces: ancillaryLinkTraces.map((trace) => ({
               itemId: String(trace && trace.itemId || ''),
+              sourceRecordId: String(trace && trace.sourceRecordId || ''),
               sourceDocumentId: String(trace && trace.sourceDocumentId || ''),
               reference: String(trace && trace.reference || ''),
               reservationId: String(trace && trace.reservationId || ''),
@@ -6073,6 +6134,55 @@ ${showRuntimePayoutDiagnostics ? '' : `
               channel: String(trace && trace.channel || ''),
               stayStartAt: String(trace && trace.stayStartAt || ''),
               stayEndAt: String(trace && trace.stayEndAt || ''),
+              rawParsedAncillaryRow: trace && trace.rawParsedAncillaryRow ? {
+                sourceRecordId: String(trace.rawParsedAncillaryRow.sourceRecordId || ''),
+                sourceDocumentId: String(trace.rawParsedAncillaryRow.sourceDocumentId || ''),
+                recordType: String(trace.rawParsedAncillaryRow.recordType || ''),
+                rawReference: String(trace.rawParsedAncillaryRow.rawReference || ''),
+                occurredAt: String(trace.rawParsedAncillaryRow.occurredAt || ''),
+                amountMinor: typeof trace.rawParsedAncillaryRow.amountMinor === 'number' ? trace.rawParsedAncillaryRow.amountMinor : null,
+                currency: String(trace.rawParsedAncillaryRow.currency || ''),
+                data: {
+                  rowKind: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.rowKind || ''),
+                  reference: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.reference || ''),
+                  reservationId: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.reservationId || ''),
+                  createdAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.createdAt || ''),
+                  bookedAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.bookedAt || ''),
+                  stayStartAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.stayStartAt || ''),
+                  stayEndAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.stayEndAt || ''),
+                  itemLabel: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.itemLabel || ''),
+                  roomName: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.roomName || ''),
+                  guestName: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.guestName || ''),
+                  channel: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.channel || ''),
+                  outstandingBalanceMinor: typeof (trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.outstandingBalanceMinor) === 'number'
+                    ? trace.rawParsedAncillaryRow.data.outstandingBalanceMinor
+                    : null
+                }
+              } : null,
+              normalizedAncillaryRow: trace && trace.normalizedAncillaryRow ? {
+                sourceRecordId: String(trace.normalizedAncillaryRow.sourceRecordId || ''),
+                sourceDocumentId: String(trace.normalizedAncillaryRow.sourceDocumentId || ''),
+                reference: String(trace.normalizedAncillaryRow.reference || ''),
+                reservationId: String(trace.normalizedAncillaryRow.reservationId || ''),
+                createdAt: String(trace.normalizedAncillaryRow.createdAt || ''),
+                bookedAt: String(trace.normalizedAncillaryRow.bookedAt || ''),
+                stayStartAt: String(trace.normalizedAncillaryRow.stayStartAt || ''),
+                stayEndAt: String(trace.normalizedAncillaryRow.stayEndAt || ''),
+                itemLabel: String(trace.normalizedAncillaryRow.itemLabel || ''),
+                channel: String(trace.normalizedAncillaryRow.channel || ''),
+                grossRevenueMinor: Number(trace.normalizedAncillaryRow.grossRevenueMinor || 0),
+                outstandingBalanceMinor: typeof trace.normalizedAncillaryRow.outstandingBalanceMinor === 'number'
+                  ? trace.normalizedAncillaryRow.outstandingBalanceMinor
+                  : null,
+                currency: String(trace.normalizedAncillaryRow.currency || '')
+              } : null,
+              overviewLinkingInput: trace && trace.overviewLinkingInput ? {
+                sourceDocumentId: String(trace.overviewLinkingInput.sourceDocumentId || ''),
+                reference: String(trace.overviewLinkingInput.reference || ''),
+                reservationId: String(trace.overviewLinkingInput.reservationId || ''),
+                stayStartAt: String(trace.overviewLinkingInput.stayStartAt || ''),
+                stayEndAt: String(trace.overviewLinkingInput.stayEndAt || '')
+              } : null,
               computedBlockKey: String(trace && trace.computedBlockKey || ''),
               linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
               linkedGuestName: String(trace && trace.linkedGuestName || ''),
@@ -6080,6 +6190,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
               linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
               linkedRoomName: String(trace && trace.linkedRoomName || ''),
               candidateCount: Number(trace && trace.candidateCount || 0),
+              candidateSetBeforeFiltering: Array.isArray(trace && trace.candidateSetBeforeFiltering)
+                ? trace.candidateSetBeforeFiltering.map((candidate) => ({
+                  sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                  reservationId: String(candidate && candidate.reservationId || ''),
+                  reference: String(candidate && candidate.reference || ''),
+                  guestName: String(candidate && candidate.guestName || ''),
+                  stayStartAt: String(candidate && candidate.stayStartAt || ''),
+                  stayEndAt: String(candidate && candidate.stayEndAt || ''),
+                  roomName: String(candidate && candidate.roomName || '')
+                }))
+                : [],
               exactIdentityHits: Array.isArray(trace && trace.exactIdentityHits)
                 ? trace.exactIdentityHits.map((candidate) => ({
                   sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),

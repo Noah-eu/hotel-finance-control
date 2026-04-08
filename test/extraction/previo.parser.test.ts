@@ -289,6 +289,91 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+    it('inherits stay interval for a parking ancillary row from the nearest adjacent accommodation row in workbook order', () => {
+      const binaryContentBase64 = createPrevioWorkbookBase64WithLeadingRows({
+        leadingRows: [['Seznam rezervací']],
+        headers: [
+          'Vytvořeno',
+          'Termín od',
+          'Termín do',
+          'Nocí',
+          'Voucher',
+          'Počet hostů',
+          'Hosté',
+          'Check-In dokončen',
+          'Market kody',
+          'Firma',
+          'PP',
+          'Stav',
+          'Cena',
+          'Saldo',
+          'Pokoj'
+        ],
+        rows: [
+          [
+            '18.03.26 09:31',
+            '',
+            '',
+            '',
+            '20250650',
+            '',
+            '',
+            '',
+            '',
+            '',
+            'Alfred',
+            'confirmed',
+            '60,00EUR',
+            '0,00EUR',
+            'Parkování 1'
+          ],
+          [
+            '18.03.26 09:30',
+            '20.03.26 14:00',
+            '22.03.26 11:00',
+            '2',
+            '5159718129',
+            '3',
+            'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+            'Ano',
+            '',
+            '',
+            'Booking.com XML',
+            'confirmed',
+            '420,00EUR',
+            '0,00EUR',
+            'A205'
+          ]
+        ]
+      })
+
+      const records = parsePrevioReservationExport({
+        sourceDocument: {
+          ...getRealInputFixture('previo-reservation-export').sourceDocument,
+          fileName: 'reservations-export-2026-03-denisa.xlsx'
+        },
+        content: 'previo-selected-files-denisa',
+        binaryContentBase64,
+        extractedAt: '2026-04-08T11:30:00.000Z'
+      })
+
+      expect(records).toHaveLength(2)
+      expect(records[0]).toMatchObject({
+        id: 'previo-ancillary-1',
+        recordType: 'expected-revenue-line',
+        rawReference: '20250650',
+        data: {
+          rowKind: 'ancillary',
+          reference: '20250650',
+          reservationId: '20250650',
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00',
+          itemLabel: 'Parkování 1',
+          channel: 'Alfred'
+        }
+      })
+    })
+
   it('maps `Termín od` and `Termín do` from the correct columns even when a header-like legend block appears earlier in the sheet', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 

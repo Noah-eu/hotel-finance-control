@@ -317,6 +317,69 @@ describe('Previo parking runtime', () => {
     }))
   })
 
+  it('preserves selectedFiles parser-to-linker truth when the parking row precedes the stay row', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03-denisa.xlsx', [
+          {
+            createdAt: '18.03.26 09:31',
+            voucher: '20250650',
+            channel: 'Alfred',
+            amountText: '60,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Parkování 1'
+          },
+          {
+            createdAt: '18.03.26 09:30',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '5159718129',
+            guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '420,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'A205'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-08T11:45:00.000Z'
+    })
+
+    const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]
+    const ancillaryLinkTrace = state.reservationPaymentOverviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      subtitle: 'A205',
+      primaryReference: '20250650'
+    }))
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      sourceRecordId: 'previo-ancillary-1',
+      rawParsedAncillaryRow: expect.objectContaining({
+        sourceRecordId: 'previo-ancillary-1',
+        data: expect.objectContaining({
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        })
+      }),
+      normalizedAncillaryRow: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      overviewLinkingInput: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      candidateSetBeforeFiltering: [expect.objectContaining({ reservationId: '5159718129' })],
+      exactIdentityHits: [],
+      exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+      candidateCount: 1,
+      chosenCandidateReason: 'unique_exact_stay_interval'
+    }))
+  })
+
   it('lets a Comgate parking payment confirm a Previo parking item without creating a duplicate parking identity', async () => {
     const state = await createBrowserRuntime().buildRuntimeState({
       files: [

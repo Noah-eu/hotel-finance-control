@@ -320,6 +320,72 @@ describe('Previo parking overview', () => {
     }))
   })
 
+    it('preserves parser, normalization, and linker input truth for selectedFiles-shaped parking rows that appear before the stay row', () => {
+      const batch = buildBatchFromPrevioRows([
+        {
+          createdAt: '18.03.26 09:31',
+          voucher: '20250650',
+          channel: 'Alfred',
+          amountText: '60,00EUR',
+          outstandingText: '0,00EUR',
+          roomName: 'Parkování 1'
+        },
+        {
+          createdAt: '18.03.26 09:30',
+          stayStartAt: '20.03.26 14:00',
+          stayEndAt: '22.03.26 11:00',
+          voucher: '5159718129',
+          guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+          companyName: '',
+          channel: 'Booking.com XML',
+          amountText: '420,00EUR',
+          outstandingText: '0,00EUR',
+          roomName: 'A205'
+        }
+      ])
+
+      const overviewDebug = inspectReservationPaymentOverviewClassification(batch)
+      const ancillaryLinkTrace = overviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
+
+      expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+        sourceRecordId: 'previo-ancillary-1',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        rawParsedAncillaryRow: expect.objectContaining({
+          sourceRecordId: 'previo-ancillary-1',
+          rawReference: '20250650',
+          data: expect.objectContaining({
+            rowKind: 'ancillary',
+            stayStartAt: '2026-03-20T14:00:00',
+            stayEndAt: '2026-03-22T11:00:00',
+            channel: 'Alfred'
+          })
+        }),
+        normalizedAncillaryRow: expect.objectContaining({
+          sourceRecordId: 'previo-ancillary-1',
+          reference: '20250650',
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        }),
+        overviewLinkingInput: expect.objectContaining({
+          sourceDocumentId: 'doc-previo-parking-overview',
+          reference: '20250650',
+          reservationId: '20250650',
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        }),
+        candidateSetBeforeFiltering: [expect.objectContaining({
+          reservationId: '5159718129',
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        })],
+        exactIdentityHits: [],
+        exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+        candidateCount: 1,
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      }))
+    })
+
   it('keeps fallback when exact stay interval points to multiple main reservations', () => {
     const batch = buildBatchFromPrevioRows([
       {

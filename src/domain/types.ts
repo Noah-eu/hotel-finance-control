@@ -124,6 +124,7 @@ export interface ReservationSourceRecord {
 }
 
 export interface AncillaryRevenueSourceRecord {
+  sourceRecordId: string
   sourceDocumentId: DocumentId
   sourceSystem: 'previo'
   reference: string

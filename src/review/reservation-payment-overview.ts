@@ -96,8 +96,57 @@ export interface ReservationPaymentOverviewAncillaryLinkCandidate {
   roomName?: string
 }
 
+export interface ReservationPaymentOverviewAncillaryRawParsedRow {
+  sourceRecordId: string
+  sourceDocumentId: string
+  recordType: string
+  rawReference?: string
+  occurredAt?: string
+  amountMinor?: number
+  currency?: string
+  data: {
+    rowKind?: string
+    reference?: string
+    reservationId?: string
+    createdAt?: string
+    bookedAt?: string
+    stayStartAt?: string
+    stayEndAt?: string
+    itemLabel?: string
+    roomName?: string
+    guestName?: string
+    channel?: string
+    outstandingBalanceMinor?: number
+  }
+}
+
+export interface ReservationPaymentOverviewAncillaryNormalizedRow {
+  sourceRecordId: string
+  sourceDocumentId: string
+  reference: string
+  reservationId?: string
+  createdAt?: string
+  bookedAt?: string
+  stayStartAt?: string
+  stayEndAt?: string
+  itemLabel?: string
+  channel?: string
+  grossRevenueMinor: number
+  outstandingBalanceMinor?: number
+  currency: string
+}
+
+export interface ReservationPaymentOverviewAncillaryLinkingInput {
+  sourceDocumentId: string
+  reference: string
+  reservationId?: string
+  stayStartAt?: string
+  stayEndAt?: string
+}
+
 export interface ReservationPaymentOverviewAncillaryLinkTrace {
   itemId: string
+  sourceRecordId: string
   sourceDocumentId: string
   reference: string
   reservationId?: string
@@ -105,6 +154,9 @@ export interface ReservationPaymentOverviewAncillaryLinkTrace {
   channel?: string
   stayStartAt?: string
   stayEndAt?: string
+  rawParsedAncillaryRow?: ReservationPaymentOverviewAncillaryRawParsedRow
+  normalizedAncillaryRow: ReservationPaymentOverviewAncillaryNormalizedRow
+  overviewLinkingInput: ReservationPaymentOverviewAncillaryLinkingInput
   computedBlockKey: ReservationPaymentOverviewBlockKey
   linkedMainReservationId?: string
   linkedGuestName?: string
@@ -112,6 +164,7 @@ export interface ReservationPaymentOverviewAncillaryLinkTrace {
   linkedStayEndAt?: string
   linkedRoomName?: string
   candidateCount: number
+  candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   chosenCandidateReason: 'exact_identity' | 'unique_exact_stay_interval' | 'ambiguous_exact_identity' | 'ambiguous_exact_stay_interval' | 'no_candidate'
@@ -120,6 +173,7 @@ export interface ReservationPaymentOverviewAncillaryLinkTrace {
 interface AncillaryLinkInspection {
   linkedReservation?: ReservationSourceRecord
   candidateCount: number
+  candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   chosenCandidateReason: ReservationPaymentOverviewAncillaryLinkTrace['chosenCandidateReason']
@@ -690,10 +744,12 @@ export function inspectReservationPaymentOverviewClassification(
   const reservationPlusBlock = overview.blocks.find((block) => block.key === 'reservation_plus')
 
   for (const ancillary of workflowPlan.ancillaryRevenueSources) {
+    const rawParsedAncillaryRow = buildAncillaryRawParsedRowPayload(extractedRecordsById.get(ancillary.sourceRecordId))
     const linkInspection = inspectLinkedReservationForAncillary(ancillary, reservationSources)
 
     ancillaryLinkTraces.push({
       itemId: buildAncillaryOverviewItemId(ancillary),
+      sourceRecordId: ancillary.sourceRecordId,
       sourceDocumentId: ancillary.sourceDocumentId,
       reference: ancillary.reference,
       reservationId: ancillary.reservationId,
@@ -701,6 +757,9 @@ export function inspectReservationPaymentOverviewClassification(
       channel: ancillary.channel,
       stayStartAt: ancillary.stayStartAt,
       stayEndAt: ancillary.stayEndAt,
+      rawParsedAncillaryRow,
+      normalizedAncillaryRow: buildAncillaryNormalizedRowPayload(ancillary),
+      overviewLinkingInput: buildAncillaryLinkingInputPayload(ancillary),
       computedBlockKey: resolveAncillaryBlockKey(ancillary),
       linkedMainReservationId: linkInspection.linkedReservation?.reservationId,
       linkedGuestName: linkInspection.linkedReservation?.guestName,
@@ -708,6 +767,7 @@ export function inspectReservationPaymentOverviewClassification(
       linkedStayEndAt: linkInspection.linkedReservation?.stayEndAt,
       linkedRoomName: linkInspection.linkedReservation?.roomName,
       candidateCount: linkInspection.candidateCount,
+      candidateSetBeforeFiltering: linkInspection.candidateSetBeforeFiltering,
       exactIdentityHits: linkInspection.exactIdentityHits,
       exactStayIntervalHits: linkInspection.exactStayIntervalHits,
       chosenCandidateReason: linkInspection.chosenCandidateReason
@@ -1475,6 +1535,9 @@ function inspectLinkedReservationForAncillary(
   ancillary: AncillaryRevenueSourceRecord,
   reservationSources: ReservationSourceRecord[]
 ): AncillaryLinkInspection {
+  const candidateSetBeforeFiltering = reservationSources
+    .filter((reservation) => reservation.sourceDocumentId === ancillary.sourceDocumentId)
+    .map(toAncillaryLinkCandidateSnapshot)
   const exactIdentityCandidates = reservationSources.filter((reservation) => matchesAncillaryExactIdentity(ancillary, reservation))
   const exactIdentityHits = exactIdentityCandidates.map(toAncillaryLinkCandidateSnapshot)
 
@@ -1482,6 +1545,7 @@ function inspectLinkedReservationForAncillary(
     return {
       linkedReservation: exactIdentityCandidates[0],
       candidateCount: exactIdentityCandidates.length,
+      candidateSetBeforeFiltering,
       exactIdentityHits,
       exactStayIntervalHits: [],
       chosenCandidateReason: 'exact_identity'
@@ -1492,6 +1556,7 @@ function inspectLinkedReservationForAncillary(
     return {
       linkedReservation: undefined,
       candidateCount: exactIdentityCandidates.length,
+      candidateSetBeforeFiltering,
       exactIdentityHits,
       exactStayIntervalHits: [],
       chosenCandidateReason: 'ambiguous_exact_identity'
@@ -1505,6 +1570,7 @@ function inspectLinkedReservationForAncillary(
     return {
       linkedReservation: exactStayCandidates[0],
       candidateCount: exactStayCandidates.length,
+      candidateSetBeforeFiltering,
       exactIdentityHits: [],
       exactStayIntervalHits,
       chosenCandidateReason: 'unique_exact_stay_interval'
@@ -1515,6 +1581,7 @@ function inspectLinkedReservationForAncillary(
     return {
       linkedReservation: undefined,
       candidateCount: exactStayCandidates.length,
+      candidateSetBeforeFiltering,
       exactIdentityHits: [],
       exactStayIntervalHits,
       chosenCandidateReason: 'ambiguous_exact_stay_interval'
@@ -1524,6 +1591,7 @@ function inspectLinkedReservationForAncillary(
   return {
     linkedReservation: undefined,
     candidateCount: 0,
+    candidateSetBeforeFiltering,
     exactIdentityHits: [],
     exactStayIntervalHits: [],
     chosenCandidateReason: 'no_candidate'
@@ -1582,6 +1650,72 @@ function buildAncillaryOverviewItemId(ancillary: AncillaryRevenueSourceRecord): 
   return `reservation-payment:ancillary:${ancillary.sourceDocumentId}:${ancillary.reference}`
 }
 
+function buildAncillaryRawParsedRowPayload(
+  record: ExtractedRecord | undefined
+): ReservationPaymentOverviewAncillaryRawParsedRow | undefined {
+  if (!record) {
+    return undefined
+  }
+
+  return {
+    sourceRecordId: record.id,
+    sourceDocumentId: record.sourceDocumentId,
+    recordType: record.recordType,
+    rawReference: stringOrUndefined(record.rawReference),
+    occurredAt: stringOrUndefined(record.occurredAt),
+    amountMinor: typeof record.amountMinor === 'number' ? record.amountMinor : undefined,
+    currency: stringOrUndefined(record.currency),
+    data: {
+      rowKind: stringOrUndefined(record.data.rowKind),
+      reference: stringOrUndefined(record.data.reference),
+      reservationId: stringOrUndefined(record.data.reservationId),
+      createdAt: stringOrUndefined(record.data.createdAt),
+      bookedAt: stringOrUndefined(record.data.bookedAt),
+      stayStartAt: stringOrUndefined(record.data.stayStartAt),
+      stayEndAt: stringOrUndefined(record.data.stayEndAt),
+      itemLabel: stringOrUndefined(record.data.itemLabel),
+      roomName: stringOrUndefined(record.data.roomName),
+      guestName: stringOrUndefined(record.data.guestName),
+      channel: stringOrUndefined(record.data.channel),
+      outstandingBalanceMinor: typeof record.data.outstandingBalanceMinor === 'number'
+        ? record.data.outstandingBalanceMinor
+        : undefined
+    }
+  }
+}
+
+function buildAncillaryNormalizedRowPayload(
+  ancillary: AncillaryRevenueSourceRecord
+): ReservationPaymentOverviewAncillaryNormalizedRow {
+  return {
+    sourceRecordId: ancillary.sourceRecordId,
+    sourceDocumentId: ancillary.sourceDocumentId,
+    reference: ancillary.reference,
+    reservationId: ancillary.reservationId,
+    createdAt: ancillary.createdAt,
+    bookedAt: ancillary.bookedAt,
+    stayStartAt: ancillary.stayStartAt,
+    stayEndAt: ancillary.stayEndAt,
+    itemLabel: ancillary.itemLabel,
+    channel: ancillary.channel,
+    grossRevenueMinor: ancillary.grossRevenueMinor,
+    outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
+    currency: ancillary.currency
+  }
+}
+
+function buildAncillaryLinkingInputPayload(
+  ancillary: AncillaryRevenueSourceRecord
+): ReservationPaymentOverviewAncillaryLinkingInput {
+  return {
+    sourceDocumentId: ancillary.sourceDocumentId,
+    reference: ancillary.reference,
+    reservationId: ancillary.reservationId,
+    stayStartAt: ancillary.stayStartAt,
+    stayEndAt: ancillary.stayEndAt
+  }
+}
+
 function toAncillaryLinkCandidateSnapshot(
   reservation: ReservationSourceRecord
 ): ReservationPaymentOverviewAncillaryLinkCandidate {
@@ -1600,6 +1734,10 @@ function findFirstExtractedRecord(transaction: NormalizedTransaction, extractedR
   return transaction.extractedRecordIds
     .map((recordId) => extractedRecordsById.get(recordId))
     .find((record): record is ExtractedRecord => Boolean(record))
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
 }
 
 function mapEvidenceKeyFromMatch(match: ReservationSettlementMatch): ReservationPaymentEvidenceKey {

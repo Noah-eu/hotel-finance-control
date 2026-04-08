@@ -2224,6 +2224,7 @@ describe('buildReviewScreen', () => {
             ],
             ancillaryRevenueSources: [
               {
+                sourceRecordId: 'previo-ancillary-1',
                 sourceDocumentId: toDocumentId('doc-previo-1'),
                 sourceSystem: 'previo',
                 reference: 'PREVIO-CG-20260314',
