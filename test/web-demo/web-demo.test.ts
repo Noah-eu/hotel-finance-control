@@ -4299,6 +4299,169 @@ describe('buildWebDemo', () => {
     }))
   })
 
+  it('replaces stale persisted Previo reservation exports before mergedWorkspace rerun for reference 20250650', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T12:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-stale-baseline',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'prehled-rezervaci-2.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:29',
+              stayStartAt: '19.03.26 14:00',
+              stayEndAt: '20.03.26 11:00',
+              voucher: 'OLD-111',
+              guestName: 'Old Guest',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A204'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        )
+      ]
+    })
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T12:06:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-stale-replaced',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'prehled-rezervaci-3.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+
+    await rendered.waitForWorkflowCompletion()
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      workspaceSource: {
+        sourceKind: string
+        renderSource: string
+      }
+      uploadedFiles: Array<{ fileName: string; sourceDocumentId: string }>
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        explicitFields: {
+          linkedGuestName: string
+          linkedStayStartAt: string
+          linkedStayEndAt: string
+          linkedMainReservationId: string
+          sourceDocumentIds: string[]
+        }
+        matchingAncillaryLinkTraces: Array<{
+          sourceDocumentId: string
+          linkedGuestName: string
+          linkedMainReservationId: string
+          linkedRoomName: string
+          chosenCandidateReason: string
+        }>
+      }
+      mergedWorkspaceReferenceTrace: {
+        targetReference: string
+        persistedWorkspaceFilesBeforeMerge: Array<{ fileName: string }>
+        mergedWorkspaceFilesUsedForRerun: Array<{ fileName: string }>
+        restoredAncillaryLinkTraces: Array<{
+          sourceDocumentId: string
+          linkedGuestName: string
+          linkedMainReservationId: string
+          linkedRoomName: string
+          chosenCandidateReason: string
+        }>
+      }
+    }
+
+    expect(payload.workspaceSource).toEqual(expect.objectContaining({
+      sourceKind: 'mergedWorkspace',
+      renderSource: 'mergedWorkspace'
+    }))
+    expect(payload.uploadedFiles.map((file) => file.fileName)).toEqual(['prehled-rezervaci-3.xlsx'])
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        linkedStayStartAt: '2026-03-20T14:00:00',
+        linkedStayEndAt: '2026-03-22T11:00:00',
+        linkedMainReservationId: '5159718129',
+        sourceDocumentIds: ['uploaded:previo:1:prehled-rezervaci-3-xlsx']
+      }),
+      matchingAncillaryLinkTraces: [expect.objectContaining({
+        sourceDocumentId: 'uploaded:previo:1:prehled-rezervaci-3-xlsx',
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        linkedMainReservationId: '5159718129',
+        linkedRoomName: 'A205',
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })]
+    }))
+    expect(payload.mergedWorkspaceReferenceTrace).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      persistedWorkspaceFilesBeforeMerge: [expect.objectContaining({ fileName: 'prehled-rezervaci-2.xlsx' })],
+      mergedWorkspaceFilesUsedForRerun: [expect.objectContaining({ fileName: 'prehled-rezervaci-3.xlsx' })],
+      restoredAncillaryLinkTraces: [expect.objectContaining({
+        sourceDocumentId: 'uploaded:previo:1:prehled-rezervaci-2-xlsx',
+        linkedGuestName: 'Old Guest',
+        linkedMainReservationId: 'OLD-111',
+        linkedRoomName: 'A204',
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })]
+    }))
+  })
+
   it('recomputes visible counts and export handoff truth after deleting one uploaded file from the current month workspace', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
