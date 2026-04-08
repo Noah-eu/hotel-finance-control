@@ -1515,6 +1515,7 @@ ${showRuntimePayoutDiagnostics ? `
       const monthlyWorkspaceIndexedDbName = 'hotel-finance-control';
       const monthlyWorkspaceIndexedDbStoreName = 'monthly-browser-workspaces';
       let currentWorkspaceRenderDebug = buildWorkspaceRenderDebugState({});
+      let currentMergedWorkspaceParkingReferenceDebug = buildMergedWorkspaceParkingReferenceDebugState();
       let currentWorkspacePersistencePromise = Promise.resolve({
         status: 'not-applicable',
         backendName: 'none',
@@ -2109,6 +2110,123 @@ ${showRuntimePayoutDiagnostics ? `
         return 'selectedFiles';
       }
 
+      function buildMergedWorkspaceParkingReferenceDebugState(input) {
+        return {
+          targetReference: String(input && input.targetReference || '20250650'),
+          persistedWorkspaceFilesBeforeMerge: Array.isArray(input && input.persistedWorkspaceFilesBeforeMerge)
+            ? input.persistedWorkspaceFilesBeforeMerge.slice()
+            : [],
+          mergedWorkspaceFilesUsedForRerun: Array.isArray(input && input.mergedWorkspaceFilesUsedForRerun)
+            ? input.mergedWorkspaceFilesUsedForRerun.slice()
+            : [],
+          restoredAncillaryLinkTraces: Array.isArray(input && input.restoredAncillaryLinkTraces)
+            ? input.restoredAncillaryLinkTraces.slice()
+            : []
+        };
+      }
+
+      function collectAncillaryLinkTracesForReferenceFromRuntimeState(state, targetReference) {
+        const normalizedTargetReference = String(targetReference || '');
+        const overviewDebug = state && state.reservationPaymentOverviewDebug;
+        const ancillaryLinkTraces = Array.isArray(overviewDebug && overviewDebug.ancillaryLinkTraces)
+          ? overviewDebug.ancillaryLinkTraces
+          : [];
+
+        return ancillaryLinkTraces.filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference);
+      }
+
+      function normalizeWorkspaceMergeComparable(value) {
+        return String(value || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase();
+      }
+
+      function isSpreadsheetWorkspaceRecordLike(fileName, mimeType) {
+        const normalizedName = String(fileName || '').toLowerCase();
+        const normalizedType = String(mimeType || '').toLowerCase();
+
+        return normalizedType.includes('spreadsheet')
+          || normalizedType.includes('excel')
+          || normalizedType.includes('officedocument')
+          || /\.(xlsx|xls)$/i.test(normalizedName);
+      }
+
+      function isLikelyPrevioReservationWorkbookRecord(record) {
+        const sourceSystem = String(record && record.sourceSystem || '').toLowerCase();
+        const documentType = String(record && record.documentType || '').toLowerCase();
+        const fileName = String(record && (record.fileName || record.name) || '');
+        const mimeType = String(record && (record.mimeType || record.type) || '');
+        const normalizedName = normalizeWorkspaceMergeComparable(fileName);
+        const spreadsheetLike = isSpreadsheetWorkspaceRecordLike(fileName, mimeType);
+
+        if (sourceSystem === 'previo' && documentType === 'reservation_export') {
+          return true;
+        }
+
+        if (!spreadsheetLike) {
+          return false;
+        }
+
+        return (
+          (normalizedName.includes('rezervac') || normalizedName.includes('reservation'))
+          && !normalizedName.includes('booking')
+          && !normalizedName.includes('airbnb')
+          && !normalizedName.includes('expedia')
+          && !normalizedName.includes('comgate')
+        );
+      }
+
+      function buildWorkspaceMergeStrongIdentityKeys(record) {
+        const normalizedId = String(record && record.id || '');
+        const contentHash = String(record && record.contentHash || '');
+
+        return collectUniqueTruthyStrings([
+          contentHash ? 'content-hash:' + contentHash : '',
+          normalizedId ? 'workspace-id:' + normalizedId : ''
+        ]);
+      }
+
+      function findWorkspaceFileByStrongIdentityIndex(records, candidateRecord) {
+        const candidateKeys = buildWorkspaceMergeStrongIdentityKeys(candidateRecord);
+
+        if (candidateKeys.length === 0) {
+          return -1;
+        }
+
+        return (Array.isArray(records) ? records : []).findIndex((record) => {
+          const existingKeys = buildWorkspaceMergeStrongIdentityKeys(record);
+          return existingKeys.some((key) => candidateKeys.includes(key));
+        });
+      }
+
+      function collectDistinctWorkspaceFilesByStrongIdentity(records) {
+        const distinctRecords = [];
+        const seenKeys = new Set();
+
+        (Array.isArray(records) ? records : []).forEach((record) => {
+          const identityKeys = buildWorkspaceMergeStrongIdentityKeys(record);
+          const hasSeenIdentity = identityKeys.some((key) => seenKeys.has(key));
+
+          if (hasSeenIdentity) {
+            return;
+          }
+
+          identityKeys.forEach((key) => {
+            seenKeys.add(key);
+          });
+          distinctRecords.push(record);
+        });
+
+        return distinctRecords;
+      }
+
+      function countDistinctPrevioReservationWorkbooks(records) {
+        return collectDistinctWorkspaceFilesByStrongIdentity(
+          (Array.isArray(records) ? records : []).filter((record) => isLikelyPrevioReservationWorkbookRecord(record))
+        ).length;
+      }
+
       function collectUniqueTruthyStrings(values) {
         return Array.from(new Set((Array.isArray(values) ? values : [])
           .map((value) => String(value || ''))
@@ -2654,28 +2772,16 @@ ${showRuntimePayoutDiagnostics ? `
       }
 
       function mergeWorkspaceFiles(existingFiles, incomingFiles) {
-        const merged = [];
-        const seenIds = new Set();
-
-        (Array.isArray(existingFiles) ? existingFiles : []).forEach((file) => {
-          const normalizedId = String(file && file.id || '');
-
-          if (!normalizedId || seenIds.has(normalizedId)) {
-            return;
-          }
-
-          seenIds.add(normalizedId);
-          merged.push(file);
-        });
+        const merged = collectDistinctWorkspaceFilesByStrongIdentity(existingFiles);
 
         (Array.isArray(incomingFiles) ? incomingFiles : []).forEach((file) => {
-          const normalizedId = String(file && file.id || '');
+          const identityKeys = buildWorkspaceMergeStrongIdentityKeys(file);
 
-          if (!normalizedId) {
+          if (identityKeys.length === 0) {
             return;
           }
 
-          const existingIndex = merged.findIndex((item) => String(item && item.id || '') === normalizedId);
+          const existingIndex = findWorkspaceFileByStrongIdentityIndex(merged, file);
 
           if (existingIndex >= 0) {
             merged.splice(existingIndex, 1, file);
@@ -3748,6 +3854,9 @@ ${showRuntimePayoutDiagnostics ? `
         }
 
         if (!workspace || !workspace.runtimeState) {
+          currentMergedWorkspaceParkingReferenceDebug = buildMergedWorkspaceParkingReferenceDebugState({
+            targetReference: '20250650'
+          });
           setWorkspaceRenderDebugState({
             requestToken,
             restoreToken: requestToken,
@@ -3801,6 +3910,12 @@ ${showRuntimePayoutDiagnostics ? `
           }
 
           currentWorkspaceFiles = workspace.files.slice();
+          currentMergedWorkspaceParkingReferenceDebug = buildMergedWorkspaceParkingReferenceDebugState({
+            targetReference: '20250650',
+            persistedWorkspaceFilesBeforeMerge: currentWorkspaceFiles,
+            mergedWorkspaceFilesUsedForRerun: currentWorkspaceFiles,
+            restoredAncillaryLinkTraces: collectAncillaryLinkTracesForReferenceFromRuntimeState(workspace.runtimeState, '20250650')
+          });
           currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
           currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
           currentSelectedManualMatchItemIds = [];
@@ -3954,6 +4069,13 @@ ${showRuntimePayoutDiagnostics ? `
             return false;
           }
         }
+
+        currentMergedWorkspaceParkingReferenceDebug = buildMergedWorkspaceParkingReferenceDebugState({
+          targetReference: '20250650',
+          persistedWorkspaceFilesBeforeMerge: Array.isArray(workspace && workspace.files) ? workspace.files : [],
+          mergedWorkspaceFilesUsedForRerun: Array.isArray(workspace && workspace.files) ? workspace.files : [],
+          restoredAncillaryLinkTraces: collectAncillaryLinkTracesForReferenceFromRuntimeState(workspace.runtimeState, '20250650')
+        });
 
         currentLaterMonthCarryoverResolutionState = shouldLoadLaterMonthCarryoverResolution(workspace.runtimeState, normalizedMonth)
           ? await loadLaterMonthCarryoverResolutionState(normalizedMonth)
@@ -5856,6 +5978,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const visibleState = state || currentExportVisibleState || currentExpenseReviewState || initialRuntimeState || {};
         const buildInfo = visibleState.runtimeBuildInfo || initialRuntimeState.runtimeBuildInfo || {};
         const overview = getVisibleReservationPaymentOverview(visibleState);
+        const overviewDebug = visibleState.reservationPaymentOverviewDebug || {};
+        const previoAncillaryParserTrace = Array.isArray(visibleState.previoAncillaryParserTrace)
+          ? visibleState.previoAncillaryParserTrace
+          : [];
         const blocks = Array.isArray(overview && overview.blocks) ? overview.blocks : [];
         const uploadedFiles = buildAnnotatedWorkspaceFilesForDebugExport(visibleState);
         const payoutRelatedFiles = uploadedFiles.filter((file) => isPayoutRelatedWorkspaceFileForDebugExport(file));
@@ -5906,6 +6032,391 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ...(confirmationTrace ? { confirmationTrace } : {})
           };
         });
+        const ancillaryLinkTraces = Array.isArray(overviewDebug.ancillaryLinkTraces) ? overviewDebug.ancillaryLinkTraces : [];
+        const reservationPlusNativeLinkTraces = Array.isArray(overviewDebug.reservationPlusNativeLinkTraces)
+          ? overviewDebug.reservationPlusNativeLinkTraces
+          : [];
+
+        function buildWorkspaceFileRecordDebugPayload(record) {
+          return {
+            workspaceFileId: String(record && record.id || ''),
+            fileName: String(record && record.fileName || ''),
+            mimeType: String(record && record.mimeType || ''),
+            encoding: String(record && record.encoding || ''),
+            uploadedAt: String(record && record.uploadedAt || ''),
+            contentHash: String(record && record.contentHash || ''),
+            sourceSystem: String(record && record.sourceSystem || ''),
+            documentType: String(record && record.documentType || ''),
+            parserId: String(record && record.parserId || ''),
+            classificationBasis: String(record && record.classificationBasis || ''),
+            role: String(record && record.role || '')
+          };
+        }
+
+        function buildAncillaryLinkCandidateDebugPayload(candidate) {
+          return {
+            sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+            reservationId: String(candidate && candidate.reservationId || ''),
+            reference: String(candidate && candidate.reference || ''),
+            guestName: String(candidate && candidate.guestName || ''),
+            stayStartAt: String(candidate && candidate.stayStartAt || ''),
+            stayEndAt: String(candidate && candidate.stayEndAt || ''),
+            roomName: String(candidate && candidate.roomName || '')
+          };
+        }
+
+        function buildPrevioAncillaryParserTracePayload(entry) {
+          return {
+            sourceRecordId: String(entry && entry.sourceRecordId || ''),
+            sourceDocumentId: String(entry && entry.sourceDocumentId || ''),
+            reference: String(entry && entry.reference || ''),
+            itemLabel: String(entry && entry.itemLabel || ''),
+            roomName: String(entry && entry.roomName || ''),
+            channel: String(entry && entry.channel || ''),
+            stayStartAt: String(entry && entry.stayStartAt || ''),
+            stayEndAt: String(entry && entry.stayEndAt || '')
+          };
+        }
+
+        function buildAncillaryLinkTraceDebugPayload(trace) {
+          return {
+            itemId: String(trace && trace.itemId || ''),
+            sourceRecordId: String(trace && trace.sourceRecordId || ''),
+            sourceDocumentId: String(trace && trace.sourceDocumentId || ''),
+            reference: String(trace && trace.reference || ''),
+            reservationId: String(trace && trace.reservationId || ''),
+            itemLabel: String(trace && trace.itemLabel || ''),
+            channel: String(trace && trace.channel || ''),
+            stayStartAt: String(trace && trace.stayStartAt || ''),
+            stayEndAt: String(trace && trace.stayEndAt || ''),
+            rawParsedAncillaryRow: trace && trace.rawParsedAncillaryRow ? {
+              sourceRecordId: String(trace.rawParsedAncillaryRow.sourceRecordId || ''),
+              sourceDocumentId: String(trace.rawParsedAncillaryRow.sourceDocumentId || ''),
+              recordType: String(trace.rawParsedAncillaryRow.recordType || ''),
+              rawReference: String(trace.rawParsedAncillaryRow.rawReference || ''),
+              occurredAt: String(trace.rawParsedAncillaryRow.occurredAt || ''),
+              amountMinor: typeof trace.rawParsedAncillaryRow.amountMinor === 'number' ? trace.rawParsedAncillaryRow.amountMinor : null,
+              currency: String(trace.rawParsedAncillaryRow.currency || ''),
+              data: {
+                rowKind: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.rowKind || ''),
+                reference: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.reference || ''),
+                reservationId: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.reservationId || ''),
+                createdAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.createdAt || ''),
+                bookedAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.bookedAt || ''),
+                stayStartAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.stayStartAt || ''),
+                stayEndAt: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.stayEndAt || ''),
+                itemLabel: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.itemLabel || ''),
+                roomName: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.roomName || ''),
+                guestName: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.guestName || ''),
+                channel: String(trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.channel || ''),
+                outstandingBalanceMinor: typeof (trace.rawParsedAncillaryRow.data && trace.rawParsedAncillaryRow.data.outstandingBalanceMinor) === 'number'
+                  ? trace.rawParsedAncillaryRow.data.outstandingBalanceMinor
+                  : null
+              }
+            } : null,
+            normalizedAncillaryRow: trace && trace.normalizedAncillaryRow ? {
+              sourceRecordId: String(trace.normalizedAncillaryRow.sourceRecordId || ''),
+              sourceDocumentId: String(trace.normalizedAncillaryRow.sourceDocumentId || ''),
+              reference: String(trace.normalizedAncillaryRow.reference || ''),
+              reservationId: String(trace.normalizedAncillaryRow.reservationId || ''),
+              createdAt: String(trace.normalizedAncillaryRow.createdAt || ''),
+              bookedAt: String(trace.normalizedAncillaryRow.bookedAt || ''),
+              stayStartAt: String(trace.normalizedAncillaryRow.stayStartAt || ''),
+              stayEndAt: String(trace.normalizedAncillaryRow.stayEndAt || ''),
+              itemLabel: String(trace.normalizedAncillaryRow.itemLabel || ''),
+              channel: String(trace.normalizedAncillaryRow.channel || ''),
+              grossRevenueMinor: Number(trace.normalizedAncillaryRow.grossRevenueMinor || 0),
+              outstandingBalanceMinor: typeof trace.normalizedAncillaryRow.outstandingBalanceMinor === 'number'
+                ? trace.normalizedAncillaryRow.outstandingBalanceMinor
+                : null,
+              currency: String(trace.normalizedAncillaryRow.currency || '')
+            } : null,
+            overviewLinkingInput: trace && trace.overviewLinkingInput ? {
+              sourceDocumentId: String(trace.overviewLinkingInput.sourceDocumentId || ''),
+              reference: String(trace.overviewLinkingInput.reference || ''),
+              reservationId: String(trace.overviewLinkingInput.reservationId || ''),
+              stayStartAt: String(trace.overviewLinkingInput.stayStartAt || ''),
+              stayEndAt: String(trace.overviewLinkingInput.stayEndAt || '')
+            } : null,
+            computedBlockKey: String(trace && trace.computedBlockKey || ''),
+            linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+            linkedGuestName: String(trace && trace.linkedGuestName || ''),
+            linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
+            linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
+            linkedRoomName: String(trace && trace.linkedRoomName || ''),
+            candidateCount: Number(trace && trace.candidateCount || 0),
+            candidateSetBeforeFiltering: Array.isArray(trace && trace.candidateSetBeforeFiltering)
+              ? trace.candidateSetBeforeFiltering.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            exactIdentityHits: Array.isArray(trace && trace.exactIdentityHits)
+              ? trace.exactIdentityHits.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            exactStayIntervalHits: Array.isArray(trace && trace.exactStayIntervalHits)
+              ? trace.exactStayIntervalHits.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+          };
+        }
+
+        function buildReservationPlusNativeLinkTraceDebugPayload(trace) {
+          return {
+            itemId: String(trace && trace.itemId || ''),
+            rowId: String(trace && trace.rowId || ''),
+            sourceDocumentId: String(trace && trace.sourceDocumentId || ''),
+            reference: String(trace && trace.reference || ''),
+            reservationId: String(trace && trace.reservationId || ''),
+            paymentPurpose: String(trace && trace.paymentPurpose || ''),
+            rawParsedSourceRow: trace && trace.rawParsedSourceRow ? {
+              sourceRecordId: String(trace.rawParsedSourceRow.sourceRecordId || ''),
+              sourceDocumentId: String(trace.rawParsedSourceRow.sourceDocumentId || ''),
+              recordType: String(trace.rawParsedSourceRow.recordType || ''),
+              rawReference: String(trace.rawParsedSourceRow.rawReference || ''),
+              occurredAt: String(trace.rawParsedSourceRow.occurredAt || ''),
+              amountMinor: typeof trace.rawParsedSourceRow.amountMinor === 'number' ? trace.rawParsedSourceRow.amountMinor : null,
+              currency: String(trace.rawParsedSourceRow.currency || ''),
+              data: {
+                platform: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.platform || ''),
+                reference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.reference || ''),
+                reservationId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.reservationId || ''),
+                bookedAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.bookedAt || ''),
+                paymentPurpose: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paymentPurpose || ''),
+                transactionId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transactionId || ''),
+                comgateParserVariant: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.comgateParserVariant || ''),
+                totalFeeMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.totalFeeMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.totalFeeMinor
+                  : null
+              }
+            } : null,
+            normalizedNativeRow: trace && trace.normalizedNativeRow ? {
+              rowId: String(trace.normalizedNativeRow.rowId || ''),
+              sourceDocumentId: String(trace.normalizedNativeRow.sourceDocumentId || ''),
+              reference: String(trace.normalizedNativeRow.reference || ''),
+              reservationId: String(trace.normalizedNativeRow.reservationId || ''),
+              bookedAt: String(trace.normalizedNativeRow.bookedAt || ''),
+              paymentPurpose: String(trace.normalizedNativeRow.paymentPurpose || ''),
+              grossRevenueMinor: Number(trace.normalizedNativeRow.grossRevenueMinor || 0),
+              matchingAmountMinor: typeof trace.normalizedNativeRow.matchingAmountMinor === 'number'
+                ? trace.normalizedNativeRow.matchingAmountMinor
+                : null,
+              currency: String(trace.normalizedNativeRow.currency || '')
+            } : null,
+            overviewLinkingInput: trace && trace.overviewLinkingInput ? {
+              sourceDocumentId: String(trace.overviewLinkingInput.sourceDocumentId || ''),
+              reference: String(trace.overviewLinkingInput.reference || ''),
+              reservationId: String(trace.overviewLinkingInput.reservationId || '')
+            } : null,
+            computedBlockKey: String(trace && trace.computedBlockKey || ''),
+            linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+            linkedGuestName: String(trace && trace.linkedGuestName || ''),
+            linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
+            linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
+            linkedRoomName: String(trace && trace.linkedRoomName || ''),
+            candidateCount: Number(trace && trace.candidateCount || 0),
+            candidateSetBeforeFiltering: Array.isArray(trace && trace.candidateSetBeforeFiltering)
+              ? trace.candidateSetBeforeFiltering.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            exactIdentityHits: Array.isArray(trace && trace.exactIdentityHits)
+              ? trace.exactIdentityHits.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            exactStayIntervalHits: Array.isArray(trace && trace.exactStayIntervalHits)
+              ? trace.exactStayIntervalHits.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+          };
+        }
+
+        function buildFinalOverviewItemDebugPayload(targetReference, preferredItemId) {
+          let finalBlockKey = '';
+          let finalOverviewItem = undefined;
+
+          blocks.some((block) => {
+            const items = Array.isArray(block && block.items) ? block.items : [];
+            const match = items.find((item) => {
+              if (preferredItemId && String(item && item.id || '') === preferredItemId) {
+                return true;
+              }
+
+              return String(item && item.primaryReference || '') === targetReference;
+            });
+
+            if (!match) {
+              return false;
+            }
+
+            finalBlockKey = String(block && block.key || '');
+            finalOverviewItem = match;
+            return true;
+          });
+
+          return {
+            finalBlockKey,
+            finalOverviewItem: finalOverviewItem ? {
+              id: String(finalOverviewItem.id || ''),
+              title: String(finalOverviewItem.title || ''),
+              blockKey: String(finalOverviewItem.blockKey || finalBlockKey || ''),
+              primaryReference: String(finalOverviewItem.primaryReference || ''),
+              secondaryReference: String(finalOverviewItem.secondaryReference || ''),
+              subtitle: String(finalOverviewItem.subtitle || ''),
+              sourceDocumentIds: collectUniqueTruthyStrings(Array.isArray(finalOverviewItem.sourceDocumentIds) ? finalOverviewItem.sourceDocumentIds : []),
+              detailEntries: (Array.isArray(finalOverviewItem.detailEntries) ? finalOverviewItem.detailEntries : []).map((entry) => ({
+                labelCs: String(entry && entry.labelCs || ''),
+                value: String(entry && entry.value || '')
+              }))
+            } : null
+          };
+        }
+
+        function selectReservationPlusTrace(finalOverviewItem, matchingAncillaryLinkTraces, matchingNativeLinkTraces) {
+          const finalOverviewItemId = String(finalOverviewItem && finalOverviewItem.id || '');
+          const finalOverviewSourceDocumentIds = collectUniqueTruthyStrings(
+            Array.isArray(finalOverviewItem && finalOverviewItem.sourceDocumentIds)
+              ? finalOverviewItem.sourceDocumentIds
+              : []
+          );
+          const nativeTrace = matchingNativeLinkTraces.find((entry) => String(entry && entry.itemId || '') === finalOverviewItemId)
+            || matchingNativeLinkTraces.find((entry) => finalOverviewSourceDocumentIds.includes(String(entry && entry.sourceDocumentId || '')))
+            || matchingNativeLinkTraces[0]
+            || null;
+          const ancillaryTrace = matchingAncillaryLinkTraces.find((entry) => String(entry && entry.itemId || '') === finalOverviewItemId)
+            || matchingAncillaryLinkTraces.find((entry) => finalOverviewSourceDocumentIds.includes(String(entry && entry.sourceDocumentId || '')))
+            || matchingAncillaryLinkTraces[0]
+            || null;
+
+          if (String(finalOverviewItemId).indexOf('reservation-payment:native:') === 0) {
+            return nativeTrace || ancillaryTrace;
+          }
+
+          return ancillaryTrace || nativeTrace;
+        }
+
+        function buildReservationPlusItemProbePayload(targetReference, preferredItemId) {
+          const normalizedTargetReference = String(targetReference || '');
+          const finalOverviewItemDebug = buildFinalOverviewItemDebugPayload(normalizedTargetReference, preferredItemId);
+          const finalOverviewItem = finalOverviewItemDebug.finalOverviewItem;
+          const detailEntries = Array.isArray(finalOverviewItem && finalOverviewItem.detailEntries) ? finalOverviewItem.detailEntries : [];
+          const matchingAncillaryLinkTraces = ancillaryLinkTraces
+            .filter((entry) => String(entry && entry.computedBlockKey || '') === 'reservation_plus')
+            .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference || String(entry && entry.reservationId || '') === normalizedTargetReference);
+          const matchingNativeLinkTraces = reservationPlusNativeLinkTraces
+            .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference || String(entry && entry.reservationId || '') === normalizedTargetReference);
+          const trace = selectReservationPlusTrace(finalOverviewItem, matchingAncillaryLinkTraces, matchingNativeLinkTraces);
+          const tracePayload = trace && Object.prototype.hasOwnProperty.call(trace, 'normalizedNativeRow')
+            ? buildReservationPlusNativeLinkTraceDebugPayload(trace)
+            : trace
+              ? buildAncillaryLinkTraceDebugPayload(trace)
+              : null;
+
+          return {
+            targetReference: normalizedTargetReference,
+            finalBlockKey: String(finalOverviewItemDebug.finalBlockKey || trace && trace.computedBlockKey || ''),
+            finalOverviewItem,
+            explicitFields: {
+              title: String(finalOverviewItem && finalOverviewItem.title || ''),
+              blockKey: String(finalOverviewItem && finalOverviewItem.blockKey || finalOverviewItemDebug.finalBlockKey || trace && trace.computedBlockKey || ''),
+              sourceDocumentIds: finalOverviewItem
+                ? collectUniqueTruthyStrings(finalOverviewItem.sourceDocumentIds)
+                : collectUniqueTruthyStrings([trace && trace.sourceDocumentId]),
+              reservationId: String(trace && trace.reservationId || finalOverviewItem && finalOverviewItem.primaryReference || ''),
+              reference: String(trace && trace.reference || finalOverviewItem && finalOverviewItem.primaryReference || ''),
+              guestName: String(readReservationPaymentDetailValue(detailEntries, 'Host') || ''),
+              linkedGuestName: String(trace && trace.linkedGuestName || ''),
+              stayStartAt: String(trace && trace.stayStartAt || ''),
+              stayEndAt: String(trace && trace.stayEndAt || ''),
+              linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
+              linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
+              unit: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
+              roomName: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
+              linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+              detailEntries
+            },
+            rawParsedSourceRow: tracePayload && tracePayload.rawParsedSourceRow
+              ? tracePayload.rawParsedSourceRow
+              : tracePayload && tracePayload.rawParsedAncillaryRow
+                ? tracePayload.rawParsedAncillaryRow
+                : null,
+            normalizedSourceRow: tracePayload && tracePayload.normalizedNativeRow
+              ? tracePayload.normalizedNativeRow
+              : tracePayload && tracePayload.normalizedAncillaryRow
+                ? tracePayload.normalizedAncillaryRow
+                : null,
+            overviewLinkingInput: tracePayload && tracePayload.overviewLinkingInput ? tracePayload.overviewLinkingInput : null,
+            matchingLinkTrace: tracePayload,
+            matchingAncillaryLinkTraces: matchingAncillaryLinkTraces.map((entry) => buildAncillaryLinkTraceDebugPayload(entry)),
+            matchingNativeLinkTraces: matchingNativeLinkTraces.map((entry) => buildReservationPlusNativeLinkTraceDebugPayload(entry)),
+            linkedCandidateChain: {
+              candidateSetBeforeFiltering: tracePayload && Array.isArray(tracePayload.candidateSetBeforeFiltering) ? tracePayload.candidateSetBeforeFiltering : [],
+              candidateCount: Number(trace && trace.candidateCount || 0),
+              exactIdentityHits: tracePayload && Array.isArray(tracePayload.exactIdentityHits) ? tracePayload.exactIdentityHits : [],
+              exactStayIntervalHits: tracePayload && Array.isArray(tracePayload.exactStayIntervalHits) ? tracePayload.exactStayIntervalHits : [],
+              chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+            }
+          };
+        }
+
+        function buildParkingItemProbePayload(targetReference) {
+          const normalizedTargetReference = String(targetReference || '');
+          const finalOverviewItemDebug = buildFinalOverviewItemDebugPayload(normalizedTargetReference);
+          const matchingAncillaryLinkTraces = ancillaryLinkTraces
+            .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference);
+          const finalOverviewSourceDocumentIds = collectUniqueTruthyStrings(
+            Array.isArray(finalOverviewItemDebug.finalOverviewItem && finalOverviewItemDebug.finalOverviewItem.sourceDocumentIds)
+              ? finalOverviewItemDebug.finalOverviewItem.sourceDocumentIds
+              : []
+          );
+          const finalOverviewItemId = String(finalOverviewItemDebug.finalOverviewItem && finalOverviewItemDebug.finalOverviewItem.id || '');
+          const trace = matchingAncillaryLinkTraces.find((entry) => String(entry && entry.itemId || '') === finalOverviewItemId)
+            || matchingAncillaryLinkTraces.find((entry) => finalOverviewSourceDocumentIds.includes(String(entry && entry.sourceDocumentId || '')))
+            || matchingAncillaryLinkTraces[0]
+            || null;
+          const finalOverviewItem = finalOverviewItemDebug.finalOverviewItem;
+          const detailEntries = Array.isArray(finalOverviewItem && finalOverviewItem.detailEntries) ? finalOverviewItem.detailEntries : [];
+          const linkedUnit = String(
+            (trace && trace.linkedRoomName)
+            || readReservationPaymentDetailValue(detailEntries, 'Jednotka')
+            || (finalOverviewItem && finalOverviewItem.subtitle)
+            || ''
+          );
+          const parsedPrevioAncillaryRowsForSourceDocument = previoAncillaryParserTrace
+            .filter((entry) => collectUniqueTruthyStrings([entry && entry.sourceDocumentId]).some((sourceDocumentId) => finalOverviewSourceDocumentIds.includes(sourceDocumentId)))
+            .map((entry) => buildPrevioAncillaryParserTracePayload(entry));
+
+          return {
+            targetReference: normalizedTargetReference,
+            finalBlockKey: String(finalOverviewItemDebug.finalBlockKey || trace && trace.computedBlockKey || ''),
+            finalOverviewItem,
+            explicitFields: {
+              title: String(finalOverviewItem && finalOverviewItem.title || trace && trace.itemLabel || ''),
+              blockKey: String(finalOverviewItem && finalOverviewItem.blockKey || finalOverviewItemDebug.finalBlockKey || trace && trace.computedBlockKey || ''),
+              sourceDocumentIds: finalOverviewItem
+                ? collectUniqueTruthyStrings(finalOverviewItem.sourceDocumentIds)
+                : collectUniqueTruthyStrings([trace && trace.sourceDocumentId]),
+              reservationId: String(trace && trace.reservationId || ''),
+              reference: String(trace && trace.reference || finalOverviewItem && finalOverviewItem.primaryReference || ''),
+              guestName: '',
+              linkedGuestName: String(trace && trace.linkedGuestName || ''),
+              stayStartAt: String(trace && trace.stayStartAt || ''),
+              stayEndAt: String(trace && trace.stayEndAt || ''),
+              linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
+              linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
+              unit: linkedUnit,
+              roomName: linkedUnit,
+              linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+              detailEntries
+            },
+            rawParsedAncillaryRow: trace ? buildAncillaryLinkTraceDebugPayload(trace).rawParsedAncillaryRow : null,
+            normalizedAncillaryRow: trace ? buildAncillaryLinkTraceDebugPayload(trace).normalizedAncillaryRow : null,
+            overviewLinkingInput: trace ? buildAncillaryLinkTraceDebugPayload(trace).overviewLinkingInput : null,
+            parsedPrevioAncillaryRowsForSourceDocument,
+            matchingAncillaryLinkTraces: matchingAncillaryLinkTraces.map((entry) => buildAncillaryLinkTraceDebugPayload(entry)),
+            linkedCandidateChain: {
+              candidateSetBeforeFiltering: trace ? buildAncillaryLinkTraceDebugPayload(trace).candidateSetBeforeFiltering : [],
+              candidateCount: Number(trace && trace.candidateCount || 0),
+              exactIdentityHits: trace ? buildAncillaryLinkTraceDebugPayload(trace).exactIdentityHits : [],
+              exactStayIntervalHits: trace ? buildAncillaryLinkTraceDebugPayload(trace).exactStayIntervalHits : [],
+              chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+            }
+          };
+        }
 
         return {
           exportedAt: new Date().toISOString(),
@@ -5943,6 +6454,60 @@ ${showRuntimePayoutDiagnostics ? '' : `
           payoutRelatedFileIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.workspaceFileId)),
           payoutRelatedSourceDocumentIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.sourceDocumentId)),
           reservationLikeItemIdsBySource,
+          reservationPaymentOverviewDebug: {
+            parkingCandidatesBeforeGrouping: Number(overviewDebug.parkingCandidatesBeforeGrouping || 0),
+            reservationPlusCandidatesBeforeGrouping: Number(overviewDebug.reservationPlusCandidatesBeforeGrouping || 0),
+            finalParkingBlockCount: Number(overviewDebug.finalParkingBlockCount || 0),
+            finalReservationPlusBlockCount: Number(overviewDebug.finalReservationPlusBlockCount || 0),
+            parkingLikeCandidateIds: Array.isArray(overviewDebug.parkingLikeCandidateIds)
+              ? overviewDebug.parkingLikeCandidateIds.map((candidateId) => String(candidateId || '')).filter(Boolean)
+              : [],
+            parkingLikeCandidates: Array.isArray(overviewDebug.parkingLikeCandidates)
+              ? overviewDebug.parkingLikeCandidates.map((candidate) => ({
+                candidateId: String(candidate && candidate.candidateId || ''),
+                sourceKind: String(candidate && candidate.sourceKind || ''),
+                sourcePlatform: String(candidate && candidate.sourcePlatform || ''),
+                sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                reservationReference: String(candidate && candidate.reservationReference || ''),
+                payoutReference: String(candidate && candidate.payoutReference || ''),
+                parkingSignalType: String(candidate && candidate.parkingSignalType || ''),
+                parkingSignalTypes: Array.isArray(candidate && candidate.parkingSignalTypes)
+                  ? candidate.parkingSignalTypes.map((signalType) => String(signalType || '')).filter(Boolean)
+                  : [],
+                computedBlockKey: candidate && candidate.computedBlockKey ? String(candidate.computedBlockKey) : '',
+                reason: String(candidate && candidate.reason || '')
+              }))
+              : [],
+            ancillaryLinkTraces: ancillaryLinkTraces.map((trace) => buildAncillaryLinkTraceDebugPayload(trace)),
+            reservationPlusNativeLinkTraces: reservationPlusNativeLinkTraces.map((trace) => buildReservationPlusNativeLinkTraceDebugPayload(trace))
+          },
+          previoAncillaryParserTrace: previoAncillaryParserTrace.map((entry) => buildPrevioAncillaryParserTracePayload(entry)),
+          mergedWorkspaceReferenceTrace: {
+            targetReference: String(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.targetReference || '20250650'),
+            persistedWorkspaceFilesBeforeMerge: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge)
+              ? currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge
+              : []).map((record) => buildWorkspaceFileRecordDebugPayload(record)),
+            distinctPrevioWorkbookCountBeforeMerge: countDistinctPrevioReservationWorkbooks(
+              Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge)
+                ? currentMergedWorkspaceParkingReferenceDebug.persistedWorkspaceFilesBeforeMerge
+                : []
+            ),
+            mergedWorkspaceFilesUsedForRerun: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun)
+              ? currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun
+              : []).map((record) => buildWorkspaceFileRecordDebugPayload(record)),
+            distinctPrevioWorkbookCountAfterMerge: countDistinctPrevioReservationWorkbooks(
+              Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun)
+                ? currentMergedWorkspaceParkingReferenceDebug.mergedWorkspaceFilesUsedForRerun
+                : []
+            ),
+            restoredAncillaryLinkTraces: (Array.isArray(currentMergedWorkspaceParkingReferenceDebug && currentMergedWorkspaceParkingReferenceDebug.restoredAncillaryLinkTraces)
+              ? currentMergedWorkspaceParkingReferenceDebug.restoredAncillaryLinkTraces
+              : []).map((entry) => buildAncillaryLinkTraceDebugPayload(entry))
+          },
+          reservationPlusItemProbes: (Array.isArray(blocks.find((block) => String(block && block.key || '') === 'reservation_plus')?.items)
+            ? blocks.find((block) => String(block && block.key || '') === 'reservation_plus').items
+            : []).map((item) => buildReservationPlusItemProbePayload(String(item && item.primaryReference || ''), String(item && item.id || ''))),
+          parkingItemProbe: buildParkingItemProbePayload('20250650'),
           bookingReservationItems,
           reservationCentricView: {
             summary: {
@@ -7971,13 +8536,29 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function buildReservationPaymentCompactMeta(item) {
+        const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
+        const parkingHost = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Host') : '';
+        const parkingStay = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Pobyt') : '';
+        const parkingUnit = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Jednotka') : '';
+        const subtitleValue = item.blockKey === 'parking'
+          ? parkingUnit || (String(item.subtitle || '').startsWith('Rezervace ') ? '' : String(item.subtitle || ''))
+          : String(item.subtitle || '');
         const chips = [
-          item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
-          item.subtitle ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(String(item.subtitle)) + '</span></span>' : '',
+          parkingHost ? '<span class="reservation-payment-chip"><strong>Host</strong><span>' + escapeHtml(parkingHost) + '</span></span>' : '',
+          parkingStay
+            ? '<span class="reservation-payment-chip"><strong>Pobyt</strong><span>' + escapeHtml(parkingStay) + '</span></span>'
+            : item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
+          subtitleValue ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(subtitleValue) + '</span></span>' : '',
           item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
         ].filter(Boolean);
 
         return chips.join('') + buildReservationPaymentAmountMarkup(item);
+      }
+
+      function readReservationPaymentDetailValue(detailEntries, label) {
+        const match = (Array.isArray(detailEntries) ? detailEntries : []).find((entry) => String(entry && entry.labelCs || '') === label);
+        const value = String(match && match.value || '');
+        return value ? value : '';
       }
 
       function buildReservationPaymentDetailMarkup(item) {
@@ -8866,6 +9447,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
           }
 
           const mergedWorkspaceFiles = mergeWorkspaceFiles(existingWorkspace && existingWorkspace.files, serializedFiles);
+          currentMergedWorkspaceParkingReferenceDebug = buildMergedWorkspaceParkingReferenceDebugState({
+            targetReference: '20250650',
+            persistedWorkspaceFilesBeforeMerge: Array.isArray(existingWorkspace && existingWorkspace.files) ? existingWorkspace.files : [],
+            mergedWorkspaceFilesUsedForRerun: mergedWorkspaceFiles,
+            restoredAncillaryLinkTraces: collectAncillaryLinkTracesForReferenceFromRuntimeState(existingWorkspace && existingWorkspace.runtimeState, '20250650')
+          });
           const mergedRunningWorkflowFiles = buildRunningWorkflowFilesFromWorkspaceRecords(mergedWorkspaceFiles);
           appendWorkspaceRenderDebugCheckpoint({
             phase: 'after-merge',

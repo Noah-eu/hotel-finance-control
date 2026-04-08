@@ -12,6 +12,7 @@ import { buildExportArtifacts, type ExportArtifactsResult } from '../export'
 import {
   buildReviewScreen,
   type ReservationPaymentOverview,
+  type ReservationPaymentOverviewDebug,
   type ReviewEvidenceEntry,
   type ReviewExpenseComparisonSide,
   type ReviewScreenData,
@@ -454,6 +455,17 @@ export interface BrowserRuntimeUploadState {
   }>
   reviewSummary: ReviewScreenData['summary']
   reservationPaymentOverview: ReservationPaymentOverview
+  reservationPaymentOverviewDebug: ReservationPaymentOverviewDebug
+  previoAncillaryParserTrace: Array<{
+    sourceRecordId: string
+    sourceDocumentId: string
+    reference: string
+    itemLabel?: string
+    roomName?: string
+    channel?: string
+    stayStartAt?: string
+    stayEndAt?: string
+  }>
   reviewSections: Pick<ReviewScreenData, 'matched' | 'reservationSettlementOverview' | 'ancillarySettlementOverview' | 'unmatchedReservationSettlements' | 'payoutBatchMatched' | 'payoutBatchUnmatched' | 'expenseMatched' | 'expenseNeedsReview' | 'expenseUnmatchedDocuments' | 'expenseUnmatchedOutflows' | 'expenseUnmatchedInflows' | 'unmatched' | 'suspicious' | 'missingDocuments'>
   exportFiles: Array<{
     labelCs: string

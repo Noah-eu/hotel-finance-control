@@ -1,9 +1,14 @@
 import type { ExceptionCase, NormalizedTransaction } from '../domain'
 import type { MonthlyBatchResult, UploadedMonthlyFileRoute } from '../monthly-batch'
 import { formatAmountMinorCs } from '../shared/money'
-export { buildReservationPaymentOverview } from './reservation-payment-overview'
+export {
+  buildReservationPaymentOverview,
+  inspectReservationPaymentOverviewClassification
+} from './reservation-payment-overview'
 export type {
   ReservationPaymentAmountSummary,
+  ReservationPaymentOverviewDebug,
+  ReservationPaymentOverviewDebugCandidate,
   ReservationPaymentDetailEntry,
   ReservationPaymentEvidenceKey,
   ReservationPaymentOverview,

@@ -61,6 +61,16 @@ const PREVIO_WORKBOOK_HEADER_COLUMNS = [
 const PREVIO_WORKBOOK_TRACE_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'] as const
 type PrevioWorkbookRowKind = 'accommodation' | 'ancillary' | 'ignorable'
 
+interface WorkbookAccommodationContext {
+  stayStartAt?: string
+  stayEndAt?: string
+}
+
+interface ClassifiedWorkbookRow {
+  row: Record<string, unknown>
+  kind: PrevioWorkbookRowKind
+}
+
 export class PrevioReservationParser {
   parse(input: ParsePrevioReservationExportInput): ExtractedRecord[] {
     if (input.binaryContentBase64) {
@@ -162,7 +172,7 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     return []
   }
 
-  const classifiedRows = extraction.candidateRows.map((row) => ({
+  const classifiedRows: ClassifiedWorkbookRow[] = extraction.candidateRows.map((row) => ({
     row,
     kind: classifyWorkbookCandidateRow(row)
   }))
@@ -170,12 +180,17 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
 
   return extractedRows.map(({ row, kind }, index) => {
     const reservationReference = readWorkbookString(row['Voucher'])
-    const stayStartAt = kind === 'accommodation'
+    const ownStayStartAt = kind === 'accommodation'
       ? parseFlexiblePrevioDate(row['Termín od'], 'Previo Termín od')
       : readWorkbookOptionalDate(row['Termín od'], 'Previo Termín od')
-    const stayEndAt = kind === 'accommodation'
+    const ownStayEndAt = kind === 'accommodation'
       ? parseFlexiblePrevioDate(row['Termín do'], 'Previo Termín do')
       : readWorkbookOptionalDate(row['Termín do'], 'Previo Termín do')
+    const inheritedStayContext = kind === 'ancillary' && !ownStayStartAt && !ownStayEndAt
+      ? resolveAdjacentAccommodationContext(extractedRows, index)
+      : undefined
+    const stayStartAt = ownStayStartAt ?? inheritedStayContext?.stayStartAt
+    const stayEndAt = ownStayEndAt ?? inheritedStayContext?.stayEndAt
     const createdAt = readWorkbookOptionalDate(row['Vytvořeno'], 'Previo Vytvořeno')
     const guestName = readWorkbookOptionalString(row['Hosté'])
     const channel = readWorkbookOptionalString(row['PP'])
@@ -232,6 +247,55 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
       }
     }
   })
+}
+
+function resolveAdjacentAccommodationContext(
+  extractedRows: ClassifiedWorkbookRow[],
+  ancillaryIndex: number
+): WorkbookAccommodationContext | undefined {
+  const previousAccommodation = findNearestAccommodationContext(extractedRows, ancillaryIndex, -1)
+  const nextAccommodation = findNearestAccommodationContext(extractedRows, ancillaryIndex, 1)
+
+  if (previousAccommodation) {
+    return previousAccommodation.context
+  }
+
+  return nextAccommodation?.context
+}
+
+function findNearestAccommodationContext(
+  extractedRows: ClassifiedWorkbookRow[],
+  startIndex: number,
+  direction: -1 | 1
+): { distance: number; context: WorkbookAccommodationContext } | undefined {
+  for (
+    let index = startIndex + direction, distance = 1;
+    index >= 0 && index < extractedRows.length;
+    index += direction, distance += 1
+  ) {
+    const candidate = extractedRows[index]
+
+    if (!candidate || candidate.kind !== 'accommodation') {
+      continue
+    }
+
+    const stayStartAt = readWorkbookOptionalDate(candidate.row['Termín od'], 'Previo Termín od')
+    const stayEndAt = readWorkbookOptionalDate(candidate.row['Termín do'], 'Previo Termín do')
+
+    if (!stayStartAt && !stayEndAt) {
+      continue
+    }
+
+    return {
+      distance,
+      context: {
+        stayStartAt,
+        stayEndAt
+      }
+    }
+  }
+
+  return undefined
 }
 
 function extractWorkbookReservationRows(worksheet: XLSX.WorkSheet): {

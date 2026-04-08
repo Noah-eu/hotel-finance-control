@@ -289,6 +289,91 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+    it('inherits stay interval for a parking ancillary row from the nearest adjacent accommodation row in workbook order', () => {
+      const binaryContentBase64 = createPrevioWorkbookBase64WithLeadingRows({
+        leadingRows: [['Seznam rezervací']],
+        headers: [
+          'Vytvořeno',
+          'Termín od',
+          'Termín do',
+          'Nocí',
+          'Voucher',
+          'Počet hostů',
+          'Hosté',
+          'Check-In dokončen',
+          'Market kody',
+          'Firma',
+          'PP',
+          'Stav',
+          'Cena',
+          'Saldo',
+          'Pokoj'
+        ],
+        rows: [
+          [
+            '18.03.26 09:31',
+            '',
+            '',
+            '',
+            '20250650',
+            '',
+            '',
+            '',
+            '',
+            '',
+            'Alfred',
+            'confirmed',
+            '60,00EUR',
+            '0,00EUR',
+            'Parkování 1'
+          ],
+          [
+            '18.03.26 09:30',
+            '20.03.26 14:00',
+            '22.03.26 11:00',
+            '2',
+            '5159718129',
+            '3',
+            'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+            'Ano',
+            '',
+            '',
+            'Booking.com XML',
+            'confirmed',
+            '420,00EUR',
+            '0,00EUR',
+            'A205'
+          ]
+        ]
+      })
+
+      const records = parsePrevioReservationExport({
+        sourceDocument: {
+          ...getRealInputFixture('previo-reservation-export').sourceDocument,
+          fileName: 'reservations-export-2026-03-denisa.xlsx'
+        },
+        content: 'previo-selected-files-denisa',
+        binaryContentBase64,
+        extractedAt: '2026-04-08T11:30:00.000Z'
+      })
+
+      expect(records).toHaveLength(2)
+      expect(records[0]).toMatchObject({
+        id: 'previo-ancillary-1',
+        recordType: 'expected-revenue-line',
+        rawReference: '20250650',
+        data: {
+          rowKind: 'ancillary',
+          reference: '20250650',
+          reservationId: '20250650',
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00',
+          itemLabel: 'Parkování 1',
+          channel: 'Alfred'
+        }
+      })
+    })
+
   it('maps `Termín od` and `Termín do` from the correct columns even when a header-like legend block appears earlier in the sheet', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 
@@ -596,6 +681,162 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+  it('inherits the parent workbook stay interval for a parking ancillary row that omits Termín od and Termín do', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '18.03.26 09:30',
+          'Termín od': '20.03.26 14:00',
+          'Termín do': '22.03.26 11:00',
+          'Nocí': '2',
+          'Voucher': '5159718129',
+          'Počet hostů': '3',
+          'Hosté': 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Booking.com XML',
+          'Stav': 'confirmed',
+          'Cena': '420,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'A205'
+        },
+        {
+          'Vytvořeno': '18.03.26 09:31',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': '20250650',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Alfred',
+          'Stav': 'confirmed',
+          'Cena': '60,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'Parkování 1'
+        }
+      ]),
+      extractedAt: '2026-04-08T12:40:00.000Z'
+    })
+
+    expect(records[1]).toMatchObject({
+      recordType: 'expected-revenue-line',
+      rawReference: '20250650',
+      occurredAt: '2026-03-20T14:00:00',
+      data: {
+        rowKind: 'ancillary',
+        reservationId: '20250650',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred'
+      }
+    })
+  })
+
+  it('keeps the preceding reservation block stay interval for a parking row that sits before the next unrelated stay', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '18.03.26 09:30',
+          'Termín od': '20.03.26 14:00',
+          'Termín do': '22.03.26 11:00',
+          'Nocí': '2',
+          'Voucher': '5159718129',
+          'Počet hostů': '3',
+          'Hosté': 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Booking.com XML',
+          'Stav': 'confirmed',
+          'Cena': '420,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'A205'
+        },
+        {
+          'Vytvořeno': '18.03.26 09:30',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': 'A205-MEAL',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Booking.com XML',
+          'Stav': 'confirmed',
+          'Cena': '15,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'Snídaně'
+        },
+        {
+          'Vytvořeno': '18.03.26 09:31',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': '20250650',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Alfred',
+          'Stav': 'confirmed',
+          'Cena': '60,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'Parkování 1'
+        },
+        {
+          'Vytvořeno': '18.03.26 09:40',
+          'Termín od': '23.03.26 14:00',
+          'Termín do': '24.03.26 11:00',
+          'Nocí': '1',
+          'Voucher': '5159718130',
+          'Počet hostů': '1',
+          'Hosté': 'Guest Three',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Booking.com XML',
+          'Stav': 'confirmed',
+          'Cena': '210,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'A206'
+        }
+      ]),
+      extractedAt: '2026-04-08T12:45:00.000Z'
+    })
+
+    expect(records[2]).toMatchObject({
+      recordType: 'expected-revenue-line',
+      rawReference: '20250650',
+      occurredAt: '2026-03-20T14:00:00',
+      data: {
+        rowKind: 'ancillary',
+        reservationId: '20250650',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred'
+      }
+    })
+  })
+
   it('carries accommodation and ancillary Previo rows separately in the workflow plan', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 
@@ -659,7 +900,18 @@ describe('parsePrevioReservationExport', () => {
       })
     ])
     expect(plan.reservationSources).toEqual([])
-    expect(plan.ancillaryRevenueSources).toEqual([])
+    expect(plan.ancillaryRevenueSources).toEqual([
+      expect.objectContaining({
+        sourceSystem: 'previo',
+        reference: 'PREVIO-20260314',
+        reservationId: 'PREVIO-20260314',
+        itemLabel: 'Parkování 1',
+        channel: 'comgate',
+        grossRevenueMinor: 20000,
+        outstandingBalanceMinor: 0,
+        currency: 'CZK'
+      })
+    ])
   })
 
   it('parses the real short Czech workbook date-time format like `01.03.26 12:30` deterministically', () => {

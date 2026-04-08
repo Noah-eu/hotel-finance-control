@@ -3975,6 +3975,1084 @@ describe('buildWebDemo', () => {
     expect(reloaded.preparedFilesContent.innerHTML).not.toContain('<strong>Bookinng35k.pdf</strong>')
   })
 
+  it('keeps linked Host and Pobyt on the final merged-workspace parking card for Previo reference 20250650', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T09:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-baseline',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn())
+      ]
+    })
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T09:41:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-render',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-denisa.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+
+    await rendered.waitForWorkflowCompletion()
+
+    const visibleState = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{
+            title: string
+            blockKey?: string
+            primaryReference?: string
+            subtitle?: string
+            detailEntries: Array<{ labelCs: string; value: string }>
+          }>
+        }>
+      }
+    }
+    const parkingItem = visibleState.reservationPaymentOverview.blocks
+      .find((block) => block.key === 'parking')
+      ?.items.find((item) => item.primaryReference === '20250650')
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      blockKey: 'parking',
+      primaryReference: '20250650',
+      subtitle: 'A205'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
+    ]))
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      fileName: string
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      buildMarker: {
+        gitCommitShortSha: string
+        gitCommitHash: string
+      }
+      workspaceSource: {
+        sourceKind: string
+        renderSource: string
+      }
+      uploadedFiles: Array<{ fileName: string }>
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        finalOverviewItem: {
+          title: string
+          blockKey: string
+          sourceDocumentIds: string[]
+          detailEntries: Array<{ labelCs: string; value: string }>
+        } | null
+        explicitFields: {
+          title: string
+          blockKey: string
+          sourceDocumentIds: string[]
+          reservationId: string
+          reference: string
+          guestName: string
+          linkedGuestName: string
+          stayStartAt: string
+          stayEndAt: string
+          linkedStayStartAt: string
+          linkedStayEndAt: string
+          unit: string
+          roomName: string
+          linkedMainReservationId: string
+          detailEntries: Array<{ labelCs: string; value: string }>
+        }
+        linkedCandidateChain: {
+          candidateCount: number
+          exactIdentityHits: Array<{ reservationId: string }>
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(artifact.fileName).toContain('debug-workspace-truth-2026-03-')
+    expect(payload.buildMarker.gitCommitShortSha.length).toBeGreaterThan(0)
+    expect(payload.buildMarker.gitCommitHash.length).toBeGreaterThan(0)
+    expect(payload.workspaceSource.sourceKind).toBe('mergedWorkspace')
+    expect(payload.workspaceSource.renderSource).toBe('mergedWorkspace')
+    expect(payload.uploadedFiles.map((file) => file.fileName)).toEqual([
+      'airbnb.csv',
+      'reservations-export-2026-03-denisa.xlsx'
+    ])
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      finalOverviewItem: expect.objectContaining({
+        title: 'Parkování 1',
+        blockKey: 'parking',
+        sourceDocumentIds: expect.any(Array),
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' }),
+          expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+          expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
+        ])
+      }),
+      explicitFields: expect.objectContaining({
+        title: 'Parkování 1',
+        blockKey: 'parking',
+        reservationId: '20250650',
+        reference: '20250650',
+        guestName: '',
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        linkedStayStartAt: '2026-03-20T14:00:00',
+        linkedStayEndAt: '2026-03-22T11:00:00',
+        unit: 'A205',
+        roomName: 'A205',
+        linkedMainReservationId: '5159718129',
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' })
+        ])
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 1,
+        exactIdentityHits: [],
+        exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })
+    }))
+
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Parkování 1')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Pobyt</strong><span>2026-03-20T14:00:00 – 2026-03-22T11:00:00</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>A205</span>')
+  })
+
+  it('exports selectedFiles parking truth layers for Previo reference 20250650 when the parking row precedes the stay row', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T11:50:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-selected-files',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-denisa.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            },
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            }
+          ])
+        )
+      ]
+    })
+
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> selectedFiles')
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      workspaceSource: {
+        sourceKind: string
+        renderSource: string
+      }
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        explicitFields: {
+          linkedGuestName: string
+          stayStartAt: string
+          stayEndAt: string
+          linkedMainReservationId: string
+        }
+        rawParsedAncillaryRow: {
+          sourceRecordId: string
+          data: {
+            stayStartAt: string
+            stayEndAt: string
+            channel: string
+          }
+        } | null
+        normalizedAncillaryRow: {
+          sourceRecordId: string
+          stayStartAt: string
+          stayEndAt: string
+        } | null
+        overviewLinkingInput: {
+          reference: string
+          stayStartAt: string
+          stayEndAt: string
+        } | null
+        linkedCandidateChain: {
+          candidateSetBeforeFiltering: Array<{ reservationId: string; stayStartAt: string; stayEndAt: string }>
+          candidateCount: number
+          exactIdentityHits: Array<{ reservationId: string }>
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(payload.workspaceSource).toEqual(expect.objectContaining({
+      sourceKind: 'selectedFiles',
+      renderSource: 'selectedFiles'
+    }))
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        linkedMainReservationId: '5159718129'
+      }),
+      rawParsedAncillaryRow: expect.objectContaining({
+        sourceRecordId: 'previo-ancillary-1',
+        data: expect.objectContaining({
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00',
+          channel: 'Alfred'
+        })
+      }),
+      normalizedAncillaryRow: expect.objectContaining({
+        sourceRecordId: 'previo-ancillary-1',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      overviewLinkingInput: expect.objectContaining({
+        reference: '20250650',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateSetBeforeFiltering: [expect.objectContaining({
+          reservationId: '5159718129',
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        })],
+        candidateCount: 1,
+        exactIdentityHits: [],
+        exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })
+    }))
+  })
+
+  it('keeps Host and Pobyt for 20250650 when a later unrelated stay follows the parking row in the same workbook', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T12:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-grouped-selected-files',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-grouped.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            },
+            {
+              createdAt: '18.03.26 09:30',
+              voucher: 'A205-MEAL',
+              guestName: '',
+              channel: 'Booking.com XML',
+              amountText: '15,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Snídaně'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            },
+            {
+              createdAt: '18.03.26 09:40',
+              stayStartAt: '23.03.26 14:00',
+              stayEndAt: '24.03.26 11:00',
+              voucher: '5159718130',
+              guestName: 'Guest Three',
+              channel: 'Booking.com XML',
+              amountText: '210,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A206'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      previoAncillaryParserTrace: Array<{
+        sourceDocumentId: string
+        reference: string
+        itemLabel: string
+        roomName: string
+        channel: string
+        stayStartAt: string
+        stayEndAt: string
+      }>
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        explicitFields: {
+          linkedGuestName: string
+          stayStartAt: string
+          stayEndAt: string
+          linkedMainReservationId: string
+        }
+        rawParsedAncillaryRow: {
+          data: {
+            stayStartAt: string
+            stayEndAt: string
+          }
+        } | null
+        normalizedAncillaryRow: {
+          stayStartAt: string
+          stayEndAt: string
+        } | null
+        overviewLinkingInput: {
+          stayStartAt: string
+          stayEndAt: string
+        } | null
+        parsedPrevioAncillaryRowsForSourceDocument: Array<{
+          sourceDocumentId: string
+          reference: string
+          itemLabel: string
+          roomName: string
+          channel: string
+          stayStartAt: string
+          stayEndAt: string
+        }>
+        linkedCandidateChain: {
+          candidateCount: number
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        linkedMainReservationId: '5159718129'
+      }),
+      rawParsedAncillaryRow: expect.objectContaining({
+        data: expect.objectContaining({
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        })
+      }),
+      normalizedAncillaryRow: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      overviewLinkingInput: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 1,
+        exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })
+    }))
+    expect(payload.parkingItemProbe.parsedPrevioAncillaryRowsForSourceDocument).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reference: '20250650',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      })
+    ]))
+    expect(payload.previoAncillaryParserTrace).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        reference: '20250650',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      })
+    ]))
+
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Parkování 1')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Pobyt</strong><span>2026-03-20T14:00:00 – 2026-03-22T11:00:00</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>A205</span>')
+  })
+
+  it('uses the nearest preceding workbook reservation block when 20250650 shares its stay interval with multiple reservations', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T14:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-ambiguous-parent-block',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-ambiguous.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:10',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: 'HMT2QMDN8E',
+              guestName: 'Host 304',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '304'
+            },
+            {
+              createdAt: '18.03.26 09:20',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: 'HMSH9FKX8F',
+              guestName: 'Host 301',
+              channel: 'Booking.com XML',
+              amountText: '410,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '301'
+            },
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '203'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            },
+            {
+              createdAt: '18.03.26 09:32',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '6126906663',
+              guestName: 'Host 204',
+              channel: 'Booking.com XML',
+              amountText: '430,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '204'
+            },
+            {
+              createdAt: '18.03.26 09:33',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '6415593183',
+              guestName: 'Host 202',
+              channel: 'Booking.com XML',
+              amountText: '440,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '202'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      parkingItemProbe: {
+        explicitFields: {
+          linkedGuestName: string
+          linkedMainReservationId: string
+          roomName: string
+        }
+        linkedCandidateChain: {
+          candidateCount: number
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+        linkedMainReservationId: '5159718129',
+        roomName: '203'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 5,
+        exactStayIntervalHits: expect.arrayContaining([
+          expect.objectContaining({ reservationId: 'HMT2QMDN8E' }),
+          expect.objectContaining({ reservationId: 'HMSH9FKX8F' }),
+          expect.objectContaining({ reservationId: '5159718129' }),
+          expect.objectContaining({ reservationId: '6126906663' }),
+          expect.objectContaining({ reservationId: '6415593183' })
+        ]),
+        chosenCandidateReason: 'nearest_preceding_parent_block'
+      })
+    }))
+
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>203</span>')
+  })
+
+  it('keeps rawParsedAncillaryRow aligned with the visible 20250650 item when another workbook reuses the same ancillary record id', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T14:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-trace-consistency',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-target.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '203'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        ),
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-foreign.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '17.03.26 08:10',
+              stayStartAt: '18.03.26 14:00',
+              stayEndAt: '19.03.26 11:00',
+              voucher: 'FOREIGN-STAY',
+              guestName: 'Foreign Guest',
+              channel: 'Booking.com XML',
+              amountText: '220,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '401'
+            },
+            {
+              createdAt: '17.03.26 08:11',
+              voucher: '20250563',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '50,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování foreign'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      parkingItemProbe: {
+        finalOverviewItem: {
+          sourceDocumentIds: string[]
+        } | null
+        rawParsedAncillaryRow: {
+          sourceDocumentId: string
+          rawReference: string
+          data: {
+            reference: string
+          }
+        } | null
+      }
+    }
+
+    expect(payload.parkingItemProbe.finalOverviewItem?.sourceDocumentIds).toEqual([
+      'uploaded:previo:1:reservations-export-2026-03-target-xlsx'
+    ])
+    expect(payload.parkingItemProbe.rawParsedAncillaryRow).toEqual(expect.objectContaining({
+      sourceDocumentId: 'uploaded:previo:1:reservations-export-2026-03-target-xlsx',
+      rawReference: '20250650',
+      data: expect.objectContaining({
+        reference: '20250650'
+      })
+    }))
+  })
+
+  it('exports Reservation+ probes for native exact-identity Comgate rows and keeps rawParsedSourceRow aligned to the visible item', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T16:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-reservation-plus-native-probe',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '13.03.26 09:15',
+              stayStartAt: '18.03.26',
+              stayEndAt: '20.03.26',
+              voucher: 'WEB-RES-991',
+              guestName: 'Wendy Web',
+              channel: 'direct-web',
+              amountText: '420,00',
+              outstandingText: '0,00',
+              roomName: 'C301'
+            },
+            {
+              createdAt: '13.03.26 10:15',
+              stayStartAt: '21.03.26',
+              stayEndAt: '23.03.26',
+              voucher: 'WEB-RES-FOREIGN',
+              guestName: 'Foreign Web',
+              channel: 'direct-web',
+              amountText: '470,00',
+              outstandingText: '0,00',
+              roomName: 'D401'
+            }
+          ])
+        ),
+        createWebDemoRuntimeFile(
+          'comgate-target.csv',
+          [
+            'Datum zaplacení;Uhrazená částka;Měna;Variabilní symbol;Štítek;Číslo objednávky',
+            '15.03.2026;380,00;CZK;CG-RES-991;website-reservation;WEB-RES-991'
+          ].join('\n')
+        ),
+        createWebDemoRuntimeFile(
+          'comgate-foreign.csv',
+          [
+            'Datum zaplacení;Uhrazená částka;Měna;Variabilní symbol;Štítek;Číslo objednávky',
+            '16.03.2026;450,00;CZK;CG-RES-FOREIGN;website-reservation;WEB-RES-FOREIGN'
+          ].join('\n')
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      reservationPlusItemProbes: Array<{
+        targetReference: string
+        explicitFields: {
+          linkedGuestName: string
+          linkedMainReservationId: string
+          roomName: string
+        }
+        rawParsedSourceRow: {
+          sourceDocumentId: string
+          rawReference: string
+          data: {
+            reservationId: string
+          }
+        } | null
+        linkedCandidateChain: {
+          chosenCandidateReason: string
+        }
+      }>
+    }
+
+    const probe = payload.reservationPlusItemProbes.find((entry) => entry.rawParsedSourceRow?.data?.reservationId === 'WEB-RES-991')
+
+    expect(probe).toEqual(expect.objectContaining({
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Wendy Web',
+        linkedMainReservationId: 'WEB-RES-991',
+        roomName: 'C301'
+      }),
+      rawParsedSourceRow: expect.objectContaining({
+        sourceDocumentId: expect.stringContaining('comgate-target-csv'),
+        rawReference: 'CG-RES-991',
+        data: expect.objectContaining({
+          reservationId: 'WEB-RES-991'
+        })
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        chosenCandidateReason: 'exact_identity'
+      })
+    }))
+  })
+
+  it('exports Reservation+ ancillary probes with deterministic preceding-parent tie-break metadata', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T17:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-reservation-plus-ancillary-probe',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-grouped.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              channel: 'direct-web',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '203'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: 'ADDON-20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Pozdní check-in'
+            },
+            {
+              createdAt: '18.03.26 09:32',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '6126906663',
+              guestName: 'Host 204',
+              channel: 'direct-web',
+              amountText: '430,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '204'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      reservationPlusItemProbes: Array<{
+        targetReference: string
+        explicitFields: {
+          linkedGuestName: string
+          linkedMainReservationId: string
+          roomName: string
+        }
+        linkedCandidateChain: {
+          candidateCount: number
+          chosenCandidateReason: string
+        }
+      }>
+    }
+
+    const probe = payload.reservationPlusItemProbes.find((entry) => entry.targetReference === 'ADDON-20250650')
+
+    expect(probe).toEqual(expect.objectContaining({
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+        linkedMainReservationId: '5159718129',
+        roomName: '203'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 2,
+        chosenCandidateReason: 'nearest_preceding_parent_block'
+      })
+    }))
+  })
+
+  it('preserves multiple distinct Previo reservation exports during mergedWorkspace rerun for the same month', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T12:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-stale-baseline',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'prehled-rezervaci-1.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:25',
+              stayStartAt: '18.03.26 14:00',
+              stayEndAt: '19.03.26 11:00',
+              voucher: '5159718101',
+              guestName: 'Guest One',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A201'
+            }
+          ])
+        ),
+        createWebDemoRuntimeWorkbookFile(
+          'prehled-rezervaci-2.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        )
+      ]
+    })
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T12:06:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-stale-replaced',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'prehled-rezervaci-3.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:40',
+              stayStartAt: '23.03.26 14:00',
+              stayEndAt: '24.03.26 11:00',
+              voucher: '5159718130',
+              guestName: 'Guest Three',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A206'
+            },
+            {
+              createdAt: '18.03.26 09:41',
+              voucher: '20250651',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 2'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+
+    await rendered.waitForWorkflowCompletion()
+
+    const visibleState = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ primaryReference?: string }>
+        }>
+      }
+    }
+    const bookingBlock = visibleState.reservationPaymentOverview.blocks.find((block) => block.key === 'booking')
+    const parkingBlock = visibleState.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')
+
+    expect(bookingBlock?.items).toHaveLength(3)
+    expect(parkingBlock?.items).toHaveLength(2)
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      workspaceSource: {
+        sourceKind: string
+        renderSource: string
+      }
+      uploadedFiles: Array<{ fileName: string; sourceDocumentId: string; sourceSystem: string }>
+      sourceDocumentIds: string[]
+      reservationLikeItemIdsBySource: {
+        booking: string[]
+        parking: string[]
+      }
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        explicitFields: {
+          sourceDocumentIds: string[]
+        }
+        matchingAncillaryLinkTraces: Array<{
+          sourceDocumentId: string
+          linkedMainReservationId: string
+        }>
+      }
+      mergedWorkspaceReferenceTrace: {
+        targetReference: string
+        distinctPrevioWorkbookCountBeforeMerge: number
+        distinctPrevioWorkbookCountAfterMerge: number
+        persistedWorkspaceFilesBeforeMerge: Array<{ fileName: string }>
+        mergedWorkspaceFilesUsedForRerun: Array<{ fileName: string }>
+        restoredAncillaryLinkTraces: Array<{ sourceDocumentId: string; linkedMainReservationId: string }>
+      }
+    }
+
+    expect(payload.workspaceSource).toEqual(expect.objectContaining({
+      sourceKind: 'mergedWorkspace',
+      renderSource: 'mergedWorkspace'
+    }))
+    expect(payload.uploadedFiles.filter((file) => file.sourceSystem === 'previo').map((file) => file.fileName)).toEqual([
+      'prehled-rezervaci-1.xlsx',
+      'prehled-rezervaci-2.xlsx',
+      'prehled-rezervaci-3.xlsx'
+    ])
+    expect(payload.sourceDocumentIds.filter((id) => id.startsWith('uploaded:previo:'))).toHaveLength(3)
+    expect(payload.reservationLikeItemIdsBySource.booking).toHaveLength(3)
+    expect(payload.reservationLikeItemIdsBySource.parking).toHaveLength(2)
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      explicitFields: expect.objectContaining({
+        linkedMainReservationId: '5159718129',
+        sourceDocumentIds: ['uploaded:previo:2:prehled-rezervaci-2-xlsx']
+      }),
+      matchingAncillaryLinkTraces: [expect.objectContaining({
+        sourceDocumentId: 'uploaded:previo:2:prehled-rezervaci-2-xlsx',
+        linkedMainReservationId: '5159718129'
+      })]
+    }))
+    expect(payload.mergedWorkspaceReferenceTrace).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      distinctPrevioWorkbookCountBeforeMerge: 2,
+      distinctPrevioWorkbookCountAfterMerge: 3,
+      persistedWorkspaceFilesBeforeMerge: [
+        expect.objectContaining({ fileName: 'prehled-rezervaci-1.xlsx' }),
+        expect.objectContaining({ fileName: 'prehled-rezervaci-2.xlsx' })
+      ],
+      mergedWorkspaceFilesUsedForRerun: [
+        expect.objectContaining({ fileName: 'prehled-rezervaci-1.xlsx' }),
+        expect.objectContaining({ fileName: 'prehled-rezervaci-2.xlsx' }),
+        expect.objectContaining({ fileName: 'prehled-rezervaci-3.xlsx' })
+      ],
+      restoredAncillaryLinkTraces: [expect.objectContaining({
+        sourceDocumentId: 'uploaded:previo:2:prehled-rezervaci-2-xlsx',
+        linkedMainReservationId: '5159718129'
+      })]
+    }))
+  })
+
   it('recomputes visible counts and export handoff truth after deleting one uploaded file from the current month workspace', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -4006,10 +5084,10 @@ describe('buildWebDemo', () => {
     const beforeExport = rendered.getLastExcelExport() as {
       payoutRowCount: number
       expenseRowCount: number
-        counts: {
-          payoutMatched: number
-          payoutUnmatched: number
-        }
+      counts: {
+        payoutMatched: number
+        payoutUnmatched: number
+      }
     }
     const persistedBeforeDelete = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
       files: Array<{ id: string; fileName: string }>
@@ -4030,10 +5108,10 @@ describe('buildWebDemo', () => {
     const afterExport = rendered.getLastExcelExport() as {
       payoutRowCount: number
       expenseRowCount: number
-        counts: {
-          payoutMatched: number
-          payoutUnmatched: number
-        }
+      counts: {
+        payoutMatched: number
+        payoutUnmatched: number
+      }
     }
 
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toContain('1')
@@ -4042,9 +5120,9 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('<strong>booking35k.csv</strong>')
     expect(afterState.reviewSummary.payoutBatchMatchCount + afterState.reviewSummary.unmatchedPayoutBatchCount)
       .not.toBe(beforeState.reviewSummary.payoutBatchMatchCount + beforeState.reviewSummary.unmatchedPayoutBatchCount)
-      expect(afterExport.counts.payoutMatched).toBe(afterState.reviewSummary.payoutBatchMatchCount)
-      expect(afterExport.counts.payoutUnmatched).toBe(afterState.reviewSummary.unmatchedPayoutBatchCount)
-      expect(afterExport.counts).not.toEqual(beforeExport.counts)
+    expect(afterExport.counts.payoutMatched).toBe(afterState.reviewSummary.payoutBatchMatchCount)
+    expect(afterExport.counts.payoutUnmatched).toBe(afterState.reviewSummary.unmatchedPayoutBatchCount)
+    expect(afterExport.counts).not.toEqual(beforeExport.counts)
   })
 
   it('requires confirmation before deleting one uploaded file from the current month workspace', async () => {
@@ -7096,9 +8174,9 @@ async function executeWebDemoMainWorkflow(input: {
       elements['clear-month-workspace-button'].listeners.click()
       await waitForLastClear()
     },
-      async clickDeleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
+    async clickDeleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
       elements[buildWorkspaceFileDeleteActionElementId(workspaceFileId)].listeners.click()
-        await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
     },
     async deleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
       lastWorkflowStartPreparedFilesMarkup = elements['prepared-files-content'].innerHTML
@@ -7643,10 +8721,10 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
 
 function buildPrevioWorkbookBase64FromRows(rows: Array<{
   createdAt: string
-  stayStartAt: string
-  stayEndAt: string
+  stayStartAt?: string
+  stayEndAt?: string
   voucher: string
-  guestName: string
+  guestName?: string
   companyName?: string
   channel: string
   amountText: string
@@ -7675,13 +8753,13 @@ function buildPrevioWorkbookBase64FromRows(rows: Array<{
     ],
     ...rows.map((row) => [
       row.createdAt,
-      row.stayStartAt,
-      row.stayEndAt,
-      '1',
+      row.stayStartAt ?? '',
+      row.stayEndAt ?? '',
+      row.stayStartAt && row.stayEndAt ? '1' : '',
       row.voucher,
-      '1',
-      row.guestName,
-      'Ano',
+      row.guestName ? '1' : '',
+      row.guestName ?? '',
+      row.guestName ? 'Ano' : '',
       '',
       row.companyName ?? '',
       row.channel,
