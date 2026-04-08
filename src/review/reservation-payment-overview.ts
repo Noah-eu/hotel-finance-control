@@ -92,10 +92,13 @@ export interface ReservationPaymentOverviewComgateMergeTrace {
   finalOverviewItemId: string
   linkedReservationId: string
   linkedPaymentReference: string
-  chosenLinkReason: 'exact_refId_merge' | 'no_merge'
+  chosenLinkReason: 'exact_refId_merge' | 'exact_clientId_merge' | 'no_merge'
   nativeComgateFallbackSuppressed: boolean
   mergedComgateRowId?: string
   mergedComgateSourceDocumentId?: string
+  clientId?: string
+  variableSymbol?: string
+  comgateTransactionId?: string
   reservationGuestName?: string
   reservationRoomName?: string
   reservationStayStartAt?: string
@@ -755,14 +758,33 @@ export function inspectReservationPaymentOverviewClassification(
       )
       const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
 
+      let mergeTraceClientId: string | undefined
+      let mergeTraceVariableSymbol: string | undefined
+      let mergeTraceComgateTransactionId: string | undefined
+      let mergeTraceChosenLinkReason: ReservationPaymentOverviewComgateMergeTrace['chosenLinkReason'] = 'no_merge'
+
+      if (comgateMergeMatch?.matchedRowId) {
+        const mergedTransaction = transactionsById.get(comgateMergeMatch.matchedRowId)
+        const mergedExtractedRecord = mergedTransaction
+          ? findFirstExtractedRecord(mergedTransaction, extractedRecordLookup)
+          : undefined
+        mergeTraceClientId = readString(mergedExtractedRecord?.data.clientId) || undefined
+        mergeTraceVariableSymbol = readString(mergedExtractedRecord?.data.reference) || undefined
+        mergeTraceComgateTransactionId = readString(mergedExtractedRecord?.data.transactionId) || undefined
+        mergeTraceChosenLinkReason = mergeTraceClientId ? 'exact_clientId_merge' : 'exact_refId_merge'
+      }
+
       reservationPlusComgateMergeTraces.push({
         finalOverviewItemId: `reservation-payment:${sourceKey}`,
         linkedReservationId: reservation.reservationId,
         linkedPaymentReference: comgateMergeMatch?.matchedRowId ?? '',
-        chosenLinkReason: comgateMergeMatch ? 'exact_refId_merge' : 'no_merge',
+        chosenLinkReason: mergeTraceChosenLinkReason,
         nativeComgateFallbackSuppressed: Boolean(comgateMergeMatch),
         mergedComgateRowId: comgateMergeMatch?.matchedRowId,
         mergedComgateSourceDocumentId: comgateMergeMatch?.evidence.find((e) => e.key === 'payoutRowSourceDocumentId')?.value as string | undefined,
+        clientId: mergeTraceClientId,
+        variableSymbol: mergeTraceVariableSymbol,
+        comgateTransactionId: mergeTraceComgateTransactionId,
         reservationGuestName: reservation.guestName,
         reservationRoomName: reservation.roomName,
         reservationStayStartAt: reservation.stayStartAt,
@@ -1912,7 +1934,8 @@ function matchesReservationPlusNativeExactIdentity(
 ): boolean {
   const comparableNativeAnchorValues = collectUniqueTruthyStrings([
     normalizeComparable(row.reservationId),
-    normalizeComparable(readString(extractedRecord?.data.reservationId))
+    normalizeComparable(readString(extractedRecord?.data.reservationId)),
+    normalizeComparable(readString(extractedRecord?.data.clientId))
   ])
 
   if (comparableNativeAnchorValues.length === 0) {

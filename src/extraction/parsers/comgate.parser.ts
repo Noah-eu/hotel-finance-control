@@ -399,7 +399,7 @@ function buildDailySettlementRecords(
         transferredAmountMinor,
         ...(transferReference ? { reference: transferReference } : {}),
         ...(transactionId ? { transactionId } : {}),
-        ...(clientId ? { clientId } : {}),
+        ...(clientId ? { clientId, reservationId: clientId } : {}),
         ...(merchant ? { merchant } : {}),
         ...(paymentMethod ? { paymentMethod } : {}),
         ...(product ? { product } : {}),
