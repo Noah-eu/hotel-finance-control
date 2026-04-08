@@ -84,7 +84,16 @@ export interface ReservationPaymentOverviewDebug {
   parkingLikeCandidateIds: string[]
   parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[]
   ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[]
+  reservationPlusNativeLinkTraces: ReservationPaymentOverviewNativeLinkTrace[]
 }
+
+type ReservationPaymentOverviewLinkReason =
+  | 'exact_identity'
+  | 'unique_exact_stay_interval'
+  | 'nearest_preceding_parent_block'
+  | 'ambiguous_exact_identity'
+  | 'ambiguous_exact_stay_interval'
+  | 'no_candidate'
 
 export interface ReservationPaymentOverviewAncillaryLinkCandidate {
   sourceDocumentId: string
@@ -167,7 +176,68 @@ export interface ReservationPaymentOverviewAncillaryLinkTrace {
   candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  chosenCandidateReason: 'exact_identity' | 'unique_exact_stay_interval' | 'nearest_preceding_parent_block' | 'ambiguous_exact_identity' | 'ambiguous_exact_stay_interval' | 'no_candidate'
+  chosenCandidateReason: ReservationPaymentOverviewLinkReason
+}
+
+export interface ReservationPaymentOverviewNativeRawParsedRow {
+  sourceRecordId: string
+  sourceDocumentId: string
+  recordType: string
+  rawReference?: string
+  occurredAt?: string
+  amountMinor?: number
+  currency?: string
+  data: {
+    platform?: string
+    reference?: string
+    reservationId?: string
+    bookedAt?: string
+    paymentPurpose?: string
+    transactionId?: string
+    comgateParserVariant?: string
+    totalFeeMinor?: number
+  }
+}
+
+export interface ReservationPaymentOverviewNativeNormalizedRow {
+  rowId: string
+  sourceDocumentId: string
+  reference: string
+  reservationId?: string
+  bookedAt?: string
+  paymentPurpose?: string
+  grossRevenueMinor: number
+  matchingAmountMinor?: number
+  currency: string
+}
+
+export interface ReservationPaymentOverviewNativeLinkingInput {
+  sourceDocumentId: string
+  reference: string
+  reservationId?: string
+}
+
+export interface ReservationPaymentOverviewNativeLinkTrace {
+  itemId: string
+  rowId: string
+  sourceDocumentId: string
+  reference: string
+  reservationId?: string
+  paymentPurpose?: string
+  rawParsedSourceRow?: ReservationPaymentOverviewNativeRawParsedRow
+  normalizedNativeRow: ReservationPaymentOverviewNativeNormalizedRow
+  overviewLinkingInput: ReservationPaymentOverviewNativeLinkingInput
+  computedBlockKey: 'reservation_plus'
+  linkedMainReservationId?: string
+  linkedGuestName?: string
+  linkedStayStartAt?: string
+  linkedStayEndAt?: string
+  linkedRoomName?: string
+  candidateCount: number
+  candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
 
 interface AncillaryLinkInspection {
@@ -176,7 +246,7 @@ interface AncillaryLinkInspection {
   candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  chosenCandidateReason: ReservationPaymentOverviewAncillaryLinkTrace['chosenCandidateReason']
+  chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
 
 interface ExtractedRecordLookup {
@@ -507,15 +577,24 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         row.payoutReference
       )
       const blockKey = parkingLike ? 'parking' : 'reservation_plus'
+      const nativeLinkInspection = !parkingLike
+        ? inspectLinkedReservationForReservationPlusNativeRow(row, extractedRecord, reservationSources)
+        : undefined
+      const linkedReservation = nativeLinkInspection?.linkedReservation
+      const linkedStayValue = linkedReservation
+        ? buildStayOrDateValue(linkedReservation.stayStartAt, linkedReservation.stayEndAt, undefined)
+        : undefined
       const title = parkingLike
         ? readString(extractedRecord?.data.reference) ?? row.payoutReference
-        : row.reservationId ?? row.payoutReference
+        : linkedReservation?.guestName ?? row.reservationId ?? row.payoutReference
 
       items.push({
         id: `reservation-payment:native:${row.rowId}`,
         blockKey,
         title,
-        subtitle: paymentPurpose === 'parking' ? 'Parkovací platba' : 'Vlastní web / Reservation+',
+        subtitle: parkingLike
+          ? 'Parkovací platba'
+          : linkedReservation?.roomName ?? 'Vlastní web / Reservation+',
         primaryReference: row.reservationId ?? row.payoutReference,
         secondaryReference: row.reservationId && row.payoutReference !== row.reservationId ? row.payoutReference : undefined,
         dateLabelCs: 'Datum platby',
@@ -533,6 +612,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         sourceDocumentIds: transaction.sourceDocumentIds.slice(),
         transactionIds: [row.rowId],
         detailEntries: compactDetailEntries([
+          buildDetailEntry('Host', linkedReservation?.guestName),
+          buildDetailEntry('Pobyt', linkedStayValue),
+          buildDetailEntry('Jednotka', linkedReservation?.roomName),
           buildDetailEntry('Účel platby', parkingLike ? 'parking' : paymentPurpose === 'websitereservation' ? 'website-reservation' : readString(extractedRecord?.data.paymentPurpose)),
           buildDetailEntry('Comgate reference', row.payoutReference)
         ]),
@@ -593,6 +675,7 @@ export function inspectReservationPaymentOverviewClassification(
   const consumedRowIds = new Set<string>()
   const parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[] = []
   const ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[] = []
+  const reservationPlusNativeLinkTraces: ReservationPaymentOverviewNativeLinkTrace[] = []
   let parkingCandidatesBeforeGrouping = 0
   let reservationPlusCandidatesBeforeGrouping = 0
 
@@ -727,6 +810,37 @@ export function inspectReservationPaymentOverviewClassification(
         })
       }
 
+      if (blockKey === 'reservation_plus') {
+        const nativeLinkInspection = inspectLinkedReservationForReservationPlusNativeRow(
+          row,
+          extractedRecord,
+          reservationSources
+        )
+
+        reservationPlusNativeLinkTraces.push({
+          itemId: `reservation-payment:native:${row.rowId}`,
+          rowId: row.rowId,
+          sourceDocumentId: row.sourceDocumentId,
+          reference: row.payoutReference,
+          reservationId: row.reservationId,
+          paymentPurpose: readString(extractedRecord?.data.paymentPurpose),
+          rawParsedSourceRow: buildNativeRawParsedRowPayload(extractedRecord),
+          normalizedNativeRow: buildNativeNormalizedRowPayload(row, extractedRecord),
+          overviewLinkingInput: buildNativeLinkingInputPayload(row, extractedRecord),
+          computedBlockKey: 'reservation_plus',
+          linkedMainReservationId: nativeLinkInspection.linkedReservation?.reservationId,
+          linkedGuestName: nativeLinkInspection.linkedReservation?.guestName,
+          linkedStayStartAt: nativeLinkInspection.linkedReservation?.stayStartAt,
+          linkedStayEndAt: nativeLinkInspection.linkedReservation?.stayEndAt,
+          linkedRoomName: nativeLinkInspection.linkedReservation?.roomName,
+          candidateCount: nativeLinkInspection.candidateCount,
+          candidateSetBeforeFiltering: nativeLinkInspection.candidateSetBeforeFiltering,
+          exactIdentityHits: nativeLinkInspection.exactIdentityHits,
+          exactStayIntervalHits: nativeLinkInspection.exactStayIntervalHits,
+          chosenCandidateReason: nativeLinkInspection.chosenCandidateReason
+        })
+      }
+
       continue
     }
 
@@ -798,7 +912,8 @@ export function inspectReservationPaymentOverviewClassification(
     finalReservationPlusBlockCount: reservationPlusBlock?.itemCount ?? 0,
     parkingLikeCandidateIds: parkingLikeCandidates.map((candidate) => candidate.candidateId),
     parkingLikeCandidates,
-    ancillaryLinkTraces
+    ancillaryLinkTraces,
+    reservationPlusNativeLinkTraces
   }
 }
 
@@ -832,7 +947,8 @@ function buildEmptyOverviewDebug(): ReservationPaymentOverviewDebug {
     finalReservationPlusBlockCount: 0,
     parkingLikeCandidateIds: [],
     parkingLikeCandidates: [],
-    ancillaryLinkTraces: []
+    ancillaryLinkTraces: [],
+    reservationPlusNativeLinkTraces: []
   }
 }
 
@@ -1626,6 +1742,71 @@ function inspectLinkedReservationForAncillary(
   }
 }
 
+function inspectLinkedReservationForReservationPlusNativeRow(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  reservationSources: ReservationSourceRecord[]
+): AncillaryLinkInspection {
+  const candidatePool = reservationSources
+    .filter((reservation) => resolveReservationBlockKey(reservation) === 'reservation_plus')
+  const candidateSetBeforeFiltering = candidatePool.map(toAncillaryLinkCandidateSnapshot)
+  const exactIdentityCandidates = candidatePool.filter((reservation) => matchesReservationPlusNativeExactIdentity(row, extractedRecord, reservation))
+  const exactIdentityHits = exactIdentityCandidates.map(toAncillaryLinkCandidateSnapshot)
+
+  if (exactIdentityCandidates.length === 1) {
+    return {
+      linkedReservation: exactIdentityCandidates[0],
+      candidateCount: exactIdentityCandidates.length,
+      candidateSetBeforeFiltering,
+      exactIdentityHits,
+      exactStayIntervalHits: [],
+      chosenCandidateReason: 'exact_identity'
+    }
+  }
+
+  if (exactIdentityCandidates.length > 1) {
+    return {
+      linkedReservation: undefined,
+      candidateCount: exactIdentityCandidates.length,
+      candidateSetBeforeFiltering,
+      exactIdentityHits,
+      exactStayIntervalHits: [],
+      chosenCandidateReason: 'ambiguous_exact_identity'
+    }
+  }
+
+  return {
+    linkedReservation: undefined,
+    candidateCount: 0,
+    candidateSetBeforeFiltering,
+    exactIdentityHits: [],
+    exactStayIntervalHits: [],
+    chosenCandidateReason: 'no_candidate'
+  }
+}
+
+function matchesReservationPlusNativeExactIdentity(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  reservation: ReservationSourceRecord
+): boolean {
+  const comparableNativeAnchorValues = collectUniqueTruthyStrings([
+    normalizeComparable(row.reservationId),
+    normalizeComparable(readString(extractedRecord?.data.reservationId))
+  ])
+
+  if (comparableNativeAnchorValues.length === 0) {
+    return false
+  }
+
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  return comparableReservationValues.some((value) => comparableNativeAnchorValues.includes(value))
+}
+
 function matchesAncillaryExactIdentity(
   ancillary: AncillaryRevenueSourceRecord,
   reservation: ReservationSourceRecord
@@ -1777,6 +1958,64 @@ function buildAncillaryNormalizedRowPayload(
     grossRevenueMinor: ancillary.grossRevenueMinor,
     outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
     currency: ancillary.currency
+  }
+}
+
+function buildNativeRawParsedRowPayload(
+  record: ExtractedRecord | undefined
+): ReservationPaymentOverviewNativeRawParsedRow | undefined {
+  if (!record) {
+    return undefined
+  }
+
+  return {
+    sourceRecordId: record.id,
+    sourceDocumentId: record.sourceDocumentId,
+    recordType: record.recordType,
+    rawReference: stringOrUndefined(record.rawReference),
+    occurredAt: stringOrUndefined(record.occurredAt),
+    amountMinor: typeof record.amountMinor === 'number' ? record.amountMinor : undefined,
+    currency: stringOrUndefined(record.currency),
+    data: {
+      platform: stringOrUndefined(record.data.platform),
+      reference: stringOrUndefined(record.data.reference),
+      reservationId: stringOrUndefined(record.data.reservationId),
+      bookedAt: stringOrUndefined(record.data.bookedAt),
+      paymentPurpose: stringOrUndefined(record.data.paymentPurpose),
+      transactionId: stringOrUndefined(record.data.transactionId),
+      comgateParserVariant: stringOrUndefined(record.data.comgateParserVariant),
+      totalFeeMinor: typeof record.data.totalFeeMinor === 'number'
+        ? record.data.totalFeeMinor
+        : undefined
+    }
+  }
+}
+
+function buildNativeNormalizedRowPayload(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): ReservationPaymentOverviewNativeNormalizedRow {
+  return {
+    rowId: row.rowId,
+    sourceDocumentId: row.sourceDocumentId,
+    reference: row.payoutReference,
+    reservationId: row.reservationId ?? readString(extractedRecord?.data.reservationId),
+    bookedAt: row.payoutDate,
+    paymentPurpose: readString(extractedRecord?.data.paymentPurpose),
+    grossRevenueMinor: row.amountMinor,
+    matchingAmountMinor: row.matchingAmountMinor,
+    currency: row.currency
+  }
+}
+
+function buildNativeLinkingInputPayload(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): ReservationPaymentOverviewNativeLinkingInput {
+  return {
+    sourceDocumentId: row.sourceDocumentId,
+    reference: row.payoutReference,
+    reservationId: row.reservationId ?? readString(extractedRecord?.data.reservationId)
   }
 }
 

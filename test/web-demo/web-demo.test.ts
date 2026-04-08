@@ -4679,6 +4679,185 @@ describe('buildWebDemo', () => {
     }))
   })
 
+  it('exports Reservation+ probes for native exact-identity Comgate rows and keeps rawParsedSourceRow aligned to the visible item', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T16:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-reservation-plus-native-probe',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '13.03.26 09:15',
+              stayStartAt: '18.03.26',
+              stayEndAt: '20.03.26',
+              voucher: 'WEB-RES-991',
+              guestName: 'Wendy Web',
+              channel: 'direct-web',
+              amountText: '420,00',
+              outstandingText: '0,00',
+              roomName: 'C301'
+            },
+            {
+              createdAt: '13.03.26 10:15',
+              stayStartAt: '21.03.26',
+              stayEndAt: '23.03.26',
+              voucher: 'WEB-RES-FOREIGN',
+              guestName: 'Foreign Web',
+              channel: 'direct-web',
+              amountText: '470,00',
+              outstandingText: '0,00',
+              roomName: 'D401'
+            }
+          ])
+        ),
+        createWebDemoRuntimeFile(
+          'comgate-target.csv',
+          [
+            'Datum zaplacení;Uhrazená částka;Měna;Variabilní symbol;Štítek;Číslo objednávky',
+            '15.03.2026;380,00;CZK;CG-RES-991;website-reservation;WEB-RES-991'
+          ].join('\n')
+        ),
+        createWebDemoRuntimeFile(
+          'comgate-foreign.csv',
+          [
+            'Datum zaplacení;Uhrazená částka;Měna;Variabilní symbol;Štítek;Číslo objednávky',
+            '16.03.2026;450,00;CZK;CG-RES-FOREIGN;website-reservation;WEB-RES-FOREIGN'
+          ].join('\n')
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      reservationPlusItemProbes: Array<{
+        targetReference: string
+        explicitFields: {
+          linkedGuestName: string
+          linkedMainReservationId: string
+          roomName: string
+        }
+        rawParsedSourceRow: {
+          sourceDocumentId: string
+          rawReference: string
+          data: {
+            reservationId: string
+          }
+        } | null
+        linkedCandidateChain: {
+          chosenCandidateReason: string
+        }
+      }>
+    }
+
+    const probe = payload.reservationPlusItemProbes.find((entry) => entry.rawParsedSourceRow?.data?.reservationId === 'WEB-RES-991')
+
+    expect(probe).toEqual(expect.objectContaining({
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Wendy Web',
+        linkedMainReservationId: 'WEB-RES-991',
+        roomName: 'C301'
+      }),
+      rawParsedSourceRow: expect.objectContaining({
+        sourceDocumentId: expect.stringContaining('comgate-target-csv'),
+        rawReference: 'CG-RES-991',
+        data: expect.objectContaining({
+          reservationId: 'WEB-RES-991'
+        })
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        chosenCandidateReason: 'exact_identity'
+      })
+    }))
+  })
+
+  it('exports Reservation+ ancillary probes with deterministic preceding-parent tie-break metadata', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T17:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-reservation-plus-ancillary-probe',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-grouped.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              channel: 'direct-web',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '203'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: 'ADDON-20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Pozdní check-in'
+            },
+            {
+              createdAt: '18.03.26 09:32',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '6126906663',
+              guestName: 'Host 204',
+              channel: 'direct-web',
+              amountText: '430,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '204'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      reservationPlusItemProbes: Array<{
+        targetReference: string
+        explicitFields: {
+          linkedGuestName: string
+          linkedMainReservationId: string
+          roomName: string
+        }
+        linkedCandidateChain: {
+          candidateCount: number
+          chosenCandidateReason: string
+        }
+      }>
+    }
+
+    const probe = payload.reservationPlusItemProbes.find((entry) => entry.targetReference === 'ADDON-20250650')
+
+    expect(probe).toEqual(expect.objectContaining({
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+        linkedMainReservationId: '5159718129',
+        roomName: '203'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 2,
+        chosenCandidateReason: 'nearest_preceding_parent_block'
+      })
+    }))
+  })
+
   it('preserves multiple distinct Previo reservation exports during mergedWorkspace rerun for the same month', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()

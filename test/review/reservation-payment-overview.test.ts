@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MonthlyBatchResult } from '../../src/monthly-batch'
-import { buildReservationPaymentOverview } from '../../src/review'
+import { buildReservationPaymentOverview, inspectReservationPaymentOverviewClassification } from '../../src/review'
 
 describe('buildReservationPaymentOverview', () => {
   it('groups reservation and payment items by source with conservative statuses', () => {
@@ -339,6 +339,345 @@ describe('buildReservationPaymentOverview', () => {
         primaryReference: 'PARK-1'
       })
     ])
+  })
+
+  it('enriches native Reservation+ Comgate rows when a unique reservation anchor resolves by exact identity', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 38000,
+          currency: 'CZK',
+          occurredAt: '2026-03-15',
+          data: {
+            platform: 'comgate',
+            reference: 'CG-RES-991',
+            reservationId: 'WEB-RES-991',
+            paymentPurpose: 'website-reservation',
+            bookedAt: '2026-03-15',
+            comgateParserVariant: 'legacy'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:web',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 38000,
+            currency: 'CZK',
+            bookedAt: '2026-03-15',
+            reference: 'CG-RES-991',
+            reservationId: 'WEB-RES-991',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: 'WEB-RES-991',
+              guestName: 'Wendy Web',
+              roomName: 'C301',
+              reference: 'WEB-RES-991',
+              channel: 'direct_web',
+              bookedAt: '2026-03-10',
+              stayStartAt: '2026-03-18',
+              stayEndAt: '2026-03-20',
+              grossRevenueMinor: 38000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:web',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              reservationId: 'WEB-RES-991',
+              payoutReference: 'CG-RES-991',
+              payoutDate: '2026-03-15',
+              amountMinor: 38000,
+              matchingAmountMinor: 38000,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items.find((entry) => entry.id === 'reservation-payment:native:txn:comgate:web')
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      title: 'Wendy Web',
+      subtitle: 'C301',
+      primaryReference: 'WEB-RES-991'
+    }))
+    expect(item?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Wendy Web' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-18 – 2026-03-20' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'C301' })
+    ]))
+    expect(trace).toEqual(expect.objectContaining({
+      reservationId: 'WEB-RES-991',
+      linkedMainReservationId: 'WEB-RES-991',
+      linkedGuestName: 'Wendy Web',
+      linkedRoomName: 'C301',
+      chosenCandidateReason: 'exact_identity'
+    }))
+  })
+
+  it('uses the deterministic preceding parent rule for Reservation+ ancillary rows with ambiguous exact stay matches', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'previo-reservation-1',
+          sourceDocumentId: 'doc:previo-web',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T09:30:00.000Z',
+          amountMinor: 42000,
+          currency: 'EUR',
+          occurredAt: '2026-03-18',
+          rawReference: '5159718129',
+          data: {
+            platform: 'previo',
+            reference: '5159718129',
+            reservationId: '5159718129',
+            bookedAt: '2026-03-18',
+            stayStartAt: '2026-03-20T14:00:00',
+            stayEndAt: '2026-03-22T11:00:00',
+            guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+            roomName: '203',
+            channel: 'direct_web'
+          }
+        },
+        {
+          id: 'previo-ancillary-2',
+          sourceDocumentId: 'doc:previo-web',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T09:31:00.000Z',
+          amountMinor: 6000,
+          currency: 'EUR',
+          occurredAt: '2026-03-18',
+          rawReference: 'ADDON-20250650',
+          data: {
+            platform: 'previo',
+            rowKind: 'ancillary',
+            reference: 'ADDON-20250650',
+            bookedAt: '2026-03-18',
+            stayStartAt: '2026-03-20T14:00:00',
+            stayEndAt: '2026-03-22T11:00:00',
+            itemLabel: 'Pozdní check-in',
+            channel: 'Alfred'
+          }
+        },
+        {
+          id: 'previo-reservation-3',
+          sourceDocumentId: 'doc:previo-web',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T09:32:00.000Z',
+          amountMinor: 43000,
+          currency: 'EUR',
+          occurredAt: '2026-03-18',
+          rawReference: '6126906663',
+          data: {
+            platform: 'previo',
+            reference: '6126906663',
+            reservationId: '6126906663',
+            bookedAt: '2026-03-18',
+            stayStartAt: '2026-03-20T14:00:00',
+            stayEndAt: '2026-03-22T11:00:00',
+            guestName: 'Host 204',
+            roomName: '204',
+            channel: 'direct_web'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              roomName: '203',
+              reference: '5159718129',
+              channel: 'direct_web',
+              bookedAt: '2026-03-18',
+              stayStartAt: '2026-03-20T14:00:00',
+              stayEndAt: '2026-03-22T11:00:00',
+              grossRevenueMinor: 42000,
+              outstandingBalanceMinor: 0,
+              currency: 'EUR',
+              expectedSettlementChannels: ['comgate']
+            },
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: '6126906663',
+              guestName: 'Host 204',
+              roomName: '204',
+              reference: '6126906663',
+              channel: 'direct_web',
+              bookedAt: '2026-03-18',
+              stayStartAt: '2026-03-20T14:00:00',
+              stayEndAt: '2026-03-22T11:00:00',
+              grossRevenueMinor: 43000,
+              outstandingBalanceMinor: 0,
+              currency: 'EUR',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [
+            {
+              sourceRecordId: 'previo-ancillary-2',
+              sourceDocumentId: 'doc:previo-web',
+              sourceSystem: 'previo',
+              reference: 'ADDON-20250650',
+              bookedAt: '2026-03-18',
+              stayStartAt: '2026-03-20T14:00:00',
+              stayEndAt: '2026-03-22T11:00:00',
+              itemLabel: 'Pozdní check-in',
+              channel: 'Alfred',
+              grossRevenueMinor: 6000,
+              outstandingBalanceMinor: 0,
+              currency: 'EUR'
+            }
+          ],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items.find((entry) => entry.primaryReference === 'ADDON-20250650')
+    const trace = inspectReservationPaymentOverviewClassification(batch).ancillaryLinkTraces.find((entry) => entry.reference === 'ADDON-20250650')
+
+    expect(item?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: '203' })
+    ]))
+    expect(trace).toEqual(expect.objectContaining({
+      linkedMainReservationId: '5159718129',
+      linkedRoomName: '203',
+      chosenCandidateReason: 'nearest_preceding_parent_block'
+    }))
+  })
+
+  it('keeps native Reservation+ Comgate rows without a reservation anchor on the fallback path', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-19T10:00:00.000Z',
+          amountMinor: 154900,
+          currency: 'CZK',
+          occurredAt: '2026-03-19',
+          rawReference: 'CG-WEB-2001',
+          data: {
+            platform: 'comgate',
+            reference: 'CG-WEB-2001',
+            paymentPurpose: 'website-reservation',
+            bookedAt: '2026-03-19',
+            transactionId: 'CG-PORTAL-TRX-2001',
+            comgateParserVariant: 'current-portal'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:web',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 154000,
+            currency: 'CZK',
+            bookedAt: '2026-03-19',
+            reference: 'CG-WEB-2001',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: 'WEB-RES-991',
+              guestName: 'Wendy Web',
+              roomName: 'C301',
+              reference: 'WEB-RES-991',
+              channel: 'direct_web',
+              bookedAt: '2026-03-10',
+              stayStartAt: '2026-03-18',
+              stayEndAt: '2026-03-20',
+              grossRevenueMinor: 154000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:web',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: 'CG-WEB-2001',
+              payoutDate: '2026-03-19',
+              amountMinor: 154900,
+              matchingAmountMinor: 154000,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      title: 'CG-WEB-2001',
+      primaryReference: 'CG-WEB-2001'
+    }))
+    expect(item?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Host')
+    expect(item?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
+    expect(item?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
+    expect(trace).toEqual(expect.objectContaining({
+      reference: 'CG-WEB-2001',
+      linkedMainReservationId: undefined,
+      chosenCandidateReason: 'no_candidate'
+    }))
   })
 
   it('marks Greta as paid from unique Booking payout-row evidence and keeps Tatiana unverified without payout-row evidence', () => {
