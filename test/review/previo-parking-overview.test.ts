@@ -320,6 +320,91 @@ describe('Previo parking overview', () => {
     }))
   })
 
+  it('keeps the preceding reservation block linked when a later unrelated stay follows the parking row', () => {
+    const batch = buildBatchFromPrevioRows([
+      {
+        createdAt: '18.03.26 09:30',
+        stayStartAt: '20.03.26 14:00',
+        stayEndAt: '22.03.26 11:00',
+        voucher: '5159718129',
+        guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '420,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: 'A205'
+      },
+      {
+        createdAt: '18.03.26 09:30',
+        voucher: 'A205-MEAL',
+        channel: 'Booking.com XML',
+        amountText: '15,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: 'Snídaně'
+      },
+      {
+        createdAt: '18.03.26 09:31',
+        voucher: '20250650',
+        channel: 'Alfred',
+        amountText: '60,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: 'Parkování 1'
+      },
+      {
+        createdAt: '18.03.26 09:40',
+        stayStartAt: '23.03.26 14:00',
+        stayEndAt: '24.03.26 11:00',
+        voucher: '5159718130',
+        guestName: 'Guest Three',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '210,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: 'A206'
+      }
+    ])
+
+    const overview = buildReservationPaymentOverview(batch)
+    const overviewDebug = inspectReservationPaymentOverviewClassification(batch)
+    const parkingItem = overview.blocks.find((block) => block.key === 'parking')?.items.find((item) => item.primaryReference === '20250650')
+    const ancillaryLinkTrace = overviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      subtitle: 'A205',
+      primaryReference: '20250650',
+      currency: 'EUR'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
+    ]))
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      reference: '20250650',
+      stayStartAt: '2026-03-20T14:00:00',
+      stayEndAt: '2026-03-22T11:00:00',
+      rawParsedAncillaryRow: expect.objectContaining({
+        data: expect.objectContaining({
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        })
+      }),
+      normalizedAncillaryRow: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      overviewLinkingInput: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      candidateCount: 1,
+      linkedMainReservationId: '5159718129',
+      linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+      chosenCandidateReason: 'unique_exact_stay_interval'
+    }))
+  })
+
     it('preserves parser, normalization, and linker input truth for selectedFiles-shaped parking rows that appear before the stay row', () => {
       const batch = buildBatchFromPrevioRows([
         {

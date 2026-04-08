@@ -256,17 +256,11 @@ function resolveAdjacentAccommodationContext(
   const previousAccommodation = findNearestAccommodationContext(extractedRows, ancillaryIndex, -1)
   const nextAccommodation = findNearestAccommodationContext(extractedRows, ancillaryIndex, 1)
 
-  if (!previousAccommodation) {
-    return nextAccommodation?.context
-  }
-
-  if (!nextAccommodation) {
+  if (previousAccommodation) {
     return previousAccommodation.context
   }
 
-  return previousAccommodation.distance <= nextAccommodation.distance
-    ? previousAccommodation.context
-    : nextAccommodation.context
+  return nextAccommodation?.context
 }
 
 function findNearestAccommodationContext(

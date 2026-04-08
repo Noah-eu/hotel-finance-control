@@ -4299,6 +4299,134 @@ describe('buildWebDemo', () => {
     }))
   })
 
+  it('keeps Host and Pobyt for 20250650 when a later unrelated stay follows the parking row in the same workbook', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T12:55:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-grouped-selected-files',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-grouped.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            },
+            {
+              createdAt: '18.03.26 09:30',
+              voucher: 'A205-MEAL',
+              guestName: '',
+              channel: 'Booking.com XML',
+              amountText: '15,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Snídaně'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            },
+            {
+              createdAt: '18.03.26 09:40',
+              stayStartAt: '23.03.26 14:00',
+              stayEndAt: '24.03.26 11:00',
+              voucher: '5159718130',
+              guestName: 'Guest Three',
+              channel: 'Booking.com XML',
+              amountText: '210,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A206'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        explicitFields: {
+          linkedGuestName: string
+          stayStartAt: string
+          stayEndAt: string
+          linkedMainReservationId: string
+        }
+        rawParsedAncillaryRow: {
+          data: {
+            stayStartAt: string
+            stayEndAt: string
+          }
+        } | null
+        normalizedAncillaryRow: {
+          stayStartAt: string
+          stayEndAt: string
+        } | null
+        overviewLinkingInput: {
+          stayStartAt: string
+          stayEndAt: string
+        } | null
+        linkedCandidateChain: {
+          candidateCount: number
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        linkedMainReservationId: '5159718129'
+      }),
+      rawParsedAncillaryRow: expect.objectContaining({
+        data: expect.objectContaining({
+          stayStartAt: '2026-03-20T14:00:00',
+          stayEndAt: '2026-03-22T11:00:00'
+        })
+      }),
+      normalizedAncillaryRow: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      overviewLinkingInput: expect.objectContaining({
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 1,
+        exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })
+    }))
+
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Parkování 1')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Pobyt</strong><span>2026-03-20T14:00:00 – 2026-03-22T11:00:00</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>A205</span>')
+  })
+
   it('preserves multiple distinct Previo reservation exports during mergedWorkspace rerun for the same month', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
