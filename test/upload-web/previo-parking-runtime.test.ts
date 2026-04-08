@@ -262,6 +262,53 @@ describe('Previo parking runtime', () => {
     ]))
   })
 
+  it('links the Denisa-like parking row with its own reference through the unique exact stay interval', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', [
+          {
+            createdAt: '18.03.26 09:30',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '5159718129',
+            guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '420,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'A205'
+          },
+          {
+            createdAt: '18.03.26 09:31',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '20250650',
+            channel: 'Alfred',
+            amountText: '60,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Parkování 1'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-08T07:20:00.000Z'
+    })
+
+    const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      subtitle: 'A205',
+      primaryReference: '20250650',
+      currency: 'EUR'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
+    ]))
+  })
+
   it('lets a Comgate parking payment confirm a Previo parking item without creating a duplicate parking identity', async () => {
     const state = await createBrowserRuntime().buildRuntimeState({
       files: [
