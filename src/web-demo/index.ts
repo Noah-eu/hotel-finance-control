@@ -6031,6 +6031,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const reservationPlusNativeLinkTraces = Array.isArray(overviewDebug.reservationPlusNativeLinkTraces)
           ? overviewDebug.reservationPlusNativeLinkTraces
           : [];
+        const reservationPlusComgateMergeTraces = Array.isArray(overviewDebug.reservationPlusComgateMergeTraces)
+          ? overviewDebug.reservationPlusComgateMergeTraces
+          : [];
 
         function buildWorkspaceFileRecordDebugPayload(record) {
           return {
@@ -6294,12 +6297,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
             .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference || String(entry && entry.reservationId || '') === normalizedTargetReference);
           const matchingNativeLinkTraces = reservationPlusNativeLinkTraces
             .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference || String(entry && entry.reservationId || '') === normalizedTargetReference);
+          const matchingMergeTrace = reservationPlusComgateMergeTraces
+            .find((entry) => String(entry && entry.linkedReservationId || '') === normalizedTargetReference && entry && entry.nativeComgateFallbackSuppressed);
           const trace = selectReservationPlusTrace(finalOverviewItem, matchingAncillaryLinkTraces, matchingNativeLinkTraces);
           const tracePayload = trace && Object.prototype.hasOwnProperty.call(trace, 'normalizedNativeRow')
             ? buildReservationPlusNativeLinkTraceDebugPayload(trace)
             : trace
               ? buildAncillaryLinkTraceDebugPayload(trace)
               : null;
+
+          const mergedLinkedGuestName = matchingMergeTrace ? String(matchingMergeTrace.reservationGuestName || '') : '';
+          const mergedLinkedRoomName = matchingMergeTrace ? String(matchingMergeTrace.reservationRoomName || '') : '';
+          const mergedLinkedReservationId = matchingMergeTrace ? String(matchingMergeTrace.linkedReservationId || '') : '';
+          const mergedStayStartAt = matchingMergeTrace ? String(matchingMergeTrace.reservationStayStartAt || '') : '';
+          const mergedStayEndAt = matchingMergeTrace ? String(matchingMergeTrace.reservationStayEndAt || '') : '';
 
           return {
             targetReference: normalizedTargetReference,
@@ -6313,15 +6324,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 : collectUniqueTruthyStrings([trace && trace.sourceDocumentId]),
               reservationId: String(trace && trace.reservationId || finalOverviewItem && finalOverviewItem.primaryReference || ''),
               reference: String(trace && trace.reference || finalOverviewItem && finalOverviewItem.primaryReference || ''),
-              guestName: String(readReservationPaymentDetailValue(detailEntries, 'Host') || ''),
-              linkedGuestName: String(trace && trace.linkedGuestName || ''),
-              stayStartAt: String(trace && trace.stayStartAt || ''),
-              stayEndAt: String(trace && trace.stayEndAt || ''),
-              linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
-              linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
-              unit: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
-              roomName: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
-              linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+              guestName: String(readReservationPaymentDetailValue(detailEntries, 'Host') || mergedLinkedGuestName || ''),
+              linkedGuestName: String(trace && trace.linkedGuestName || mergedLinkedGuestName || ''),
+              stayStartAt: String(trace && trace.stayStartAt || mergedStayStartAt || ''),
+              stayEndAt: String(trace && trace.stayEndAt || mergedStayEndAt || ''),
+              linkedStayStartAt: String(trace && trace.linkedStayStartAt || mergedStayStartAt || ''),
+              linkedStayEndAt: String(trace && trace.linkedStayEndAt || mergedStayEndAt || ''),
+              unit: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || mergedLinkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
+              roomName: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || mergedLinkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
+              linkedMainReservationId: String(trace && trace.linkedMainReservationId || mergedLinkedReservationId || ''),
               detailEntries
             },
             rawParsedSourceRow: tracePayload && tracePayload.rawParsedSourceRow
@@ -6336,6 +6347,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 : null,
             overviewLinkingInput: tracePayload && tracePayload.overviewLinkingInput ? tracePayload.overviewLinkingInput : null,
             matchingLinkTrace: tracePayload,
+            matchingMergeTrace: matchingMergeTrace || null,
             matchingAncillaryLinkTraces: matchingAncillaryLinkTraces.map((entry) => buildAncillaryLinkTraceDebugPayload(entry)),
             matchingNativeLinkTraces: matchingNativeLinkTraces.map((entry) => buildReservationPlusNativeLinkTraceDebugPayload(entry)),
             linkedCandidateChain: {
@@ -6343,7 +6355,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               candidateCount: Number(trace && trace.candidateCount || 0),
               exactIdentityHits: tracePayload && Array.isArray(tracePayload.exactIdentityHits) ? tracePayload.exactIdentityHits : [],
               exactStayIntervalHits: tracePayload && Array.isArray(tracePayload.exactStayIntervalHits) ? tracePayload.exactStayIntervalHits : [],
-              chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+              chosenCandidateReason: String(trace && trace.chosenCandidateReason || matchingMergeTrace && matchingMergeTrace.chosenLinkReason || 'no_candidate')
             }
           };
         }
@@ -6474,7 +6486,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
               }))
               : [],
             ancillaryLinkTraces: ancillaryLinkTraces.map((trace) => buildAncillaryLinkTraceDebugPayload(trace)),
-            reservationPlusNativeLinkTraces: reservationPlusNativeLinkTraces.map((trace) => buildReservationPlusNativeLinkTraceDebugPayload(trace))
+            reservationPlusNativeLinkTraces: reservationPlusNativeLinkTraces.map((trace) => buildReservationPlusNativeLinkTraceDebugPayload(trace)),
+            reservationPlusComgateMergeTraces: reservationPlusComgateMergeTraces.map((trace) => ({
+              finalOverviewItemId: String(trace && trace.finalOverviewItemId || ''),
+              linkedReservationId: String(trace && trace.linkedReservationId || ''),
+              linkedPaymentReference: String(trace && trace.linkedPaymentReference || ''),
+              chosenLinkReason: String(trace && trace.chosenLinkReason || ''),
+              nativeComgateFallbackSuppressed: Boolean(trace && trace.nativeComgateFallbackSuppressed),
+              mergedComgateRowId: String(trace && trace.mergedComgateRowId || ''),
+              mergedComgateSourceDocumentId: String(trace && trace.mergedComgateSourceDocumentId || ''),
+              reservationGuestName: String(trace && trace.reservationGuestName || ''),
+              reservationRoomName: String(trace && trace.reservationRoomName || ''),
+              reservationStayStartAt: String(trace && trace.reservationStayStartAt || ''),
+              reservationStayEndAt: String(trace && trace.reservationStayEndAt || '')
+            }))
           },
           previoAncillaryParserTrace: previoAncillaryParserTrace.map((entry) => buildPrevioAncillaryParserTracePayload(entry)),
           mergedWorkspaceReferenceTrace: {

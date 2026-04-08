@@ -9,6 +9,7 @@ export type {
   ReservationPaymentAmountSummary,
   ReservationPaymentOverviewDebug,
   ReservationPaymentOverviewDebugCandidate,
+  ReservationPaymentOverviewComgateMergeTrace,
   ReservationPaymentDetailEntry,
   ReservationPaymentEvidenceKey,
   ReservationPaymentOverview,

@@ -4750,13 +4750,20 @@ describe('buildWebDemo', () => {
             reservationId: string
           }
         } | null
+        matchingMergeTrace: {
+          linkedReservationId: string
+          chosenLinkReason: string
+          nativeComgateFallbackSuppressed: boolean
+          reservationGuestName: string
+          reservationRoomName: string
+        } | null
         linkedCandidateChain: {
           chosenCandidateReason: string
         }
       }>
     }
 
-    const probe = payload.reservationPlusItemProbes.find((entry) => entry.rawParsedSourceRow?.data?.reservationId === 'WEB-RES-991')
+    const probe = payload.reservationPlusItemProbes.find((entry) => entry.explicitFields?.linkedMainReservationId === 'WEB-RES-991')
 
     expect(probe).toEqual(expect.objectContaining({
       explicitFields: expect.objectContaining({
@@ -4764,15 +4771,15 @@ describe('buildWebDemo', () => {
         linkedMainReservationId: 'WEB-RES-991',
         roomName: 'C301'
       }),
-      rawParsedSourceRow: expect.objectContaining({
-        sourceDocumentId: expect.stringContaining('comgate-target-csv'),
-        rawReference: 'CG-RES-991',
-        data: expect.objectContaining({
-          reservationId: 'WEB-RES-991'
-        })
+      matchingMergeTrace: expect.objectContaining({
+        linkedReservationId: 'WEB-RES-991',
+        chosenLinkReason: 'exact_refId_merge',
+        nativeComgateFallbackSuppressed: true,
+        reservationGuestName: 'Wendy Web',
+        reservationRoomName: 'C301'
       }),
       linkedCandidateChain: expect.objectContaining({
-        chosenCandidateReason: 'exact_identity'
+        chosenCandidateReason: 'exact_refId_merge'
       })
     }))
   })

@@ -85,6 +85,21 @@ export interface ReservationPaymentOverviewDebug {
   parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[]
   ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[]
   reservationPlusNativeLinkTraces: ReservationPaymentOverviewNativeLinkTrace[]
+  reservationPlusComgateMergeTraces: ReservationPaymentOverviewComgateMergeTrace[]
+}
+
+export interface ReservationPaymentOverviewComgateMergeTrace {
+  finalOverviewItemId: string
+  linkedReservationId: string
+  linkedPaymentReference: string
+  chosenLinkReason: 'exact_refId_merge' | 'no_merge'
+  nativeComgateFallbackSuppressed: boolean
+  mergedComgateRowId?: string
+  mergedComgateSourceDocumentId?: string
+  reservationGuestName?: string
+  reservationRoomName?: string
+  reservationStayStartAt?: string
+  reservationStayEndAt?: string
 }
 
 type ReservationPaymentOverviewLinkReason =
@@ -358,6 +373,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const directMatch = matchesBySourceKey.get(sourceKey)
       ?? resolveBookingConfirmedPayoutMatch(workflowPlan.reservationSettlementMatches, reservation, blockKey)
       ?? resolveBookingExactPayoutRowMatch(workflowPlan.payoutRows, reservation, blockKey)
+      ?? resolveComgateExactPayoutRowMatch(workflowPlan.payoutRows, reservation, blockKey, extractedRecordLookup, transactionsById, consumedRowIds)
     const bookingPayoutBatchBridge = !directMatch
       ? resolveBookingConfirmedPayoutBatchBridge(batch, reservation, blockKey)
       : undefined
@@ -676,6 +692,7 @@ export function inspectReservationPaymentOverviewClassification(
   const parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[] = []
   const ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[] = []
   const reservationPlusNativeLinkTraces: ReservationPaymentOverviewNativeLinkTrace[] = []
+  const reservationPlusComgateMergeTraces: ReservationPaymentOverviewComgateMergeTrace[] = []
   let parkingCandidatesBeforeGrouping = 0
   let reservationPlusCandidatesBeforeGrouping = 0
 
@@ -724,6 +741,37 @@ export function inspectReservationPaymentOverviewClassification(
             ? 'Parking-like reservation source resolved into reservation_plus before grouping.'
             : 'Parking-like reservation source resolved into a non-parking OTA block before grouping.'
       })
+    }
+
+    if (blockKey === 'reservation_plus') {
+      const debugConsumedRowIds = new Set(consumedRowIds)
+      const comgateMergeMatch = resolveComgateExactPayoutRowMatch(
+        workflowPlan.payoutRows,
+        reservation,
+        blockKey,
+        extractedRecordLookup,
+        transactionsById,
+        debugConsumedRowIds
+      )
+      const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
+
+      reservationPlusComgateMergeTraces.push({
+        finalOverviewItemId: `reservation-payment:${sourceKey}`,
+        linkedReservationId: reservation.reservationId,
+        linkedPaymentReference: comgateMergeMatch?.matchedRowId ?? '',
+        chosenLinkReason: comgateMergeMatch ? 'exact_refId_merge' : 'no_merge',
+        nativeComgateFallbackSuppressed: Boolean(comgateMergeMatch),
+        mergedComgateRowId: comgateMergeMatch?.matchedRowId,
+        mergedComgateSourceDocumentId: comgateMergeMatch?.evidence.find((e) => e.key === 'payoutRowSourceDocumentId')?.value as string | undefined,
+        reservationGuestName: reservation.guestName,
+        reservationRoomName: reservation.roomName,
+        reservationStayStartAt: reservation.stayStartAt,
+        reservationStayEndAt: reservation.stayEndAt
+      })
+
+      if (comgateMergeMatch?.matchedRowId) {
+        consumedRowIds.add(comgateMergeMatch.matchedRowId)
+      }
     }
   }
 
@@ -913,7 +961,8 @@ export function inspectReservationPaymentOverviewClassification(
     parkingLikeCandidateIds: parkingLikeCandidates.map((candidate) => candidate.candidateId),
     parkingLikeCandidates,
     ancillaryLinkTraces,
-    reservationPlusNativeLinkTraces
+    reservationPlusNativeLinkTraces,
+    reservationPlusComgateMergeTraces
   }
 }
 
@@ -948,7 +997,8 @@ function buildEmptyOverviewDebug(): ReservationPaymentOverviewDebug {
     parkingLikeCandidateIds: [],
     parkingLikeCandidates: [],
     ancillaryLinkTraces: [],
-    reservationPlusNativeLinkTraces: []
+    reservationPlusNativeLinkTraces: [],
+    reservationPlusComgateMergeTraces: []
   }
 }
 
@@ -1120,6 +1170,76 @@ function resolveBookingExactPayoutRowMatch(
       comparableReference && comparableRowReservationId === comparableReference && reservation.reference
         ? { key: 'reference', value: reservation.reference }
         : undefined,
+      { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
+      { key: 'payoutRowId', value: candidate.rowId }
+    ])
+  }
+}
+
+function resolveComgateExactPayoutRowMatch(
+  payoutRows: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  extractedRecordLookup: ExtractedRecordLookup,
+  transactionsById: Map<string, NormalizedTransaction>,
+  consumedRowIds: Set<string>
+): ReservationSettlementMatch | undefined {
+  if (blockKey !== 'reservation_plus') {
+    return undefined
+  }
+
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return undefined
+  }
+
+  const candidates = payoutRows.filter((row) => {
+    if (row.platform !== 'comgate' || consumedRowIds.has(row.rowId)) {
+      return false
+    }
+
+    const transaction = transactionsById.get(row.rowId)
+    if (!transaction) {
+      return false
+    }
+
+    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
+
+    if (isParkingLike(
+      readString(extractedRecord?.data.paymentPurpose),
+      readString(extractedRecord?.data.reference),
+      readString(extractedRecord?.data.transactionId),
+      row.payoutReference
+    )) {
+      return false
+    }
+
+    return matchesReservationPlusNativeExactIdentity(row, extractedRecord, reservation)
+  })
+
+  if (candidates.length !== 1) {
+    return undefined
+  }
+
+  const candidate = candidates[0]!
+  return {
+    sourceDocumentId: reservation.sourceDocumentId,
+    reservationId: reservation.reservationId,
+    reference: reservation.reference,
+    settlementKind: 'payout_row',
+    matchedRowId: candidate.rowId,
+    platform: 'comgate',
+    amountMinor: candidate.amountMinor,
+    currency: candidate.currency,
+    confidence: 1,
+    reasons: ['reservationIdExact', 'comgatePayoutRowMerge'],
+    evidence: compactEvidence([
+      { key: 'reservationId', value: reservation.reservationId },
+      reservation.reference ? { key: 'reference', value: reservation.reference } : undefined,
       { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
       { key: 'payoutRowId', value: candidate.rowId }
     ])

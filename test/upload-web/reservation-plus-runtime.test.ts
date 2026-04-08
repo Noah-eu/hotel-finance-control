@@ -122,24 +122,25 @@ describe('Reservation+ runtime enrichment', () => {
     })
 
     const item = state.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items.find((entry) => entry.evidenceKey === 'comgate' && entry.transactionIds.length > 0)
-    const trace = state.reservationPaymentOverviewDebug.reservationPlusNativeLinkTraces[0]
+    const mergeTrace = state.reservationPaymentOverviewDebug.reservationPlusComgateMergeTraces[0]
 
     expect(item).toEqual(expect.objectContaining({
       title: 'Wendy Web',
       subtitle: 'C301',
-      primaryReference: 'WEB-RES-991'
+      primaryReference: 'WEB-RES-991',
+      statusKey: 'paid',
+      evidenceKey: 'comgate'
     }))
     expect(item?.detailEntries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ labelCs: 'Host', value: 'Wendy Web' }),
-      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-18 – 2026-03-20' }),
       expect.objectContaining({ labelCs: 'Jednotka', value: 'C301' })
     ]))
-    expect(trace).toEqual(expect.objectContaining({
-      reservationId: 'WEB-RES-991',
-      linkedMainReservationId: 'WEB-RES-991',
-      linkedGuestName: 'Wendy Web',
-      linkedRoomName: 'C301',
-      chosenCandidateReason: 'exact_identity'
+    expect(item?.dateValue).toBe('2026-03-18 – 2026-03-20')
+    expect(mergeTrace).toEqual(expect.objectContaining({
+      linkedReservationId: 'WEB-RES-991',
+      chosenLinkReason: 'exact_refId_merge',
+      nativeComgateFallbackSuppressed: true,
+      reservationGuestName: 'Wendy Web',
+      reservationRoomName: 'C301'
     }))
   })
 
