@@ -4465,6 +4465,220 @@ describe('buildWebDemo', () => {
     expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>A205</span>')
   })
 
+  it('uses the nearest preceding workbook reservation block when 20250650 shares its stay interval with multiple reservations', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T14:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-ambiguous-parent-block',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-ambiguous.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:10',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: 'HMT2QMDN8E',
+              guestName: 'Host 304',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '304'
+            },
+            {
+              createdAt: '18.03.26 09:20',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: 'HMSH9FKX8F',
+              guestName: 'Host 301',
+              channel: 'Booking.com XML',
+              amountText: '410,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '301'
+            },
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '203'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            },
+            {
+              createdAt: '18.03.26 09:32',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '6126906663',
+              guestName: 'Host 204',
+              channel: 'Booking.com XML',
+              amountText: '430,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '204'
+            },
+            {
+              createdAt: '18.03.26 09:33',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '6415593183',
+              guestName: 'Host 202',
+              channel: 'Booking.com XML',
+              amountText: '440,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '202'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      parkingItemProbe: {
+        explicitFields: {
+          linkedGuestName: string
+          linkedMainReservationId: string
+          roomName: string
+        }
+        linkedCandidateChain: {
+          candidateCount: number
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      explicitFields: expect.objectContaining({
+        linkedGuestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+        linkedMainReservationId: '5159718129',
+        roomName: '203'
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 5,
+        exactStayIntervalHits: expect.arrayContaining([
+          expect.objectContaining({ reservationId: 'HMT2QMDN8E' }),
+          expect.objectContaining({ reservationId: 'HMSH9FKX8F' }),
+          expect.objectContaining({ reservationId: '5159718129' }),
+          expect.objectContaining({ reservationId: '6126906663' }),
+          expect.objectContaining({ reservationId: '6415593183' })
+        ]),
+        chosenCandidateReason: 'nearest_preceding_parent_block'
+      })
+    }))
+
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>203</span>')
+  })
+
+  it('keeps rawParsedAncillaryRow aligned with the visible 20250650 item when another workbook reuses the same ancillary record id', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T14:30:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-trace-consistency',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-target.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '203'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        ),
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-foreign.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '17.03.26 08:10',
+              stayStartAt: '18.03.26 14:00',
+              stayEndAt: '19.03.26 11:00',
+              voucher: 'FOREIGN-STAY',
+              guestName: 'Foreign Guest',
+              channel: 'Booking.com XML',
+              amountText: '220,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: '401'
+            },
+            {
+              createdAt: '17.03.26 08:11',
+              voucher: '20250563',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '50,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování foreign'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      parkingItemProbe: {
+        finalOverviewItem: {
+          sourceDocumentIds: string[]
+        } | null
+        rawParsedAncillaryRow: {
+          sourceDocumentId: string
+          rawReference: string
+          data: {
+            reference: string
+          }
+        } | null
+      }
+    }
+
+    expect(payload.parkingItemProbe.finalOverviewItem?.sourceDocumentIds).toEqual([
+      'uploaded:previo:1:reservations-export-2026-03-target-xlsx'
+    ])
+    expect(payload.parkingItemProbe.rawParsedAncillaryRow).toEqual(expect.objectContaining({
+      sourceDocumentId: 'uploaded:previo:1:reservations-export-2026-03-target-xlsx',
+      rawReference: '20250650',
+      data: expect.objectContaining({
+        reference: '20250650'
+      })
+    }))
+  })
+
   it('preserves multiple distinct Previo reservation exports during mergedWorkspace rerun for the same month', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()

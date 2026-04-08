@@ -405,6 +405,110 @@ describe('Previo parking overview', () => {
     }))
   })
 
+  it('uses the nearest preceding reservation block when multiple stays share the same exact interval', () => {
+    const batch = buildBatchFromPrevioRows([
+      {
+        createdAt: '18.03.26 09:10',
+        stayStartAt: '20.03.26 14:00',
+        stayEndAt: '22.03.26 11:00',
+        voucher: 'HMT2QMDN8E',
+        guestName: 'Host 304',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '420,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: '304'
+      },
+      {
+        createdAt: '18.03.26 09:20',
+        stayStartAt: '20.03.26 14:00',
+        stayEndAt: '22.03.26 11:00',
+        voucher: 'HMSH9FKX8F',
+        guestName: 'Host 301',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '410,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: '301'
+      },
+      {
+        createdAt: '18.03.26 09:30',
+        stayStartAt: '20.03.26 14:00',
+        stayEndAt: '22.03.26 11:00',
+        voucher: '5159718129',
+        guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '420,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: '203'
+      },
+      {
+        createdAt: '18.03.26 09:31',
+        voucher: '20250650',
+        channel: 'Alfred',
+        amountText: '60,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: 'Parkování 1'
+      },
+      {
+        createdAt: '18.03.26 09:32',
+        stayStartAt: '20.03.26 14:00',
+        stayEndAt: '22.03.26 11:00',
+        voucher: '6126906663',
+        guestName: 'Host 204',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '430,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: '204'
+      },
+      {
+        createdAt: '18.03.26 09:33',
+        stayStartAt: '20.03.26 14:00',
+        stayEndAt: '22.03.26 11:00',
+        voucher: '6415593183',
+        guestName: 'Host 202',
+        companyName: '',
+        channel: 'Booking.com XML',
+        amountText: '440,00EUR',
+        outstandingText: '0,00EUR',
+        roomName: '202'
+      }
+    ])
+
+    const overview = buildReservationPaymentOverview(batch)
+    const overviewDebug = inspectReservationPaymentOverviewClassification(batch)
+    const parkingItem = overview.blocks.find((block) => block.key === 'parking')?.items.find((item) => item.primaryReference === '20250650')
+    const ancillaryLinkTrace = overviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      subtitle: '203',
+      primaryReference: '20250650'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: '203' })
+    ]))
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      reference: '20250650',
+      candidateCount: 5,
+      linkedMainReservationId: '5159718129',
+      linkedGuestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+      linkedRoomName: '203',
+      exactStayIntervalHits: expect.arrayContaining([
+        expect.objectContaining({ reservationId: 'HMT2QMDN8E' }),
+        expect.objectContaining({ reservationId: 'HMSH9FKX8F' }),
+        expect.objectContaining({ reservationId: '5159718129' }),
+        expect.objectContaining({ reservationId: '6126906663' }),
+        expect.objectContaining({ reservationId: '6415593183' })
+      ]),
+      chosenCandidateReason: 'nearest_preceding_parent_block'
+    }))
+  })
+
     it('preserves parser, normalization, and linker input truth for selectedFiles-shaped parking rows that appear before the stay row', () => {
       const batch = buildBatchFromPrevioRows([
         {
@@ -474,6 +578,16 @@ describe('Previo parking overview', () => {
   it('keeps fallback when exact stay interval points to multiple main reservations', () => {
     const batch = buildBatchFromPrevioRows([
       {
+        createdAt: '13.03.2026 09:20',
+        stayStartAt: '25.03.2026',
+        stayEndAt: '27.03.2026',
+        voucher: 'PREVIO-PARK-AMB',
+        channel: 'comgate',
+        amountText: '220,00',
+        outstandingText: '0,00',
+        roomName: 'Parkování ambiguous'
+      },
+      {
         createdAt: '13.03.2026 09:15',
         stayStartAt: '25.03.2026',
         stayEndAt: '27.03.2026',
@@ -496,20 +610,13 @@ describe('Previo parking overview', () => {
         amountText: '430,00',
         outstandingText: '0,00',
         roomName: 'A102'
-      },
-      {
-        createdAt: '13.03.2026 09:20',
-        stayStartAt: '25.03.2026',
-        stayEndAt: '27.03.2026',
-        voucher: 'PREVIO-PARK-AMB',
-        channel: 'comgate',
-        amountText: '220,00',
-        outstandingText: '0,00',
-        roomName: 'Parkování ambiguous'
       }
     ])
 
-    const parkingItem = buildReservationPaymentOverview(batch).blocks.find((block) => block.key === 'parking')?.items[0]
+    const overview = buildReservationPaymentOverview(batch)
+    const overviewDebug = inspectReservationPaymentOverviewClassification(batch)
+    const parkingItem = overview.blocks.find((block) => block.key === 'parking')?.items[0]
+    const ancillaryLinkTrace = overviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === 'PREVIO-PARK-AMB')
 
     expect(parkingItem).toEqual(expect.objectContaining({
       title: 'Parkování ambiguous',
@@ -517,5 +624,10 @@ describe('Previo parking overview', () => {
     }))
     expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Host')
     expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      candidateCount: 2,
+      linkedMainReservationId: undefined,
+      chosenCandidateReason: 'ambiguous_exact_stay_interval'
+    }))
   })
 })

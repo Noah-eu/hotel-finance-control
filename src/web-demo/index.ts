@@ -6195,7 +6195,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
               ? finalOverviewItemDebug.finalOverviewItem.sourceDocumentIds
               : []
           );
-          const trace = matchingAncillaryLinkTraces.find((entry) => finalOverviewSourceDocumentIds.includes(String(entry && entry.sourceDocumentId || '')))
+          const finalOverviewItemId = String(finalOverviewItemDebug.finalOverviewItem && finalOverviewItemDebug.finalOverviewItem.id || '');
+          const trace = matchingAncillaryLinkTraces.find((entry) => String(entry && entry.itemId || '') === finalOverviewItemId)
+            || matchingAncillaryLinkTraces.find((entry) => finalOverviewSourceDocumentIds.includes(String(entry && entry.sourceDocumentId || '')))
             || matchingAncillaryLinkTraces[0]
             || null;
           const finalOverviewItem = finalOverviewItemDebug.finalOverviewItem;

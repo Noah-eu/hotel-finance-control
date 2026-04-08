@@ -465,6 +465,172 @@ describe('Previo parking runtime', () => {
     }))
   })
 
+  it('uses the nearest preceding workbook reservation block when exact stay interval is ambiguous', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03-ambiguous.xlsx', [
+          {
+            createdAt: '18.03.26 09:10',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: 'HMT2QMDN8E',
+            guestName: 'Host 304',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '420,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '304'
+          },
+          {
+            createdAt: '18.03.26 09:20',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: 'HMSH9FKX8F',
+            guestName: 'Host 301',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '410,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '301'
+          },
+          {
+            createdAt: '18.03.26 09:30',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '5159718129',
+            guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '420,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '203'
+          },
+          {
+            createdAt: '18.03.26 09:31',
+            voucher: '20250650',
+            channel: 'Alfred',
+            amountText: '60,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Parkování 1'
+          },
+          {
+            createdAt: '18.03.26 09:32',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '6126906663',
+            guestName: 'Host 204',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '430,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '204'
+          },
+          {
+            createdAt: '18.03.26 09:33',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '6415593183',
+            guestName: 'Host 202',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '440,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '202'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-08T14:05:00.000Z'
+    })
+
+    const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items.find((item) => item.primaryReference === '20250650')
+    const ancillaryLinkTrace = state.reservationPaymentOverviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      subtitle: '203',
+      primaryReference: '20250650'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: '203' })
+    ]))
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      candidateCount: 5,
+      linkedMainReservationId: '5159718129',
+      linkedGuestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+      linkedRoomName: '203',
+      chosenCandidateReason: 'nearest_preceding_parent_block'
+    }))
+  })
+
+  it('keeps raw parsed ancillary trace scoped to the same workbook source document when record ids collide', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03-target.xlsx', [
+          {
+            createdAt: '18.03.26 09:30',
+            stayStartAt: '20.03.26 14:00',
+            stayEndAt: '22.03.26 11:00',
+            voucher: '5159718129',
+            guestName: 'Denisa Plechlová,Jozef Kluvanec,Nataša Plechlová',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '420,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '203'
+          },
+          {
+            createdAt: '18.03.26 09:31',
+            voucher: '20250650',
+            channel: 'Alfred',
+            amountText: '60,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Parkování 1'
+          }
+        ]),
+        createRuntimeWorkbookFile('reservations-export-2026-03-foreign.xlsx', [
+          {
+            createdAt: '17.03.26 08:10',
+            stayStartAt: '18.03.26 14:00',
+            stayEndAt: '19.03.26 11:00',
+            voucher: 'FOREIGN-STAY',
+            guestName: 'Foreign Guest',
+            companyName: '',
+            channel: 'Booking.com XML',
+            amountText: '220,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: '401'
+          },
+          {
+            createdAt: '17.03.26 08:11',
+            voucher: '20250563',
+            channel: 'Alfred',
+            amountText: '50,00EUR',
+            outstandingText: '0,00EUR',
+            roomName: 'Parkování foreign'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-08T14:15:00.000Z'
+    })
+
+    const targetTrace = state.reservationPaymentOverviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
+
+    expect(targetTrace).toEqual(expect.objectContaining({
+      sourceDocumentId: expect.stringContaining('reservations-export-2026-03-target-xlsx'),
+      rawParsedAncillaryRow: expect.objectContaining({
+        sourceDocumentId: expect.stringContaining('reservations-export-2026-03-target-xlsx'),
+        rawReference: '20250650',
+        data: expect.objectContaining({
+          reference: '20250650'
+        })
+      })
+    }))
+  })
+
   it('emits parser-level ancillary trace rows for the workbook that contains 20250650', async () => {
     const state = await createBrowserRuntime().buildRuntimeState({
       files: [

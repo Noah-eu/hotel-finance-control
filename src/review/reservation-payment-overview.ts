@@ -167,7 +167,7 @@ export interface ReservationPaymentOverviewAncillaryLinkTrace {
   candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  chosenCandidateReason: 'exact_identity' | 'unique_exact_stay_interval' | 'ambiguous_exact_identity' | 'ambiguous_exact_stay_interval' | 'no_candidate'
+  chosenCandidateReason: 'exact_identity' | 'unique_exact_stay_interval' | 'nearest_preceding_parent_block' | 'ambiguous_exact_identity' | 'ambiguous_exact_stay_interval' | 'no_candidate'
 }
 
 interface AncillaryLinkInspection {
@@ -177,6 +177,11 @@ interface AncillaryLinkInspection {
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   chosenCandidateReason: ReservationPaymentOverviewAncillaryLinkTrace['chosenCandidateReason']
+}
+
+interface ExtractedRecordLookup {
+  byScopedId: Map<string, ExtractedRecord>
+  byId: Map<string, ExtractedRecord[]>
 }
 
 interface BookingConfirmedPayoutBatchBridge {
@@ -245,7 +250,8 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     return buildEmptyOverview()
   }
 
-  const extractedRecordsById = new Map(batch.extractedRecords.map((record) => [record.id, record]))
+  const extractedRecordLookup = buildExtractedRecordLookup(batch.extractedRecords)
+  const previoReservationStructureIndex = buildPrevioReservationStructureIndex(batch.extractedRecords)
   const transactionsById = new Map<string, NormalizedTransaction>(
     batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
   )
@@ -378,7 +384,11 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
 
     const paidAmountMinor = candidate?.matchingAmountMinor ?? candidate?.amountMinor ?? resolvePaidAmountFromOutstanding(ancillary)
     const blockKey = resolveAncillaryBlockKey(ancillary)
-    const ancillaryLinkInspection = inspectLinkedReservationForAncillary(ancillary, reservationSources)
+    const ancillaryLinkInspection = inspectLinkedReservationForAncillary(
+      ancillary,
+      reservationSources,
+      previoReservationStructureIndex
+    )
     const linkedReservation = ancillaryLinkInspection.linkedReservation
     const linkedStayValue = linkedReservation
       ? buildStayOrDateValue(linkedReservation.stayStartAt, linkedReservation.stayEndAt, undefined)
@@ -434,7 +444,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       continue
     }
 
-    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordsById)
+    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
     const expectedAmountMinor = readNumber(extractedRecord?.data.grossEarningsMinor) ?? transaction.amountMinor
 
     items.push({
@@ -482,7 +492,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       continue
     }
 
-    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordsById)
+    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
 
     if (row.platform === 'booking') {
       continue
@@ -575,7 +585,8 @@ export function inspectReservationPaymentOverviewClassification(
     return buildEmptyOverviewDebug()
   }
 
-  const extractedRecordsById = new Map(batch.extractedRecords.map((record) => [record.id, record]))
+  const extractedRecordLookup = buildExtractedRecordLookup(batch.extractedRecords)
+  const previoReservationStructureIndex = buildPrevioReservationStructureIndex(batch.extractedRecords)
   const transactionsById = new Map<string, NormalizedTransaction>(
     batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
   )
@@ -671,7 +682,7 @@ export function inspectReservationPaymentOverviewClassification(
   for (const row of workflowPlan.payoutRows) {
     const transaction = transactionsById.get(row.rowId)
     const extractedRecord = transaction
-      ? findFirstExtractedRecord(transaction, extractedRecordsById)
+      ? findFirstExtractedRecord(transaction, extractedRecordLookup)
       : undefined
     const signalTypes = collectParkingSignalTypes([
       ['paymentPurpose', readString(extractedRecord?.data.paymentPurpose)],
@@ -744,8 +755,14 @@ export function inspectReservationPaymentOverviewClassification(
   const reservationPlusBlock = overview.blocks.find((block) => block.key === 'reservation_plus')
 
   for (const ancillary of workflowPlan.ancillaryRevenueSources) {
-    const rawParsedAncillaryRow = buildAncillaryRawParsedRowPayload(extractedRecordsById.get(ancillary.sourceRecordId))
-    const linkInspection = inspectLinkedReservationForAncillary(ancillary, reservationSources)
+    const rawParsedAncillaryRow = buildAncillaryRawParsedRowPayload(
+      findExactExtractedRecord(ancillary.sourceDocumentId, ancillary.sourceRecordId, extractedRecordLookup)
+    )
+    const linkInspection = inspectLinkedReservationForAncillary(
+      ancillary,
+      reservationSources,
+      previoReservationStructureIndex
+    )
 
     ancillaryLinkTraces.push({
       itemId: buildAncillaryOverviewItemId(ancillary),
@@ -1524,16 +1541,10 @@ function findAncillaryCandidate(
   })
 }
 
-function resolveLinkedReservationForAncillary(
-  ancillary: AncillaryRevenueSourceRecord,
-  reservationSources: ReservationSourceRecord[]
-): ReservationSourceRecord | undefined {
-  return inspectLinkedReservationForAncillary(ancillary, reservationSources).linkedReservation
-}
-
 function inspectLinkedReservationForAncillary(
   ancillary: AncillaryRevenueSourceRecord,
-  reservationSources: ReservationSourceRecord[]
+  reservationSources: ReservationSourceRecord[],
+  previoReservationStructureIndex: Map<string, number>
 ): AncillaryLinkInspection {
   const candidateSetBeforeFiltering = reservationSources
     .filter((reservation) => reservation.sourceDocumentId === ancillary.sourceDocumentId)
@@ -1578,6 +1589,23 @@ function inspectLinkedReservationForAncillary(
   }
 
   if (exactStayCandidates.length > 1) {
+    const nearestPrecedingParentReservation = resolveNearestPrecedingParentReservation(
+      ancillary,
+      exactStayCandidates,
+      previoReservationStructureIndex
+    )
+
+    if (nearestPrecedingParentReservation) {
+      return {
+        linkedReservation: nearestPrecedingParentReservation,
+        candidateCount: exactStayCandidates.length,
+        candidateSetBeforeFiltering,
+        exactIdentityHits: [],
+        exactStayIntervalHits,
+        chosenCandidateReason: 'nearest_preceding_parent_block'
+      }
+    }
+
     return {
       linkedReservation: undefined,
       candidateCount: exactStayCandidates.length,
@@ -1648,6 +1676,54 @@ function matchesAncillaryExactStayInterval(
 
 function buildAncillaryOverviewItemId(ancillary: AncillaryRevenueSourceRecord): string {
   return `reservation-payment:ancillary:${ancillary.sourceDocumentId}:${ancillary.reference}`
+}
+
+function buildExtractedRecordLookup(extractedRecords: ExtractedRecord[]): ExtractedRecordLookup {
+  const byScopedId = new Map<string, ExtractedRecord>()
+  const byId = new Map<string, ExtractedRecord[]>()
+
+  for (const record of extractedRecords) {
+    byScopedId.set(buildScopedExtractedRecordKey(record.sourceDocumentId, record.id), record)
+    const existing = byId.get(record.id) ?? []
+    existing.push(record)
+    byId.set(record.id, existing)
+  }
+
+  return {
+    byScopedId,
+    byId
+  }
+}
+
+function buildPrevioReservationStructureIndex(extractedRecords: ExtractedRecord[]): Map<string, number> {
+  const index = new Map<string, number>()
+
+  for (const record of extractedRecords) {
+    if (record.data.platform !== 'previo' || record.data.rowKind === 'ancillary') {
+      continue
+    }
+
+    const workbookOrder = parsePrevioWorkbookRecordOrder(record.id)
+    if (workbookOrder === undefined) {
+      continue
+    }
+
+    for (const value of [
+      stringOrUndefined(record.data.reservationId),
+      stringOrUndefined(record.data.reference),
+      stringOrUndefined(record.rawReference)
+    ]) {
+      const structuralKey = buildPrevioReservationStructureKey(record.sourceDocumentId, value)
+
+      if (!structuralKey || index.has(structuralKey)) {
+        continue
+      }
+
+      index.set(structuralKey, workbookOrder)
+    }
+  }
+
+  return index
 }
 
 function buildAncillaryRawParsedRowPayload(
@@ -1730,10 +1806,121 @@ function toAncillaryLinkCandidateSnapshot(
   }
 }
 
-function findFirstExtractedRecord(transaction: NormalizedTransaction, extractedRecordsById: Map<string, ExtractedRecord>): ExtractedRecord | undefined {
-  return transaction.extractedRecordIds
-    .map((recordId) => extractedRecordsById.get(recordId))
-    .find((record): record is ExtractedRecord => Boolean(record))
+function resolveNearestPrecedingParentReservation(
+  ancillary: AncillaryRevenueSourceRecord,
+  exactStayCandidates: ReservationSourceRecord[],
+  previoReservationStructureIndex: Map<string, number>
+): ReservationSourceRecord | undefined {
+  const ancillaryWorkbookOrder = parsePrevioWorkbookRecordOrder(ancillary.sourceRecordId)
+
+  if (ancillaryWorkbookOrder === undefined) {
+    return undefined
+  }
+
+  const precedingCandidates = exactStayCandidates
+    .map((reservation) => ({
+      reservation,
+      workbookOrder: resolveReservationSourceWorkbookOrder(reservation, previoReservationStructureIndex)
+    }))
+    .filter((entry): entry is { reservation: ReservationSourceRecord; workbookOrder: number } => entry.workbookOrder !== undefined)
+    .filter((entry) => entry.workbookOrder < ancillaryWorkbookOrder)
+
+  if (precedingCandidates.length === 0) {
+    return undefined
+  }
+
+  const nearestWorkbookOrder = Math.max(...precedingCandidates.map((entry) => entry.workbookOrder))
+  const nearestCandidates = precedingCandidates.filter((entry) => entry.workbookOrder === nearestWorkbookOrder)
+
+  return nearestCandidates.length === 1 ? nearestCandidates[0].reservation : undefined
+}
+
+function resolveReservationSourceWorkbookOrder(
+  reservation: ReservationSourceRecord,
+  previoReservationStructureIndex: Map<string, number>
+): number | undefined {
+  for (const value of [reservation.reservationId, reservation.reference]) {
+    const structuralKey = buildPrevioReservationStructureKey(reservation.sourceDocumentId, value)
+
+    if (!structuralKey) {
+      continue
+    }
+
+    const workbookOrder = previoReservationStructureIndex.get(structuralKey)
+
+    if (workbookOrder !== undefined) {
+      return workbookOrder
+    }
+  }
+
+  return undefined
+}
+
+function buildPrevioReservationStructureKey(sourceDocumentId: string, value: string | undefined): string | undefined {
+  const normalizedValue = normalizeComparable(value)
+
+  if (!normalizedValue) {
+    return undefined
+  }
+
+  return `${sourceDocumentId}:${normalizedValue}`
+}
+
+function parsePrevioWorkbookRecordOrder(sourceRecordId: string | undefined): number | undefined {
+  if (!sourceRecordId) {
+    return undefined
+  }
+
+  const match = /^previo-(?:reservation|ancillary)-(\d+)$/.exec(sourceRecordId)
+
+  if (!match) {
+    return undefined
+  }
+
+  const parsed = Number.parseInt(match[1]!, 10)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function findExactExtractedRecord(
+  sourceDocumentId: string,
+  sourceRecordId: string,
+  extractedRecordLookup: ExtractedRecordLookup
+): ExtractedRecord | undefined {
+  return extractedRecordLookup.byScopedId.get(buildScopedExtractedRecordKey(sourceDocumentId, sourceRecordId))
+    ?? extractedRecordLookup.byId.get(sourceRecordId)?.find((record) => record.sourceDocumentId === sourceDocumentId)
+    ?? extractedRecordLookup.byId.get(sourceRecordId)?.[0]
+}
+
+function findFirstExtractedRecord(
+  transaction: NormalizedTransaction,
+  extractedRecordLookup: ExtractedRecordLookup
+): ExtractedRecord | undefined {
+  for (const recordId of transaction.extractedRecordIds) {
+    for (const sourceDocumentId of transaction.sourceDocumentIds) {
+      const exactMatch = extractedRecordLookup.byScopedId.get(buildScopedExtractedRecordKey(sourceDocumentId, recordId))
+
+      if (exactMatch) {
+        return exactMatch
+      }
+    }
+
+    const candidates = extractedRecordLookup.byId.get(recordId) ?? []
+    const alignedCandidate = candidates.find((record) => transaction.sourceDocumentIds.includes(record.sourceDocumentId))
+
+    if (alignedCandidate) {
+      return alignedCandidate
+    }
+
+    if (candidates.length === 1) {
+      return candidates[0]
+    }
+  }
+
+  return undefined
+}
+
+function buildScopedExtractedRecordKey(sourceDocumentId: string, sourceRecordId: string): string {
+  return `${sourceDocumentId}:${sourceRecordId}`
 }
 
 function stringOrUndefined(value: unknown): string | undefined {
