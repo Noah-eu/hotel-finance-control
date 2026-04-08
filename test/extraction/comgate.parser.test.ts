@@ -199,4 +199,54 @@ describe('parseComgateExport', () => {
       }
     })
   })
+
+  it('daily-settlement CSV with ID od klienta produces parsed row with clientId and reservationId', () => {
+    const fixture = getRealInputFixture('comgate-export')
+
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        '"Merchant";"ID ComGate";"Metoda";"Potvrzená částka";"Převedená částka";"Produkt";"Variabilní symbol převodu";"ID od klienta"',
+        '"499465";"M6F7-DQEO-J1BD";"Karta online";"613,00";"606,99";"";"1817482862";"109189209"',
+        '"suma";"";"";"";"";"";"";""'
+      ].join('\n'),
+      extractedAt: '2026-04-01T08:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      data: {
+        comgateParserVariant: 'daily-settlement',
+        clientId: '109189209',
+        reservationId: '109189209',
+        reference: '1817482862',
+        transactionId: 'M6F7-DQEO-J1BD'
+      }
+    })
+  })
+
+  it('daily-settlement with extra Datum převodu column still detects as daily-settlement and preserves clientId', () => {
+    const fixture = getRealInputFixture('comgate-export')
+
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content: [
+        '"Merchant";"ID ComGate";"Metoda";"Potvrzená částka";"Převedená částka";"Produkt";"Variabilní symbol převodu";"ID od klienta";"Datum převodu"',
+        '"499465";"M6F7-DQEO-J1BD";"Karta online";"613,00";"606,99";"";"1817482862";"109189209";"31.03.2026"',
+        '"suma";"";"";"";"";"";"";"";""'
+      ].join('\n'),
+      extractedAt: '2026-04-01T08:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      data: {
+        comgateParserVariant: 'daily-settlement',
+        clientId: '109189209',
+        reservationId: '109189209',
+        reference: '1817482862',
+        transactionId: 'M6F7-DQEO-J1BD'
+      }
+    })
+  })
 })

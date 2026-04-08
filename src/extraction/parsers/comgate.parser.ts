@@ -133,12 +133,12 @@ export class ComgateParser {
 function detectComgateParserVariant(parsed: ParsedDelimitedContent): ComgateParserVariant {
   const headerSet = new Set(parsed.headers)
 
-  if (headerSet.has('payoutDate') && (headerSet.has('transactionId') || headerSet.has('paymentReference') || headerSet.has('paymentType'))) {
-    return 'current-portal'
-  }
-
   if (isDailySettlementComgateShape(parsed)) {
     return 'daily-settlement'
+  }
+
+  if (headerSet.has('payoutDate') && (headerSet.has('transactionId') || headerSet.has('paymentReference') || headerSet.has('paymentType'))) {
+    return 'current-portal'
   }
 
   return 'legacy'
@@ -180,12 +180,12 @@ function buildComgateHeaderDiagnostics(parsed: ParsedDelimitedContent): ComgateH
 }
 
 function detectComgateDetectedFileKind(parsed: ParsedDelimitedContent): ComgateDetectedFileKind {
-  if (isCurrentPortalComgateHeaders(parsed.headers)) {
-    return 'current-portal-guest-payments'
-  }
-
   if (isDailySettlementComgateShape(parsed)) {
     return 'daily-settlement'
+  }
+
+  if (isCurrentPortalComgateHeaders(parsed.headers)) {
+    return 'current-portal-guest-payments'
   }
 
   if (isLegacyComgateHeaders(parsed.headers)) {
