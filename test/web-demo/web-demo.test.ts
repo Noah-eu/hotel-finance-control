@@ -4016,8 +4016,6 @@ describe('buildWebDemo', () => {
             },
             {
               createdAt: '18.03.26 09:31',
-              stayStartAt: '20.03.26 14:00',
-              stayEndAt: '22.03.26 11:00',
               voucher: '20250650',
               guestName: '',
               channel: 'Alfred',

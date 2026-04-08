@@ -61,6 +61,11 @@ const PREVIO_WORKBOOK_HEADER_COLUMNS = [
 const PREVIO_WORKBOOK_TRACE_COLUMNS = ['Voucher', 'Termín od', 'Termín do', 'Hosté', 'PP', 'Cena', 'Saldo', 'Stav'] as const
 type PrevioWorkbookRowKind = 'accommodation' | 'ancillary' | 'ignorable'
 
+interface WorkbookAccommodationContext {
+  stayStartAt?: string
+  stayEndAt?: string
+}
+
 export class PrevioReservationParser {
   parse(input: ParsePrevioReservationExportInput): ExtractedRecord[] {
     if (input.binaryContentBase64) {
@@ -167,15 +172,21 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     kind: classifyWorkbookCandidateRow(row)
   }))
   const extractedRows = classifiedRows.filter((entry) => entry.kind !== 'ignorable')
+  let latestAccommodationContext: WorkbookAccommodationContext | undefined
 
   return extractedRows.map(({ row, kind }, index) => {
     const reservationReference = readWorkbookString(row['Voucher'])
-    const stayStartAt = kind === 'accommodation'
+    const ownStayStartAt = kind === 'accommodation'
       ? parseFlexiblePrevioDate(row['Termín od'], 'Previo Termín od')
       : readWorkbookOptionalDate(row['Termín od'], 'Previo Termín od')
-    const stayEndAt = kind === 'accommodation'
+    const ownStayEndAt = kind === 'accommodation'
       ? parseFlexiblePrevioDate(row['Termín do'], 'Previo Termín do')
       : readWorkbookOptionalDate(row['Termín do'], 'Previo Termín do')
+    const inheritedStayContext = kind === 'ancillary' && !ownStayStartAt && !ownStayEndAt
+      ? latestAccommodationContext
+      : undefined
+    const stayStartAt = ownStayStartAt ?? inheritedStayContext?.stayStartAt
+    const stayEndAt = ownStayEndAt ?? inheritedStayContext?.stayEndAt
     const createdAt = readWorkbookOptionalDate(row['Vytvořeno'], 'Previo Vytvořeno')
     const guestName = readWorkbookOptionalString(row['Hosté'])
     const channel = readWorkbookOptionalString(row['PP'])
@@ -188,6 +199,13 @@ function parsePrevioReservationWorkbook(input: ParsePrevioReservationExportInput
     const recordId = kind === 'accommodation'
       ? `previo-reservation-${index + 1}`
       : `previo-ancillary-${index + 1}`
+
+    if (kind === 'accommodation') {
+      latestAccommodationContext = {
+        stayStartAt,
+        stayEndAt
+      }
+    }
 
     return {
       id: recordId,

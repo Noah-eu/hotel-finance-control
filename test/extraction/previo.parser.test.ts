@@ -596,6 +596,67 @@ describe('parsePrevioReservationExport', () => {
     })
   })
 
+  it('inherits the parent workbook stay interval for a parking ancillary row that omits Termín od and Termín do', () => {
+    const fixture = getRealInputFixture('previo-reservation-export')
+
+    const records = parsePrevioReservationExport({
+      sourceDocument: fixture.sourceDocument,
+      content: fixture.rawInput.content,
+      binaryContentBase64: createPrevioWorkbookBase64([
+        {
+          'Vytvořeno': '18.03.26 09:30',
+          'Termín od': '20.03.26 14:00',
+          'Termín do': '22.03.26 11:00',
+          'Nocí': '2',
+          'Voucher': '5159718129',
+          'Počet hostů': '3',
+          'Hosté': 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+          'Check-In dokončen': 'Ano',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Booking.com XML',
+          'Stav': 'confirmed',
+          'Cena': '420,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'A205'
+        },
+        {
+          'Vytvořeno': '18.03.26 09:31',
+          'Termín od': '',
+          'Termín do': '',
+          'Nocí': '',
+          'Voucher': '20250650',
+          'Počet hostů': '',
+          'Hosté': '',
+          'Check-In dokončen': '',
+          'Market kody': '',
+          'Firma': '',
+          'PP': 'Alfred',
+          'Stav': 'confirmed',
+          'Cena': '60,00EUR',
+          'Saldo': '0,00EUR',
+          'Pokoj': 'Parkování 1'
+        }
+      ]),
+      extractedAt: '2026-04-08T12:40:00.000Z'
+    })
+
+    expect(records[1]).toMatchObject({
+      recordType: 'expected-revenue-line',
+      rawReference: '20250650',
+      occurredAt: '2026-03-20T14:00:00',
+      data: {
+        rowKind: 'ancillary',
+        reservationId: '20250650',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        itemLabel: 'Parkování 1',
+        roomName: 'Parkování 1',
+        channel: 'Alfred'
+      }
+    })
+  })
+
   it('carries accommodation and ancillary Previo rows separately in the workflow plan', () => {
     const fixture = getRealInputFixture('previo-reservation-export')
 

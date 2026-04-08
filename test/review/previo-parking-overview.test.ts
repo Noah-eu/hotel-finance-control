@@ -4,7 +4,7 @@ import type { MonthlyBatchResult } from '../../src/monthly-batch'
 import type { DocumentId } from '../../src/domain/value-types'
 import { parsePrevioReservationExport } from '../../src/extraction'
 import { buildReconciliationWorkflowPlan } from '../../src/reconciliation'
-import { buildReservationPaymentOverview } from '../../src/review'
+import { buildReservationPaymentOverview, inspectReservationPaymentOverviewClassification } from '../../src/review'
 
 interface PrevioWorkbookRow {
   createdAt: string
@@ -285,8 +285,6 @@ describe('Previo parking overview', () => {
       },
       {
         createdAt: '18.03.26 09:31',
-        stayStartAt: '20.03.26 14:00',
-        stayEndAt: '22.03.26 11:00',
         voucher: '20250650',
         channel: 'Alfred',
         amountText: '60,00EUR',
@@ -295,7 +293,10 @@ describe('Previo parking overview', () => {
       }
     ])
 
-    const parkingItem = buildReservationPaymentOverview(batch).blocks.find((block) => block.key === 'parking')?.items[0]
+    const overview = buildReservationPaymentOverview(batch)
+    const overviewDebug = inspectReservationPaymentOverviewClassification(batch)
+    const parkingItem = overview.blocks.find((block) => block.key === 'parking')?.items[0]
+    const ancillaryLinkTrace = overviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
 
     expect(parkingItem).toEqual(expect.objectContaining({
       title: 'Parkování 1',
@@ -308,6 +309,15 @@ describe('Previo parking overview', () => {
       expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
       expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
     ]))
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      reference: '20250650',
+      stayStartAt: '2026-03-20T14:00:00',
+      stayEndAt: '2026-03-22T11:00:00',
+      candidateCount: 1,
+      linkedMainReservationId: '5159718129',
+      linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+      chosenCandidateReason: 'unique_exact_stay_interval'
+    }))
   })
 
   it('keeps fallback when exact stay interval points to multiple main reservations', () => {

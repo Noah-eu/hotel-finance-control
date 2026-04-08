@@ -280,8 +280,6 @@ describe('Previo parking runtime', () => {
           },
           {
             createdAt: '18.03.26 09:31',
-            stayStartAt: '20.03.26 14:00',
-            stayEndAt: '22.03.26 11:00',
             voucher: '20250650',
             channel: 'Alfred',
             amountText: '60,00EUR',
@@ -295,6 +293,7 @@ describe('Previo parking runtime', () => {
     })
 
     const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]
+    const ancillaryLinkTrace = state.reservationPaymentOverviewDebug.ancillaryLinkTraces.find((trace) => trace.reference === '20250650')
 
     expect(parkingItem).toEqual(expect.objectContaining({
       title: 'Parkování 1',
@@ -307,6 +306,15 @@ describe('Previo parking runtime', () => {
       expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
       expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
     ]))
+    expect(ancillaryLinkTrace).toEqual(expect.objectContaining({
+      reference: '20250650',
+      stayStartAt: '2026-03-20T14:00:00',
+      stayEndAt: '2026-03-22T11:00:00',
+      candidateCount: 1,
+      linkedMainReservationId: '5159718129',
+      linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+      chosenCandidateReason: 'unique_exact_stay_interval'
+    }))
   })
 
   it('lets a Comgate parking payment confirm a Previo parking item without creating a duplicate parking identity', async () => {
