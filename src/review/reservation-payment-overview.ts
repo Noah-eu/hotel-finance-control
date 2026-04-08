@@ -63,6 +63,68 @@ export interface ReservationPaymentOverview {
   }
 }
 
+export interface ReservationPaymentOverviewDebugCandidate {
+  candidateId: string
+  sourceKind: 'reservation_source' | 'ancillary_source' | 'comgate_payout_row'
+  sourcePlatform: 'previo' | 'comgate'
+  sourceDocumentId?: string
+  reservationReference?: string
+  payoutReference?: string
+  parkingSignalType: 'channel' | 'roomName' | 'reference' | 'itemLabel' | 'paymentPurpose' | 'transactionId' | 'payoutReference' | 'multiple'
+  parkingSignalTypes: Array<'channel' | 'roomName' | 'reference' | 'itemLabel' | 'paymentPurpose' | 'transactionId' | 'payoutReference'>
+  computedBlockKey?: ReservationPaymentOverviewBlockKey
+  reason: string
+}
+
+export interface ReservationPaymentOverviewDebug {
+  parkingCandidatesBeforeGrouping: number
+  reservationPlusCandidatesBeforeGrouping: number
+  finalParkingBlockCount: number
+  finalReservationPlusBlockCount: number
+  parkingLikeCandidateIds: string[]
+  parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[]
+  ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[]
+}
+
+export interface ReservationPaymentOverviewAncillaryLinkCandidate {
+  sourceDocumentId: string
+  reservationId: string
+  reference?: string
+  guestName?: string
+  stayStartAt?: string
+  stayEndAt?: string
+  roomName?: string
+}
+
+export interface ReservationPaymentOverviewAncillaryLinkTrace {
+  itemId: string
+  sourceDocumentId: string
+  reference: string
+  reservationId?: string
+  itemLabel?: string
+  channel?: string
+  stayStartAt?: string
+  stayEndAt?: string
+  computedBlockKey: ReservationPaymentOverviewBlockKey
+  linkedMainReservationId?: string
+  linkedGuestName?: string
+  linkedStayStartAt?: string
+  linkedStayEndAt?: string
+  linkedRoomName?: string
+  candidateCount: number
+  exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  chosenCandidateReason: 'exact_identity' | 'unique_exact_stay_interval' | 'ambiguous_exact_identity' | 'ambiguous_exact_stay_interval' | 'no_candidate'
+}
+
+interface AncillaryLinkInspection {
+  linkedReservation?: ReservationSourceRecord
+  candidateCount: number
+  exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  chosenCandidateReason: ReservationPaymentOverviewAncillaryLinkTrace['chosenCandidateReason']
+}
+
 interface BookingConfirmedPayoutBatchBridge {
   match: ReservationSettlementMatch
   payoutBatchKey: string
@@ -262,7 +324,8 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
 
     const paidAmountMinor = candidate?.matchingAmountMinor ?? candidate?.amountMinor ?? resolvePaidAmountFromOutstanding(ancillary)
     const blockKey = resolveAncillaryBlockKey(ancillary)
-    const linkedReservation = resolveLinkedReservationForAncillary(ancillary, reservationSources)
+    const ancillaryLinkInspection = inspectLinkedReservationForAncillary(ancillary, reservationSources)
+    const linkedReservation = ancillaryLinkInspection.linkedReservation
     const linkedStayValue = linkedReservation
       ? buildStayOrDateValue(linkedReservation.stayStartAt, linkedReservation.stayEndAt, undefined)
       : undefined
@@ -275,7 +338,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const evidenceKey: ReservationPaymentEvidenceKey = candidate ? mapEvidenceKeyFromPlatform(candidate.platform) : 'no_evidence'
 
     items.push({
-      id: `reservation-payment:ancillary:${ancillary.sourceDocumentId}:${ancillary.reference}`,
+      id: buildAncillaryOverviewItemId(ancillary),
       blockKey,
       title: ancillary.itemLabel ?? ancillary.reference,
       subtitle: linkedReservation?.roomName ?? (ancillary.reservationId ? `Rezervace ${ancillary.reservationId}` : undefined),
@@ -449,6 +512,219 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
   return finalizeOverview(items)
 }
 
+export function inspectReservationPaymentOverviewClassification(
+  batch: MonthlyBatchResult
+): ReservationPaymentOverviewDebug {
+  const workflowPlan = batch.reconciliation.workflowPlan
+
+  if (!workflowPlan) {
+    return buildEmptyOverviewDebug()
+  }
+
+  const extractedRecordsById = new Map(batch.extractedRecords.map((record) => [record.id, record]))
+  const transactionsById = new Map<string, NormalizedTransaction>(
+    batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
+  )
+  const consumedRowIds = new Set<string>()
+  const parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[] = []
+  const ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[] = []
+  let parkingCandidatesBeforeGrouping = 0
+  let reservationPlusCandidatesBeforeGrouping = 0
+
+  for (const match of workflowPlan.reservationSettlementMatches) {
+    if (match.matchedRowId) {
+      consumedRowIds.add(match.matchedRowId)
+    }
+  }
+
+  const reservationSources = mergeReservationSources(
+    workflowPlan.reservationSources,
+    workflowPlan.previoReservationTruth ?? []
+  )
+
+  for (const reservation of reservationSources) {
+    const blockKey = resolveReservationBlockKey(reservation)
+    countReservationLikeCandidate(blockKey, {
+      onParking() {
+        parkingCandidatesBeforeGrouping += 1
+      },
+      onReservationPlus() {
+        reservationPlusCandidatesBeforeGrouping += 1
+      }
+    })
+
+    const signalTypes = collectParkingSignalTypes([
+      ['channel', reservation.channel],
+      ['roomName', reservation.roomName],
+      ['reference', reservation.reference]
+    ])
+
+    if (signalTypes.length > 0) {
+      parkingLikeCandidates.push({
+        candidateId: `reservation:${reservation.sourceDocumentId}:${reservation.reservationId}`,
+        sourceKind: 'reservation_source',
+        sourcePlatform: 'previo',
+        sourceDocumentId: reservation.sourceDocumentId,
+        reservationReference: reservation.reservationId,
+        payoutReference: reservation.reference,
+        parkingSignalType: collapseParkingSignalType(signalTypes),
+        parkingSignalTypes: signalTypes,
+        computedBlockKey: blockKey,
+        reason: blockKey === 'parking'
+          ? 'Parking-like reservation source stayed in the parking block.'
+          : blockKey === 'reservation_plus'
+            ? 'Parking-like reservation source resolved into reservation_plus before grouping.'
+            : 'Parking-like reservation source resolved into a non-parking OTA block before grouping.'
+      })
+    }
+  }
+
+  for (const ancillary of workflowPlan.ancillaryRevenueSources) {
+    const blockKey = resolveAncillaryBlockKey(ancillary)
+    countReservationLikeCandidate(blockKey, {
+      onParking() {
+        parkingCandidatesBeforeGrouping += 1
+      },
+      onReservationPlus() {
+        reservationPlusCandidatesBeforeGrouping += 1
+      }
+    })
+
+    const signalTypes = collectParkingSignalTypes([
+      ['channel', ancillary.channel],
+      ['reference', ancillary.reference],
+      ['itemLabel', ancillary.itemLabel]
+    ])
+
+    if (signalTypes.length > 0) {
+      parkingLikeCandidates.push({
+        candidateId: `ancillary:${ancillary.sourceDocumentId}:${ancillary.reference}`,
+        sourceKind: 'ancillary_source',
+        sourcePlatform: 'previo',
+        sourceDocumentId: ancillary.sourceDocumentId,
+        reservationReference: ancillary.reservationId,
+        payoutReference: ancillary.reference,
+        parkingSignalType: collapseParkingSignalType(signalTypes),
+        parkingSignalTypes: signalTypes,
+        computedBlockKey: blockKey,
+        reason: blockKey === 'parking'
+          ? 'Parking-like ancillary item stayed in the parking block.'
+          : 'Parking-like ancillary item resolved into reservation_plus before grouping.'
+      })
+    }
+  }
+
+  for (const row of workflowPlan.payoutRows) {
+    const transaction = transactionsById.get(row.rowId)
+    const extractedRecord = transaction
+      ? findFirstExtractedRecord(transaction, extractedRecordsById)
+      : undefined
+    const signalTypes = collectParkingSignalTypes([
+      ['paymentPurpose', readString(extractedRecord?.data.paymentPurpose)],
+      ['reference', readString(extractedRecord?.data.reference)],
+      ['transactionId', readString(extractedRecord?.data.transactionId)],
+      ['payoutReference', row.payoutReference]
+    ])
+
+    if (row.platform === 'comgate' && !consumedRowIds.has(row.rowId) && transaction) {
+      const blockKey = isParkingLike(
+        readString(extractedRecord?.data.paymentPurpose),
+        readString(extractedRecord?.data.reference),
+        readString(extractedRecord?.data.transactionId),
+        row.payoutReference
+      )
+        ? 'parking'
+        : 'reservation_plus'
+
+      countReservationLikeCandidate(blockKey, {
+        onParking() {
+          parkingCandidatesBeforeGrouping += 1
+        },
+        onReservationPlus() {
+          reservationPlusCandidatesBeforeGrouping += 1
+        }
+      })
+
+      if (signalTypes.length > 0) {
+        parkingLikeCandidates.push({
+          candidateId: `payout-row:${row.rowId}`,
+          sourceKind: 'comgate_payout_row',
+          sourcePlatform: 'comgate',
+          sourceDocumentId: transaction.sourceDocumentIds[0],
+          reservationReference: row.reservationId,
+          payoutReference: row.payoutReference,
+          parkingSignalType: collapseParkingSignalType(signalTypes),
+          parkingSignalTypes: signalTypes,
+          computedBlockKey: blockKey,
+          reason: blockKey === 'parking'
+            ? 'Explicit Comgate parking-like row stayed in the parking block.'
+            : 'Parking-like Comgate row resolved into reservation_plus before grouping.'
+        })
+      }
+
+      continue
+    }
+
+    if (signalTypes.length > 0) {
+      parkingLikeCandidates.push({
+        candidateId: `payout-row:${row.rowId}`,
+        sourceKind: 'comgate_payout_row',
+        sourcePlatform: 'comgate',
+        sourceDocumentId: transaction?.sourceDocumentIds[0],
+        reservationReference: row.reservationId,
+        payoutReference: row.payoutReference,
+        parkingSignalType: collapseParkingSignalType(signalTypes),
+        parkingSignalTypes: signalTypes,
+        computedBlockKey: undefined,
+        reason: consumedRowIds.has(row.rowId)
+          ? 'Parking-like Comgate row was consumed before native reservation overview fallback.'
+          : !transaction
+            ? 'Parking-like Comgate row has no normalized transaction in the current runtime state.'
+            : 'Parking-like row is not eligible for the parking/reservation_plus native fallback.'
+      })
+    }
+  }
+
+  const overview = buildReservationPaymentOverview(batch)
+  const parkingBlock = overview.blocks.find((block) => block.key === 'parking')
+  const reservationPlusBlock = overview.blocks.find((block) => block.key === 'reservation_plus')
+
+  for (const ancillary of workflowPlan.ancillaryRevenueSources) {
+    const linkInspection = inspectLinkedReservationForAncillary(ancillary, reservationSources)
+
+    ancillaryLinkTraces.push({
+      itemId: buildAncillaryOverviewItemId(ancillary),
+      sourceDocumentId: ancillary.sourceDocumentId,
+      reference: ancillary.reference,
+      reservationId: ancillary.reservationId,
+      itemLabel: ancillary.itemLabel,
+      channel: ancillary.channel,
+      stayStartAt: ancillary.stayStartAt,
+      stayEndAt: ancillary.stayEndAt,
+      computedBlockKey: resolveAncillaryBlockKey(ancillary),
+      linkedMainReservationId: linkInspection.linkedReservation?.reservationId,
+      linkedGuestName: linkInspection.linkedReservation?.guestName,
+      linkedStayStartAt: linkInspection.linkedReservation?.stayStartAt,
+      linkedStayEndAt: linkInspection.linkedReservation?.stayEndAt,
+      linkedRoomName: linkInspection.linkedReservation?.roomName,
+      candidateCount: linkInspection.candidateCount,
+      exactIdentityHits: linkInspection.exactIdentityHits,
+      exactStayIntervalHits: linkInspection.exactStayIntervalHits,
+      chosenCandidateReason: linkInspection.chosenCandidateReason
+    })
+  }
+
+  return {
+    parkingCandidatesBeforeGrouping,
+    reservationPlusCandidatesBeforeGrouping,
+    finalParkingBlockCount: parkingBlock?.itemCount ?? 0,
+    finalReservationPlusBlockCount: reservationPlusBlock?.itemCount ?? 0,
+    parkingLikeCandidateIds: parkingLikeCandidates.map((candidate) => candidate.candidateId),
+    parkingLikeCandidates,
+    ancillaryLinkTraces
+  }
+}
+
 function buildEmptyOverview(): ReservationPaymentOverview {
   return {
     blocks: BLOCK_DEFINITIONS.map((block) => ({
@@ -468,6 +744,18 @@ function buildEmptyOverview(): ReservationPaymentOverview {
         missing: 0
       }
     }
+  }
+}
+
+function buildEmptyOverviewDebug(): ReservationPaymentOverviewDebug {
+  return {
+    parkingCandidatesBeforeGrouping: 0,
+    reservationPlusCandidatesBeforeGrouping: 0,
+    finalParkingBlockCount: 0,
+    finalReservationPlusBlockCount: 0,
+    parkingLikeCandidateIds: [],
+    parkingLikeCandidates: [],
+    ancillaryLinkTraces: []
   }
 }
 
@@ -1102,6 +1390,22 @@ function resolveAncillaryBlockKey(item: AncillaryRevenueSourceRecord): Reservati
   return isParkingLike(item.channel, item.reference, item.itemLabel) ? 'parking' : 'reservation_plus'
 }
 
+function countReservationLikeCandidate(
+  blockKey: ReservationPaymentOverviewBlockKey,
+  handlers: {
+    onParking: () => void
+    onReservationPlus: () => void
+  }
+): void {
+  if (blockKey === 'parking') {
+    handlers.onParking()
+  }
+
+  if (blockKey === 'reservation_plus') {
+    handlers.onReservationPlus()
+  }
+}
+
 function inferChannelsFromFallback(channel: string | undefined): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'> {
   const normalized = normalizeComparable(channel)
 
@@ -1164,18 +1468,66 @@ function resolveLinkedReservationForAncillary(
   ancillary: AncillaryRevenueSourceRecord,
   reservationSources: ReservationSourceRecord[]
 ): ReservationSourceRecord | undefined {
+  return inspectLinkedReservationForAncillary(ancillary, reservationSources).linkedReservation
+}
+
+function inspectLinkedReservationForAncillary(
+  ancillary: AncillaryRevenueSourceRecord,
+  reservationSources: ReservationSourceRecord[]
+): AncillaryLinkInspection {
   const exactIdentityCandidates = reservationSources.filter((reservation) => matchesAncillaryExactIdentity(ancillary, reservation))
+  const exactIdentityHits = exactIdentityCandidates.map(toAncillaryLinkCandidateSnapshot)
 
   if (exactIdentityCandidates.length === 1) {
-    return exactIdentityCandidates[0]
+    return {
+      linkedReservation: exactIdentityCandidates[0],
+      candidateCount: exactIdentityCandidates.length,
+      exactIdentityHits,
+      exactStayIntervalHits: [],
+      chosenCandidateReason: 'exact_identity'
+    }
   }
 
   if (exactIdentityCandidates.length > 1) {
-    return undefined
+    return {
+      linkedReservation: undefined,
+      candidateCount: exactIdentityCandidates.length,
+      exactIdentityHits,
+      exactStayIntervalHits: [],
+      chosenCandidateReason: 'ambiguous_exact_identity'
+    }
   }
 
   const exactStayCandidates = reservationSources.filter((reservation) => matchesAncillaryExactStayInterval(ancillary, reservation))
-  return exactStayCandidates.length === 1 ? exactStayCandidates[0] : undefined
+  const exactStayIntervalHits = exactStayCandidates.map(toAncillaryLinkCandidateSnapshot)
+
+  if (exactStayCandidates.length === 1) {
+    return {
+      linkedReservation: exactStayCandidates[0],
+      candidateCount: exactStayCandidates.length,
+      exactIdentityHits: [],
+      exactStayIntervalHits,
+      chosenCandidateReason: 'unique_exact_stay_interval'
+    }
+  }
+
+  if (exactStayCandidates.length > 1) {
+    return {
+      linkedReservation: undefined,
+      candidateCount: exactStayCandidates.length,
+      exactIdentityHits: [],
+      exactStayIntervalHits,
+      chosenCandidateReason: 'ambiguous_exact_stay_interval'
+    }
+  }
+
+  return {
+    linkedReservation: undefined,
+    candidateCount: 0,
+    exactIdentityHits: [],
+    exactStayIntervalHits: [],
+    chosenCandidateReason: 'no_candidate'
+  }
 }
 
 function matchesAncillaryExactIdentity(
@@ -1224,6 +1576,24 @@ function matchesAncillaryExactStayInterval(
     && ancillaryStayStart === reservationStayStart
     && ancillaryStayEnd === reservationStayEnd
   )
+}
+
+function buildAncillaryOverviewItemId(ancillary: AncillaryRevenueSourceRecord): string {
+  return `reservation-payment:ancillary:${ancillary.sourceDocumentId}:${ancillary.reference}`
+}
+
+function toAncillaryLinkCandidateSnapshot(
+  reservation: ReservationSourceRecord
+): ReservationPaymentOverviewAncillaryLinkCandidate {
+  return {
+    sourceDocumentId: reservation.sourceDocumentId,
+    reservationId: reservation.reservationId,
+    reference: reservation.reference,
+    guestName: reservation.guestName,
+    stayStartAt: reservation.stayStartAt,
+    stayEndAt: reservation.stayEndAt,
+    roomName: reservation.roomName
+  }
 }
 
 function findFirstExtractedRecord(transaction: NormalizedTransaction, extractedRecordsById: Map<string, ExtractedRecord>): ExtractedRecord | undefined {
@@ -1322,6 +1692,23 @@ function isParkingLike(...values: Array<string | undefined>): boolean {
     const normalized = normalizeComparable(value)
     return normalized.includes('parking') || normalized.includes('parkovani') || normalized.includes('park')
   })
+}
+
+function collectParkingSignalTypes(
+  entries: Array<[
+    'channel' | 'roomName' | 'reference' | 'itemLabel' | 'paymentPurpose' | 'transactionId' | 'payoutReference',
+    string | undefined
+  ]>
+): Array<'channel' | 'roomName' | 'reference' | 'itemLabel' | 'paymentPurpose' | 'transactionId' | 'payoutReference'> {
+  return entries
+    .filter((entry) => isParkingLike(entry[1]))
+    .map(([signalType]) => signalType)
+}
+
+function collapseParkingSignalType(
+  signalTypes: Array<'channel' | 'roomName' | 'reference' | 'itemLabel' | 'paymentPurpose' | 'transactionId' | 'payoutReference'>
+): ReservationPaymentOverviewDebugCandidate['parkingSignalType'] {
+  return signalTypes.length > 1 ? 'multiple' : signalTypes[0]!
 }
 
 function readString(value: unknown): string | undefined {

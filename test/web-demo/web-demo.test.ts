@@ -3975,6 +3975,203 @@ describe('buildWebDemo', () => {
     expect(reloaded.preparedFilesContent.innerHTML).not.toContain('<strong>Bookinng35k.pdf</strong>')
   })
 
+  it('keeps linked Host and Pobyt on the final merged-workspace parking card for Previo reference 20250650', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T09:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-baseline',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimeFile('airbnb.csv', buildRealUploadedAirbnbContentWithoutReferenceColumn())
+      ]
+    })
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-08T09:41:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-previo-parking-merged-render',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: [
+        createWebDemoRuntimeWorkbookFile(
+          'reservations-export-2026-03-denisa.xlsx',
+          buildPrevioWorkbookBase64FromRows([
+            {
+              createdAt: '18.03.26 09:30',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '5159718129',
+              guestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+              channel: 'Booking.com XML',
+              amountText: '420,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'A205'
+            },
+            {
+              createdAt: '18.03.26 09:31',
+              stayStartAt: '20.03.26 14:00',
+              stayEndAt: '22.03.26 11:00',
+              voucher: '20250650',
+              guestName: '',
+              channel: 'Alfred',
+              amountText: '60,00EUR',
+              outstandingText: '0,00EUR',
+              roomName: 'Parkování 1'
+            }
+          ])
+        )
+      ]
+    })
+
+    rendered.startWorkflow()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(rendered.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> mergedWorkspace')
+
+    await rendered.waitForWorkflowCompletion()
+
+    const visibleState = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{
+            title: string
+            blockKey?: string
+            primaryReference?: string
+            subtitle?: string
+            detailEntries: Array<{ labelCs: string; value: string }>
+          }>
+        }>
+      }
+    }
+    const parkingItem = visibleState.reservationPaymentOverview.blocks
+      .find((block) => block.key === 'parking')
+      ?.items.find((item) => item.primaryReference === '20250650')
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování 1',
+      blockKey: 'parking',
+      primaryReference: '20250650',
+      subtitle: 'A205'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
+    ]))
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      fileName: string
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      buildMarker: {
+        gitCommitShortSha: string
+        gitCommitHash: string
+      }
+      workspaceSource: {
+        sourceKind: string
+        renderSource: string
+      }
+      uploadedFiles: Array<{ fileName: string }>
+      parkingItemProbe: {
+        targetReference: string
+        finalBlockKey: string
+        finalOverviewItem: {
+          title: string
+          blockKey: string
+          sourceDocumentIds: string[]
+          detailEntries: Array<{ labelCs: string; value: string }>
+        } | null
+        explicitFields: {
+          title: string
+          blockKey: string
+          sourceDocumentIds: string[]
+          reservationId: string
+          reference: string
+          guestName: string
+          linkedGuestName: string
+          stayStartAt: string
+          stayEndAt: string
+          linkedStayStartAt: string
+          linkedStayEndAt: string
+          unit: string
+          roomName: string
+          linkedMainReservationId: string
+          detailEntries: Array<{ labelCs: string; value: string }>
+        }
+        linkedCandidateChain: {
+          candidateCount: number
+          exactIdentityHits: Array<{ reservationId: string }>
+          exactStayIntervalHits: Array<{ reservationId: string }>
+          chosenCandidateReason: string
+        }
+      }
+    }
+
+    expect(artifact.fileName).toContain('debug-workspace-truth-2026-03-')
+    expect(payload.buildMarker.gitCommitShortSha.length).toBeGreaterThan(0)
+    expect(payload.buildMarker.gitCommitHash.length).toBeGreaterThan(0)
+    expect(payload.workspaceSource.sourceKind).toBe('mergedWorkspace')
+    expect(payload.workspaceSource.renderSource).toBe('mergedWorkspace')
+    expect(payload.uploadedFiles.map((file) => file.fileName)).toEqual([
+      'airbnb.csv',
+      'reservations-export-2026-03-denisa.xlsx'
+    ])
+    expect(payload.parkingItemProbe).toEqual(expect.objectContaining({
+      targetReference: '20250650',
+      finalBlockKey: 'parking',
+      finalOverviewItem: expect.objectContaining({
+        title: 'Parkování 1',
+        blockKey: 'parking',
+        sourceDocumentIds: expect.any(Array),
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' }),
+          expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-20T14:00:00 – 2026-03-22T11:00:00' }),
+          expect.objectContaining({ labelCs: 'Jednotka', value: 'A205' })
+        ])
+      }),
+      explicitFields: expect.objectContaining({
+        title: 'Parkování 1',
+        blockKey: 'parking',
+        reservationId: '20250650',
+        reference: '20250650',
+        guestName: '',
+        linkedGuestName: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova',
+        stayStartAt: '2026-03-20T14:00:00',
+        stayEndAt: '2026-03-22T11:00:00',
+        linkedStayStartAt: '2026-03-20T14:00:00',
+        linkedStayEndAt: '2026-03-22T11:00:00',
+        unit: 'A205',
+        roomName: 'A205',
+        linkedMainReservationId: '5159718129',
+        detailEntries: expect.arrayContaining([
+          expect.objectContaining({ labelCs: 'Host', value: 'Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova' })
+        ])
+      }),
+      linkedCandidateChain: expect.objectContaining({
+        candidateCount: 1,
+        exactIdentityHits: [],
+        exactStayIntervalHits: [expect.objectContaining({ reservationId: '5159718129' })],
+        chosenCandidateReason: 'unique_exact_stay_interval'
+      })
+    }))
+
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('Parkování 1')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Host</strong><span>Denisa Plechlova, Jozef Kluvanec, Natasa Plechlova</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Pobyt</strong><span>2026-03-20T14:00:00 – 2026-03-22T11:00:00</span>')
+    expect(rendered.reservationSettlementOverviewContent.innerHTML).toContain('<strong>Jednotka</strong><span>A205</span>')
+  })
+
   it('recomputes visible counts and export handoff truth after deleting one uploaded file from the current month workspace', async () => {
     const storageState = new Map<string, string>()
     const workspacePersistenceState = new Map<string, string>()
@@ -4006,10 +4203,10 @@ describe('buildWebDemo', () => {
     const beforeExport = rendered.getLastExcelExport() as {
       payoutRowCount: number
       expenseRowCount: number
-        counts: {
-          payoutMatched: number
-          payoutUnmatched: number
-        }
+      counts: {
+        payoutMatched: number
+        payoutUnmatched: number
+      }
     }
     const persistedBeforeDelete = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
       files: Array<{ id: string; fileName: string }>
@@ -4030,10 +4227,10 @@ describe('buildWebDemo', () => {
     const afterExport = rendered.getLastExcelExport() as {
       payoutRowCount: number
       expenseRowCount: number
-        counts: {
-          payoutMatched: number
-          payoutUnmatched: number
-        }
+      counts: {
+        payoutMatched: number
+        payoutUnmatched: number
+      }
     }
 
     expect(rendered.runtimeSummaryUploadedFiles.textContent).toContain('1')
@@ -4042,9 +4239,9 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain('<strong>booking35k.csv</strong>')
     expect(afterState.reviewSummary.payoutBatchMatchCount + afterState.reviewSummary.unmatchedPayoutBatchCount)
       .not.toBe(beforeState.reviewSummary.payoutBatchMatchCount + beforeState.reviewSummary.unmatchedPayoutBatchCount)
-      expect(afterExport.counts.payoutMatched).toBe(afterState.reviewSummary.payoutBatchMatchCount)
-      expect(afterExport.counts.payoutUnmatched).toBe(afterState.reviewSummary.unmatchedPayoutBatchCount)
-      expect(afterExport.counts).not.toEqual(beforeExport.counts)
+    expect(afterExport.counts.payoutMatched).toBe(afterState.reviewSummary.payoutBatchMatchCount)
+    expect(afterExport.counts.payoutUnmatched).toBe(afterState.reviewSummary.unmatchedPayoutBatchCount)
+    expect(afterExport.counts).not.toEqual(beforeExport.counts)
   })
 
   it('requires confirmation before deleting one uploaded file from the current month workspace', async () => {
@@ -7096,9 +7293,9 @@ async function executeWebDemoMainWorkflow(input: {
       elements['clear-month-workspace-button'].listeners.click()
       await waitForLastClear()
     },
-      async clickDeleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
+    async clickDeleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
       elements[buildWorkspaceFileDeleteActionElementId(workspaceFileId)].listeners.click()
-        await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
     },
     async deleteCurrentMonthWorkspaceFile(workspaceFileId: string) {
       lastWorkflowStartPreparedFilesMarkup = elements['prepared-files-content'].innerHTML
@@ -7643,10 +7840,10 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
 
 function buildPrevioWorkbookBase64FromRows(rows: Array<{
   createdAt: string
-  stayStartAt: string
-  stayEndAt: string
+  stayStartAt?: string
+  stayEndAt?: string
   voucher: string
-  guestName: string
+  guestName?: string
   companyName?: string
   channel: string
   amountText: string
@@ -7675,13 +7872,13 @@ function buildPrevioWorkbookBase64FromRows(rows: Array<{
     ],
     ...rows.map((row) => [
       row.createdAt,
-      row.stayStartAt,
-      row.stayEndAt,
-      '1',
+      row.stayStartAt ?? '',
+      row.stayEndAt ?? '',
+      row.stayStartAt && row.stayEndAt ? '1' : '',
       row.voucher,
-      '1',
-      row.guestName,
-      'Ano',
+      row.guestName ? '1' : '',
+      row.guestName ?? '',
+      row.guestName ? 'Ano' : '',
       '',
       row.companyName ?? '',
       row.channel,

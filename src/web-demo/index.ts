@@ -5851,6 +5851,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const visibleState = state || currentExportVisibleState || currentExpenseReviewState || initialRuntimeState || {};
         const buildInfo = visibleState.runtimeBuildInfo || initialRuntimeState.runtimeBuildInfo || {};
         const overview = getVisibleReservationPaymentOverview(visibleState);
+        const overviewDebug = visibleState.reservationPaymentOverviewDebug || {};
         const blocks = Array.isArray(overview && overview.blocks) ? overview.blocks : [];
         const uploadedFiles = buildAnnotatedWorkspaceFilesForDebugExport(visibleState);
         const payoutRelatedFiles = uploadedFiles.filter((file) => isPayoutRelatedWorkspaceFileForDebugExport(file));
@@ -5901,6 +5902,107 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ...(confirmationTrace ? { confirmationTrace } : {})
           };
         });
+        const ancillaryLinkTraces = Array.isArray(overviewDebug.ancillaryLinkTraces) ? overviewDebug.ancillaryLinkTraces : [];
+
+        function buildFinalOverviewItemDebugPayload(targetReference) {
+          let finalBlockKey = '';
+          let finalOverviewItem = undefined;
+
+          blocks.some((block) => {
+            const items = Array.isArray(block && block.items) ? block.items : [];
+            const match = items.find((item) => String(item && item.primaryReference || '') === targetReference);
+
+            if (!match) {
+              return false;
+            }
+
+            finalBlockKey = String(block && block.key || '');
+            finalOverviewItem = match;
+            return true;
+          });
+
+          return {
+            finalBlockKey,
+            finalOverviewItem: finalOverviewItem ? {
+              id: String(finalOverviewItem.id || ''),
+              title: String(finalOverviewItem.title || ''),
+              blockKey: String(finalOverviewItem.blockKey || finalBlockKey || ''),
+              primaryReference: String(finalOverviewItem.primaryReference || ''),
+              secondaryReference: String(finalOverviewItem.secondaryReference || ''),
+              subtitle: String(finalOverviewItem.subtitle || ''),
+              sourceDocumentIds: collectUniqueTruthyStrings(Array.isArray(finalOverviewItem.sourceDocumentIds) ? finalOverviewItem.sourceDocumentIds : []),
+              detailEntries: (Array.isArray(finalOverviewItem.detailEntries) ? finalOverviewItem.detailEntries : []).map((entry) => ({
+                labelCs: String(entry && entry.labelCs || ''),
+                value: String(entry && entry.value || '')
+              }))
+            } : null
+          };
+        }
+
+        function buildParkingItemProbePayload(targetReference) {
+          const normalizedTargetReference = String(targetReference || '');
+          const finalOverviewItemDebug = buildFinalOverviewItemDebugPayload(normalizedTargetReference);
+          const trace = ancillaryLinkTraces.find((entry) => String(entry && entry.reference || '') === normalizedTargetReference) || null;
+          const finalOverviewItem = finalOverviewItemDebug.finalOverviewItem;
+          const detailEntries = Array.isArray(finalOverviewItem && finalOverviewItem.detailEntries) ? finalOverviewItem.detailEntries : [];
+          const linkedUnit = String(
+            (trace && trace.linkedRoomName)
+            || readReservationPaymentDetailValue(detailEntries, 'Jednotka')
+            || (finalOverviewItem && finalOverviewItem.subtitle)
+            || ''
+          );
+
+          return {
+            targetReference: normalizedTargetReference,
+            finalBlockKey: String(finalOverviewItemDebug.finalBlockKey || trace && trace.computedBlockKey || ''),
+            finalOverviewItem,
+            explicitFields: {
+              title: String(finalOverviewItem && finalOverviewItem.title || trace && trace.itemLabel || ''),
+              blockKey: String(finalOverviewItem && finalOverviewItem.blockKey || finalOverviewItemDebug.finalBlockKey || trace && trace.computedBlockKey || ''),
+              sourceDocumentIds: finalOverviewItem
+                ? collectUniqueTruthyStrings(finalOverviewItem.sourceDocumentIds)
+                : collectUniqueTruthyStrings([trace && trace.sourceDocumentId]),
+              reservationId: String(trace && trace.reservationId || ''),
+              reference: String(trace && trace.reference || finalOverviewItem && finalOverviewItem.primaryReference || ''),
+              guestName: '',
+              linkedGuestName: String(trace && trace.linkedGuestName || ''),
+              stayStartAt: String(trace && trace.stayStartAt || ''),
+              stayEndAt: String(trace && trace.stayEndAt || ''),
+              linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
+              linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
+              unit: linkedUnit,
+              roomName: linkedUnit,
+              linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+              detailEntries
+            },
+            linkedCandidateChain: {
+              candidateCount: Number(trace && trace.candidateCount || 0),
+              exactIdentityHits: Array.isArray(trace && trace.exactIdentityHits)
+                ? trace.exactIdentityHits.map((candidate) => ({
+                  sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                  reservationId: String(candidate && candidate.reservationId || ''),
+                  reference: String(candidate && candidate.reference || ''),
+                  guestName: String(candidate && candidate.guestName || ''),
+                  stayStartAt: String(candidate && candidate.stayStartAt || ''),
+                  stayEndAt: String(candidate && candidate.stayEndAt || ''),
+                  roomName: String(candidate && candidate.roomName || '')
+                }))
+                : [],
+              exactStayIntervalHits: Array.isArray(trace && trace.exactStayIntervalHits)
+                ? trace.exactStayIntervalHits.map((candidate) => ({
+                  sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                  reservationId: String(candidate && candidate.reservationId || ''),
+                  reference: String(candidate && candidate.reference || ''),
+                  guestName: String(candidate && candidate.guestName || ''),
+                  stayStartAt: String(candidate && candidate.stayStartAt || ''),
+                  stayEndAt: String(candidate && candidate.stayEndAt || ''),
+                  roomName: String(candidate && candidate.roomName || '')
+                }))
+                : [],
+              chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+            }
+          };
+        }
 
         return {
           exportedAt: new Date().toISOString(),
@@ -5938,6 +6040,72 @@ ${showRuntimePayoutDiagnostics ? '' : `
           payoutRelatedFileIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.workspaceFileId)),
           payoutRelatedSourceDocumentIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.sourceDocumentId)),
           reservationLikeItemIdsBySource,
+          reservationPaymentOverviewDebug: {
+            parkingCandidatesBeforeGrouping: Number(overviewDebug.parkingCandidatesBeforeGrouping || 0),
+            reservationPlusCandidatesBeforeGrouping: Number(overviewDebug.reservationPlusCandidatesBeforeGrouping || 0),
+            finalParkingBlockCount: Number(overviewDebug.finalParkingBlockCount || 0),
+            finalReservationPlusBlockCount: Number(overviewDebug.finalReservationPlusBlockCount || 0),
+            parkingLikeCandidateIds: Array.isArray(overviewDebug.parkingLikeCandidateIds)
+              ? overviewDebug.parkingLikeCandidateIds.map((candidateId) => String(candidateId || '')).filter(Boolean)
+              : [],
+            parkingLikeCandidates: Array.isArray(overviewDebug.parkingLikeCandidates)
+              ? overviewDebug.parkingLikeCandidates.map((candidate) => ({
+                candidateId: String(candidate && candidate.candidateId || ''),
+                sourceKind: String(candidate && candidate.sourceKind || ''),
+                sourcePlatform: String(candidate && candidate.sourcePlatform || ''),
+                sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                reservationReference: String(candidate && candidate.reservationReference || ''),
+                payoutReference: String(candidate && candidate.payoutReference || ''),
+                parkingSignalType: String(candidate && candidate.parkingSignalType || ''),
+                parkingSignalTypes: Array.isArray(candidate && candidate.parkingSignalTypes)
+                  ? candidate.parkingSignalTypes.map((signalType) => String(signalType || '')).filter(Boolean)
+                  : [],
+                computedBlockKey: candidate && candidate.computedBlockKey ? String(candidate.computedBlockKey) : '',
+                reason: String(candidate && candidate.reason || '')
+              }))
+              : [],
+            ancillaryLinkTraces: ancillaryLinkTraces.map((trace) => ({
+              itemId: String(trace && trace.itemId || ''),
+              sourceDocumentId: String(trace && trace.sourceDocumentId || ''),
+              reference: String(trace && trace.reference || ''),
+              reservationId: String(trace && trace.reservationId || ''),
+              itemLabel: String(trace && trace.itemLabel || ''),
+              channel: String(trace && trace.channel || ''),
+              stayStartAt: String(trace && trace.stayStartAt || ''),
+              stayEndAt: String(trace && trace.stayEndAt || ''),
+              computedBlockKey: String(trace && trace.computedBlockKey || ''),
+              linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+              linkedGuestName: String(trace && trace.linkedGuestName || ''),
+              linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
+              linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
+              linkedRoomName: String(trace && trace.linkedRoomName || ''),
+              candidateCount: Number(trace && trace.candidateCount || 0),
+              exactIdentityHits: Array.isArray(trace && trace.exactIdentityHits)
+                ? trace.exactIdentityHits.map((candidate) => ({
+                  sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                  reservationId: String(candidate && candidate.reservationId || ''),
+                  reference: String(candidate && candidate.reference || ''),
+                  guestName: String(candidate && candidate.guestName || ''),
+                  stayStartAt: String(candidate && candidate.stayStartAt || ''),
+                  stayEndAt: String(candidate && candidate.stayEndAt || ''),
+                  roomName: String(candidate && candidate.roomName || '')
+                }))
+                : [],
+              exactStayIntervalHits: Array.isArray(trace && trace.exactStayIntervalHits)
+                ? trace.exactStayIntervalHits.map((candidate) => ({
+                  sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
+                  reservationId: String(candidate && candidate.reservationId || ''),
+                  reference: String(candidate && candidate.reference || ''),
+                  guestName: String(candidate && candidate.guestName || ''),
+                  stayStartAt: String(candidate && candidate.stayStartAt || ''),
+                  stayEndAt: String(candidate && candidate.stayEndAt || ''),
+                  roomName: String(candidate && candidate.roomName || '')
+                }))
+                : [],
+              chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+            }))
+          },
+          parkingItemProbe: buildParkingItemProbePayload('20250650'),
           bookingReservationItems,
           reservationCentricView: {
             summary: {
@@ -7966,30 +8134,30 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function buildReservationPaymentCompactMeta(item) {
-          const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
-          const parkingHost = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Host') : '';
-          const parkingStay = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Pobyt') : '';
-          const parkingUnit = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Jednotka') : '';
-          const subtitleValue = item.blockKey === 'parking'
-            ? parkingUnit || (String(item.subtitle || '').startsWith('Rezervace ') ? '' : String(item.subtitle || ''))
-            : String(item.subtitle || '');
-          const chips = [
-            parkingHost ? '<span class="reservation-payment-chip"><strong>Host</strong><span>' + escapeHtml(parkingHost) + '</span></span>' : '',
-            parkingStay
-              ? '<span class="reservation-payment-chip"><strong>Pobyt</strong><span>' + escapeHtml(parkingStay) + '</span></span>'
-              : item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
-            subtitleValue ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(subtitleValue) + '</span></span>' : '',
-            item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
-          ].filter(Boolean);
+        const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
+        const parkingHost = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Host') : '';
+        const parkingStay = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Pobyt') : '';
+        const parkingUnit = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Jednotka') : '';
+        const subtitleValue = item.blockKey === 'parking'
+          ? parkingUnit || (String(item.subtitle || '').startsWith('Rezervace ') ? '' : String(item.subtitle || ''))
+          : String(item.subtitle || '');
+        const chips = [
+          parkingHost ? '<span class="reservation-payment-chip"><strong>Host</strong><span>' + escapeHtml(parkingHost) + '</span></span>' : '',
+          parkingStay
+            ? '<span class="reservation-payment-chip"><strong>Pobyt</strong><span>' + escapeHtml(parkingStay) + '</span></span>'
+            : item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
+          subtitleValue ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(subtitleValue) + '</span></span>' : '',
+          item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
+        ].filter(Boolean);
 
         return chips.join('') + buildReservationPaymentAmountMarkup(item);
       }
 
-        function readReservationPaymentDetailValue(detailEntries, label) {
-          const match = (Array.isArray(detailEntries) ? detailEntries : []).find((entry) => String(entry && entry.labelCs || '') === label);
-          const value = String(match && match.value || '');
-          return value ? value : '';
-        }
+      function readReservationPaymentDetailValue(detailEntries, label) {
+        const match = (Array.isArray(detailEntries) ? detailEntries : []).find((entry) => String(entry && entry.labelCs || '') === label);
+        const value = String(match && match.value || '');
+        return value ? value : '';
+      }
 
       function buildReservationPaymentDetailMarkup(item) {
         const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
