@@ -130,6 +130,8 @@ export interface AncillaryRevenueSourceRecord {
   reservationId?: string
   bookedAt?: ISODateString
   createdAt?: ISODateString
+  stayStartAt?: ISODateString
+  stayEndAt?: ISODateString
   itemLabel?: string
   channel?: string
   grossRevenueMinor: number

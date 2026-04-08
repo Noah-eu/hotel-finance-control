@@ -123,6 +123,8 @@ function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): Anci
             reservationId: optionalString(record.data.reservationId),
             bookedAt: optionalString(record.data.bookedAt) ?? record.occurredAt,
             createdAt: optionalString(record.data.createdAt),
+            stayStartAt: optionalString(record.data.stayStartAt),
+            stayEndAt: optionalString(record.data.stayEndAt),
             itemLabel: optionalString(record.data.itemLabel) ?? optionalString(record.data.roomName),
             channel: optionalString(record.data.channel),
             grossRevenueMinor: numberOrZero(record.data.amountMinor, record.amountMinor),

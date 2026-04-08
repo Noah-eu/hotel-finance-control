@@ -217,6 +217,51 @@ describe('Previo parking runtime', () => {
     expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
   })
 
+  it('links a parking row through exact Previo stay interval when ancillary and main vouchers differ', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', [
+          {
+            createdAt: '13.03.2026 09:15',
+            stayStartAt: '18.03.2026',
+            stayEndAt: '20.03.2026',
+            voucher: 'PREVIO-STAY-2',
+            guestName: 'Klara Vesela',
+            companyName: 'Acme Travel',
+            channel: 'direct-web',
+            amountText: '520,00',
+            outstandingText: '0,00',
+            roomName: 'C303'
+          },
+          {
+            createdAt: '13.03.2026 09:20',
+            stayStartAt: '18.03.2026',
+            stayEndAt: '20.03.2026',
+            voucher: 'PREVIO-PARK-2',
+            channel: 'comgate',
+            amountText: '220,00',
+            outstandingText: '0,00',
+            roomName: 'Parkování stay-linked'
+          }
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-08T07:05:00.000Z'
+    })
+
+    const parkingItem = state.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování stay-linked',
+      subtitle: 'C303',
+      primaryReference: 'PREVIO-PARK-2'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Klara Vesela' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-18 – 2026-03-20' })
+    ]))
+  })
+
   it('lets a Comgate parking payment confirm a Previo parking item without creating a duplicate parking identity', async () => {
     const state = await createBrowserRuntime().buildRuntimeState({
       files: [

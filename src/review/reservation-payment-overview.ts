@@ -1164,29 +1164,66 @@ function resolveLinkedReservationForAncillary(
   ancillary: AncillaryRevenueSourceRecord,
   reservationSources: ReservationSourceRecord[]
 ): ReservationSourceRecord | undefined {
+  const exactIdentityCandidates = reservationSources.filter((reservation) => matchesAncillaryExactIdentity(ancillary, reservation))
+
+  if (exactIdentityCandidates.length === 1) {
+    return exactIdentityCandidates[0]
+  }
+
+  if (exactIdentityCandidates.length > 1) {
+    return undefined
+  }
+
+  const exactStayCandidates = reservationSources.filter((reservation) => matchesAncillaryExactStayInterval(ancillary, reservation))
+  return exactStayCandidates.length === 1 ? exactStayCandidates[0] : undefined
+}
+
+function matchesAncillaryExactIdentity(
+  ancillary: AncillaryRevenueSourceRecord,
+  reservation: ReservationSourceRecord
+): boolean {
+  if (reservation.sourceDocumentId !== ancillary.sourceDocumentId) {
+    return false
+  }
+
   const comparableAncillaryValues = collectUniqueTruthyStrings([
     normalizeComparable(ancillary.reservationId),
     normalizeComparable(ancillary.reference)
   ])
 
   if (comparableAncillaryValues.length === 0) {
-    return undefined
+    return false
   }
 
-  const candidates = reservationSources.filter((reservation) => {
-    if (reservation.sourceDocumentId !== ancillary.sourceDocumentId) {
-      return false
-    }
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
 
-    const comparableReservationValues = collectUniqueTruthyStrings([
-      normalizeComparable(reservation.reservationId),
-      normalizeComparable(reservation.reference)
-    ])
+  return comparableReservationValues.some((value) => comparableAncillaryValues.includes(value))
+}
 
-    return comparableReservationValues.some((value) => comparableAncillaryValues.includes(value))
-  })
+function matchesAncillaryExactStayInterval(
+  ancillary: AncillaryRevenueSourceRecord,
+  reservation: ReservationSourceRecord
+): boolean {
+  if (reservation.sourceDocumentId !== ancillary.sourceDocumentId) {
+    return false
+  }
 
-  return candidates.length === 1 ? candidates[0] : undefined
+  const ancillaryStayStart = normalizeComparableStayDate(ancillary.stayStartAt)
+  const ancillaryStayEnd = normalizeComparableStayDate(ancillary.stayEndAt)
+  const reservationStayStart = normalizeComparableStayDate(reservation.stayStartAt)
+  const reservationStayEnd = normalizeComparableStayDate(reservation.stayEndAt)
+
+  return Boolean(
+    ancillaryStayStart
+    && ancillaryStayEnd
+    && reservationStayStart
+    && reservationStayEnd
+    && ancillaryStayStart === reservationStayStart
+    && ancillaryStayEnd === reservationStayEnd
+  )
 }
 
 function findFirstExtractedRecord(transaction: NormalizedTransaction, extractedRecordsById: Map<string, ExtractedRecord>): ExtractedRecord | undefined {
@@ -1289,6 +1326,16 @@ function isParkingLike(...values: Array<string | undefined>): boolean {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function normalizeComparableStayDate(value: string | undefined): string | undefined {
+  const raw = (value ?? '').trim()
+
+  if (!raw) {
+    return undefined
+  }
+
+  return raw.slice(0, 10)
 }
 
 function readNumber(value: unknown): number | undefined {

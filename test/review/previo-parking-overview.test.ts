@@ -228,4 +228,92 @@ describe('Previo parking overview', () => {
     expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
     expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
   })
+
+  it('links a parking row through exact Previo stay interval when ancillary and main vouchers differ', () => {
+    const batch = buildBatchFromPrevioRows([
+      {
+        createdAt: '13.03.2026 09:15',
+        stayStartAt: '18.03.2026',
+        stayEndAt: '20.03.2026',
+        voucher: 'PREVIO-STAY-2',
+        guestName: 'Klara Vesela',
+        companyName: 'Acme Travel',
+        channel: 'direct-web',
+        amountText: '520,00',
+        outstandingText: '0,00',
+        roomName: 'C303'
+      },
+      {
+        createdAt: '13.03.2026 09:20',
+        stayStartAt: '18.03.2026',
+        stayEndAt: '20.03.2026',
+        voucher: 'PREVIO-PARK-2',
+        channel: 'comgate',
+        amountText: '220,00',
+        outstandingText: '0,00',
+        roomName: 'Parkování stay-linked'
+      }
+    ])
+
+    const parkingItem = buildReservationPaymentOverview(batch).blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování stay-linked',
+      subtitle: 'C303',
+      primaryReference: 'PREVIO-PARK-2'
+    }))
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Klara Vesela' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-18 – 2026-03-20' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'C303' })
+    ]))
+  })
+
+  it('keeps fallback when exact stay interval points to multiple main reservations', () => {
+    const batch = buildBatchFromPrevioRows([
+      {
+        createdAt: '13.03.2026 09:15',
+        stayStartAt: '25.03.2026',
+        stayEndAt: '27.03.2026',
+        voucher: 'PREVIO-STAY-A',
+        guestName: 'Prvni Host',
+        companyName: 'Acme Travel',
+        channel: 'direct-web',
+        amountText: '420,00',
+        outstandingText: '0,00',
+        roomName: 'A101'
+      },
+      {
+        createdAt: '13.03.2026 09:16',
+        stayStartAt: '25.03.2026',
+        stayEndAt: '27.03.2026',
+        voucher: 'PREVIO-STAY-B',
+        guestName: 'Druhy Host',
+        companyName: 'Acme Travel',
+        channel: 'direct-web',
+        amountText: '430,00',
+        outstandingText: '0,00',
+        roomName: 'A102'
+      },
+      {
+        createdAt: '13.03.2026 09:20',
+        stayStartAt: '25.03.2026',
+        stayEndAt: '27.03.2026',
+        voucher: 'PREVIO-PARK-AMB',
+        channel: 'comgate',
+        amountText: '220,00',
+        outstandingText: '0,00',
+        roomName: 'Parkování ambiguous'
+      }
+    ])
+
+    const parkingItem = buildReservationPaymentOverview(batch).blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(parkingItem).toEqual(expect.objectContaining({
+      title: 'Parkování ambiguous',
+      primaryReference: 'PREVIO-PARK-AMB'
+    }))
+    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Host')
+    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
+  })
 })
