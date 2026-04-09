@@ -266,6 +266,7 @@ describe('buildReviewScreen', () => {
           workflowPlan: {
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [],
             reservationSettlementNoMatches: [],
             payoutRows: [
@@ -400,6 +401,7 @@ describe('buildReviewScreen', () => {
           workflowPlan: {
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [],
             reservationSettlementNoMatches: [],
             payoutRows: [
@@ -555,6 +557,7 @@ describe('buildReviewScreen', () => {
           workflowPlan: {
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [],
             reservationSettlementNoMatches: [],
             payoutRows: [],
@@ -685,6 +688,7 @@ describe('buildReviewScreen', () => {
           workflowPlan: {
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [],
             reservationSettlementNoMatches: [],
             payoutRows: [],
@@ -803,6 +807,7 @@ describe('buildReviewScreen', () => {
           workflowPlan: {
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [],
             reservationSettlementNoMatches: [],
             payoutRows: [],
@@ -899,6 +904,7 @@ describe('buildReviewScreen', () => {
           workflowPlan: {
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [],
             reservationSettlementNoMatches: [],
             payoutRows: [
@@ -2082,6 +2088,7 @@ describe('buildReviewScreen', () => {
             ],
             reservationSources: [],
             ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [
               {
                 reservationId: '5178029336',
@@ -2236,6 +2243,7 @@ describe('buildReviewScreen', () => {
                 currency: 'CZK'
               }
             ],
+            invoiceListEnrichment: [],
             reservationSettlementMatches: [
               {
                 reservationId: 'PREVIO-CG-20260314',

@@ -140,6 +140,26 @@ export interface AncillaryRevenueSourceRecord {
   currency: CurrencyCode
 }
 
+export interface InvoiceListEnrichmentRecord {
+  sourceRecordId: string
+  sourceDocumentId: DocumentId
+  recordKind: 'header' | 'line-item'
+  voucher?: string
+  variableSymbol?: string
+  invoiceNumber?: string
+  customerId?: string
+  customerName?: string
+  guestName?: string
+  stayStartAt?: ISODateString
+  stayEndAt?: ISODateString
+  roomName?: string
+  paymentMethod?: string
+  itemLabel?: string
+  grossAmountMinor?: number
+  netAmountMinor?: number
+  currency: CurrencyCode
+}
+
 export interface ReservationSettlementMatch {
   reservationId: string
   reference?: string
@@ -258,6 +278,7 @@ export interface ReconciliationWorkflowPlan {
   previoReservationTruth?: ReservationSourceRecord[]
   reservationSources: ReservationSourceRecord[]
   ancillaryRevenueSources: AncillaryRevenueSourceRecord[]
+  invoiceListEnrichment: InvoiceListEnrichmentRecord[]
   reservationSettlementMatches: ReservationSettlementMatch[]
   reservationSettlementNoMatches: ReservationSettlementNoMatch[]
   payoutRows: PayoutRowExpectation[]

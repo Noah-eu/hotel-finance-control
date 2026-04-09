@@ -15,10 +15,12 @@ import {
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
   parseComgateExport,
+  detectInvoiceListWorkbookSignature,
   detectPrevioReservationWorkbookSignature,
   parseExpediaPayoutExport,
   parseFioStatement,
   parseInvoiceDocument,
+  parseInvoiceListWorkbook,
   parsePrevioReservationExport,
   parseReceiptDocument,
   parseRaiffeisenbankStatement
@@ -717,6 +719,10 @@ function selectParser(sourceDocument: SourceDocument, content: string): Parser {
     return parseExpediaPayoutExport
   }
 
+  if (sourceDocument.sourceSystem === 'previo' && sourceDocument.documentType === 'invoice_list') {
+    return parseInvoiceListWorkbook
+  }
+
   if (sourceDocument.sourceSystem === 'previo') {
     return parsePrevioReservationExport
   }
@@ -1096,6 +1102,27 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
           detectedSignals: bookingPdfDecision?.detectedSignals ?? []
         })
       }
+    }
+  }
+
+  if (input.binaryContentBase64 && detectInvoiceListWorkbookSignature(input.binaryContentBase64)) {
+    return {
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook',
+      role: 'supplemental',
+      decision: buildResolvedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        classificationBasis: 'binary-workbook',
+        role: 'supplemental',
+        parserSupported: true,
+        matchedRules: ['binary-workbook-signature'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
     }
   }
 

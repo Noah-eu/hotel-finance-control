@@ -36,6 +36,7 @@ export type {
   ExceptionCase,
   ReservationSourceRecord,
   AncillaryRevenueSourceRecord,
+  InvoiceListEnrichmentRecord,
   ReservationSettlementMatch,
   ReservationSettlementNoMatch,
   PayoutRowExpectation,

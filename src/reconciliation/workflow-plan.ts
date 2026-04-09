@@ -4,6 +4,7 @@ import type {
     DirectBankSettlementExpectation,
     ExpenseDocumentExpectation,
     ExtractedRecord,
+    InvoiceListEnrichmentRecord,
     NormalizedTransaction,
     PayoutBatchExpectation,
     PayoutRowExpectation,
@@ -28,6 +29,7 @@ export function buildReconciliationWorkflowPlan(
     const previoReservationTruth = buildPrevioReservationTruth(input.extractedRecords)
     const reservationSources = buildReservationSources(input.extractedRecords)
     const ancillaryRevenueSources = buildAncillaryRevenueSources(input.extractedRecords)
+    const invoiceListEnrichment = buildInvoiceListEnrichment(input.extractedRecords)
     const payoutRows = buildPayoutRows(input.normalizedTransactions, input.extractedRecords)
     const reservationMatchingPayoutRows = buildReservationMatchingPayoutRows(
         input.normalizedTransactions,
@@ -37,8 +39,8 @@ export function buildReconciliationWorkflowPlan(
     const rowAndFallbackPayoutBatches = rowBasedPayoutBatches
         .concat(buildBookingPayoutStatementFallbackBatches(input.extractedRecords, payoutRows, rowBasedPayoutBatches))
         .concat(
-        buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
-    )
+            buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
+        )
     const directBankSettlements = buildDirectBankSettlements(input.normalizedTransactions)
     const reservationSettlementMatching = matchReservationSourcesToSettlements({
         reservationSources,
@@ -69,6 +71,7 @@ export function buildReconciliationWorkflowPlan(
         previoReservationTruth,
         reservationSources,
         ancillaryRevenueSources,
+        invoiceListEnrichment,
         reservationSettlementMatches,
         reservationSettlementNoMatches: reservationSettlementMatching.noMatches,
         payoutRows,
@@ -130,6 +133,30 @@ function buildAncillaryRevenueSources(extractedRecords: ExtractedRecord[]): Anci
             channel: optionalString(record.data.channel),
             grossRevenueMinor: numberOrZero(record.data.amountMinor, record.amountMinor),
             outstandingBalanceMinor: optionalNumber(record.data.outstandingBalanceMinor),
+            currency: stringOrFallback(record.data.currency, record.currency, 'CZK')
+        }))
+}
+
+function buildInvoiceListEnrichment(extractedRecords: ExtractedRecord[]): InvoiceListEnrichmentRecord[] {
+    return extractedRecords
+        .filter((record) => record.data.platform === 'previo-invoice-list')
+        .map((record) => ({
+            sourceRecordId: record.id,
+            sourceDocumentId: record.sourceDocumentId,
+            recordKind: record.data.rowKind === 'header' ? 'header' as const : 'line-item' as const,
+            voucher: optionalString(record.data.voucher),
+            variableSymbol: optionalString(record.data.variableSymbol),
+            invoiceNumber: optionalString(record.data.invoiceNumber),
+            customerId: optionalString(record.data.customerId),
+            customerName: optionalString(record.data.customerName),
+            guestName: optionalString(record.data.guestName),
+            stayStartAt: optionalString(record.data.stayStartAt),
+            stayEndAt: optionalString(record.data.stayEndAt),
+            roomName: optionalString(record.data.roomName),
+            paymentMethod: optionalString(record.data.paymentMethod),
+            itemLabel: optionalString(record.data.itemLabel),
+            grossAmountMinor: optionalNumber(record.data.grossAmountMinor),
+            netAmountMinor: optionalNumber(record.data.netAmountMinor),
             currency: stringOrFallback(record.data.currency, record.currency, 'CZK')
         }))
 }
@@ -939,7 +966,7 @@ function hasDeterministicPrevioReservationSignals(record: ExtractedRecord): bool
     return stringOrFallback(record.data.reservationId, record.data.reference, record.rawReference, '').length > 0
         && stringOrFallback(record.data.bookedAt, record.data.stayStartAt, record.occurredAt, '').length > 0
         && stringOrFallback(record.data.currency, record.currency, '').length > 0
-    && hasFiniteNumber(record.data.amountMinor, record.amountMinor)
+        && hasFiniteNumber(record.data.amountMinor, record.amountMinor)
 }
 
 function toReservationSourceRecord(record: ExtractedRecord): ReservationSourceRecord {
