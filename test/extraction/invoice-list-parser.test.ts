@@ -42,6 +42,37 @@ function buildInvoiceListProductionShapeBase64(input: {
   return Buffer.from(buffer).toString('base64')
 }
 
+function buildInvoiceListProductionOffsetAndVariantBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklady - export'],
+    [''],
+    ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260401', 'RES-PROD-OFFSET', '55667788', '01.04.2026', '03.04.2026', 'Lada Offset', 'F606', '6 100 Kč', '5 041 Kč']
+  ]), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Položky dokladů - export'],
+    [''],
+    ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260401', 'Ubytování', '5 600 Kč', '4 628 Kč'],
+    ['FA-20260401', 'Parkování na den', '500 Kč', '413 Kč']
+  ]), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '2']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' })
+  return Buffer.from(buffer).toString('base64')
+}
+
 function makeSourceDocument(id: string) {
   return {
     id: toDocumentId(id),
@@ -305,5 +336,21 @@ describe('Invoice list parser and enrichment', () => {
 
     expect(plan.invoiceListEnrichment.some((entry) => entry.voucher === 'RES-PROD-2')).toBe(true)
     expect(plan.invoiceListEnrichment.some((entry) => entry.itemLabel === 'Parkování na den')).toBe(true)
+  })
+
+  it('detects and parses production headers when title/blank rows are above header and labels are variants', () => {
+    const base64 = buildInvoiceListProductionOffsetAndVariantBase64()
+    expect(detectInvoiceListWorkbookSignature(base64)).toBe(true)
+
+    const records = parseInvoiceListWorkbook({
+      sourceDocument: makeSourceDocument('doc-invoice-list-production-offset'),
+      content: '',
+      extractedAt: '2026-04-01T00:00:00Z',
+      binaryContentBase64: base64
+    })
+
+    expect(records.length).toBeGreaterThan(1)
+    expect(records.some((record) => record.recordType === 'invoice-list-header')).toBe(true)
+    expect(records.some((record) => record.recordType === 'invoice-list-line')).toBe(true)
   })
 })

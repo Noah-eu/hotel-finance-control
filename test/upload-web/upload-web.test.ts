@@ -712,7 +712,9 @@ describe('buildUploadWebFlow', () => {
             workbookReadSucceeded: true,
             workbookSignatureFailureReason: '',
             invoiceListPrimarySheetUsed: 'Doklady',
-            invoiceListLineItemsSheetUsed: 'Položky dokladů'
+            invoiceListLineItemsSheetUsed: 'Položky dokladů',
+            invoiceListPrimaryDetectedHeaderRowIndex: 2,
+            invoiceListLineItemsDetectedHeaderRowIndex: 2
           }),
           matchedRules: expect.arrayContaining(['binary-workbook-signature'])
         })
@@ -7280,7 +7282,9 @@ function buildInvoiceListWorkbookBase64(): string {
 function buildInvoiceListProductionWorkbookBase64(): string {
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+    ['Doklady - export'],
+    [''],
+    ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Částka celkem', 'Základ DPH'],
     ['FA-20260325', 'RES-PROD-UPLOAD', '22446688', '25.03.2026', '27.03.2026', 'Dana Upload', 'D404', 'Firma Upload', 'CID-U404', '4 500 Kč', '3 719 Kč']
   ]), 'Doklady')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
@@ -7288,7 +7292,9 @@ function buildInvoiceListProductionWorkbookBase64(): string {
     ['Počet dokladů', '1']
   ]), 'Souhrn')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+    ['Položky dokladů - export'],
+    [''],
+    ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
     ['FA-20260325', 'Ubytování', '4 000 Kč', '3 306 Kč'],
     ['FA-20260325', 'Parkování na den', '500 Kč', '413 Kč']
   ]), 'Položky dokladů')

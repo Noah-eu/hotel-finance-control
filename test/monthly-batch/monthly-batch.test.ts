@@ -2587,12 +2587,20 @@ describe('invoice-list .xls browser classification', () => {
   }): string {
     const XLSX = require('xlsx')
     const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(input.dokladyRows), 'Doklady')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Doklady - export'],
+      [''],
+      ...input.dokladyRows
+    ]), 'Doklady')
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
       ['Souhrn', 'Hodnota'],
       ['Počet dokladů', '1']
     ]), 'Souhrn')
-    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(input.polozkyRows), 'Položky dokladů')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Položky dokladů - export'],
+      [''],
+      ...input.polozkyRows
+    ]), 'Položky dokladů')
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
       ['Souhrn položek', 'Hodnota'],
       ['Počet položek', '1']
@@ -2805,11 +2813,11 @@ describe('invoice-list .xls browser classification', () => {
   it('classifies real production workbook sheets (Doklady + Položky dokladů) as previo/invoice_list', () => {
     const base64 = buildInvoiceListProductionWorkbookBase64({
       dokladyRows: [
-        ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+        ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Částka celkem', 'Základ DPH'],
         ['FA-20260331', 'RES-PROD-3', '44332211', '31.03.2026', '01.04.2026', 'Nina Test', 'C303', 'Firma PROD 3', 'CID-303', '3 300 Kč', '2 727 Kč']
       ],
       polozkyRows: [
-        ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+        ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
         ['FA-20260331', 'Ubytování', '2 800 Kč', '2 314 Kč'],
         ['FA-20260331', 'Parkování na den', '500 Kč', '413 Kč']
       ]
@@ -2843,7 +2851,9 @@ describe('invoice-list .xls browser classification', () => {
       workbookReadSucceeded: true,
       workbookSignatureFailureReason: '',
       invoiceListPrimarySheetUsed: 'Doklady',
-      invoiceListLineItemsSheetUsed: 'Položky dokladů'
+      invoiceListLineItemsSheetUsed: 'Položky dokladů',
+      invoiceListPrimaryDetectedHeaderRowIndex: 2,
+      invoiceListLineItemsDetectedHeaderRowIndex: 2
     }))
     expect(route?.extractedCount ?? 0).toBeGreaterThan(0)
   })

@@ -1387,6 +1387,8 @@ describe('buildWebDemo', () => {
           workbookSignatureFailureReason: string
           invoiceListPrimarySheetUsed: string
           invoiceListLineItemsSheetUsed: string
+          invoiceListPrimaryDetectedHeaderRowIndex: number | null
+          invoiceListLineItemsDetectedHeaderRowIndex: number | null
         }>
       }
     }
@@ -1404,7 +1406,9 @@ describe('buildWebDemo', () => {
     expect(payload.invoiceListDebugSummary.files[0]).toEqual(expect.objectContaining({
       workbookSignatureFailureReason: '',
       invoiceListPrimarySheetUsed: 'Doklady',
-      invoiceListLineItemsSheetUsed: 'Položky dokladů'
+      invoiceListLineItemsSheetUsed: 'Položky dokladů',
+      invoiceListPrimaryDetectedHeaderRowIndex: 2,
+      invoiceListLineItemsDetectedHeaderRowIndex: 2
     }))
   })
 
@@ -8852,7 +8856,9 @@ function buildInvoiceListWorkbookBase64(): string {
 function buildInvoiceListProductionWorkbookBase64(): string {
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+    ['Doklady - export'],
+    [''],
+    ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Částka celkem', 'Základ DPH'],
     ['FA-20260326', 'RES-PROD-WEB', '77889900', '26.03.2026', '27.03.2026', 'Karel Web', 'E505', 'Firma Web', 'CID-W505', '3 900 Kč', '3 223 Kč']
   ]), 'Doklady')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
@@ -8860,7 +8866,9 @@ function buildInvoiceListProductionWorkbookBase64(): string {
     ['Počet dokladů', '1']
   ]), 'Souhrn')
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+    ['Položky dokladů - export'],
+    [''],
+    ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
     ['FA-20260326', 'Ubytování', '3 400 Kč', '2 810 Kč'],
     ['FA-20260326', 'Parkování na den', '500 Kč', '413 Kč']
   ]), 'Položky dokladů')

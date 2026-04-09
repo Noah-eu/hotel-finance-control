@@ -1239,7 +1239,16 @@ function withInvoiceListWorkbookSignatureDiagnostics(
       invoiceListPrimarySheetUsed: diagnostics.invoiceListPrimarySheetUsed,
       invoiceListLineItemsSheetUsed: diagnostics.invoiceListLineItemsSheetUsed,
       invoiceListParsedRowCount: diagnostics.invoiceListParsedRowCount,
-      invoiceListParsedLineItemCount: diagnostics.invoiceListParsedLineItemCount
+      invoiceListParsedLineItemCount: diagnostics.invoiceListParsedLineItemCount,
+      invoiceListPrimaryHeaderScanRows: diagnostics.invoiceListPrimaryHeaderScanRows,
+      invoiceListLineItemsHeaderScanRows: diagnostics.invoiceListLineItemsHeaderScanRows,
+      invoiceListPrimaryDetectedHeaderRowIndex: diagnostics.invoiceListPrimaryDetectedHeaderRowIndex,
+      invoiceListLineItemsDetectedHeaderRowIndex: diagnostics.invoiceListLineItemsDetectedHeaderRowIndex,
+      invoiceListPrimaryHeaderCellsRaw: diagnostics.invoiceListPrimaryHeaderCellsRaw,
+      invoiceListLineItemsHeaderCellsRaw: diagnostics.invoiceListLineItemsHeaderCellsRaw,
+      invoiceListPrimaryHeaderCellsNormalized: diagnostics.invoiceListPrimaryHeaderCellsNormalized,
+      invoiceListLineItemsHeaderCellsNormalized: diagnostics.invoiceListLineItemsHeaderCellsNormalized,
+      invoiceListHeaderFailureReason: diagnostics.invoiceListHeaderFailureReason
     }
   }
 }

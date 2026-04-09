@@ -2292,6 +2292,31 @@ ${showRuntimePayoutDiagnostics ? `
             invoiceListLineItemsSheetUsed: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsSheetUsed || ''),
             invoiceListParsedRowCount: Number(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListParsedRowCount || 0),
             invoiceListParsedLineItemCount: Number(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListParsedLineItemCount || 0),
+            invoiceListPrimaryHeaderScanRows: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderScanRows)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderScanRows.slice()
+              : [],
+            invoiceListLineItemsHeaderScanRows: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderScanRows)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderScanRows.slice()
+              : [],
+            invoiceListPrimaryDetectedHeaderRowIndex: typeof (file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryDetectedHeaderRowIndex) === 'number'
+              ? Number(file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryDetectedHeaderRowIndex)
+              : null,
+            invoiceListLineItemsDetectedHeaderRowIndex: typeof (file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsDetectedHeaderRowIndex) === 'number'
+              ? Number(file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsDetectedHeaderRowIndex)
+              : null,
+            invoiceListPrimaryHeaderCellsRaw: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsRaw)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsRaw.slice()
+              : [],
+            invoiceListLineItemsHeaderCellsRaw: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsRaw)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsRaw.slice()
+              : [],
+            invoiceListPrimaryHeaderCellsNormalized: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsNormalized)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsNormalized.slice()
+              : [],
+            invoiceListLineItemsHeaderCellsNormalized: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsNormalized)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsNormalized.slice()
+              : [],
+            invoiceListHeaderFailureReason: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListHeaderFailureReason || ''),
             runtimeAssignedParserId: String(file && file.parserId || ''),
             runtimeIngestionBranch: String(file && file.decision && file.decision.ingestionBranch || '')
           };
@@ -6046,7 +6071,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
             invoiceListPrimarySheetUsed: String(file.invoiceListPrimarySheetUsed || ''),
             invoiceListLineItemsSheetUsed: String(file.invoiceListLineItemsSheetUsed || ''),
             invoiceListParsedRowCount: Number(file.invoiceListParsedRowCount || 0),
-            invoiceListParsedLineItemCount: Number(file.invoiceListParsedLineItemCount || 0)
+            invoiceListParsedLineItemCount: Number(file.invoiceListParsedLineItemCount || 0),
+            invoiceListPrimaryHeaderScanRows: Array.isArray(file.invoiceListPrimaryHeaderScanRows) ? file.invoiceListPrimaryHeaderScanRows.slice() : [],
+            invoiceListLineItemsHeaderScanRows: Array.isArray(file.invoiceListLineItemsHeaderScanRows) ? file.invoiceListLineItemsHeaderScanRows.slice() : [],
+            invoiceListPrimaryDetectedHeaderRowIndex: typeof file.invoiceListPrimaryDetectedHeaderRowIndex === 'number' ? Number(file.invoiceListPrimaryDetectedHeaderRowIndex) : null,
+            invoiceListLineItemsDetectedHeaderRowIndex: typeof file.invoiceListLineItemsDetectedHeaderRowIndex === 'number' ? Number(file.invoiceListLineItemsDetectedHeaderRowIndex) : null,
+            invoiceListPrimaryHeaderCellsRaw: Array.isArray(file.invoiceListPrimaryHeaderCellsRaw) ? file.invoiceListPrimaryHeaderCellsRaw.slice() : [],
+            invoiceListLineItemsHeaderCellsRaw: Array.isArray(file.invoiceListLineItemsHeaderCellsRaw) ? file.invoiceListLineItemsHeaderCellsRaw.slice() : [],
+            invoiceListPrimaryHeaderCellsNormalized: Array.isArray(file.invoiceListPrimaryHeaderCellsNormalized) ? file.invoiceListPrimaryHeaderCellsNormalized.slice() : [],
+            invoiceListLineItemsHeaderCellsNormalized: Array.isArray(file.invoiceListLineItemsHeaderCellsNormalized) ? file.invoiceListLineItemsHeaderCellsNormalized.slice() : [],
+            invoiceListHeaderFailureReason: String(file.invoiceListHeaderFailureReason || '')
           })),
           totalExtractedCount: invoiceListFiles.reduce((sum, file) => sum + Number(file.extractedCount || 0), 0)
         };

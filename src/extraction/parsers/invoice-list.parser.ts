@@ -43,42 +43,62 @@ const INVOICE_LIST_DATE_CELL_PATTERN = /^(\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})(?:\s+\
 const INVOICE_LIST_AMOUNT_CELL_PATTERN = /^(?:(?:€|EUR|Kč|CZK)?\s*-?\d[\d\s,.]*(?:€|EUR|Kč|CZK)?)$/i
 
 const INVOICE_LIST_HEADER_FIELD_ALIASES = {
-  voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo'],
+  voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo', 'Rezervacni cislo'],
   variableSymbol: ['Variabilní symbol', 'VS'],
-  stayStartAt: ['Příjezd', 'Termín od', 'Datum od'],
-  stayEndAt: ['Odjezd', 'Termín do', 'Datum do'],
-  guestName: ['Jméno', 'Host', 'Jméno hosta'],
-  roomName: ['Pokoje', 'Pokoj', 'Jednotka'],
+  stayStartAt: ['Příjezd', 'Termín od', 'Datum od', 'Prijezd', 'Termin od'],
+  stayEndAt: ['Odjezd', 'Termín do', 'Datum do', 'Odjezd', 'Termin do'],
+  guestName: ['Jméno', 'Host', 'Jméno hosta', 'Jmeno', 'Jmeno hosta'],
+  roomName: ['Pokoje', 'Pokoj', 'Jednotka', 'Pokoj/c.j.'],
   paymentMethod: ['Způsob úhrady', 'Úhrada'],
-  customerName: ['Zákazník', 'Klient', 'Firma'],
+  customerName: ['Zákazník', 'Klient', 'Firma', 'Zakaznik'],
   customerId: ['ID zákazníka', 'ID klienta'],
-  invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury'],
-  grossAmount: ['Celkem s DPH', 'Částka s DPH', 'Celkem vč. DPH', 'Celkem'],
-  netAmount: ['Celkem bez DPH', 'Základ DPH', 'Bez DPH']
+  invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury', 'Doklad č.', 'Cislo dokladu', 'Cislo faktury'],
+  grossAmount: ['Celkem s DPH', 'Částka s DPH', 'Celkem vč. DPH', 'Celkem', 'Částka celkem', 'Castka celkem', 'Celkem vcetne dph'],
+  netAmount: ['Celkem bez DPH', 'Základ DPH', 'Bez DPH', 'Zaklad dph']
 } as const
 
 const INVOICE_LIST_LINE_FIELD_ALIASES = {
-  invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury'],
+  invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury', 'Doklad č.', 'Cislo dokladu', 'Cislo faktury'],
   voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo'],
-  itemLabel: ['Název', 'Popis', 'Položka'],
-  amountGross: ['Celkem s DPH', 'Cena s DPH', 'Částka', 'Celkem'],
-  amountNet: ['Celkem bez DPH', 'Cena bez DPH', 'Základ DPH']
+  itemLabel: ['Název', 'Popis', 'Položka', 'Nazev', 'Název položky', 'Nazev polozky'],
+  amountGross: ['Celkem s DPH', 'Cena s DPH', 'Částka', 'Celkem', 'Castka celkem', 'Částka celkem'],
+  amountNet: ['Celkem bez DPH', 'Cena bez DPH', 'Základ DPH', 'Zaklad dph']
 } as const
 
-const INVOICE_LIST_LEGACY_TABLE_REQUIRED_HEADERS = [
-  INVOICE_LIST_HEADER_COLUMNS.map((value) => [value]),
-  [INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel]
-] as const
+interface InvoiceListHeaderDetectionRule {
+  requiredAnyOf: ReadonlyArray<readonly string[]>
+  minGroupsMatched: number
+}
 
-const INVOICE_LIST_PRODUCTION_PRIMARY_REQUIRED_HEADERS = [
-  [INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber],
-  [INVOICE_LIST_HEADER_FIELD_ALIASES.grossAmount]
-] as const
+const INVOICE_LIST_LEGACY_HEADER_RULE: InvoiceListHeaderDetectionRule = {
+  requiredAnyOf: [
+    ['Voucher'],
+    ['Variabilní symbol', 'VS'],
+    ['Příjezd', 'Termín od'],
+    ['Číslo dokladu', 'Doklad', 'Číslo faktury'],
+    ['Název', 'Popis', 'Položka']
+  ],
+  minGroupsMatched: 4
+}
 
-const INVOICE_LIST_PRODUCTION_LINE_ITEMS_REQUIRED_HEADERS = [
-  [INVOICE_LIST_LINE_FIELD_ALIASES.invoiceNumber],
-  [INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel]
-] as const
+const INVOICE_LIST_PRODUCTION_PRIMARY_HEADER_RULE: InvoiceListHeaderDetectionRule = {
+  requiredAnyOf: [
+    INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber,
+    INVOICE_LIST_HEADER_FIELD_ALIASES.grossAmount,
+    INVOICE_LIST_HEADER_FIELD_ALIASES.voucher,
+    INVOICE_LIST_HEADER_FIELD_ALIASES.guestName
+  ],
+  minGroupsMatched: 2
+}
+
+const INVOICE_LIST_PRODUCTION_LINE_ITEMS_HEADER_RULE: InvoiceListHeaderDetectionRule = {
+  requiredAnyOf: [
+    INVOICE_LIST_LINE_FIELD_ALIASES.invoiceNumber,
+    INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel,
+    INVOICE_LIST_LINE_FIELD_ALIASES.amountGross
+  ],
+  minGroupsMatched: 2
+}
 
 // ── public API ──────────────────────────────────────────
 
@@ -98,6 +118,15 @@ export interface InvoiceListWorkbookSignatureRuntimeDiagnostics {
   invoiceListLineItemsSheetUsed?: string
   invoiceListParsedRowCount?: number
   invoiceListParsedLineItemCount?: number
+  invoiceListPrimaryHeaderScanRows?: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }>
+  invoiceListLineItemsHeaderScanRows?: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }>
+  invoiceListPrimaryDetectedHeaderRowIndex?: number
+  invoiceListLineItemsDetectedHeaderRowIndex?: number
+  invoiceListPrimaryHeaderCellsRaw?: string[]
+  invoiceListLineItemsHeaderCellsRaw?: string[]
+  invoiceListPrimaryHeaderCellsNormalized?: string[]
+  invoiceListLineItemsHeaderCellsNormalized?: string[]
+  invoiceListHeaderFailureReason?: string
 }
 
 export interface InvoiceListWorkbookDiagnostics extends InvoiceListWorkbookSignatureRuntimeDiagnostics {
@@ -133,6 +162,15 @@ export function diagnoseInvoiceListWorkbookSignature(binaryContentBase64: string
       invoiceListLineItemsSheetUsed: workbookContext.lineItemsSheetName,
       invoiceListParsedRowCount: workbookContext.parsedRowCount,
       invoiceListParsedLineItemCount: workbookContext.parsedLineItemCount,
+      invoiceListPrimaryHeaderScanRows: workbookContext.primaryHeaderScanRows,
+      invoiceListLineItemsHeaderScanRows: workbookContext.lineItemsHeaderScanRows,
+      invoiceListPrimaryDetectedHeaderRowIndex: workbookContext.primaryDetectedHeaderRowIndex,
+      invoiceListLineItemsDetectedHeaderRowIndex: workbookContext.lineItemsDetectedHeaderRowIndex,
+      invoiceListPrimaryHeaderCellsRaw: workbookContext.primaryHeaderCellsRaw,
+      invoiceListLineItemsHeaderCellsRaw: workbookContext.lineItemsHeaderCellsRaw,
+      invoiceListPrimaryHeaderCellsNormalized: workbookContext.primaryHeaderCellsNormalized,
+      invoiceListLineItemsHeaderCellsNormalized: workbookContext.lineItemsHeaderCellsNormalized,
+      invoiceListHeaderFailureReason: workbookContext.headerFailureReason,
       detected,
       sheetNames,
       matchedSheetName,
@@ -222,6 +260,15 @@ interface InvoiceListWorkbookContext {
   parsedRowCount: number
   parsedLineItemCount: number
   failureReason: string
+  headerFailureReason?: string
+  primaryHeaderScanRows: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }>
+  lineItemsHeaderScanRows: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }>
+  primaryDetectedHeaderRowIndex?: number
+  lineItemsDetectedHeaderRowIndex?: number
+  primaryHeaderCellsRaw?: string[]
+  lineItemsHeaderCellsRaw?: string[]
+  primaryHeaderCellsNormalized?: string[]
+  lineItemsHeaderCellsNormalized?: string[]
   primaryExtraction?: {
     headerRowIndex: number
     headerRowValues: string[]
@@ -416,7 +463,7 @@ function resolveInvoiceListWorkbookContext(workbook: XLSX.WorkBook): InvoiceList
   const legacySheetName = resolveWorksheetName(workbook, legacyWorksheet)
 
   if (legacyWorksheet && legacySheetName) {
-    const extraction = extractInvoiceListRows(legacyWorksheet, INVOICE_LIST_LEGACY_TABLE_REQUIRED_HEADERS)
+    const extraction = extractInvoiceListRows(legacyWorksheet, INVOICE_LIST_LEGACY_HEADER_RULE)
 
     if (extraction) {
       return {
@@ -429,6 +476,15 @@ function resolveInvoiceListWorkbookContext(workbook: XLSX.WorkBook): InvoiceList
         parsedRowCount: extraction.candidateRows.length,
         parsedLineItemCount: extraction.candidateRows.filter((row) => classifyInvoiceListRow(row) === 'line-item').length,
         failureReason: '',
+        headerFailureReason: '',
+        primaryHeaderScanRows: extraction.headerScanRows,
+        lineItemsHeaderScanRows: [],
+        primaryDetectedHeaderRowIndex: extraction.headerRowIndex,
+        lineItemsDetectedHeaderRowIndex: undefined,
+        primaryHeaderCellsRaw: extraction.headerRowValues,
+        lineItemsHeaderCellsRaw: undefined,
+        primaryHeaderCellsNormalized: extraction.headerRowValues.map((value) => normalizeWorkbookSignatureName(value)),
+        lineItemsHeaderCellsNormalized: undefined,
         primaryExtraction: extraction
       }
     }
@@ -451,12 +507,15 @@ function resolveInvoiceListWorkbookContext(workbook: XLSX.WorkBook): InvoiceList
       lineItemsHeaderRowFound: false,
       parsedRowCount: 0,
       parsedLineItemCount: 0,
-      failureReason: 'required-sheet-not-found'
+      failureReason: 'required-sheet-not-found',
+      headerFailureReason: 'required-sheet-not-found',
+      primaryHeaderScanRows: [],
+      lineItemsHeaderScanRows: []
     }
   }
 
-  const headerExtraction = extractInvoiceListRows(productionPrimaryWorksheet, INVOICE_LIST_PRODUCTION_PRIMARY_REQUIRED_HEADERS)
-  const lineItemsExtraction = extractInvoiceListRows(productionLineItemsWorksheet, INVOICE_LIST_PRODUCTION_LINE_ITEMS_REQUIRED_HEADERS)
+  const headerExtraction = extractInvoiceListRows(productionPrimaryWorksheet, INVOICE_LIST_PRODUCTION_PRIMARY_HEADER_RULE)
+  const lineItemsExtraction = extractInvoiceListRows(productionLineItemsWorksheet, INVOICE_LIST_PRODUCTION_LINE_ITEMS_HEADER_RULE)
 
   if (!headerExtraction || !lineItemsExtraction) {
     return {
@@ -470,7 +529,20 @@ function resolveInvoiceListWorkbookContext(workbook: XLSX.WorkBook): InvoiceList
       lineItemsHeaderRowFound: Boolean(lineItemsExtraction),
       parsedRowCount: headerExtraction?.candidateRows.length ?? 0,
       parsedLineItemCount: lineItemsExtraction?.candidateRows.length ?? 0,
-      failureReason: 'header-row-not-found'
+      failureReason: 'header-row-not-found',
+      headerFailureReason: !headerExtraction && !lineItemsExtraction
+        ? 'primary-and-line-items-header-row-not-found'
+        : !headerExtraction
+          ? 'primary-header-row-not-found'
+          : 'line-items-header-row-not-found',
+      primaryHeaderScanRows: headerExtraction?.headerScanRows ?? scanWorksheetHeaderRows(productionPrimaryWorksheet),
+      lineItemsHeaderScanRows: lineItemsExtraction?.headerScanRows ?? scanWorksheetHeaderRows(productionLineItemsWorksheet),
+      primaryDetectedHeaderRowIndex: headerExtraction?.headerRowIndex,
+      lineItemsDetectedHeaderRowIndex: lineItemsExtraction?.headerRowIndex,
+      primaryHeaderCellsRaw: headerExtraction?.headerRowValues,
+      lineItemsHeaderCellsRaw: lineItemsExtraction?.headerRowValues,
+      primaryHeaderCellsNormalized: headerExtraction?.headerRowValues.map((value) => normalizeWorkbookSignatureName(value)),
+      lineItemsHeaderCellsNormalized: lineItemsExtraction?.headerRowValues.map((value) => normalizeWorkbookSignatureName(value))
     }
   }
 
@@ -488,6 +560,15 @@ function resolveInvoiceListWorkbookContext(workbook: XLSX.WorkBook): InvoiceList
     parsedRowCount: headerExtraction.candidateRows.length,
     parsedLineItemCount,
     failureReason: '',
+    headerFailureReason: '',
+    primaryHeaderScanRows: headerExtraction.headerScanRows,
+    lineItemsHeaderScanRows: lineItemsExtraction.headerScanRows,
+    primaryDetectedHeaderRowIndex: headerExtraction.headerRowIndex,
+    lineItemsDetectedHeaderRowIndex: lineItemsExtraction.headerRowIndex,
+    primaryHeaderCellsRaw: headerExtraction.headerRowValues,
+    lineItemsHeaderCellsRaw: lineItemsExtraction.headerRowValues,
+    primaryHeaderCellsNormalized: headerExtraction.headerRowValues.map((value) => normalizeWorkbookSignatureName(value)),
+    lineItemsHeaderCellsNormalized: lineItemsExtraction.headerRowValues.map((value) => normalizeWorkbookSignatureName(value)),
     primaryExtraction: headerExtraction,
     lineItemsExtraction
   }
@@ -551,6 +632,11 @@ function ensureInvoiceListWorkbookCodepageSupport(): void {
 
 function normalizeWorkbookSignatureName(value: string): string {
   return stripDiacriticsLower(value)
+    .replace(/[\u00a0]/g, ' ')
+    .replace(/[_./\\\-]+/g, ' ')
+    .replace(/[(){}\[\]:;,'"`]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {
@@ -564,16 +650,17 @@ function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {
 
 function extractInvoiceListRows(
   worksheet: XLSX.WorkSheet,
-  requiredHeaders: ReadonlyArray<ReadonlyArray<readonly string[]>>
+  headerRule: InvoiceListHeaderDetectionRule
 ): {
   headerRowIndex: number
   headerRowValues: string[]
   headerColumnIndexes: Record<string, number>
   candidateRows: Array<Record<string, unknown>>
+  headerScanRows: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }>
 } | undefined {
   const sheetRows = readWorksheetRows(worksheet)
-
-  const headerRowIndex = findInvoiceListHeaderRowIndex(sheetRows, requiredHeaders)
+  const scanResult = findInvoiceListHeaderRowIndex(sheetRows, headerRule)
+  const headerRowIndex = scanResult.headerRowIndex
   if (headerRowIndex === -1) {
     return undefined
   }
@@ -588,22 +675,69 @@ function extractInvoiceListRows(
     headerRowIndex,
     headerRowValues: headerRow,
     headerColumnIndexes,
-    candidateRows
+    candidateRows,
+    headerScanRows: scanResult.scanRows
   }
 }
 
 function findInvoiceListHeaderRowIndex(
   rows: Array<Array<unknown>>,
-  requiredHeaders: ReadonlyArray<ReadonlyArray<readonly string[]>>
-): number {
-  return rows.findIndex((row) => {
-    const presentHeaders = buildNormalizedHeaderSet(row.map((cell) => String(cell ?? '').trim()))
-    return requiredHeaders.every((aliasGroupCollection) => {
-      return aliasGroupCollection.some((aliasGroup) => {
-        return aliasGroup.some((alias) => presentHeaders.has(normalizeWorkbookSignatureName(alias)))
-      })
+  headerRule: InvoiceListHeaderDetectionRule
+): {
+  headerRowIndex: number
+  scanRows: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }>
+} {
+  const scanRows = scanHeaderRows(rows)
+  const minGroupsMatched = Math.max(1, headerRule.minGroupsMatched)
+
+  for (const scanRow of scanRows) {
+    const presentHeaders = new Set(scanRow.cellsNormalized)
+    const matchedGroups = headerRule.requiredAnyOf.filter((aliasGroup) => {
+      return aliasGroup.some((alias) => presentHeaders.has(normalizeWorkbookSignatureName(alias)))
+    }).length
+
+    if (matchedGroups >= minGroupsMatched) {
+      return {
+        headerRowIndex: scanRow.rowIndex,
+        scanRows
+      }
+    }
+  }
+
+  return {
+    headerRowIndex: -1,
+    scanRows
+  }
+}
+
+function scanWorksheetHeaderRows(worksheet: XLSX.WorkSheet): Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }> {
+  return scanHeaderRows(readWorksheetRows(worksheet))
+}
+
+function scanHeaderRows(rows: Array<Array<unknown>>): Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }> {
+  const scans: Array<{ rowIndex: number; cellsRaw: string[]; cellsNormalized: string[] }> = []
+
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const rawCells = (rows[rowIndex] ?? [])
+      .map((cell) => String(cell ?? '').trim())
+      .filter(Boolean)
+
+    if (rawCells.length === 0) {
+      continue
+    }
+
+    scans.push({
+      rowIndex,
+      cellsRaw: rawCells.slice(0, 30),
+      cellsNormalized: rawCells.map((cell) => normalizeWorkbookSignatureName(cell)).filter(Boolean).slice(0, 30)
     })
-  })
+
+    if (scans.length >= 40) {
+      break
+    }
+  }
+
+  return scans
 }
 
 function indexColumns(headers: string[]): Record<string, number> {
@@ -821,14 +955,6 @@ function readRowValueByAliases(row: Record<string, unknown>, aliases: readonly s
   }
 
   return ''
-}
-
-function buildNormalizedHeaderSet(headers: string[]): Set<string> {
-  return new Set(
-    headers
-      .map((header) => normalizeWorkbookSignatureName(header))
-      .filter(Boolean)
-  )
 }
 
 // ── cell readers ────────────────────────────────────────
