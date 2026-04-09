@@ -1076,35 +1076,6 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
-  if (
-    ingestionBranch === 'structured-parser'
-    || ingestionBranch === 'text-document-parser'
-    || ingestionBranch === 'text-pdf-parser'
-  ) {
-    const byContent = inferSourceSystemFromContent(input.content)
-
-    if (byContent !== 'unknown') {
-      return {
-        sourceSystem: byContent,
-        documentType: inferDocumentType(byContent),
-        classificationBasis: 'content',
-        role: 'primary',
-        decision: buildResolvedDecision({
-          capability,
-          ingestionBranch,
-          sourceSystem: byContent,
-          documentType: inferDocumentType(byContent),
-          classificationBasis: 'content',
-          role: 'primary',
-          parserSupported: true,
-          matchedRules: ['content-signature'],
-          missingSignals: [],
-          detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-        })
-      }
-    }
-  }
-
   if (input.binaryContentBase64 && detectInvoiceListWorkbookSignature(input.binaryContentBase64)) {
     return {
       sourceSystem: 'previo',
@@ -1144,6 +1115,35 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         missingSignals: [],
         detectedSignals: bookingPdfDecision?.detectedSignals ?? []
       })
+    }
+  }
+
+  if (
+    ingestionBranch === 'structured-parser'
+    || ingestionBranch === 'text-document-parser'
+    || ingestionBranch === 'text-pdf-parser'
+  ) {
+    const byContent = inferSourceSystemFromContent(input.content)
+
+    if (byContent !== 'unknown') {
+      return {
+        sourceSystem: byContent,
+        documentType: inferDocumentType(byContent),
+        classificationBasis: 'content',
+        role: 'primary',
+        decision: buildResolvedDecision({
+          capability,
+          ingestionBranch,
+          sourceSystem: byContent,
+          documentType: inferDocumentType(byContent),
+          classificationBasis: 'content',
+          role: 'primary',
+          parserSupported: true,
+          matchedRules: ['content-signature'],
+          missingSignals: [],
+          detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+        })
+      }
     }
   }
 

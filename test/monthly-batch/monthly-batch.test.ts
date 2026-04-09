@@ -2564,6 +2564,121 @@ describe('runMonthlyReconciliationBatch', () => {
   })
 })
 
+describe('invoice-list .xls browser classification', () => {
+  function buildInvoiceListWorkbookBase64(
+    rows: unknown[][],
+    sheetName = 'Seznam dokladů'
+  ): string {
+    const XLSX = require('xlsx')
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.aoa_to_sheet(rows)
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' })
+    return Buffer.from(buffer).toString('base64')
+  }
+
+  const INVOICE_LIST_HEADER_ROW = [
+    'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
+    'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
+    'Název', 'Celkem s DPH', 'Celkem bez DPH'
+  ]
+
+  function buildMinimalInvoiceListBase64(): string {
+    return buildInvoiceListWorkbookBase64([
+      INVOICE_LIST_HEADER_ROW,
+      ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+    ])
+  }
+
+  it('capability detects .xls file as structured_workbook', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const capability = detectUploadedMonthlyFileCapability({
+      fileName: 'Invoice list.xls',
+      content: '',
+      binaryContentBase64: base64,
+      contentFormat: 'binary-workbook'
+    })
+    expect(capability.transportProfile).toBe('structured_workbook')
+    expect(capability.profile).toBe('structured_tabular')
+  })
+
+  it('capability detects .xls even when contentFormat not pre-set', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const capability = detectUploadedMonthlyFileCapability({
+      fileName: 'Invoice list.xls',
+      content: '',
+      binaryContentBase64: base64,
+      contentFormat: 'text'
+    })
+    expect(capability.transportProfile).toBe('structured_workbook')
+  })
+
+  it('prepareUploadedMonthlyBatchFiles classifies invoice_list.xls as previo/invoice_list', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const result = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Invoice list.xls',
+        content: '',
+        binaryContentBase64: base64,
+        contentFormat: 'binary-workbook' as const,
+        uploadedAt: '2026-04-01T00:00:00Z'
+      }
+    ])
+    expect(result.fileRoutes.length).toBe(1)
+    expect(result.fileRoutes[0]).toEqual(expect.objectContaining({
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook',
+      parserId: 'previo'
+    }))
+  })
+
+  it('ingestUploadedMonthlyFiles routes invoice_list.xls and produces extracted records', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'Invoice list.xls',
+          content: '',
+          binaryContentBase64: base64,
+          contentFormat: 'binary-workbook' as const,
+          uploadedAt: '2026-04-01T00:00:00Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'test-invoice-list-xls',
+        requestedAt: '2026-04-01T00:00:00Z'
+      },
+      reportGeneratedAt: '2026-04-01T00:00:00Z'
+    })
+
+    const invoiceListRoute = result.fileRoutes.find(
+      (route) => route.documentType === 'invoice_list'
+    )
+    expect(invoiceListRoute).toBeDefined()
+    expect(invoiceListRoute!.sourceSystem).toBe('previo')
+    expect(invoiceListRoute!.parserId).toBe('previo')
+    expect(invoiceListRoute!.extractedCount).toBeGreaterThanOrEqual(1)
+    expect(invoiceListRoute!.extractedRecordIds!.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('generic invoice files are still classified as invoice', () => {
+    const result = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'faktura-hotel-2026-03.pdf',
+        content: 'Faktura - daňový doklad\nČíslo faktury: FV-2024001\nDodavatel: Hotel ABC\nOdběratel: John Doe\nDatum vystavení: 01.03.2026\nDatum splatnosti: 15.03.2026\nCelkem k úhradě: 5 000,00 Kč\nIČ: 12345678\nDIČ: CZ12345678\nIBAN: CZ6508000000192000145399',
+        contentFormat: 'pdf-text' as const,
+        uploadedAt: '2026-04-01T00:00:00Z'
+      }
+    ])
+    expect(result.fileRoutes.length).toBe(1)
+    expect(result.fileRoutes[0]).toEqual(expect.objectContaining({
+      sourceSystem: 'invoice',
+      documentType: 'invoice'
+    }))
+  })
+})
+
 function buildActualUploadedAirbnbContent(): string {
   return [
     'Datum;Bude připsán do dne;Typ;Datum zahájení;Datum ukončení;Host;Nabídka;Podrobnosti;Referenční kód;Potvrzující kód;Měna;Částka;Vyplaceno;Servisní poplatek;Hrubé výdělky',

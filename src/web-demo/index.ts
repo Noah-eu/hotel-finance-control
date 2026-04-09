@@ -5993,6 +5993,21 @@ ${showRuntimePayoutDiagnostics ? '' : `
           reservation_plus: [],
           parking: []
         });
+        const invoiceListFiles = uploadedFiles.filter((file) => String(file.documentType || '') === 'invoice_list');
+        const invoiceListDebugSummary = {
+          detected: invoiceListFiles.length > 0,
+          fileCount: invoiceListFiles.length,
+          files: invoiceListFiles.map((file) => ({
+            fileName: String(file.fileName || ''),
+            sourceSystem: String(file.sourceSystem || ''),
+            documentType: String(file.documentType || ''),
+            parserId: String(file.parserId || ''),
+            classificationBasis: String(file.classificationBasis || ''),
+            extractedCount: Number(file.extractedCount || 0),
+            extractedRecordIds: Array.isArray(file.extractedRecordIds) ? file.extractedRecordIds.slice() : []
+          })),
+          totalExtractedCount: invoiceListFiles.reduce((sum, file) => sum + Number(file.extractedCount || 0), 0)
+        };
         const bookingBlock = blocks.find((block) => String(block && block.key || '') === 'booking');
         const bookingReservationItems = (Array.isArray(bookingBlock && bookingBlock.items) ? bookingBlock.items : []).map((item) => {
           const linkedPayoutRowIds = (Array.isArray(item && item.transactionIds) ? item.transactionIds : [])
@@ -6461,6 +6476,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           payoutRelatedFileIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.workspaceFileId)),
           payoutRelatedSourceDocumentIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.sourceDocumentId)),
           reservationLikeItemIdsBySource,
+          invoiceListDebugSummary,
           reservationPaymentOverviewDebug: {
             parkingCandidatesBeforeGrouping: Number(overviewDebug.parkingCandidatesBeforeGrouping || 0),
             reservationPlusCandidatesBeforeGrouping: Number(overviewDebug.reservationPlusCandidatesBeforeGrouping || 0),
