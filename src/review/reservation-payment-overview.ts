@@ -93,7 +93,11 @@ export interface ReservationPaymentOverviewComgateMergeTrace {
   linkedReservationId: string
   linkedPaymentReference: string
   chosenLinkReason: 'exact_refId_merge' | 'exact_clientId_merge' | 'no_merge'
+  noMergeReason?: 'not_reservation_plus' | 'no_reservation_anchor' | 'no_candidate' | 'ambiguous_candidates'
   nativeComgateFallbackSuppressed: boolean
+  candidateCount: number
+  comparableReservationValues: string[]
+  comparableNativeAnchorsSample: string[]
   mergedComgateRowId?: string
   mergedComgateSourceDocumentId?: string
   clientId?: string
@@ -748,7 +752,7 @@ export function inspectReservationPaymentOverviewClassification(
 
     if (blockKey === 'reservation_plus') {
       const debugConsumedRowIds = new Set(consumedRowIds)
-      const comgateMergeMatch = resolveComgateExactPayoutRowMatch(
+      const comgateMergeDiag = diagnoseComgateExactPayoutRowMerge(
         workflowPlan.payoutRows,
         reservation,
         blockKey,
@@ -756,6 +760,7 @@ export function inspectReservationPaymentOverviewClassification(
         transactionsById,
         debugConsumedRowIds
       )
+      const comgateMergeMatch = comgateMergeDiag.match
       const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
 
       let mergeTraceClientId: string | undefined
@@ -779,7 +784,11 @@ export function inspectReservationPaymentOverviewClassification(
         linkedReservationId: reservation.reservationId,
         linkedPaymentReference: comgateMergeMatch?.matchedRowId ?? '',
         chosenLinkReason: mergeTraceChosenLinkReason,
+        noMergeReason: mergeTraceChosenLinkReason === 'no_merge' ? comgateMergeDiag.noMergeReason : undefined,
         nativeComgateFallbackSuppressed: Boolean(comgateMergeMatch),
+        candidateCount: comgateMergeDiag.candidateCount,
+        comparableReservationValues: comgateMergeDiag.comparableReservationValues,
+        comparableNativeAnchorsSample: comgateMergeDiag.comparableNativeAnchorsSample,
         mergedComgateRowId: comgateMergeMatch?.matchedRowId,
         mergedComgateSourceDocumentId: comgateMergeMatch?.evidence.find((e) => e.key === 'payoutRowSourceDocumentId')?.value as string | undefined,
         clientId: mergeTraceClientId,
@@ -1265,6 +1274,122 @@ function resolveComgateExactPayoutRowMatch(
       { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
       { key: 'payoutRowId', value: candidate.rowId }
     ])
+  }
+}
+
+interface ComgateExactPayoutRowMergeDiagnostic {
+  match: ReservationSettlementMatch | undefined
+  noMergeReason?: ReservationPaymentOverviewComgateMergeTrace['noMergeReason']
+  candidateCount: number
+  comparableReservationValues: string[]
+  comparableNativeAnchorsSample: string[]
+}
+
+function diagnoseComgateExactPayoutRowMerge(
+  payoutRows: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  extractedRecordLookup: ExtractedRecordLookup,
+  transactionsById: Map<string, NormalizedTransaction>,
+  consumedRowIds: Set<string>
+): ComgateExactPayoutRowMergeDiagnostic {
+  if (blockKey !== 'reservation_plus') {
+    return {
+      match: undefined,
+      noMergeReason: 'not_reservation_plus',
+      candidateCount: 0,
+      comparableReservationValues: [],
+      comparableNativeAnchorsSample: []
+    }
+  }
+
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return {
+      match: undefined,
+      noMergeReason: 'no_reservation_anchor',
+      candidateCount: 0,
+      comparableReservationValues: [],
+      comparableNativeAnchorsSample: []
+    }
+  }
+
+  const allNativeAnchorsSample: string[] = []
+
+  const candidates = payoutRows.filter((row) => {
+    if (row.platform !== 'comgate' || consumedRowIds.has(row.rowId)) {
+      return false
+    }
+
+    const transaction = transactionsById.get(row.rowId)
+    if (!transaction) {
+      return false
+    }
+
+    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
+
+    if (isParkingLike(
+      readString(extractedRecord?.data.paymentPurpose),
+      readString(extractedRecord?.data.reference),
+      readString(extractedRecord?.data.transactionId),
+      row.payoutReference
+    )) {
+      return false
+    }
+
+    const nativeAnchors = collectUniqueTruthyStrings([
+      normalizeComparable(row.reservationId),
+      normalizeComparable(readString(extractedRecord?.data.reservationId)),
+      normalizeComparable(readString(extractedRecord?.data.clientId))
+    ])
+    if (nativeAnchors.length > 0 && allNativeAnchorsSample.length < 10) {
+      for (const anchor of nativeAnchors) {
+        if (!allNativeAnchorsSample.includes(anchor)) {
+          allNativeAnchorsSample.push(anchor)
+        }
+      }
+    }
+
+    return matchesReservationPlusNativeExactIdentity(row, extractedRecord, reservation)
+  })
+
+  if (candidates.length !== 1) {
+    return {
+      match: undefined,
+      noMergeReason: candidates.length === 0 ? 'no_candidate' : 'ambiguous_candidates',
+      candidateCount: candidates.length,
+      comparableReservationValues,
+      comparableNativeAnchorsSample: allNativeAnchorsSample.slice(0, 10)
+    }
+  }
+
+  const candidate = candidates[0]!
+  return {
+    match: {
+      sourceDocumentId: reservation.sourceDocumentId,
+      reservationId: reservation.reservationId,
+      reference: reservation.reference,
+      settlementKind: 'payout_row',
+      matchedRowId: candidate.rowId,
+      platform: 'comgate',
+      amountMinor: candidate.amountMinor,
+      currency: candidate.currency,
+      confidence: 1,
+      reasons: ['reservationIdExact', 'comgatePayoutRowMerge'],
+      evidence: compactEvidence([
+        { key: 'reservationId', value: reservation.reservationId },
+        reservation.reference ? { key: 'reference', value: reservation.reference } : undefined,
+        { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
+        { key: 'payoutRowId', value: candidate.rowId }
+      ])
+    },
+    candidateCount: 1,
+    comparableReservationValues,
+    comparableNativeAnchorsSample: allNativeAnchorsSample.slice(0, 10)
   }
 }
 

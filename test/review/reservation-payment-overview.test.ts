@@ -2014,4 +2014,310 @@ describe('buildReservationPaymentOverview', () => {
       reservationRoomName: 'D404'
     }))
   })
+
+  // ── Regression tests A–E: Comgate daily-settlement merge ──
+
+  it('A: merges reservation-backed + native Comgate with same anchor into one paid item', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-ds-A1',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: {
+            platform: 'comgate',
+            reference: '1816656820',
+            clientId: '108966761',
+            reservationId: '108966761',
+            transactionId: 'JGSV-QK5O-DR7O',
+            comgateParserVariant: 'daily-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:dsA1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 242351,
+            currency: 'CZK',
+            bookedAt: '2026-03-27',
+            reference: '1816656820',
+            reservationId: '108966761',
+            sourceDocumentIds: ['doc:comgate-ds'],
+            extractedRecordIds: ['comgate-ds-A1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo',
+              reservationId: '108966761',
+              guestName: 'Jan Novak',
+              roomName: 'A101',
+              reference: '108966761',
+              channel: 'direct_web',
+              bookedAt: '2026-03-20',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-29',
+              grossRevenueMinor: 244750,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:dsA1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate-ds',
+              reservationId: '108966761',
+              payoutReference: '1816656820',
+              payoutDate: '2026-03-27',
+              amountMinor: 242351,
+              matchingAmountMinor: 242351,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((b) => b.key === 'reservation_plus')!
+
+    expect(resBlock.items).toHaveLength(1)
+    const item = resBlock.items[0]!
+    expect(item.title).toBe('Jan Novak')
+    expect(item.statusKey).toBe('paid')
+    expect(item.evidenceKey).toBe('comgate')
+    expect(item.transactionIds).toEqual(['txn:comgate:dsA1'])
+    expect(item.id).not.toContain('native')
+  })
+
+  it('B: multiple Comgate rows without anchor stay as separate native fallback items', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-ds-B1',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 50000,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: { platform: 'comgate', reference: '1816656820', comgateParserVariant: 'daily-settlement' }
+        },
+        {
+          id: 'comgate-ds-B2',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 60000,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: { platform: 'comgate', reference: '1816656820', comgateParserVariant: 'daily-settlement' }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          { id: 'txn:comgate:dsB1', source: 'comgate', subtype: 'payment', direction: 'in', amountMinor: 50000, currency: 'CZK', bookedAt: '2026-03-27', reference: '1816656820', sourceDocumentIds: ['doc:comgate-ds'], extractedRecordIds: ['comgate-ds-B1'] },
+          { id: 'txn:comgate:dsB2', source: 'comgate', subtype: 'payment', direction: 'in', amountMinor: 60000, currency: 'CZK', bookedAt: '2026-03-27', reference: '1816656820', sourceDocumentIds: ['doc:comgate-ds'], extractedRecordIds: ['comgate-ds-B2'] }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            { rowId: 'txn:comgate:dsB1', platform: 'comgate', sourceDocumentId: 'doc:comgate-ds', payoutReference: '1816656820', payoutDate: '2026-03-27', amountMinor: 50000, matchingAmountMinor: 50000, currency: 'CZK', bankRoutingTarget: 'rb_bank_inflow' },
+            { rowId: 'txn:comgate:dsB2', platform: 'comgate', sourceDocumentId: 'doc:comgate-ds', payoutReference: '1816656820', payoutDate: '2026-03-27', amountMinor: 60000, matchingAmountMinor: 60000, currency: 'CZK', bankRoutingTarget: 'rb_bank_inflow' }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((b) => b.key === 'reservation_plus')!
+
+    expect(resBlock.items).toHaveLength(2)
+    expect(resBlock.items.every((i) => i.id.includes('native'))).toBe(true)
+    expect(resBlock.items.every((i) => i.statusKey === 'paid')).toBe(true)
+  })
+
+  it('C: same VS different clientId — each merges to its own reservation, no cross-merge', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-ds-C1',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: { platform: 'comgate', reference: '1816656820', clientId: '108966761', reservationId: '108966761', transactionId: 'JGSV-QK5O-DR7O', comgateParserVariant: 'daily-settlement' }
+        },
+        {
+          id: 'comgate-ds-C2',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 302940,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: { platform: 'comgate', reference: '1816656820', clientId: '108929843', reservationId: '108929843', transactionId: 'BHOV-M0TY-LBQV', comgateParserVariant: 'daily-settlement' }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          { id: 'txn:comgate:dsC1', source: 'comgate', subtype: 'payment', amountMinor: 242351, currency: 'CZK', bookedAt: '2026-03-27', reference: '1816656820', reservationId: '108966761', sourceDocumentIds: ['doc:comgate-ds'], extractedRecordIds: ['comgate-ds-C1'] },
+          { id: 'txn:comgate:dsC2', source: 'comgate', subtype: 'payment', amountMinor: 302940, currency: 'CZK', bookedAt: '2026-03-27', reference: '1816656820', reservationId: '108929843', sourceDocumentIds: ['doc:comgate-ds'], extractedRecordIds: ['comgate-ds-C2'] }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            { sourceDocumentId: 'doc:previo', reservationId: '108966761', guestName: 'Jan Novak', roomName: 'A101', reference: '108966761', channel: 'direct_web', bookedAt: '2026-03-20', stayStartAt: '2026-03-27', stayEndAt: '2026-03-29', grossRevenueMinor: 244750, outstandingBalanceMinor: 0, currency: 'CZK', expectedSettlementChannels: ['comgate'] },
+            { sourceDocumentId: 'doc:previo', reservationId: '108929843', guestName: 'Eva Svobodova', roomName: 'B202', reference: '108929843', channel: 'direct_web', bookedAt: '2026-03-20', stayStartAt: '2026-03-27', stayEndAt: '2026-03-30', grossRevenueMinor: 305938, outstandingBalanceMinor: 0, currency: 'CZK', expectedSettlementChannels: ['comgate'] }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            { rowId: 'txn:comgate:dsC1', platform: 'comgate', sourceDocumentId: 'doc:comgate-ds', reservationId: '108966761', payoutReference: '1816656820', payoutDate: '2026-03-27', amountMinor: 242351, matchingAmountMinor: 242351, currency: 'CZK', bankRoutingTarget: 'rb_bank_inflow' },
+            { rowId: 'txn:comgate:dsC2', platform: 'comgate', sourceDocumentId: 'doc:comgate-ds', reservationId: '108929843', payoutReference: '1816656820', payoutDate: '2026-03-27', amountMinor: 302940, matchingAmountMinor: 302940, currency: 'CZK', bankRoutingTarget: 'rb_bank_inflow' }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((b) => b.key === 'reservation_plus')!
+
+    expect(resBlock.items).toHaveLength(2)
+    expect(resBlock.items.find((i) => i.title === 'Jan Novak')!.transactionIds).toEqual(['txn:comgate:dsC1'])
+    expect(resBlock.items.find((i) => i.title === 'Eva Svobodova')!.transactionIds).toEqual(['txn:comgate:dsC2'])
+    expect(resBlock.items.every((i) => !i.id.includes('native'))).toBe(true)
+  })
+
+  it('D: missing anchor → debug trace reports no_candidate with diagnostic values', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-ds-D1',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 50000,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: { platform: 'comgate', reference: '1816656820', clientId: '108966761', reservationId: '108966761', transactionId: 'JGSV-QK5O-DR7O', comgateParserVariant: 'daily-settlement' }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          { id: 'txn:comgate:dsD1', source: 'comgate', subtype: 'payment', amountMinor: 50000, currency: 'CZK', bookedAt: '2026-03-27', reference: '1816656820', reservationId: '108966761', sourceDocumentIds: ['doc:comgate-ds'], extractedRecordIds: ['comgate-ds-D1'] }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            { sourceDocumentId: 'doc:previo', reservationId: 'PREVIO-UNRELATED-999', guestName: 'Different Guest', reference: 'PREVIO-UNRELATED-999', channel: 'direct_web', bookedAt: '2026-03-20', stayStartAt: '2026-03-27', stayEndAt: '2026-03-29', grossRevenueMinor: 244750, outstandingBalanceMinor: 0, currency: 'CZK', expectedSettlementChannels: ['comgate'] }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            { rowId: 'txn:comgate:dsD1', platform: 'comgate', sourceDocumentId: 'doc:comgate-ds', reservationId: '108966761', payoutReference: '1816656820', payoutDate: '2026-03-27', amountMinor: 50000, matchingAmountMinor: 50000, currency: 'CZK', bankRoutingTarget: 'rb_bank_inflow' }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const debug = inspectReservationPaymentOverviewClassification(batch)
+    const mergeTrace = debug.reservationPlusComgateMergeTraces.find((t) => t.linkedReservationId === 'PREVIO-UNRELATED-999')!
+
+    expect(mergeTrace.chosenLinkReason).toBe('no_merge')
+    expect(mergeTrace.noMergeReason).toBe('no_candidate')
+    expect(mergeTrace.candidateCount).toBe(0)
+    expect(mergeTrace.comparableReservationValues).toEqual(expect.arrayContaining(['previounrelated999']))
+    expect(mergeTrace.comparableNativeAnchorsSample).toEqual(expect.arrayContaining(['108966761']))
+  })
+
+  it('E: native fallback is suppressed after successful merge', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-ds-E1',
+          sourceDocumentId: 'doc:comgate-ds',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-18T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          data: { platform: 'comgate', reference: '1816656820', clientId: '108966761', reservationId: '108966761', transactionId: 'JGSV-QK5O-DR7O', comgateParserVariant: 'daily-settlement' }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          { id: 'txn:comgate:dsE1', source: 'comgate', subtype: 'payment', amountMinor: 242351, currency: 'CZK', bookedAt: '2026-03-27', reference: '1816656820', reservationId: '108966761', sourceDocumentIds: ['doc:comgate-ds'], extractedRecordIds: ['comgate-ds-E1'] }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            { sourceDocumentId: 'doc:previo', reservationId: '108966761', guestName: 'Jan Novak', roomName: 'A101', reference: '108966761', channel: 'direct_web', bookedAt: '2026-03-20', stayStartAt: '2026-03-27', stayEndAt: '2026-03-29', grossRevenueMinor: 244750, outstandingBalanceMinor: 0, currency: 'CZK', expectedSettlementChannels: ['comgate'] }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            { rowId: 'txn:comgate:dsE1', platform: 'comgate', sourceDocumentId: 'doc:comgate-ds', reservationId: '108966761', payoutReference: '1816656820', payoutDate: '2026-03-27', amountMinor: 242351, matchingAmountMinor: 242351, currency: 'CZK', bankRoutingTarget: 'rb_bank_inflow' }
+          ],
+          payoutBatches: [],
+          directBankSettlements: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((b) => b.key === 'reservation_plus')!
+
+    // No native fallback card should exist
+    expect(resBlock.items.filter((i) => i.id.includes('native'))).toHaveLength(0)
+    expect(resBlock.items).toHaveLength(1)
+    expect(resBlock.items[0]!.title).toBe('Jan Novak')
+
+    // Debug trace confirms suppression
+    const debug = inspectReservationPaymentOverviewClassification(batch)
+    const mergeTrace = debug.reservationPlusComgateMergeTraces.find((t) => t.linkedReservationId === '108966761')!
+
+    expect(mergeTrace.chosenLinkReason).toBe('exact_clientId_merge')
+    expect(mergeTrace.nativeComgateFallbackSuppressed).toBe(true)
+    expect(mergeTrace.candidateCount).toBe(1)
+    expect(mergeTrace.mergedComgateRowId).toBe('txn:comgate:dsE1')
+    expect(mergeTrace.clientId).toBe('108966761')
+    expect(mergeTrace.variableSymbol).toBe('1816656820')
+    expect(mergeTrace.comgateTransactionId).toBe('JGSV-QK5O-DR7O')
+
+    // The native link trace should NOT contain this row (consumed by merge)
+    expect(debug.reservationPlusNativeLinkTraces.find((t) => t.rowId === 'txn:comgate:dsE1')).toBeUndefined()
+  })
 })
