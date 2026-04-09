@@ -53,6 +53,43 @@ export function detectInvoiceListWorkbookSignature(binaryContentBase64: string):
   }
 }
 
+export interface InvoiceListWorkbookDiagnostics {
+  detected: boolean
+  sheetNames: string[]
+  matchedSheetName: string | undefined
+  headerRowFound: boolean
+  error?: string
+}
+
+export function diagnoseInvoiceListWorkbookSignature(binaryContentBase64: string): InvoiceListWorkbookDiagnostics {
+  try {
+    const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
+    const sheetNames = workbook.SheetNames.slice()
+    const worksheet = findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
+    const matchedSheetName = worksheet
+      ? workbook.SheetNames.find((name) => workbook.Sheets[name] === worksheet)
+      : undefined
+    const headerRowFound = worksheet
+      ? findInvoiceListHeaderRowIndex(readWorksheetRows(worksheet)) !== -1
+      : false
+
+    return {
+      detected: !!worksheet && headerRowFound,
+      sheetNames,
+      matchedSheetName,
+      headerRowFound,
+    }
+  } catch (error) {
+    return {
+      detected: false,
+      sheetNames: [],
+      matchedSheetName: undefined,
+      headerRowFound: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
 export class InvoiceListParser {
   parse(input: ParseInvoiceListWorkbookInput): ExtractedRecord[] {
     if (!input.binaryContentBase64) {
@@ -244,7 +281,39 @@ function classifyInvoiceListRow(row: Record<string, unknown>): InvoiceListRowKin
 
 function readInvoiceListWorkbookSheet(binaryContentBase64: string): XLSX.WorkSheet | undefined {
   const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
-  return workbook.Sheets[INVOICE_LIST_SHEET_NAME]
+  return findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
+}
+
+/**
+ * Find a worksheet by name with fallback to diacritics-tolerant matching.
+ * Old .xls files (BIFF8) encode sheet names using the file's codepage (e.g. CP 1250
+ * for Czech). The xlsx library needs the optional `codepage` module to decode these
+ * correctly. Without it the library falls back to Latin-1, which maps e.g. 'ů' (U+016F,
+ * CP 1250 0xF9) to 'ù' (U+00F9). This function normalizes both sides so the lookup
+ * succeeds regardless of codepage support.
+ */
+function findWorksheetByNormalizedName(workbook: XLSX.WorkBook, targetSheetName: string): XLSX.WorkSheet | undefined {
+  if (workbook.Sheets[targetSheetName]) {
+    return workbook.Sheets[targetSheetName]
+  }
+
+  const normalizedTarget = stripDiacriticsLower(targetSheetName)
+
+  for (const sheetName of workbook.SheetNames) {
+    if (stripDiacriticsLower(sheetName) === normalizedTarget) {
+      return workbook.Sheets[sheetName]
+    }
+  }
+
+  return undefined
+}
+
+function stripDiacriticsLower(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 }
 
 function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {

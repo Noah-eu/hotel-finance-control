@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  detectInvoiceListWorkbookSignature,
+  diagnoseInvoiceListWorkbookSignature
+} from '../../src/extraction'
+import {
   detectUploadedMonthlyFileCapability,
   ingestUploadedMonthlyFiles,
   prepareUploadedMonthlyBatchFiles,
@@ -2718,6 +2722,47 @@ describe('invoice-list .xls browser classification', () => {
     expect(result.fileRoutes.some(
       (route) => route.sourceSystem === 'invoice' && route.documentType === 'invoice'
     )).toBe(false)
+  })
+
+  it('detectInvoiceListWorkbookSignature matches with codepage-mangled sheet name (ù instead of ů)', () => {
+    // Simulates what happens in the browser when xlsx reads a .xls (BIFF8) file
+    // without codepage support: CP 1250 byte 0xF9 (ů) gets decoded as Latin-1 'ù'
+    const mangledSheetName = 'Seznam dokladù'  // ù (U+00F9) instead of ů (U+016F)
+    const base64 = buildInvoiceListWorkbookBase64([
+      INVOICE_LIST_HEADER_ROW,
+      ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+    ], mangledSheetName)
+
+    const diagnostics = diagnoseInvoiceListWorkbookSignature(base64)
+    expect(diagnostics.sheetNames).toEqual([mangledSheetName])
+    expect(diagnostics.matchedSheetName).toBe(mangledSheetName)
+    expect(diagnostics.headerRowFound).toBe(true)
+    expect(diagnostics.detected).toBe(true)
+
+    expect(detectInvoiceListWorkbookSignature(base64)).toBe(true)
+  })
+
+  it('classifies .xls with codepage-mangled sheet name as previo/invoice_list', () => {
+    const mangledSheetName = 'Seznam dokladù'
+    const base64 = buildInvoiceListWorkbookBase64([
+      INVOICE_LIST_HEADER_ROW,
+      ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+    ], mangledSheetName)
+
+    const result = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Invoice list.xls',
+        content: '',
+        binaryContentBase64: base64,
+        contentFormat: 'binary-workbook' as const,
+        uploadedAt: '2026-04-01T00:00:00Z'
+      }
+    ])
+    expect(result.fileRoutes[0]).toEqual(expect.objectContaining({
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook'
+    }))
   })
 })
 

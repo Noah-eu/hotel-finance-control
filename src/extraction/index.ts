@@ -61,6 +61,7 @@ export type { ParseInvoiceListWorkbookInput } from './parsers/invoice-list.parse
 export {
   InvoiceListParser,
   detectInvoiceListWorkbookSignature,
+  diagnoseInvoiceListWorkbookSignature,
   parseInvoiceListWorkbook
 } from './parsers/invoice-list.parser'
 export type { ParseInvoiceDocumentInput } from './parsers/invoice-document.parser'

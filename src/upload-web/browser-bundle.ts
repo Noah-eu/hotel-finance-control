@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 
 const browserRuntimeEntryPath = fileURLToPath(new URL('./browser-runtime-entry.ts', import.meta.url))
+const xlsxCodepageShimPath = fileURLToPath(new URL('./xlsx-codepage-shim.ts', import.meta.url))
 
 export interface EmitBrowserRuntimeBundleOptions {
   banner?: string
@@ -30,6 +31,7 @@ export async function emitBrowserRuntimeBundle(
 
   await build({
     entryPoints: [browserRuntimeEntryPath],
+    inject: [xlsxCodepageShimPath],
     outfile: temporaryRuntimeAssetPath,
     bundle: true,
     format: 'esm',
@@ -50,6 +52,7 @@ export async function emitBrowserRuntimeBundle(
   mkdirSync(dirname(finalRuntimeAssetPath), { recursive: true })
   await build({
     entryPoints: [browserRuntimeEntryPath],
+    inject: [xlsxCodepageShimPath],
     outfile: finalRuntimeAssetPath,
     bundle: true,
     format: 'esm',
