@@ -12,7 +12,7 @@ import { formatAmountMinorCs } from '../shared/money'
 
 export type ReservationPaymentOverviewBlockKey = 'airbnb' | 'booking' | 'expedia' | 'reservation_plus' | 'parking'
 export type ReservationPaymentStatusKey = 'paid' | 'partial' | 'unverified' | 'missing'
-export type ReservationPaymentEvidenceKey = 'payout' | 'comgate' | 'terminal' | 'bank' | 'no_evidence'
+export type ReservationPaymentEvidenceKey = 'payout' | 'comgate' | 'terminal' | 'bank' | 'invoice_list' | 'no_evidence'
 
 export interface ReservationPaymentAmountSummary {
   currency: string
@@ -291,11 +291,45 @@ export interface InvoiceListLinkTrace {
   linkedRoomName?: string
   linkedVoucher?: string
   linkedVariableSymbol?: string
+  invoiceListEvidenceEligible: boolean
+  invoiceListEvidenceApplied: boolean
+  invoiceListEvidenceBlockedReason?: 'blocked_airbnb' | 'blocked_parking' | 'blocked_no_anchor'
+  invoiceListEvidenceAnchorType?: InvoiceListLinkReason
 }
 
 interface InvoiceListLinkResult {
   record: InvoiceListEnrichmentRecord
   reason: InvoiceListLinkReason
+}
+
+interface InvoiceListEvidenceResult {
+  eligible: boolean
+  applied: boolean
+  blockedReason?: 'blocked_airbnb' | 'blocked_parking' | 'blocked_no_anchor'
+  anchorType?: InvoiceListLinkReason
+}
+
+function resolveInvoiceListEvidence(
+  blockKey: ReservationPaymentOverviewBlockKey,
+  link: InvoiceListLinkResult | undefined
+): InvoiceListEvidenceResult {
+  if (!link) {
+    return { eligible: false, applied: false, blockedReason: 'blocked_no_anchor' }
+  }
+
+  if (blockKey === 'airbnb') {
+    return { eligible: false, applied: false, blockedReason: 'blocked_airbnb', anchorType: link.reason }
+  }
+
+  if (blockKey === 'parking') {
+    return { eligible: false, applied: false, blockedReason: 'blocked_parking', anchorType: link.reason }
+  }
+
+  if (!INVOICE_LIST_EVIDENCE_ELIGIBLE_BLOCKS.has(blockKey)) {
+    return { eligible: false, applied: false, blockedReason: 'blocked_no_anchor', anchorType: link.reason }
+  }
+
+  return { eligible: true, applied: true, anchorType: link.reason }
 }
 
 interface ExtractedRecordLookup {
@@ -359,8 +393,12 @@ const EVIDENCE_LABELS: Record<ReservationPaymentEvidenceKey, string> = {
   comgate: 'Comgate',
   terminal: 'terminál',
   bank: 'banka',
+  invoice_list: 'faktura',
   no_evidence: 'bez důkazu'
 }
+
+const INVOICE_LIST_EVIDENCE_ELIGIBLE_BLOCKS: ReadonlySet<ReservationPaymentOverviewBlockKey> =
+  new Set<ReservationPaymentOverviewBlockKey>(['booking', 'expedia', 'reservation_plus'])
 
 export function buildReservationPaymentOverview(batch: MonthlyBatchResult): ReservationPaymentOverview {
   const workflowPlan = batch.reconciliation.workflowPlan
@@ -424,14 +462,28 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const noMatch = !match
       ? noMatchesBySourceKey.get(sourceKey)
       : undefined
+    const invoiceListReservationLink = !match
+      ? findInvoiceListEnrichmentForItem(
+        { voucher: reservation.reference ?? reservation.reservationId },
+        invoiceListRecords
+      )
+      : undefined
+    const invoiceListEvidence = !match
+      ? resolveInvoiceListEvidence(blockKey, invoiceListReservationLink)
+      : undefined
     const paidAmountMinor = resolveMatchedPaidAmountMinor(match, transactionsById) ?? resolvePaidAmountFromOutstanding(reservation)
+    const hasStrongEvidence = Boolean(match) || (invoiceListEvidence?.applied === true)
     const statusKey = resolveReservationStatus({
       expectedAmountMinor: reservation.grossRevenueMinor,
       outstandingBalanceMinor: reservation.outstandingBalanceMinor,
-      hasStrongEvidence: Boolean(match),
+      hasStrongEvidence,
       blockKey
     })
-    const evidenceKey = match ? mapEvidenceKeyFromMatch(match) : 'no_evidence'
+    const evidenceKey = match
+      ? mapEvidenceKeyFromMatch(match)
+      : invoiceListEvidence?.applied
+        ? 'invoice_list'
+        : 'no_evidence'
     const bookingConfirmationTrace = buildBookingReservationConfirmationTrace(
       batch,
       reservation,
@@ -455,7 +507,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: reservation.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
+      statusDetailCs: invoiceListEvidence?.applied
+        ? 'Fakturační evidence (Invoice list) potvrzuje úhradu rezervace.'
+        : buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: collectReservationSourceDocumentIds(reservation, match, bookingPayoutBatchBridge),
@@ -529,13 +583,21 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const linkedStayValue = effectiveAncillaryStayStartAt
       ? buildStayOrDateValue(effectiveAncillaryStayStartAt, effectiveAncillaryStayEndAt, undefined)
       : undefined
+    const invoiceListAncillaryEvidence = !candidate
+      ? resolveInvoiceListEvidence(blockKey, invoiceListAncillaryLink)
+      : undefined
+    const ancillaryHasStrongEvidence = Boolean(candidate) || (invoiceListAncillaryEvidence?.applied === true)
     const statusKey = resolveReservationStatus({
       expectedAmountMinor: ancillary.grossRevenueMinor,
       outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
-      hasStrongEvidence: Boolean(candidate),
+      hasStrongEvidence: ancillaryHasStrongEvidence,
       blockKey
     })
-    const evidenceKey: ReservationPaymentEvidenceKey = candidate ? mapEvidenceKeyFromPlatform(candidate.platform) : 'no_evidence'
+    const evidenceKey: ReservationPaymentEvidenceKey = candidate
+      ? mapEvidenceKeyFromPlatform(candidate.platform)
+      : invoiceListAncillaryEvidence?.applied
+        ? 'invoice_list'
+        : 'no_evidence'
 
     items.push({
       id: buildAncillaryOverviewItemId(ancillary),
@@ -553,7 +615,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: ancillary.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildAncillaryStatusDetailCs(candidate, statusKey),
+      statusDetailCs: invoiceListAncillaryEvidence?.applied
+        ? 'Doplňková položka je potvrzená přes fakturační evidenci (Invoice list).'
+        : buildAncillaryStatusDetailCs(candidate, statusKey),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: [ancillary.sourceDocumentId],
@@ -870,6 +934,39 @@ export function inspectReservationPaymentOverviewClassification(
         consumedRowIds.add(comgateMergeMatch.matchedRowId)
       }
     }
+
+    const invoiceListDebugRecords = workflowPlan.invoiceListEnrichment ?? []
+    const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
+    const hasExistingMatch = workflowPlan.reservationSettlementMatches.some(
+      (m) => buildReservationSourceKey(m.sourceDocumentId, m.reservationId) === sourceKey
+    )
+
+    if (!hasExistingMatch) {
+      const debugInvoiceLink = findInvoiceListEnrichmentForItem(
+        { voucher: reservation.reference ?? reservation.reservationId },
+        invoiceListDebugRecords
+      )
+      const debugEvidence = resolveInvoiceListEvidence(blockKey, debugInvoiceLink)
+
+      if (debugInvoiceLink) {
+        invoiceListLinkTraces.push({
+          overviewItemId: `reservation-payment:${sourceKey}`,
+          blockKey,
+          anchorUsed: debugInvoiceLink.reason,
+          candidateCount: 1,
+          linkedGuestName: debugInvoiceLink.record.guestName,
+          linkedStayStartAt: debugInvoiceLink.record.stayStartAt,
+          linkedStayEndAt: debugInvoiceLink.record.stayEndAt,
+          linkedRoomName: debugInvoiceLink.record.roomName,
+          linkedVoucher: debugInvoiceLink.record.voucher,
+          linkedVariableSymbol: debugInvoiceLink.record.variableSymbol,
+          invoiceListEvidenceEligible: debugEvidence.eligible,
+          invoiceListEvidenceApplied: debugEvidence.applied,
+          invoiceListEvidenceBlockedReason: debugEvidence.blockedReason,
+          invoiceListEvidenceAnchorType: debugEvidence.anchorType
+        })
+      }
+    }
   }
 
   for (const ancillary of workflowPlan.ancillaryRevenueSources) {
@@ -1048,6 +1145,41 @@ export function inspectReservationPaymentOverviewClassification(
       exactStayIntervalHits: linkInspection.exactStayIntervalHits,
       chosenCandidateReason: linkInspection.chosenCandidateReason
     })
+
+    if (!linkInspection.linkedReservation) {
+      const invoiceListDebugRecordsForAncillary = workflowPlan.invoiceListEnrichment ?? []
+      const ancillaryBlockKey = resolveAncillaryBlockKey(ancillary)
+      const ancillaryInvoiceLink = ancillaryBlockKey === 'parking'
+        ? findInvoiceListEnrichmentForParkingItem(
+          { voucher: ancillary.reference, variableSymbol: undefined, itemLabel: ancillary.itemLabel },
+          invoiceListDebugRecordsForAncillary
+        )
+        : findInvoiceListEnrichmentForItem(
+          { voucher: ancillary.reference },
+          invoiceListDebugRecordsForAncillary
+        )
+      const ancillaryDebugEvidence = resolveInvoiceListEvidence(ancillaryBlockKey, ancillaryInvoiceLink)
+
+      if (ancillaryInvoiceLink) {
+        const candidate = findAncillaryCandidate(workflowPlan.payoutRows, ancillary)
+        invoiceListLinkTraces.push({
+          overviewItemId: buildAncillaryOverviewItemId(ancillary),
+          blockKey: ancillaryBlockKey,
+          anchorUsed: ancillaryInvoiceLink.reason,
+          candidateCount: 1,
+          linkedGuestName: ancillaryInvoiceLink.record.guestName,
+          linkedStayStartAt: ancillaryInvoiceLink.record.stayStartAt,
+          linkedStayEndAt: ancillaryInvoiceLink.record.stayEndAt,
+          linkedRoomName: ancillaryInvoiceLink.record.roomName,
+          linkedVoucher: ancillaryInvoiceLink.record.voucher,
+          linkedVariableSymbol: ancillaryInvoiceLink.record.variableSymbol,
+          invoiceListEvidenceEligible: ancillaryDebugEvidence.eligible,
+          invoiceListEvidenceApplied: !candidate && ancillaryDebugEvidence.applied,
+          invoiceListEvidenceBlockedReason: ancillaryDebugEvidence.blockedReason,
+          invoiceListEvidenceAnchorType: ancillaryDebugEvidence.anchorType
+        })
+      }
+    }
   }
 
   const invoiceListDebugRecords = workflowPlan.invoiceListEnrichment ?? []
@@ -1087,6 +1219,7 @@ export function inspectReservationPaymentOverviewClassification(
       )
 
     if (invoiceLink) {
+      const comgateInvoiceEvidence = resolveInvoiceListEvidence(blockKey, invoiceLink)
       invoiceListLinkTraces.push({
         overviewItemId: `reservation-payment:native:${row.rowId}`,
         blockKey,
@@ -1097,7 +1230,11 @@ export function inspectReservationPaymentOverviewClassification(
         linkedStayEndAt: invoiceLink.record.stayEndAt,
         linkedRoomName: invoiceLink.record.roomName,
         linkedVoucher: invoiceLink.record.voucher,
-        linkedVariableSymbol: invoiceLink.record.variableSymbol
+        linkedVariableSymbol: invoiceLink.record.variableSymbol,
+        invoiceListEvidenceEligible: comgateInvoiceEvidence.eligible,
+        invoiceListEvidenceApplied: false,
+        invoiceListEvidenceBlockedReason: comgateInvoiceEvidence.blockedReason,
+        invoiceListEvidenceAnchorType: comgateInvoiceEvidence.anchorType
       })
     }
   }
