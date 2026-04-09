@@ -2677,6 +2677,48 @@ describe('invoice-list .xls browser classification', () => {
       documentType: 'invoice'
     }))
   })
+
+  it('invoice_list.xls with garbled text content still classifies as previo/invoice_list via workbook signature (browser restore scenario)', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    // Simulate what happens when browser decodes XLS binary as text:
+    // the decoded text contains fragments like "Faktura", "IBAN", "Celkem", "Datum" etc.
+    // from the XLS binary format strings, which triggers the invoice keyword detector
+    const garbledTextContent = [
+      'Faktura\x00\x01\x00 Celkem s DPH\x00Celkem bez DPH',
+      '\x00\x00Datum vystavení\x00\x00IČ: 12345678',
+      'IBAN\x00CZ6508000000192000145399\x00Dodavatel\x00'
+    ].join('\n')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'Invoice list.xls',
+          content: garbledTextContent,
+          binaryContentBase64: base64,
+          contentFormat: 'binary-workbook' as const,
+          uploadedAt: '2026-04-01T00:00:00Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'test-invoice-list-xls-garbled',
+        requestedAt: '2026-04-01T00:00:00Z'
+      },
+      reportGeneratedAt: '2026-04-01T00:00:00Z'
+    })
+
+    const invoiceListRoute = result.fileRoutes.find(
+      (route) => route.documentType === 'invoice_list'
+    )
+    expect(invoiceListRoute).toBeDefined()
+    expect(invoiceListRoute!.sourceSystem).toBe('previo')
+    expect(invoiceListRoute!.parserId).toBe('previo')
+    expect(invoiceListRoute!.extractedCount).toBeGreaterThanOrEqual(1)
+    expect(invoiceListRoute!.classificationBasis).toBe('binary-workbook')
+    // Must NOT be classified as generic invoice
+    expect(result.fileRoutes.some(
+      (route) => route.sourceSystem === 'invoice' && route.documentType === 'invoice'
+    )).toBe(false)
+  })
 })
 
 function buildActualUploadedAirbnbContent(): string {

@@ -1045,37 +1045,6 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
-  if (invoiceSummary.confidence === 'strong') {
-    return {
-      sourceSystem: 'invoice',
-      documentType: 'invoice',
-      classificationBasis: 'content',
-      role: 'primary',
-      decision: buildResolvedDecision({
-        capability,
-        ingestionBranch,
-        sourceSystem: 'invoice',
-        documentType: 'invoice',
-        classificationBasis: 'content',
-        role: 'primary',
-        parserSupported: true,
-        matchedRules: ['content-signature', 'invoice-summary-strong'],
-        missingSignals: [],
-        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-      })
-    }
-  }
-
-  if (bookingPdfDecision?.resolvedSourceSystem === 'booking') {
-    return {
-      sourceSystem: 'booking',
-      documentType: 'payout_statement',
-      classificationBasis: 'content',
-      role: 'supplemental',
-      decision: bookingPdfDecision
-    }
-  }
-
   if (input.binaryContentBase64 && detectInvoiceListWorkbookSignature(input.binaryContentBase64)) {
     return {
       sourceSystem: 'previo',
@@ -1115,6 +1084,37 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         missingSignals: [],
         detectedSignals: bookingPdfDecision?.detectedSignals ?? []
       })
+    }
+  }
+
+  if (invoiceSummary.confidence === 'strong') {
+    return {
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      classificationBasis: 'content',
+      role: 'primary',
+      decision: buildResolvedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        classificationBasis: 'content',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: ['content-signature', 'invoice-summary-strong'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      })
+    }
+  }
+
+  if (bookingPdfDecision?.resolvedSourceSystem === 'booking') {
+    return {
+      sourceSystem: 'booking',
+      documentType: 'payout_statement',
+      classificationBasis: 'content',
+      role: 'supplemental',
+      decision: bookingPdfDecision
     }
   }
 

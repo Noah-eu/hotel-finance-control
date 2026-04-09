@@ -2271,9 +2271,26 @@ ${showRuntimePayoutDiagnostics ? `
             warnings: Array.isArray(file && file.warnings) ? file.warnings.slice() : [],
             reason: typeof (file && file.reason) === 'string' ? String(file.reason) : '',
             errorMessage: typeof (file && file.errorMessage) === 'string' ? String(file.errorMessage) : '',
-            decision: typeof (file && file.decision) === 'string' ? String(file.decision) : ''
+            decision: typeof (file && file.decision) === 'string' ? String(file.decision) : '',
+            runtimeClassifierPath: buildRuntimeClassifierPathFromDecision(file && file.decision),
+            runtimeDetectedContentFormat: String(file && file.decision && file.decision.capability && file.decision.capability.transportProfile || ''),
+            runtimeDetectedCapability: String(file && file.decision && file.decision.capability && file.decision.capability.profile || ''),
+            runtimeWorkbookSignature: Array.isArray(file && file.decision && file.decision.matchedRules)
+              ? file.decision.matchedRules.some(function(rule) { return String(rule || '').indexOf('binary-workbook') >= 0; })
+              : false,
+            runtimeAssignedParserId: String(file && file.parserId || ''),
+            runtimeIngestionBranch: String(file && file.decision && file.decision.ingestionBranch || '')
           };
         });
+      }
+
+      function buildRuntimeClassifierPathFromDecision(decision) {
+        if (!decision) { return 'no-decision'; }
+        var matchedRules = Array.isArray(decision.matchedRules) ? decision.matchedRules : [];
+        var ingestionBranch = String(decision.ingestionBranch || '');
+        var classificationBasis = String(decision.resolvedBucket || '');
+        var capability = decision.capability && decision.capability.profile ? String(decision.capability.profile) : '';
+        return [capability, ingestionBranch, classificationBasis].concat(matchedRules).filter(Boolean).join(' > ');
       }
 
       function isPayoutRelatedWorkspaceFileForDebugExport(file) {
