@@ -261,7 +261,26 @@ export interface ReservationPaymentOverviewNativeLinkTrace {
   candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  invoiceListCandidateCount: number
+  invoiceListExactIdentityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactDocumentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactStayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
+}
+
+export interface ReservationPaymentOverviewInvoiceListLinkCandidate {
+  sourceDocumentId: string
+  reservationId?: string
+  reference?: string
+  voucher?: string
+  variableSymbol?: string
+  invoiceNumber?: string
+  customerId?: string
+  guestName?: string
+  stayStartAt?: string
+  stayEndAt?: string
+  roomName?: string
 }
 
 interface AncillaryLinkInspection {
@@ -270,6 +289,22 @@ interface AncillaryLinkInspection {
   candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  chosenCandidateReason: ReservationPaymentOverviewLinkReason
+}
+
+interface NativeLinkInspection {
+  linkedReservation?: ReservationSourceRecord
+  linkedInvoiceRecord?: InvoiceListEnrichmentRecord
+  linkedInvoiceReason?: InvoiceListLinkReason
+  candidateCount: number
+  candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  invoiceListCandidateCount: number
+  invoiceListExactIdentityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactDocumentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactStayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
 
@@ -708,11 +743,21 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       )
       const blockKey = parkingLike ? 'parking' : 'reservation_plus'
       const nativeLinkInspection = !parkingLike
-        ? inspectLinkedReservationForReservationPlusNativeRow(row, extractedRecord, reservationSources)
+        ? inspectLinkedReservationForReservationPlusNativeRow(
+          row,
+          extractedRecord,
+          reservationSources,
+          invoiceListRecords
+        )
         : undefined
       const linkedReservation = nativeLinkInspection?.linkedReservation
       const invoiceListLink = !linkedReservation
-        ? parkingLike
+        ? (nativeLinkInspection?.linkedInvoiceRecord
+          ? {
+              record: nativeLinkInspection.linkedInvoiceRecord,
+              reason: nativeLinkInspection.linkedInvoiceReason ?? 'exact_voucher'
+            }
+          : parkingLike
           ? findInvoiceListEnrichmentForParkingItem(
             {
               voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId),
@@ -727,7 +772,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
               variableSymbol: readString(extractedRecord?.data.reference)
             },
             invoiceListRecords
-          )
+          ))
         : undefined
       const effectiveGuestName = linkedReservation?.guestName ?? invoiceListLink?.record.guestName
       const effectiveStayStartAt = linkedReservation?.stayStartAt ?? invoiceListLink?.record.stayStartAt
@@ -1056,7 +1101,8 @@ export function inspectReservationPaymentOverviewClassification(
         const nativeLinkInspection = inspectLinkedReservationForReservationPlusNativeRow(
           row,
           extractedRecord,
-          reservationSources
+          reservationSources,
+          workflowPlan.invoiceListEnrichment ?? []
         )
 
         reservationPlusNativeLinkTraces.push({
@@ -1070,15 +1116,20 @@ export function inspectReservationPaymentOverviewClassification(
           normalizedNativeRow: buildNativeNormalizedRowPayload(row, extractedRecord),
           overviewLinkingInput: buildNativeLinkingInputPayload(row, extractedRecord),
           computedBlockKey: 'reservation_plus',
-          linkedMainReservationId: nativeLinkInspection.linkedReservation?.reservationId,
-          linkedGuestName: nativeLinkInspection.linkedReservation?.guestName,
-          linkedStayStartAt: nativeLinkInspection.linkedReservation?.stayStartAt,
-          linkedStayEndAt: nativeLinkInspection.linkedReservation?.stayEndAt,
-          linkedRoomName: nativeLinkInspection.linkedReservation?.roomName,
+          linkedMainReservationId: nativeLinkInspection.linkedReservation?.reservationId ?? nativeLinkInspection.linkedInvoiceRecord?.voucher,
+          linkedGuestName: nativeLinkInspection.linkedReservation?.guestName ?? nativeLinkInspection.linkedInvoiceRecord?.guestName,
+          linkedStayStartAt: nativeLinkInspection.linkedReservation?.stayStartAt ?? nativeLinkInspection.linkedInvoiceRecord?.stayStartAt,
+          linkedStayEndAt: nativeLinkInspection.linkedReservation?.stayEndAt ?? nativeLinkInspection.linkedInvoiceRecord?.stayEndAt,
+          linkedRoomName: nativeLinkInspection.linkedReservation?.roomName ?? nativeLinkInspection.linkedInvoiceRecord?.roomName,
           candidateCount: nativeLinkInspection.candidateCount,
           candidateSetBeforeFiltering: nativeLinkInspection.candidateSetBeforeFiltering,
           exactIdentityHits: nativeLinkInspection.exactIdentityHits,
           exactStayIntervalHits: nativeLinkInspection.exactStayIntervalHits,
+          invoiceListCandidateCount: nativeLinkInspection.invoiceListCandidateCount,
+          invoiceListExactIdentityHits: nativeLinkInspection.invoiceListExactIdentityHits,
+          invoiceListExactDocumentHits: nativeLinkInspection.invoiceListExactDocumentHits,
+          invoiceListExactStayIntervalHits: nativeLinkInspection.invoiceListExactStayIntervalHits,
+          chosenCandidateSource: nativeLinkInspection.chosenCandidateSource,
           chosenCandidateReason: nativeLinkInspection.chosenCandidateReason
         })
       }
@@ -2269,13 +2320,15 @@ function inspectLinkedReservationForAncillary(
 function inspectLinkedReservationForReservationPlusNativeRow(
   row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
   extractedRecord: ExtractedRecord | undefined,
-  reservationSources: ReservationSourceRecord[]
-): AncillaryLinkInspection {
+  reservationSources: ReservationSourceRecord[],
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): NativeLinkInspection {
   const candidatePool = reservationSources
     .filter((reservation) => resolveReservationBlockKey(reservation) === 'reservation_plus')
   const candidateSetBeforeFiltering = candidatePool.map(toAncillaryLinkCandidateSnapshot)
   const exactIdentityCandidates = candidatePool.filter((reservation) => matchesReservationPlusNativeExactIdentity(row, extractedRecord, reservation))
   const exactIdentityHits = exactIdentityCandidates.map(toAncillaryLinkCandidateSnapshot)
+  const invoiceListHitSet = collectInvoiceListExactHits(row, extractedRecord, invoiceListRecords)
 
   if (exactIdentityCandidates.length === 1) {
     return {
@@ -2284,6 +2337,11 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       candidateSetBeforeFiltering,
       exactIdentityHits,
       exactStayIntervalHits: [],
+      invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+      invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+      invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+      invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+      chosenCandidateSource: 'reservation_export',
       chosenCandidateReason: 'exact_identity'
     }
   }
@@ -2295,7 +2353,31 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       candidateSetBeforeFiltering,
       exactIdentityHits,
       exactStayIntervalHits: [],
+      invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+      invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+      invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+      invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+      chosenCandidateSource: 'none',
       chosenCandidateReason: 'ambiguous_exact_identity'
+    }
+  }
+
+  const fallbackInvoiceLink = selectInvoiceListNativeFallback(row, extractedRecord, invoiceListRecords)
+  if (fallbackInvoiceLink) {
+    return {
+      linkedReservation: undefined,
+      linkedInvoiceRecord: fallbackInvoiceLink.record,
+      linkedInvoiceReason: fallbackInvoiceLink.reason,
+      candidateCount: 1,
+      candidateSetBeforeFiltering,
+      exactIdentityHits: [],
+      exactStayIntervalHits: [],
+      invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+      invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+      invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+      invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity'
     }
   }
 
@@ -2305,6 +2387,11 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     candidateSetBeforeFiltering,
     exactIdentityHits: [],
     exactStayIntervalHits: [],
+    invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+    invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+    invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+    invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+    chosenCandidateSource: 'none',
     chosenCandidateReason: 'no_candidate'
   }
 }
@@ -2827,6 +2914,110 @@ function normalizeComparable(value: string | undefined): string {
 }
 
 // ── Invoice list enrichment linking ─────────────────────
+
+function toInvoiceListLinkCandidateSnapshot(
+  record: InvoiceListEnrichmentRecord
+): ReservationPaymentOverviewInvoiceListLinkCandidate {
+  return {
+    sourceDocumentId: record.sourceDocumentId,
+    reservationId: record.voucher,
+    reference: record.variableSymbol,
+    voucher: record.voucher,
+    variableSymbol: record.variableSymbol,
+    invoiceNumber: record.invoiceNumber,
+    customerId: record.customerId,
+    guestName: record.guestName,
+    stayStartAt: record.stayStartAt,
+    stayEndAt: record.stayEndAt,
+    roomName: record.roomName
+  }
+}
+
+function collectInvoiceListExactHits(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): {
+  candidateCount: number
+  identityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  documentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  stayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+} {
+  const headers = invoiceListRecords.filter((record) => record.recordKind === 'header')
+  const comparableVoucherAnchors = collectUniqueTruthyStrings([
+    normalizeComparable(row.reservationId),
+    normalizeComparable(readString(extractedRecord?.data.reservationId)),
+    normalizeComparable(readString(extractedRecord?.data.clientId))
+  ])
+  const comparableDocumentAnchors = collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.reference)),
+    normalizeComparable(row.payoutReference),
+    normalizeComparable(readString(extractedRecord?.data.invoiceNumber))
+  ])
+  const normalizedStayStart = normalizeComparableStayDate(readString(extractedRecord?.data.stayStartAt))
+  const normalizedStayEnd = normalizeComparableStayDate(readString(extractedRecord?.data.stayEndAt))
+  const normalizedRoom = normalizeComparable(readString(extractedRecord?.data.roomName))
+
+  const identityHitRecords = headers.filter((record) => {
+    if (comparableVoucherAnchors.length === 0) {
+      return false
+    }
+
+    const voucher = normalizeComparable(record.voucher)
+    const customerId = normalizeComparable(record.customerId)
+    return comparableVoucherAnchors.includes(voucher) || comparableVoucherAnchors.includes(customerId)
+  })
+
+  const documentHitRecords = headers.filter((record) => {
+    if (comparableDocumentAnchors.length === 0) {
+      return false
+    }
+
+    const variableSymbol = normalizeComparable(record.variableSymbol)
+    const invoiceNumber = normalizeComparable(record.invoiceNumber)
+    return comparableDocumentAnchors.includes(variableSymbol) || comparableDocumentAnchors.includes(invoiceNumber)
+  })
+
+  const stayIntervalHitRecords = headers.filter((record) => {
+    if (!normalizedStayStart || !normalizedStayEnd || !normalizedRoom) {
+      return false
+    }
+
+    return normalizeComparableStayDate(record.stayStartAt) === normalizedStayStart
+      && normalizeComparableStayDate(record.stayEndAt) === normalizedStayEnd
+      && normalizeComparable(record.roomName) === normalizedRoom
+  })
+
+  return {
+    candidateCount: new Set([
+      ...identityHitRecords,
+      ...documentHitRecords,
+      ...stayIntervalHitRecords
+    ]).size,
+    identityHits: identityHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    documentHits: documentHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    stayIntervalHits: stayIntervalHitRecords.map(toInvoiceListLinkCandidateSnapshot)
+  }
+}
+
+function selectInvoiceListNativeFallback(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): InvoiceListLinkResult | undefined {
+  return findInvoiceListEnrichmentForItem(
+    {
+      voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId) ?? row.reservationId,
+      variableSymbol: readString(extractedRecord?.data.reference) ?? row.payoutReference,
+      customerId: readString(extractedRecord?.data.clientId),
+      invoiceNumber: readString(extractedRecord?.data.invoiceNumber),
+      stayStartAt: readString(extractedRecord?.data.stayStartAt),
+      stayEndAt: readString(extractedRecord?.data.stayEndAt),
+      roomName: readString(extractedRecord?.data.roomName)
+    },
+    invoiceListRecords
+  )
+}
 
 function findInvoiceListEnrichmentForItem(
   anchors: {

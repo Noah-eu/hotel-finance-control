@@ -681,8 +681,208 @@ describe('buildReservationPaymentOverview', () => {
     expect(trace).toEqual(expect.objectContaining({
       reference: 'CG-WEB-2001',
       linkedMainReservationId: undefined,
+      invoiceListCandidateCount: 0,
+      chosenCandidateSource: 'none',
       chosenCandidateReason: 'no_candidate'
     }))
+  })
+
+  it('links native Reservation+ Comgate rows via invoice-list exact voucher anchor when reservation export is missing', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-inv-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-28T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-28',
+          rawReference: '1817482862',
+          data: {
+            platform: 'comgate',
+            reference: '1817482862',
+            clientId: '109086233',
+            reservationId: '109086233',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-INV-109086233',
+            comgateParserVariant: 'daily-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:inv1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 242351,
+            currency: 'CZK',
+            bookedAt: '2026-03-28',
+            reference: '1817482862',
+            reservationId: '109086233',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-inv-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:inv1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              reservationId: '109086233',
+              payoutReference: '1817482862',
+              payoutDate: '2026-03-28',
+              amountMinor: 242351,
+              matchingAmountMinor: 242351,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-1',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: '109086233',
+              variableSymbol: '1817482862',
+              guestName: 'Jan Novak',
+              roomName: 'A101',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-29',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      title: 'Jan Novak',
+      subtitle: 'A101',
+      primaryReference: '109086233'
+    }))
+    expect(item?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Jan Novak' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-27 – 2026-03-29' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'A101' })
+    ]))
+    expect(trace).toEqual(expect.objectContaining({
+      linkedMainReservationId: '109086233',
+      linkedGuestName: 'Jan Novak',
+      linkedRoomName: 'A101',
+      invoiceListCandidateCount: 1,
+      invoiceListExactIdentityHits: [expect.objectContaining({ voucher: '109086233' })],
+      invoiceListExactDocumentHits: [expect.objectContaining({ variableSymbol: '1817482862' })],
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity'
+    }))
+  })
+
+  it('links native parking Comgate rows via invoice-list parking line-item exact anchor', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-park-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-28T10:00:00.000Z',
+          amountMinor: 30000,
+          currency: 'CZK',
+          occurredAt: '2026-03-28',
+          rawReference: '1817482862',
+          data: {
+            platform: 'comgate',
+            reference: '1817482862',
+            clientId: '109071283',
+            reservationId: '109071283',
+            paymentPurpose: 'parking',
+            transactionId: 'CG-PARK-109071283',
+            comgateParserVariant: 'daily-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:park1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 30000,
+            currency: 'CZK',
+            bookedAt: '2026-03-28',
+            reference: '1817482862',
+            reservationId: '109071283',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-park-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:park1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              reservationId: '109071283',
+              payoutReference: '1817482862',
+              payoutDate: '2026-03-28',
+              amountMinor: 30000,
+              matchingAmountMinor: 30000,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-line-1',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'line-item',
+              voucher: '109071283',
+              variableSymbol: '1817482862',
+              itemLabel: 'Parkování na den',
+              guestName: 'Pavel Park',
+              roomName: 'Parking',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-29',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      blockKey: 'parking',
+      title: '1817482862',
+      subtitle: 'Parkovací platba'
+    }))
+    expect(item?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Pavel Park' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-27 – 2026-03-29' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'Parking' })
+    ]))
   })
 
   it('marks Greta as paid from unique Booking payout-row evidence and keeps Tatiana unverified without payout-row evidence', () => {

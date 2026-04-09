@@ -185,6 +185,7 @@ describe('Reservation+ runtime enrichment', () => {
     expect(item?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
     expect(trace).toEqual(expect.objectContaining({
       reference: 'CG-WEB-2001',
+      chosenCandidateSource: 'none',
       chosenCandidateReason: 'no_candidate'
     }))
   })
