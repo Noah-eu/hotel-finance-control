@@ -57,7 +57,10 @@ export {
   inspectComgateHeaderDiagnostics,
   parseComgateExport
 } from './parsers/comgate.parser'
-export type { ParseInvoiceListWorkbookInput } from './parsers/invoice-list.parser'
+export type {
+  InvoiceListWorkbookSignatureRuntimeDiagnostics,
+  ParseInvoiceListWorkbookInput
+} from './parsers/invoice-list.parser'
 export {
   InvoiceListParser,
   detectInvoiceListWorkbookSignature,

@@ -2,7 +2,8 @@ import type { ExtractedRecord, SourceDocument } from '../domain'
 import type {
   AirbnbPayoutHeaderDiagnostics,
   ComgateHeaderDiagnostics,
-  DeterministicDocumentExtractionSummary
+  DeterministicDocumentExtractionSummary,
+  InvoiceListWorkbookSignatureRuntimeDiagnostics
 } from '../extraction'
 import type { DocumentSettlementDirection } from '../domain'
 import type {
@@ -82,6 +83,7 @@ export interface UploadedMonthlyFileDecision {
   resolvedDocumentType: SourceDocument['documentType']
   resolvedRole: 'primary' | 'supplemental'
   resolvedBucket: UploadedMonthlyFileDecisionBucket
+  runtimeWorkbookSignatureDiagnostics?: InvoiceListWorkbookSignatureRuntimeDiagnostics
 }
 
 export interface UploadedMonthlyFileSourceDescriptor {

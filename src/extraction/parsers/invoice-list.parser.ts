@@ -1,5 +1,7 @@
 import type { ExtractedRecord, SourceDocument } from '../../domain'
 import * as XLSX from 'xlsx'
+// @ts-expect-error – cpexcel.full.mjs has no type declarations
+import * as cpexcel from 'xlsx/dist/cpexcel.full.mjs'
 import { parseAmountMinor, parseIsoDate } from './csv-utils'
 
 export interface ParseInvoiceListWorkbookInput {
@@ -10,6 +12,7 @@ export interface ParseInvoiceListWorkbookInput {
 }
 
 const INVOICE_LIST_SHEET_NAME = 'Seznam dokladů'
+const INVOICE_LIST_WORKBOOK_SIGNATURE_DETECTOR_NAME = 'detectInvoiceListWorkbookSignature'
 
 const INVOICE_LIST_HEADER_COLUMNS = [
   'Voucher',
@@ -40,20 +43,20 @@ const INVOICE_LIST_AMOUNT_CELL_PATTERN = /^(?:(?:€|EUR|Kč|CZK)?\s*-?\d[\d\s,.
 // ── public API ──────────────────────────────────────────
 
 export function detectInvoiceListWorkbookSignature(binaryContentBase64: string): boolean {
-  try {
-    const worksheet = readInvoiceListWorkbookSheet(binaryContentBase64)
-
-    if (!worksheet) {
-      return false
-    }
-
-    return findInvoiceListHeaderRowIndex(readWorksheetRows(worksheet)) !== -1
-  } catch {
-    return false
-  }
+  const diagnostics = diagnoseInvoiceListWorkbookSignature(binaryContentBase64)
+  return diagnostics.detected
 }
 
-export interface InvoiceListWorkbookDiagnostics {
+export interface InvoiceListWorkbookSignatureRuntimeDiagnostics {
+  workbookSignatureFunctionReached: boolean
+  workbookSignatureDetectorName: string
+  workbookReadSucceeded: boolean
+  workbookSheetNamesRaw: string[]
+  workbookSheetNamesNormalized: string[]
+  workbookSignatureFailureReason: string
+}
+
+export interface InvoiceListWorkbookDiagnostics extends InvoiceListWorkbookSignatureRuntimeDiagnostics {
   detected: boolean
   sheetNames: string[]
   matchedSheetName: string | undefined
@@ -63,6 +66,7 @@ export interface InvoiceListWorkbookDiagnostics {
 
 export function diagnoseInvoiceListWorkbookSignature(binaryContentBase64: string): InvoiceListWorkbookDiagnostics {
   try {
+    ensureInvoiceListWorkbookCodepageSupport()
     const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
     const sheetNames = workbook.SheetNames.slice()
     const worksheet = findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
@@ -72,15 +76,35 @@ export function diagnoseInvoiceListWorkbookSignature(binaryContentBase64: string
     const headerRowFound = worksheet
       ? findInvoiceListHeaderRowIndex(readWorksheetRows(worksheet)) !== -1
       : false
+    const detected = !!worksheet && headerRowFound
+    const workbookSheetNamesNormalized = sheetNames.map((sheetName) => normalizeWorkbookSignatureName(sheetName))
+    const workbookSignatureFailureReason = detected
+      ? ''
+      : !worksheet
+        ? 'required-sheet-not-found'
+        : 'header-row-not-found'
 
     return {
-      detected: !!worksheet && headerRowFound,
+      workbookSignatureFunctionReached: true,
+      workbookSignatureDetectorName: INVOICE_LIST_WORKBOOK_SIGNATURE_DETECTOR_NAME,
+      workbookReadSucceeded: true,
+      workbookSheetNamesRaw: sheetNames,
+      workbookSheetNamesNormalized,
+      workbookSignatureFailureReason,
+      detected,
       sheetNames,
       matchedSheetName,
-      headerRowFound,
+      headerRowFound
     }
   } catch (error) {
+    const reason = error instanceof Error ? `workbook-read-failed:${error.message}` : `workbook-read-failed:${String(error)}`
     return {
+      workbookSignatureFunctionReached: true,
+      workbookSignatureDetectorName: INVOICE_LIST_WORKBOOK_SIGNATURE_DETECTOR_NAME,
+      workbookReadSucceeded: false,
+      workbookSheetNamesRaw: [],
+      workbookSheetNamesNormalized: [],
+      workbookSignatureFailureReason: reason,
       detected: false,
       sheetNames: [],
       matchedSheetName: undefined,
@@ -280,6 +304,7 @@ function classifyInvoiceListRow(row: Record<string, unknown>): InvoiceListRowKin
 // ── workbook reading ────────────────────────────────────
 
 function readInvoiceListWorkbookSheet(binaryContentBase64: string): XLSX.WorkSheet | undefined {
+  ensureInvoiceListWorkbookCodepageSupport()
   const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
   return findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
 }
@@ -314,6 +339,26 @@ function stripDiacriticsLower(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+}
+
+let invoiceListWorkbookCodepageSupportInitialized = false
+
+function ensureInvoiceListWorkbookCodepageSupport(): void {
+  if (invoiceListWorkbookCodepageSupportInitialized) {
+    return
+  }
+
+  invoiceListWorkbookCodepageSupportInitialized = true
+  ;(globalThis as Record<string, unknown>).cptable = cpexcel
+  const xlsxWithCodepageSetter = XLSX as typeof XLSX & { set_cptable?: (table: unknown) => void }
+
+  if (typeof xlsxWithCodepageSetter.set_cptable === 'function') {
+    xlsxWithCodepageSetter.set_cptable(cpexcel)
+  }
+}
+
+function normalizeWorkbookSignatureName(value: string): string {
+  return stripDiacriticsLower(value)
 }
 
 function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {

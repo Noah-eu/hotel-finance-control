@@ -2635,6 +2635,14 @@ describe('invoice-list .xls browser classification', () => {
       classificationBasis: 'binary-workbook',
       parserId: 'previo'
     }))
+    expect(result.fileRoutes[0]?.decision.runtimeWorkbookSignatureDiagnostics).toEqual(expect.objectContaining({
+      workbookSignatureFunctionReached: true,
+      workbookSignatureDetectorName: 'detectInvoiceListWorkbookSignature',
+      workbookReadSucceeded: true,
+      workbookSheetNamesRaw: expect.arrayContaining(['Seznam dokladů']),
+      workbookSheetNamesNormalized: expect.arrayContaining(['seznam dokladu']),
+      workbookSignatureFailureReason: ''
+    }))
   })
 
   it('ingestUploadedMonthlyFiles routes invoice_list.xls and produces extracted records', () => {
@@ -2738,6 +2746,11 @@ describe('invoice-list .xls browser classification', () => {
     expect(diagnostics.matchedSheetName).toBe(mangledSheetName)
     expect(diagnostics.headerRowFound).toBe(true)
     expect(diagnostics.detected).toBe(true)
+    expect(diagnostics.workbookSignatureFunctionReached).toBe(true)
+    expect(diagnostics.workbookReadSucceeded).toBe(true)
+    expect(diagnostics.workbookSheetNamesRaw).toEqual([mangledSheetName])
+    expect(diagnostics.workbookSheetNamesNormalized).toEqual(['seznam dokladu'])
+    expect(diagnostics.workbookSignatureFailureReason).toBe('')
 
     expect(detectInvoiceListWorkbookSignature(base64)).toBe(true)
   })

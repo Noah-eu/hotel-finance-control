@@ -1299,6 +1299,67 @@ describe('buildWebDemo', () => {
     ]))
   })
 
+  it('includes invoice_list workbook-signature diagnostics in debug workspace truth export', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-06T10:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-debug-workspace-invoice-list-signature',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListWorkbookBase64())
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      fileName: string
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      uploadedFiles: Array<{
+        fileName: string
+        sourceSystem: string
+        documentType: string
+        parserId: string
+        extractedCount: number
+        runtimeWorkbookSignature: boolean
+        workbookSignatureFunctionReached: boolean
+        workbookSignatureDetectorName: string
+        workbookReadSucceeded: boolean
+        workbookSheetNamesRaw: string[]
+        workbookSheetNamesNormalized: string[]
+        workbookSignatureFailureReason: string
+      }>
+      invoiceListDebugSummary: {
+        detected: boolean
+        fileCount: number
+        totalExtractedCount: number
+      }
+    }
+
+    expect(payload.uploadedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'invoice_list.xls',
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        parserId: 'previo',
+        runtimeWorkbookSignature: true,
+        workbookSignatureFunctionReached: true,
+        workbookSignatureDetectorName: 'detectInvoiceListWorkbookSignature',
+        workbookReadSucceeded: true,
+        workbookSheetNamesRaw: expect.arrayContaining(['Seznam dokladů']),
+        workbookSheetNamesNormalized: expect.arrayContaining(['seznam dokladu']),
+        workbookSignatureFailureReason: ''
+      })
+    ])
+    expect(payload.uploadedFiles[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(payload.invoiceListDebugSummary).toEqual(expect.objectContaining({
+      detected: true,
+      fileCount: 1
+    }))
+    expect(payload.invoiceListDebugSummary.totalExtractedCount).toBeGreaterThan(0)
+  })
+
   it('renders the final operator page with a real-like Czech Booking payout PDF as a supported supplement instead of unsupported even when the head preview is just property details', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const rendered = await executeWebDemoMainWorkflow({
@@ -8724,6 +8785,20 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       roomName: 'A101'
     }
   ])
+}
+
+function buildInvoiceListWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    [
+      'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
+      'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
+      'Název', 'Celkem s DPH', 'Celkem bez DPH'
+    ],
+    ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+  ])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Seznam dokladů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 
 function buildPrevioWorkbookBase64FromRows(rows: Array<{

@@ -660,6 +660,37 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('routes invoice_list.xls through workbook signature in the real browser runtime path and exposes signature diagnostics', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListWorkbookBase64())],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:05:30.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'invoice_list.xls',
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        classificationBasis: 'binary-workbook',
+        parserId: 'previo',
+        extractedCount: expect.any(Number),
+        decision: expect.objectContaining({
+          runtimeWorkbookSignatureDiagnostics: expect.objectContaining({
+            workbookSignatureFunctionReached: true,
+            workbookSignatureDetectorName: 'detectInvoiceListWorkbookSignature',
+            workbookReadSucceeded: true,
+            workbookSheetNamesRaw: expect.arrayContaining(['Seznam dokladů']),
+            workbookSheetNamesNormalized: expect.arrayContaining(['seznam dokladu']),
+            workbookSignatureFailureReason: ''
+          }),
+          matchedRules: expect.arrayContaining(['binary-workbook-signature'])
+        })
+      })
+    ])
+    expect(result.fileRoutes[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+  })
+
   it('classifies and extracts the real Previo XLSX workbook shape even when the filename is generic', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())],
@@ -7199,6 +7230,20 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       roomName: 'A101'
     }
   ])
+}
+
+function buildInvoiceListWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    [
+      'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
+      'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
+      'Název', 'Celkem s DPH', 'Celkem bez DPH'
+    ],
+    ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+  ])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Seznam dokladů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 
 function buildPrevioWorkbookBase64FromRows(rows: Array<{

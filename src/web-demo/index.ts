@@ -2278,6 +2278,16 @@ ${showRuntimePayoutDiagnostics ? `
             runtimeWorkbookSignature: Array.isArray(file && file.decision && file.decision.matchedRules)
               ? file.decision.matchedRules.some(function(rule) { return String(rule || '').indexOf('binary-workbook') >= 0; })
               : false,
+            workbookSignatureFunctionReached: Boolean(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureFunctionReached),
+            workbookSignatureDetectorName: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureDetectorName || ''),
+            workbookReadSucceeded: Boolean(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookReadSucceeded),
+            workbookSheetNamesRaw: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesRaw)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesRaw.slice()
+              : [],
+            workbookSheetNamesNormalized: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesNormalized)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesNormalized.slice()
+              : [],
+            workbookSignatureFailureReason: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureFailureReason || ''),
             runtimeAssignedParserId: String(file && file.parserId || ''),
             runtimeIngestionBranch: String(file && file.decision && file.decision.ingestionBranch || '')
           };
@@ -6021,7 +6031,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
             parserId: String(file.parserId || ''),
             classificationBasis: String(file.classificationBasis || ''),
             extractedCount: Number(file.extractedCount || 0),
-            extractedRecordIds: Array.isArray(file.extractedRecordIds) ? file.extractedRecordIds.slice() : []
+            extractedRecordIds: Array.isArray(file.extractedRecordIds) ? file.extractedRecordIds.slice() : [],
+            workbookSignatureFunctionReached: Boolean(file.workbookSignatureFunctionReached),
+            workbookSignatureDetectorName: String(file.workbookSignatureDetectorName || ''),
+            workbookReadSucceeded: Boolean(file.workbookReadSucceeded),
+            workbookSheetNamesRaw: Array.isArray(file.workbookSheetNamesRaw) ? file.workbookSheetNamesRaw.slice() : [],
+            workbookSheetNamesNormalized: Array.isArray(file.workbookSheetNamesNormalized) ? file.workbookSheetNamesNormalized.slice() : [],
+            workbookSignatureFailureReason: String(file.workbookSignatureFailureReason || ''),
+            runtimeWorkbookSignature: Boolean(file.runtimeWorkbookSignature)
           })),
           totalExtractedCount: invoiceListFiles.reduce((sum, file) => sum + Number(file.extractedCount || 0), 0)
         };
