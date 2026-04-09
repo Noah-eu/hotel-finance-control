@@ -1235,7 +1235,11 @@ function withInvoiceListWorkbookSignatureDiagnostics(
       workbookReadSucceeded: diagnostics.workbookReadSucceeded,
       workbookSheetNamesRaw: diagnostics.workbookSheetNamesRaw.slice(),
       workbookSheetNamesNormalized: diagnostics.workbookSheetNamesNormalized.slice(),
-      workbookSignatureFailureReason: diagnostics.workbookSignatureFailureReason
+      workbookSignatureFailureReason: diagnostics.workbookSignatureFailureReason,
+      invoiceListPrimarySheetUsed: diagnostics.invoiceListPrimarySheetUsed,
+      invoiceListLineItemsSheetUsed: diagnostics.invoiceListLineItemsSheetUsed,
+      invoiceListParsedRowCount: diagnostics.invoiceListParsedRowCount,
+      invoiceListParsedLineItemCount: diagnostics.invoiceListParsedLineItemCount
     }
   }
 }

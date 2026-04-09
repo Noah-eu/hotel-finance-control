@@ -19,6 +19,29 @@ function buildInvoiceListBase64(
   return Buffer.from(buffer).toString('base64')
 }
 
+function buildInvoiceListProductionShapeBase64(input: {
+  dokladyRows: unknown[][]
+  polozkyRows: unknown[][]
+}): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(input.dokladyRows), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(input.polozkyRows), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '1']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' })
+  return Buffer.from(buffer).toString('base64')
+}
+
 function makeSourceDocument(id: string) {
   return {
     id: toDocumentId(id),
@@ -232,5 +255,55 @@ describe('Invoice list parser and enrichment', () => {
     ], 'WrongSheet')
 
     expect(detectInvoiceListWorkbookSignature(base64)).toBe(false)
+  })
+
+  it('detects signature for production workbook family Doklady + Položky dokladů', () => {
+    const base64 = buildInvoiceListProductionShapeBase64({
+      dokladyRows: [
+        ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+        ['FA-20260321', 'RES-PROD-1', '88334455', '21.03.2026', '23.03.2026', 'Zora Nová', 'A101', 'Firma PROD', 'CID-101', '4 200 Kč', '3 471 Kč']
+      ],
+      polozkyRows: [
+        ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+        ['FA-20260321', 'Ubytování', '3 700 Kč', '3 058 Kč'],
+        ['FA-20260321', 'Parkování na den', '500 Kč', '413 Kč']
+      ]
+    })
+
+    expect(detectInvoiceListWorkbookSignature(base64)).toBe(true)
+  })
+
+  it('parses production workbook shape from Doklady and Položky dokladů and produces workflow-plan enrichment', () => {
+    const base64 = buildInvoiceListProductionShapeBase64({
+      dokladyRows: [
+        ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+        ['FA-20260322', 'RES-PROD-2', '99335577', '22.03.2026', '24.03.2026', 'Igor Černý', 'B202', 'Firma PROD 2', 'CID-202', '5 200 Kč', '4 298 Kč']
+      ],
+      polozkyRows: [
+        ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+        ['FA-20260322', 'Ubytování', '4 700 Kč', '3 884 Kč'],
+        ['FA-20260322', 'Parkování na den', '500 Kč', '413 Kč']
+      ]
+    })
+
+    const records = parseInvoiceListWorkbook({
+      sourceDocument: makeSourceDocument('doc-invoice-list-production'),
+      content: '',
+      extractedAt: '2026-04-01T00:00:00Z',
+      binaryContentBase64: base64
+    })
+
+    expect(records.length).toBeGreaterThan(1)
+    expect(records.some((record) => record.recordType === 'invoice-list-header')).toBe(true)
+    expect(records.some((record) => record.recordType === 'invoice-list-line')).toBe(true)
+
+    const plan = buildReconciliationWorkflowPlan({
+      extractedRecords: records,
+      normalizedTransactions: [],
+      requestedAt: '2026-04-01T00:00:00Z'
+    })
+
+    expect(plan.invoiceListEnrichment.some((entry) => entry.voucher === 'RES-PROD-2')).toBe(true)
+    expect(plan.invoiceListEnrichment.some((entry) => entry.itemLabel === 'Parkování na den')).toBe(true)
   })
 })

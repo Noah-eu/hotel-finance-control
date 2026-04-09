@@ -691,6 +691,37 @@ describe('buildUploadWebFlow', () => {
     expect(result.fileRoutes[0]?.extractedCount ?? 0).toBeGreaterThan(0)
   })
 
+  it('routes production invoice_list.xls workbook shape from Doklady/Položky dokladů in browser runtime', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListProductionWorkbookBase64())],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:05:40.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'invoice_list.xls',
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        classificationBasis: 'binary-workbook',
+        parserId: 'previo',
+        extractedCount: expect.any(Number),
+        decision: expect.objectContaining({
+          runtimeWorkbookSignatureDiagnostics: expect.objectContaining({
+            workbookSignatureFunctionReached: true,
+            workbookReadSucceeded: true,
+            workbookSignatureFailureReason: '',
+            invoiceListPrimarySheetUsed: 'Doklady',
+            invoiceListLineItemsSheetUsed: 'Položky dokladů'
+          }),
+          matchedRules: expect.arrayContaining(['binary-workbook-signature'])
+        })
+      })
+    ])
+    expect(result.fileRoutes[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(result.fileRoutes[0]?.sourceSystem).not.toBe('invoice')
+  })
+
   it('classifies and extracts the real Previo XLSX workbook shape even when the filename is generic', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())],
@@ -7243,6 +7274,32 @@ function buildInvoiceListWorkbookBase64(): string {
     ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
   ])
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Seznam dokladů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
+}
+
+function buildInvoiceListProductionWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+    ['FA-20260325', 'RES-PROD-UPLOAD', '22446688', '25.03.2026', '27.03.2026', 'Dana Upload', 'D404', 'Firma Upload', 'CID-U404', '4 500 Kč', '3 719 Kč']
+  ]), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+    ['FA-20260325', 'Ubytování', '4 000 Kč', '3 306 Kč'],
+    ['FA-20260325', 'Parkování na den', '500 Kč', '413 Kč']
+  ]), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '2']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 

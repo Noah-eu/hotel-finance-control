@@ -1360,6 +1360,54 @@ describe('buildWebDemo', () => {
     expect(payload.invoiceListDebugSummary.totalExtractedCount).toBeGreaterThan(0)
   })
 
+  it('exports production invoice_list workbook diagnostics with Doklady/Položky dokladů in debug workspace truth', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-06T10:41:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-debug-workspace-invoice-list-production-shape',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListProductionWorkbookBase64())
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as { jsonContent: string }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      uploadedFiles: Array<{
+        runtimeWorkbookSignature: boolean
+        parserId: string
+        extractedCount: number
+      }>
+      invoiceListDebugSummary: {
+        detected: boolean
+        fileCount: number
+        totalExtractedCount: number
+        files: Array<{
+          workbookSignatureFailureReason: string
+          invoiceListPrimarySheetUsed: string
+          invoiceListLineItemsSheetUsed: string
+        }>
+      }
+    }
+
+    expect(payload.uploadedFiles[0]).toEqual(expect.objectContaining({
+      runtimeWorkbookSignature: true,
+      parserId: 'previo'
+    }))
+    expect(payload.uploadedFiles[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(payload.invoiceListDebugSummary).toEqual(expect.objectContaining({
+      detected: true,
+      fileCount: 1
+    }))
+    expect(payload.invoiceListDebugSummary.totalExtractedCount).toBeGreaterThan(0)
+    expect(payload.invoiceListDebugSummary.files[0]).toEqual(expect.objectContaining({
+      workbookSignatureFailureReason: '',
+      invoiceListPrimarySheetUsed: 'Doklady',
+      invoiceListLineItemsSheetUsed: 'Položky dokladů'
+    }))
+  })
+
   it('renders the final operator page with a real-like Czech Booking payout PDF as a supported supplement instead of unsupported even when the head preview is just property details', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const rendered = await executeWebDemoMainWorkflow({
@@ -8798,6 +8846,32 @@ function buildInvoiceListWorkbookBase64(): string {
     ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
   ])
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Seznam dokladů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
+}
+
+function buildInvoiceListProductionWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+    ['FA-20260326', 'RES-PROD-WEB', '77889900', '26.03.2026', '27.03.2026', 'Karel Web', 'E505', 'Firma Web', 'CID-W505', '3 900 Kč', '3 223 Kč']
+  ]), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+    ['FA-20260326', 'Ubytování', '3 400 Kč', '2 810 Kč'],
+    ['FA-20260326', 'Parkování na den', '500 Kč', '413 Kč']
+  ]), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '2']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
   return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 

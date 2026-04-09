@@ -2581,6 +2581,30 @@ describe('invoice-list .xls browser classification', () => {
     return Buffer.from(buffer).toString('base64')
   }
 
+  function buildInvoiceListProductionWorkbookBase64(input: {
+    dokladyRows: unknown[][]
+    polozkyRows: unknown[][]
+  }): string {
+    const XLSX = require('xlsx')
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(input.dokladyRows), 'Doklady')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Souhrn', 'Hodnota'],
+      ['Počet dokladů', '1']
+    ]), 'Souhrn')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(input.polozkyRows), 'Položky dokladů')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Souhrn položek', 'Hodnota'],
+      ['Počet položek', '1']
+    ]), 'Souhrn položek')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Souhrn podle rastrů', 'Hodnota'],
+      ['Rastr', 'A']
+    ]), 'Souhrn podle rastrů')
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' })
+    return Buffer.from(buffer).toString('base64')
+  }
+
   const INVOICE_LIST_HEADER_ROW = [
     'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
     'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
@@ -2776,6 +2800,52 @@ describe('invoice-list .xls browser classification', () => {
       documentType: 'invoice_list',
       classificationBasis: 'binary-workbook'
     }))
+  })
+
+  it('classifies real production workbook sheets (Doklady + Položky dokladů) as previo/invoice_list', () => {
+    const base64 = buildInvoiceListProductionWorkbookBase64({
+      dokladyRows: [
+        ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+        ['FA-20260331', 'RES-PROD-3', '44332211', '31.03.2026', '01.04.2026', 'Nina Test', 'C303', 'Firma PROD 3', 'CID-303', '3 300 Kč', '2 727 Kč']
+      ],
+      polozkyRows: [
+        ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
+        ['FA-20260331', 'Ubytování', '2 800 Kč', '2 314 Kč'],
+        ['FA-20260331', 'Parkování na den', '500 Kč', '413 Kč']
+      ]
+    })
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'invoice_list.xls',
+          content: '',
+          binaryContentBase64: base64,
+          contentFormat: 'binary-workbook' as const,
+          uploadedAt: '2026-04-01T00:00:00Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'test-invoice-list-xls-production-shape',
+        requestedAt: '2026-04-01T00:00:00Z'
+      },
+      reportGeneratedAt: '2026-04-01T00:00:00Z'
+    })
+
+    const route = result.fileRoutes[0]
+    expect(route).toEqual(expect.objectContaining({
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook',
+      parserId: 'previo'
+    }))
+    expect(route?.decision.runtimeWorkbookSignatureDiagnostics).toEqual(expect.objectContaining({
+      workbookReadSucceeded: true,
+      workbookSignatureFailureReason: '',
+      invoiceListPrimarySheetUsed: 'Doklady',
+      invoiceListLineItemsSheetUsed: 'Položky dokladů'
+    }))
+    expect(route?.extractedCount ?? 0).toBeGreaterThan(0)
   })
 })
 

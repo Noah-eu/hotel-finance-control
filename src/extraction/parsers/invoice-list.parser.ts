@@ -12,6 +12,8 @@ export interface ParseInvoiceListWorkbookInput {
 }
 
 const INVOICE_LIST_SHEET_NAME = 'Seznam dokladů'
+const INVOICE_LIST_PRODUCTION_PRIMARY_SHEET_NAME = 'Doklady'
+const INVOICE_LIST_PRODUCTION_LINE_ITEMS_SHEET_NAME = 'Položky dokladů'
 const INVOICE_LIST_WORKBOOK_SIGNATURE_DETECTOR_NAME = 'detectInvoiceListWorkbookSignature'
 
 const INVOICE_LIST_HEADER_COLUMNS = [
@@ -40,6 +42,44 @@ const INVOICE_LIST_TRACE_COLUMNS = [
 const INVOICE_LIST_DATE_CELL_PATTERN = /^(\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?|\d{4}-\d{2}-\d{2}(?:t\d{2}:\d{2}(?::\d{2})?)?)$/i
 const INVOICE_LIST_AMOUNT_CELL_PATTERN = /^(?:(?:€|EUR|Kč|CZK)?\s*-?\d[\d\s,.]*(?:€|EUR|Kč|CZK)?)$/i
 
+const INVOICE_LIST_HEADER_FIELD_ALIASES = {
+  voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo'],
+  variableSymbol: ['Variabilní symbol', 'VS'],
+  stayStartAt: ['Příjezd', 'Termín od', 'Datum od'],
+  stayEndAt: ['Odjezd', 'Termín do', 'Datum do'],
+  guestName: ['Jméno', 'Host', 'Jméno hosta'],
+  roomName: ['Pokoje', 'Pokoj', 'Jednotka'],
+  paymentMethod: ['Způsob úhrady', 'Úhrada'],
+  customerName: ['Zákazník', 'Klient', 'Firma'],
+  customerId: ['ID zákazníka', 'ID klienta'],
+  invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury'],
+  grossAmount: ['Celkem s DPH', 'Částka s DPH', 'Celkem vč. DPH', 'Celkem'],
+  netAmount: ['Celkem bez DPH', 'Základ DPH', 'Bez DPH']
+} as const
+
+const INVOICE_LIST_LINE_FIELD_ALIASES = {
+  invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury'],
+  voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo'],
+  itemLabel: ['Název', 'Popis', 'Položka'],
+  amountGross: ['Celkem s DPH', 'Cena s DPH', 'Částka', 'Celkem'],
+  amountNet: ['Celkem bez DPH', 'Cena bez DPH', 'Základ DPH']
+} as const
+
+const INVOICE_LIST_LEGACY_TABLE_REQUIRED_HEADERS = [
+  INVOICE_LIST_HEADER_COLUMNS.map((value) => [value]),
+  [INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel]
+] as const
+
+const INVOICE_LIST_PRODUCTION_PRIMARY_REQUIRED_HEADERS = [
+  [INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber],
+  [INVOICE_LIST_HEADER_FIELD_ALIASES.grossAmount]
+] as const
+
+const INVOICE_LIST_PRODUCTION_LINE_ITEMS_REQUIRED_HEADERS = [
+  [INVOICE_LIST_LINE_FIELD_ALIASES.invoiceNumber],
+  [INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel]
+] as const
+
 // ── public API ──────────────────────────────────────────
 
 export function detectInvoiceListWorkbookSignature(binaryContentBase64: string): boolean {
@@ -54,6 +94,10 @@ export interface InvoiceListWorkbookSignatureRuntimeDiagnostics {
   workbookSheetNamesRaw: string[]
   workbookSheetNamesNormalized: string[]
   workbookSignatureFailureReason: string
+  invoiceListPrimarySheetUsed?: string
+  invoiceListLineItemsSheetUsed?: string
+  invoiceListParsedRowCount?: number
+  invoiceListParsedLineItemCount?: number
 }
 
 export interface InvoiceListWorkbookDiagnostics extends InvoiceListWorkbookSignatureRuntimeDiagnostics {
@@ -69,20 +113,14 @@ export function diagnoseInvoiceListWorkbookSignature(binaryContentBase64: string
     ensureInvoiceListWorkbookCodepageSupport()
     const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
     const sheetNames = workbook.SheetNames.slice()
-    const worksheet = findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
-    const matchedSheetName = worksheet
-      ? workbook.SheetNames.find((name) => workbook.Sheets[name] === worksheet)
-      : undefined
-    const headerRowFound = worksheet
-      ? findInvoiceListHeaderRowIndex(readWorksheetRows(worksheet)) !== -1
-      : false
-    const detected = !!worksheet && headerRowFound
+    const workbookContext = resolveInvoiceListWorkbookContext(workbook)
+    const matchedSheetName = workbookContext.primarySheetName
+    const headerRowFound = workbookContext.primaryHeaderRowFound
+    const detected = workbookContext.detected
     const workbookSheetNamesNormalized = sheetNames.map((sheetName) => normalizeWorkbookSignatureName(sheetName))
     const workbookSignatureFailureReason = detected
       ? ''
-      : !worksheet
-        ? 'required-sheet-not-found'
-        : 'header-row-not-found'
+      : workbookContext.failureReason
 
     return {
       workbookSignatureFunctionReached: true,
@@ -91,6 +129,10 @@ export function diagnoseInvoiceListWorkbookSignature(binaryContentBase64: string
       workbookSheetNamesRaw: sheetNames,
       workbookSheetNamesNormalized,
       workbookSignatureFailureReason,
+      invoiceListPrimarySheetUsed: workbookContext.primarySheetName,
+      invoiceListLineItemsSheetUsed: workbookContext.lineItemsSheetName,
+      invoiceListParsedRowCount: workbookContext.parsedRowCount,
+      invoiceListParsedLineItemCount: workbookContext.parsedLineItemCount,
       detected,
       sheetNames,
       matchedSheetName,
@@ -135,139 +177,30 @@ export function parseInvoiceListWorkbook(input: ParseInvoiceListWorkbookInput): 
 // ── internal parse ──────────────────────────────────────
 
 function parseInvoiceListWorkbookInternal(input: ParseInvoiceListWorkbookInput): ExtractedRecord[] {
-  const worksheet = readInvoiceListWorkbookSheet(input.binaryContentBase64!)
+  const workbook = readInvoiceListWorkbook(input.binaryContentBase64!)
+  const workbookContext = resolveInvoiceListWorkbookContext(workbook)
 
-  if (!worksheet) {
-    throw new Error(`Invoice list workbook is missing required sheet: ${INVOICE_LIST_SHEET_NAME}`)
+  if (!workbookContext.detected || !workbookContext.primaryWorksheet || !workbookContext.primarySheetName) {
+    throw new Error(`Invoice list workbook is missing required sheet family: ${INVOICE_LIST_SHEET_NAME} or ${INVOICE_LIST_PRODUCTION_PRIMARY_SHEET_NAME} + ${INVOICE_LIST_PRODUCTION_LINE_ITEMS_SHEET_NAME}`)
   }
-
-  const extraction = extractInvoiceListRows(worksheet)
-
-  if (extraction.candidateRows.length === 0) {
-    return []
-  }
-
-  const classifiedRows = extraction.candidateRows.map((row) => ({
-    row,
-    kind: classifyInvoiceListRow(row) as InvoiceListRowKind
-  }))
 
   const records: ExtractedRecord[] = []
-  let currentHeaderIndex = -1
-
-  for (let index = 0; index < classifiedRows.length; index++) {
-    const { row, kind } = classifiedRows[index]
-
-    if (kind === 'ignorable') {
-      continue
-    }
-
-    if (kind === 'header') {
-      currentHeaderIndex = index
-      const voucher = readOptionalString(row['Voucher'])
-      const variableSymbol = readOptionalString(row['Variabilní symbol'])
-      const invoiceNumber = readOptionalString(row['Číslo dokladu'])
-      const customerId = readOptionalString(row['ID zákazníka'])
-      const customerName = readOptionalString(row['Zákazník'])
-      const guestName = readOptionalString(row['Jméno'])
-      const stayStartAt = readOptionalDate(row['Příjezd'], 'InvoiceList Příjezd')
-      const stayEndAt = readOptionalDate(row['Odjezd'], 'InvoiceList Odjezd')
-      const roomName = readOptionalString(row['Pokoje'])
-      const paymentMethod = readOptionalString(row['Způsob úhrady'])
-      const grossAmount = readOptionalAmount(row['Celkem s DPH'], 'InvoiceList Celkem s DPH')
-      const netAmount = readOptionalAmount(row['Celkem bez DPH'], 'InvoiceList Celkem bez DPH')
-      const reference = voucher ?? invoiceNumber ?? variableSymbol ?? `invoice-list-header-${index + 1}`
-      const occurredAt = stayStartAt ?? input.extractedAt.slice(0, 10)
-
-      records.push({
-        id: `invoice-list-header-${index + 1}`,
-        sourceDocumentId: input.sourceDocument.id,
-        recordType: 'invoice-list-header',
-        extractedAt: input.extractedAt,
-        rawReference: reference,
-        amountMinor: grossAmount?.amountMinor ?? 0,
-        currency: grossAmount?.currency ?? 'CZK',
-        occurredAt,
-        data: {
-          platform: 'previo-invoice-list',
-          rowKind: 'header',
-          enrichmentOnly: true,
-          voucher,
-          variableSymbol,
-          invoiceNumber,
-          customerId,
-          customerName,
-          guestName,
-          stayStartAt,
-          stayEndAt,
-          roomName,
-          paymentMethod,
-          grossAmountMinor: grossAmount?.amountMinor,
-          netAmountMinor: netAmount?.amountMinor,
-          currency: grossAmount?.currency ?? 'CZK',
-          reference,
-          sourceSheet: INVOICE_LIST_SHEET_NAME,
-          workbookExtractionAudit: {
-            sheetName: INVOICE_LIST_SHEET_NAME,
-            headerRowIndex: extraction.headerRowIndex + 1,
-            headerRowValues: extraction.headerRowValues,
-            headerColumnIndexes: extraction.headerColumnIndexes,
-            candidateRowCount: extraction.candidateRows.length,
-            extractedRowCount: classifiedRows.filter((r) => r.kind !== 'ignorable').length
-          }
-        }
-      })
-    }
-
-    if (kind === 'line-item') {
-      const parentHeader = currentHeaderIndex >= 0 ? classifiedRows[currentHeaderIndex] : undefined
-      const parentVoucher = parentHeader ? readOptionalString(parentHeader.row['Voucher']) : undefined
-      const parentVariableSymbol = parentHeader ? readOptionalString(parentHeader.row['Variabilní symbol']) : undefined
-      const parentInvoiceNumber = parentHeader ? readOptionalString(parentHeader.row['Číslo dokladu']) : undefined
-      const parentCustomerId = parentHeader ? readOptionalString(parentHeader.row['ID zákazníka']) : undefined
-      const parentGuestName = parentHeader ? readOptionalString(parentHeader.row['Jméno']) : undefined
-      const parentStayStartAt = parentHeader ? readOptionalDate(parentHeader.row['Příjezd'], 'InvoiceList parent Příjezd') : undefined
-      const parentStayEndAt = parentHeader ? readOptionalDate(parentHeader.row['Odjezd'], 'InvoiceList parent Odjezd') : undefined
-      const parentRoomName = parentHeader ? readOptionalString(parentHeader.row['Pokoje']) : undefined
-      const parentPaymentMethod = parentHeader ? readOptionalString(parentHeader.row['Způsob úhrady']) : undefined
-
-      const itemLabel = readOptionalString(row['Název']) ?? readOptionalString(row['Popis']) ?? readOptionalString(row['Položka'])
-      const itemAmount = readOptionalAmount(row['Celkem s DPH'] ?? row['Cena s DPH'] ?? row['Částka'], 'InvoiceList line amount')
-      const itemNetAmount = readOptionalAmount(row['Celkem bez DPH'] ?? row['Cena bez DPH'], 'InvoiceList line net amount')
-      const reference = parentVoucher ?? parentInvoiceNumber ?? parentVariableSymbol ?? `invoice-list-line-${index + 1}`
-
-      records.push({
-        id: `invoice-list-line-${index + 1}`,
-        sourceDocumentId: input.sourceDocument.id,
-        recordType: 'invoice-list-line',
-        extractedAt: input.extractedAt,
-        rawReference: reference,
-        amountMinor: itemAmount?.amountMinor ?? 0,
-        currency: itemAmount?.currency ?? 'CZK',
-        occurredAt: parentStayStartAt ?? input.extractedAt.slice(0, 10),
-        data: {
-          platform: 'previo-invoice-list',
-          rowKind: 'line-item',
-          enrichmentOnly: true,
-          parentHeaderIndex: currentHeaderIndex >= 0 ? currentHeaderIndex + 1 : undefined,
-          voucher: parentVoucher,
-          variableSymbol: parentVariableSymbol,
-          invoiceNumber: parentInvoiceNumber,
-          customerId: parentCustomerId,
-          guestName: parentGuestName,
-          stayStartAt: parentStayStartAt,
-          stayEndAt: parentStayEndAt,
-          roomName: parentRoomName,
-          paymentMethod: parentPaymentMethod,
-          itemLabel,
-          grossAmountMinor: itemAmount?.amountMinor,
-          netAmountMinor: itemNetAmount?.amountMinor,
-          currency: itemAmount?.currency ?? 'CZK',
-          reference,
-          sourceSheet: INVOICE_LIST_SHEET_NAME
-        }
-      })
-    }
+  if (workbookContext.shape === 'legacy') {
+    records.push(...parseLegacyInvoiceListRows({
+      sourceDocument: input.sourceDocument,
+      extractedAt: input.extractedAt,
+      extraction: workbookContext.primaryExtraction!,
+      sourceSheetName: workbookContext.primarySheetName
+    }))
+  } else {
+    records.push(...parseProductionInvoiceListRows({
+      sourceDocument: input.sourceDocument,
+      extractedAt: input.extractedAt,
+      headerExtraction: workbookContext.primaryExtraction!,
+      lineItemsExtraction: workbookContext.lineItemsExtraction!,
+      sourceSheetName: workbookContext.primarySheetName,
+      lineItemsSheetName: workbookContext.lineItemsSheetName ?? INVOICE_LIST_PRODUCTION_LINE_ITEMS_SHEET_NAME
+    }))
   }
 
   return records
@@ -277,11 +210,181 @@ function parseInvoiceListWorkbookInternal(input: ParseInvoiceListWorkbookInput):
 
 type InvoiceListRowKind = 'header' | 'line-item' | 'ignorable'
 
+interface InvoiceListWorkbookContext {
+  detected: boolean
+  shape: 'legacy' | 'production' | 'unknown'
+  primaryWorksheet?: XLSX.WorkSheet
+  lineItemsWorksheet?: XLSX.WorkSheet
+  primarySheetName?: string
+  lineItemsSheetName?: string
+  primaryHeaderRowFound: boolean
+  lineItemsHeaderRowFound: boolean
+  parsedRowCount: number
+  parsedLineItemCount: number
+  failureReason: string
+  primaryExtraction?: {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRows: Array<Record<string, unknown>>
+  }
+  lineItemsExtraction?: {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRows: Array<Record<string, unknown>>
+  }
+}
+
+function parseLegacyInvoiceListRows(input: {
+  sourceDocument: SourceDocument
+  extractedAt: string
+  extraction: {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRows: Array<Record<string, unknown>>
+  }
+  sourceSheetName: string
+}): ExtractedRecord[] {
+  const classifiedRows = input.extraction.candidateRows.map((row) => ({
+    row,
+    kind: classifyInvoiceListRow(row) as InvoiceListRowKind
+  }))
+  const records: ExtractedRecord[] = []
+  let currentHeaderIndex = -1
+
+  for (let index = 0; index < classifiedRows.length; index += 1) {
+    const { row, kind } = classifiedRows[index]!
+
+    if (kind === 'ignorable') {
+      continue
+    }
+
+    if (kind === 'header') {
+      currentHeaderIndex = index
+      records.push(buildInvoiceListHeaderRecord({
+        row,
+        index,
+        sourceDocumentId: input.sourceDocument.id,
+        extractedAt: input.extractedAt,
+        sourceSheetName: input.sourceSheetName,
+        extraction: input.extraction,
+        extractedRowCount: classifiedRows.filter((entry) => entry.kind !== 'ignorable').length
+      }))
+    }
+
+    if (kind === 'line-item') {
+      const parentHeader = currentHeaderIndex >= 0 ? classifiedRows[currentHeaderIndex] : undefined
+      const parentRow = parentHeader?.row
+      records.push(buildInvoiceListLineItemRecord({
+        row,
+        index,
+        sourceDocumentId: input.sourceDocument.id,
+        extractedAt: input.extractedAt,
+        sourceSheetName: input.sourceSheetName,
+        parentHeaderIndex: currentHeaderIndex >= 0 ? currentHeaderIndex + 1 : undefined,
+        parentVoucher: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher) : undefined,
+        parentVariableSymbol: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.variableSymbol) : undefined,
+        parentInvoiceNumber: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber) : undefined,
+        parentCustomerId: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.customerId) : undefined,
+        parentGuestName: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.guestName) : undefined,
+        parentStayStartAt: parentRow ? readRowDate(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.stayStartAt, 'InvoiceList parent Příjezd') : undefined,
+        parentStayEndAt: parentRow ? readRowDate(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.stayEndAt, 'InvoiceList parent Odjezd') : undefined,
+        parentRoomName: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.roomName) : undefined,
+        parentPaymentMethod: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.paymentMethod) : undefined
+      }))
+    }
+  }
+
+  return records
+}
+
+function parseProductionInvoiceListRows(input: {
+  sourceDocument: SourceDocument
+  extractedAt: string
+  headerExtraction: {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRows: Array<Record<string, unknown>>
+  }
+  lineItemsExtraction: {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRows: Array<Record<string, unknown>>
+  }
+  sourceSheetName: string
+  lineItemsSheetName: string
+}): ExtractedRecord[] {
+  const records: ExtractedRecord[] = []
+  const headerRows = input.headerExtraction.candidateRows
+    .filter((row) => isInvoiceListHeaderCandidateRow(row))
+  const headerByInvoiceNumber = new Map<string, Record<string, unknown>>()
+  const headerByVoucher = new Map<string, Record<string, unknown>>()
+
+  headerRows.forEach((row, index) => {
+    const headerRecord = buildInvoiceListHeaderRecord({
+      row,
+      index,
+      sourceDocumentId: input.sourceDocument.id,
+      extractedAt: input.extractedAt,
+      sourceSheetName: input.sourceSheetName,
+      extraction: input.headerExtraction,
+      extractedRowCount: headerRows.length
+    })
+    const invoiceNumber = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber)
+    const voucher = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher)
+
+    if (invoiceNumber) {
+      headerByInvoiceNumber.set(invoiceNumber, row)
+    }
+    if (voucher) {
+      headerByVoucher.set(voucher, row)
+    }
+
+    records.push(headerRecord)
+  })
+
+  const lineRows = input.lineItemsExtraction.candidateRows
+    .filter((row) => isInvoiceListLineCandidateRow(row))
+
+  lineRows.forEach((row, index) => {
+    const lineInvoiceNumber = readRowString(row, INVOICE_LIST_LINE_FIELD_ALIASES.invoiceNumber)
+      ?? readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber)
+    const lineVoucher = readRowString(row, INVOICE_LIST_LINE_FIELD_ALIASES.voucher)
+      ?? readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher)
+    const parentRow = (lineInvoiceNumber ? headerByInvoiceNumber.get(lineInvoiceNumber) : undefined)
+      ?? (lineVoucher ? headerByVoucher.get(lineVoucher) : undefined)
+
+    records.push(buildInvoiceListLineItemRecord({
+      row,
+      index,
+      sourceDocumentId: input.sourceDocument.id,
+      extractedAt: input.extractedAt,
+      sourceSheetName: input.lineItemsSheetName,
+      parentHeaderIndex: undefined,
+      parentVoucher: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher) : lineVoucher,
+      parentVariableSymbol: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.variableSymbol) : undefined,
+      parentInvoiceNumber: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber) : lineInvoiceNumber,
+      parentCustomerId: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.customerId) : undefined,
+      parentGuestName: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.guestName) : undefined,
+      parentStayStartAt: parentRow ? readRowDate(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.stayStartAt, 'InvoiceList parent Příjezd') : undefined,
+      parentStayEndAt: parentRow ? readRowDate(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.stayEndAt, 'InvoiceList parent Odjezd') : undefined,
+      parentRoomName: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.roomName) : undefined,
+      parentPaymentMethod: parentRow ? readRowString(parentRow, INVOICE_LIST_HEADER_FIELD_ALIASES.paymentMethod) : undefined
+    }))
+  })
+
+  return records
+}
+
 function classifyInvoiceListRow(row: Record<string, unknown>): InvoiceListRowKind {
-  const voucher = readOptionalString(row['Voucher'])
-  const guestName = readOptionalString(row['Jméno'])
-  const stayStartAt = readOptionalString(row['Příjezd'])
-  const invoiceNumber = readOptionalString(row['Číslo dokladu'])
+  const voucher = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher)
+  const guestName = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.guestName)
+  const stayStartAt = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.stayStartAt)
+  const invoiceNumber = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber)
 
   if (voucher && guestName && stayStartAt && invoiceNumber) {
     return 'header'
@@ -291,8 +394,8 @@ function classifyInvoiceListRow(row: Record<string, unknown>): InvoiceListRowKin
     return 'header'
   }
 
-  const itemLabel = readOptionalString(row['Název']) ?? readOptionalString(row['Popis']) ?? readOptionalString(row['Položka'])
-  const amount = readOptionalString(row['Celkem s DPH'] ?? row['Cena s DPH'] ?? row['Částka'])
+  const itemLabel = readRowString(row, INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel)
+  const amount = readRowString(row, INVOICE_LIST_LINE_FIELD_ALIASES.amountGross)
 
   if (itemLabel && amount) {
     return 'line-item'
@@ -303,10 +406,99 @@ function classifyInvoiceListRow(row: Record<string, unknown>): InvoiceListRowKin
 
 // ── workbook reading ────────────────────────────────────
 
-function readInvoiceListWorkbookSheet(binaryContentBase64: string): XLSX.WorkSheet | undefined {
+function readInvoiceListWorkbook(binaryContentBase64: string): XLSX.WorkBook {
   ensureInvoiceListWorkbookCodepageSupport()
-  const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
-  return findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
+  return XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
+}
+
+function resolveInvoiceListWorkbookContext(workbook: XLSX.WorkBook): InvoiceListWorkbookContext {
+  const legacyWorksheet = findWorksheetByNormalizedName(workbook, INVOICE_LIST_SHEET_NAME)
+  const legacySheetName = resolveWorksheetName(workbook, legacyWorksheet)
+
+  if (legacyWorksheet && legacySheetName) {
+    const extraction = extractInvoiceListRows(legacyWorksheet, INVOICE_LIST_LEGACY_TABLE_REQUIRED_HEADERS)
+
+    if (extraction) {
+      return {
+        detected: true,
+        shape: 'legacy',
+        primaryWorksheet: legacyWorksheet,
+        primarySheetName: legacySheetName,
+        primaryHeaderRowFound: true,
+        lineItemsHeaderRowFound: false,
+        parsedRowCount: extraction.candidateRows.length,
+        parsedLineItemCount: extraction.candidateRows.filter((row) => classifyInvoiceListRow(row) === 'line-item').length,
+        failureReason: '',
+        primaryExtraction: extraction
+      }
+    }
+  }
+
+  const productionPrimaryWorksheet = findWorksheetByNormalizedName(workbook, INVOICE_LIST_PRODUCTION_PRIMARY_SHEET_NAME)
+  const productionLineItemsWorksheet = findWorksheetByNormalizedName(workbook, INVOICE_LIST_PRODUCTION_LINE_ITEMS_SHEET_NAME)
+  const productionPrimarySheetName = resolveWorksheetName(workbook, productionPrimaryWorksheet)
+  const productionLineItemsSheetName = resolveWorksheetName(workbook, productionLineItemsWorksheet)
+
+  if (!productionPrimaryWorksheet || !productionPrimarySheetName || !productionLineItemsWorksheet || !productionLineItemsSheetName) {
+    return {
+      detected: false,
+      shape: 'unknown',
+      primaryWorksheet: productionPrimaryWorksheet,
+      lineItemsWorksheet: productionLineItemsWorksheet,
+      primarySheetName: productionPrimarySheetName,
+      lineItemsSheetName: productionLineItemsSheetName,
+      primaryHeaderRowFound: false,
+      lineItemsHeaderRowFound: false,
+      parsedRowCount: 0,
+      parsedLineItemCount: 0,
+      failureReason: 'required-sheet-not-found'
+    }
+  }
+
+  const headerExtraction = extractInvoiceListRows(productionPrimaryWorksheet, INVOICE_LIST_PRODUCTION_PRIMARY_REQUIRED_HEADERS)
+  const lineItemsExtraction = extractInvoiceListRows(productionLineItemsWorksheet, INVOICE_LIST_PRODUCTION_LINE_ITEMS_REQUIRED_HEADERS)
+
+  if (!headerExtraction || !lineItemsExtraction) {
+    return {
+      detected: false,
+      shape: 'production',
+      primaryWorksheet: productionPrimaryWorksheet,
+      lineItemsWorksheet: productionLineItemsWorksheet,
+      primarySheetName: productionPrimarySheetName,
+      lineItemsSheetName: productionLineItemsSheetName,
+      primaryHeaderRowFound: Boolean(headerExtraction),
+      lineItemsHeaderRowFound: Boolean(lineItemsExtraction),
+      parsedRowCount: headerExtraction?.candidateRows.length ?? 0,
+      parsedLineItemCount: lineItemsExtraction?.candidateRows.length ?? 0,
+      failureReason: 'header-row-not-found'
+    }
+  }
+
+  const parsedLineItemCount = lineItemsExtraction.candidateRows.filter((row) => isInvoiceListLineCandidateRow(row)).length
+
+  return {
+    detected: true,
+    shape: 'production',
+    primaryWorksheet: productionPrimaryWorksheet,
+    lineItemsWorksheet: productionLineItemsWorksheet,
+    primarySheetName: productionPrimarySheetName,
+    lineItemsSheetName: productionLineItemsSheetName,
+    primaryHeaderRowFound: true,
+    lineItemsHeaderRowFound: true,
+    parsedRowCount: headerExtraction.candidateRows.length,
+    parsedLineItemCount,
+    failureReason: '',
+    primaryExtraction: headerExtraction,
+    lineItemsExtraction
+  }
+}
+
+function resolveWorksheetName(workbook: XLSX.WorkBook, worksheet: XLSX.WorkSheet | undefined): string | undefined {
+  if (!worksheet) {
+    return undefined
+  }
+
+  return workbook.SheetNames.find((sheetName) => workbook.Sheets[sheetName] === worksheet)
 }
 
 /**
@@ -370,17 +562,20 @@ function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {
   })
 }
 
-function extractInvoiceListRows(worksheet: XLSX.WorkSheet): {
+function extractInvoiceListRows(
+  worksheet: XLSX.WorkSheet,
+  requiredHeaders: ReadonlyArray<ReadonlyArray<readonly string[]>>
+): {
   headerRowIndex: number
   headerRowValues: string[]
   headerColumnIndexes: Record<string, number>
   candidateRows: Array<Record<string, unknown>>
-} {
+} | undefined {
   const sheetRows = readWorksheetRows(worksheet)
 
-  const headerRowIndex = findInvoiceListHeaderRowIndex(sheetRows)
+  const headerRowIndex = findInvoiceListHeaderRowIndex(sheetRows, requiredHeaders)
   if (headerRowIndex === -1) {
-    throw new Error(`Invoice list workbook is missing the expected header row on sheet: ${INVOICE_LIST_SHEET_NAME}`)
+    return undefined
   }
 
   const headerRow = sheetRows[headerRowIndex]!.map((cell) => String(cell ?? '').trim())
@@ -397,12 +592,17 @@ function extractInvoiceListRows(worksheet: XLSX.WorkSheet): {
   }
 }
 
-function findInvoiceListHeaderRowIndex(rows: Array<Array<unknown>>): number {
+function findInvoiceListHeaderRowIndex(
+  rows: Array<Array<unknown>>,
+  requiredHeaders: ReadonlyArray<ReadonlyArray<readonly string[]>>
+): number {
   return rows.findIndex((row) => {
-    const normalized = row.map((cell) => String(cell ?? '').trim())
-    const nonEmpty = normalized.filter(Boolean)
-
-    return INVOICE_LIST_HEADER_COLUMNS.every((column) => nonEmpty.includes(column))
+    const presentHeaders = buildNormalizedHeaderSet(row.map((cell) => String(cell ?? '').trim()))
+    return requiredHeaders.every((aliasGroupCollection) => {
+      return aliasGroupCollection.some((aliasGroup) => {
+        return aliasGroup.some((alias) => presentHeaders.has(normalizeWorkbookSignatureName(alias)))
+      })
+    })
   })
 }
 
@@ -433,6 +633,202 @@ function buildRowObject(headerColumnIndexes: Record<string, number>, row: Array<
   }
 
   return record
+}
+
+function buildInvoiceListHeaderRecord(input: {
+  row: Record<string, unknown>
+  index: number
+  sourceDocumentId: SourceDocument['id']
+  extractedAt: string
+  sourceSheetName: string
+  extraction: {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRowCount: number
+  } | {
+    headerRowIndex: number
+    headerRowValues: string[]
+    headerColumnIndexes: Record<string, number>
+    candidateRows: Array<Record<string, unknown>>
+  }
+  extractedRowCount: number
+}): ExtractedRecord {
+  const voucher = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher)
+  const variableSymbol = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.variableSymbol)
+  const invoiceNumber = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber)
+  const customerId = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.customerId)
+  const customerName = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.customerName)
+  const guestName = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.guestName)
+  const stayStartAt = readRowDate(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.stayStartAt, 'InvoiceList Příjezd')
+  const stayEndAt = readRowDate(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.stayEndAt, 'InvoiceList Odjezd')
+  const roomName = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.roomName)
+  const paymentMethod = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.paymentMethod)
+  const grossAmount = readRowAmount(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.grossAmount, 'InvoiceList Celkem s DPH')
+  const netAmount = readRowAmount(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.netAmount, 'InvoiceList Celkem bez DPH')
+  const reference = voucher ?? invoiceNumber ?? variableSymbol ?? `invoice-list-header-${input.index + 1}`
+  const occurredAt = stayStartAt ?? input.extractedAt.slice(0, 10)
+
+  return {
+    id: `invoice-list-header-${input.index + 1}`,
+    sourceDocumentId: input.sourceDocumentId,
+    recordType: 'invoice-list-header',
+    extractedAt: input.extractedAt,
+    rawReference: reference,
+    amountMinor: grossAmount?.amountMinor ?? 0,
+    currency: grossAmount?.currency ?? 'CZK',
+    occurredAt,
+    data: {
+      platform: 'previo-invoice-list',
+      rowKind: 'header',
+      enrichmentOnly: true,
+      voucher,
+      variableSymbol,
+      invoiceNumber,
+      customerId,
+      customerName,
+      guestName,
+      stayStartAt,
+      stayEndAt,
+      roomName,
+      paymentMethod,
+      grossAmountMinor: grossAmount?.amountMinor,
+      netAmountMinor: netAmount?.amountMinor,
+      currency: grossAmount?.currency ?? 'CZK',
+      reference,
+      sourceSheet: input.sourceSheetName,
+      workbookExtractionAudit: {
+        sheetName: input.sourceSheetName,
+        headerRowIndex: input.extraction.headerRowIndex + 1,
+        headerRowValues: input.extraction.headerRowValues,
+        headerColumnIndexes: input.extraction.headerColumnIndexes,
+        candidateRowCount: 'candidateRows' in input.extraction ? input.extraction.candidateRows.length : input.extraction.candidateRowCount,
+        extractedRowCount: input.extractedRowCount
+      }
+    }
+  }
+}
+
+function buildInvoiceListLineItemRecord(input: {
+  row: Record<string, unknown>
+  index: number
+  sourceDocumentId: SourceDocument['id']
+  extractedAt: string
+  sourceSheetName: string
+  parentHeaderIndex?: number
+  parentVoucher?: string
+  parentVariableSymbol?: string
+  parentInvoiceNumber?: string
+  parentCustomerId?: string
+  parentGuestName?: string
+  parentStayStartAt?: string
+  parentStayEndAt?: string
+  parentRoomName?: string
+  parentPaymentMethod?: string
+}): ExtractedRecord {
+  const itemLabel = readRowString(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel)
+  const itemAmount = readRowAmount(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.amountGross, 'InvoiceList line amount')
+  const itemNetAmount = readRowAmount(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.amountNet, 'InvoiceList line net amount')
+  const reference = input.parentVoucher ?? input.parentInvoiceNumber ?? input.parentVariableSymbol ?? `invoice-list-line-${input.index + 1}`
+
+  return {
+    id: `invoice-list-line-${input.index + 1}`,
+    sourceDocumentId: input.sourceDocumentId,
+    recordType: 'invoice-list-line',
+    extractedAt: input.extractedAt,
+    rawReference: reference,
+    amountMinor: itemAmount?.amountMinor ?? 0,
+    currency: itemAmount?.currency ?? 'CZK',
+    occurredAt: input.parentStayStartAt ?? input.extractedAt.slice(0, 10),
+    data: {
+      platform: 'previo-invoice-list',
+      rowKind: 'line-item',
+      enrichmentOnly: true,
+      parentHeaderIndex: input.parentHeaderIndex,
+      voucher: input.parentVoucher,
+      variableSymbol: input.parentVariableSymbol,
+      invoiceNumber: input.parentInvoiceNumber,
+      customerId: input.parentCustomerId,
+      guestName: input.parentGuestName,
+      stayStartAt: input.parentStayStartAt,
+      stayEndAt: input.parentStayEndAt,
+      roomName: input.parentRoomName,
+      paymentMethod: input.parentPaymentMethod,
+      itemLabel,
+      grossAmountMinor: itemAmount?.amountMinor,
+      netAmountMinor: itemNetAmount?.amountMinor,
+      currency: itemAmount?.currency ?? 'CZK',
+      reference,
+      sourceSheet: input.sourceSheetName
+    }
+  }
+}
+
+function isInvoiceListHeaderCandidateRow(row: Record<string, unknown>): boolean {
+  const invoiceNumber = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber)
+  const voucher = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher)
+  const guestName = readRowString(row, INVOICE_LIST_HEADER_FIELD_ALIASES.guestName)
+  return Boolean(invoiceNumber || voucher || guestName)
+}
+
+function isInvoiceListLineCandidateRow(row: Record<string, unknown>): boolean {
+  const invoiceNumber = readRowString(row, INVOICE_LIST_LINE_FIELD_ALIASES.invoiceNumber)
+  const itemLabel = readRowString(row, INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel)
+  return Boolean(invoiceNumber && itemLabel)
+}
+
+function readRowString(
+  row: Record<string, unknown>,
+  aliasGroups: readonly string[]
+): string | undefined {
+  const value = readRowValueByAliases(row, aliasGroups)
+  return readOptionalString(value)
+}
+
+function readRowDate(
+  row: Record<string, unknown>,
+  aliasGroups: readonly string[],
+  label: string
+): string | undefined {
+  const value = readRowValueByAliases(row, aliasGroups)
+  return readOptionalDate(value, label)
+}
+
+function readRowAmount(
+  row: Record<string, unknown>,
+  aliasGroups: readonly string[],
+  label: string
+): { amountMinor: number; currency: 'CZK' | 'EUR' } | undefined {
+  const value = readRowValueByAliases(row, aliasGroups)
+  return readOptionalAmount(value, label)
+}
+
+function readRowValueByAliases(row: Record<string, unknown>, aliases: readonly string[]): unknown {
+  for (const alias of aliases) {
+    if (Object.prototype.hasOwnProperty.call(row, alias)) {
+      return row[alias]
+    }
+  }
+
+  const normalizedRowEntries = Object.entries(row).map(([key, value]) => [normalizeWorkbookSignatureName(key), value] as const)
+
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeWorkbookSignatureName(alias)
+    const foundEntry = normalizedRowEntries.find(([normalizedKey]) => normalizedKey === normalizedAlias)
+    if (foundEntry) {
+      return foundEntry[1]
+    }
+  }
+
+  return ''
+}
+
+function buildNormalizedHeaderSet(headers: string[]): Set<string> {
+  return new Set(
+    headers
+      .map((header) => normalizeWorkbookSignatureName(header))
+      .filter(Boolean)
+  )
 }
 
 // ── cell readers ────────────────────────────────────────

@@ -2288,6 +2288,10 @@ ${showRuntimePayoutDiagnostics ? `
               ? file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesNormalized.slice()
               : [],
             workbookSignatureFailureReason: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureFailureReason || ''),
+            invoiceListPrimarySheetUsed: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimarySheetUsed || ''),
+            invoiceListLineItemsSheetUsed: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsSheetUsed || ''),
+            invoiceListParsedRowCount: Number(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListParsedRowCount || 0),
+            invoiceListParsedLineItemCount: Number(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListParsedLineItemCount || 0),
             runtimeAssignedParserId: String(file && file.parserId || ''),
             runtimeIngestionBranch: String(file && file.decision && file.decision.ingestionBranch || '')
           };
@@ -6038,7 +6042,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
             workbookSheetNamesRaw: Array.isArray(file.workbookSheetNamesRaw) ? file.workbookSheetNamesRaw.slice() : [],
             workbookSheetNamesNormalized: Array.isArray(file.workbookSheetNamesNormalized) ? file.workbookSheetNamesNormalized.slice() : [],
             workbookSignatureFailureReason: String(file.workbookSignatureFailureReason || ''),
-            runtimeWorkbookSignature: Boolean(file.runtimeWorkbookSignature)
+            runtimeWorkbookSignature: Boolean(file.runtimeWorkbookSignature),
+            invoiceListPrimarySheetUsed: String(file.invoiceListPrimarySheetUsed || ''),
+            invoiceListLineItemsSheetUsed: String(file.invoiceListLineItemsSheetUsed || ''),
+            invoiceListParsedRowCount: Number(file.invoiceListParsedRowCount || 0),
+            invoiceListParsedLineItemCount: Number(file.invoiceListParsedLineItemCount || 0)
           })),
           totalExtractedCount: invoiceListFiles.reduce((sum, file) => sum + Number(file.extractedCount || 0), 0)
         };
