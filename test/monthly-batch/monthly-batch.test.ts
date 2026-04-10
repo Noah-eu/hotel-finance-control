@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import {
+  detectInvoiceListWorkbookSignature,
+  diagnoseInvoiceListWorkbookSignature
+} from '../../src/extraction'
+import {
   detectUploadedMonthlyFileCapability,
   ingestUploadedMonthlyFiles,
   prepareUploadedMonthlyBatchFiles,
@@ -2064,7 +2068,7 @@ describe('runMonthlyReconciliationBatch', () => {
       'booking-payout-statement-2026-03.pdf'
     ])
     expect(result.batch.report.summary.payoutBatchMatchCount).toBe(15)
-    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(3)
   })
 
   it('merges Booking payout PDF supplement metadata into the Booking payout batch without changing its batch key', () => {
@@ -2561,6 +2565,297 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(result.batch.report.unmatchedPayoutBatches.some(
       (item) => item.payoutBatchKey === 'booking-batch:2026-03-26:010738140021'
     )).toBe(false)
+  })
+})
+
+describe('invoice-list .xls browser classification', () => {
+  function buildInvoiceListWorkbookBase64(
+    rows: unknown[][],
+    sheetName = 'Seznam dokladů'
+  ): string {
+    const XLSX = require('xlsx')
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.aoa_to_sheet(rows)
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' })
+    return Buffer.from(buffer).toString('base64')
+  }
+
+  function buildInvoiceListProductionWorkbookBase64(input: {
+    dokladyRows: unknown[][]
+    polozkyRows: unknown[][]
+  }): string {
+    const XLSX = require('xlsx')
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Doklady - export'],
+      [''],
+      ...input.dokladyRows
+    ]), 'Doklady')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Souhrn', 'Hodnota'],
+      ['Počet dokladů', '1']
+    ]), 'Souhrn')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Položky dokladů - export'],
+      [''],
+      ...input.polozkyRows
+    ]), 'Položky dokladů')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Souhrn položek', 'Hodnota'],
+      ['Počet položek', '1']
+    ]), 'Souhrn položek')
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['Souhrn podle rastrů', 'Hodnota'],
+      ['Rastr', 'A']
+    ]), 'Souhrn podle rastrů')
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xls' })
+    return Buffer.from(buffer).toString('base64')
+  }
+
+  const INVOICE_LIST_HEADER_ROW = [
+    'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
+    'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
+    'Název', 'Celkem s DPH', 'Celkem bez DPH'
+  ]
+
+  function buildMinimalInvoiceListBase64(): string {
+    return buildInvoiceListWorkbookBase64([
+      INVOICE_LIST_HEADER_ROW,
+      ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+    ])
+  }
+
+  it('capability detects .xls file as structured_workbook', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const capability = detectUploadedMonthlyFileCapability({
+      fileName: 'Invoice list.xls',
+      content: '',
+      binaryContentBase64: base64,
+      contentFormat: 'binary-workbook'
+    })
+    expect(capability.transportProfile).toBe('structured_workbook')
+    expect(capability.profile).toBe('structured_tabular')
+  })
+
+  it('capability detects .xls even when contentFormat not pre-set', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const capability = detectUploadedMonthlyFileCapability({
+      fileName: 'Invoice list.xls',
+      content: '',
+      binaryContentBase64: base64,
+      contentFormat: 'text'
+    })
+    expect(capability.transportProfile).toBe('structured_workbook')
+  })
+
+  it('prepareUploadedMonthlyBatchFiles classifies invoice_list.xls as previo/invoice_list', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const result = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Invoice list.xls',
+        content: '',
+        binaryContentBase64: base64,
+        contentFormat: 'binary-workbook' as const,
+        uploadedAt: '2026-04-01T00:00:00Z'
+      }
+    ])
+    expect(result.fileRoutes.length).toBe(1)
+    expect(result.fileRoutes[0]).toEqual(expect.objectContaining({
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook',
+      parserId: 'previo'
+    }))
+    expect(result.fileRoutes[0]?.decision.runtimeWorkbookSignatureDiagnostics).toEqual(expect.objectContaining({
+      workbookSignatureFunctionReached: true,
+      workbookSignatureDetectorName: 'detectInvoiceListWorkbookSignature',
+      workbookReadSucceeded: true,
+      workbookSheetNamesRaw: expect.arrayContaining(['Seznam dokladů']),
+      workbookSheetNamesNormalized: expect.arrayContaining(['seznam dokladu']),
+      workbookSignatureFailureReason: ''
+    }))
+  })
+
+  it('ingestUploadedMonthlyFiles routes invoice_list.xls and produces extracted records', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'Invoice list.xls',
+          content: '',
+          binaryContentBase64: base64,
+          contentFormat: 'binary-workbook' as const,
+          uploadedAt: '2026-04-01T00:00:00Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'test-invoice-list-xls',
+        requestedAt: '2026-04-01T00:00:00Z'
+      },
+      reportGeneratedAt: '2026-04-01T00:00:00Z'
+    })
+
+    const invoiceListRoute = result.fileRoutes.find(
+      (route) => route.documentType === 'invoice_list'
+    )
+    expect(invoiceListRoute).toBeDefined()
+    expect(invoiceListRoute!.sourceSystem).toBe('previo')
+    expect(invoiceListRoute!.parserId).toBe('previo')
+    expect(invoiceListRoute!.extractedCount).toBeGreaterThanOrEqual(1)
+    expect(invoiceListRoute!.extractedRecordIds!.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('generic invoice files are still classified as invoice', () => {
+    const result = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'faktura-hotel-2026-03.pdf',
+        content: 'Faktura - daňový doklad\nČíslo faktury: FV-2024001\nDodavatel: Hotel ABC\nOdběratel: John Doe\nDatum vystavení: 01.03.2026\nDatum splatnosti: 15.03.2026\nCelkem k úhradě: 5 000,00 Kč\nIČ: 12345678\nDIČ: CZ12345678\nIBAN: CZ6508000000192000145399',
+        contentFormat: 'pdf-text' as const,
+        uploadedAt: '2026-04-01T00:00:00Z'
+      }
+    ])
+    expect(result.fileRoutes.length).toBe(1)
+    expect(result.fileRoutes[0]).toEqual(expect.objectContaining({
+      sourceSystem: 'invoice',
+      documentType: 'invoice'
+    }))
+  })
+
+  it('invoice_list.xls with garbled text content still classifies as previo/invoice_list via workbook signature (browser restore scenario)', () => {
+    const base64 = buildMinimalInvoiceListBase64()
+    // Simulate what happens when browser decodes XLS binary as text:
+    // the decoded text contains fragments like "Faktura", "IBAN", "Celkem", "Datum" etc.
+    // from the XLS binary format strings, which triggers the invoice keyword detector
+    const garbledTextContent = [
+      'Faktura\x00\x01\x00 Celkem s DPH\x00Celkem bez DPH',
+      '\x00\x00Datum vystavení\x00\x00IČ: 12345678',
+      'IBAN\x00CZ6508000000192000145399\x00Dodavatel\x00'
+    ].join('\n')
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'Invoice list.xls',
+          content: garbledTextContent,
+          binaryContentBase64: base64,
+          contentFormat: 'binary-workbook' as const,
+          uploadedAt: '2026-04-01T00:00:00Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'test-invoice-list-xls-garbled',
+        requestedAt: '2026-04-01T00:00:00Z'
+      },
+      reportGeneratedAt: '2026-04-01T00:00:00Z'
+    })
+
+    const invoiceListRoute = result.fileRoutes.find(
+      (route) => route.documentType === 'invoice_list'
+    )
+    expect(invoiceListRoute).toBeDefined()
+    expect(invoiceListRoute!.sourceSystem).toBe('previo')
+    expect(invoiceListRoute!.parserId).toBe('previo')
+    expect(invoiceListRoute!.extractedCount).toBeGreaterThanOrEqual(1)
+    expect(invoiceListRoute!.classificationBasis).toBe('binary-workbook')
+    // Must NOT be classified as generic invoice
+    expect(result.fileRoutes.some(
+      (route) => route.sourceSystem === 'invoice' && route.documentType === 'invoice'
+    )).toBe(false)
+  })
+
+  it('detectInvoiceListWorkbookSignature matches with codepage-mangled sheet name (ù instead of ů)', () => {
+    // Simulates what happens in the browser when xlsx reads a .xls (BIFF8) file
+    // without codepage support: CP 1250 byte 0xF9 (ů) gets decoded as Latin-1 'ù'
+    const mangledSheetName = 'Seznam dokladù'  // ù (U+00F9) instead of ů (U+016F)
+    const base64 = buildInvoiceListWorkbookBase64([
+      INVOICE_LIST_HEADER_ROW,
+      ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+    ], mangledSheetName)
+
+    const diagnostics = diagnoseInvoiceListWorkbookSignature(base64)
+    expect(diagnostics.sheetNames).toEqual([mangledSheetName])
+    expect(diagnostics.matchedSheetName).toBe(mangledSheetName)
+    expect(diagnostics.headerRowFound).toBe(true)
+    expect(diagnostics.detected).toBe(true)
+    expect(diagnostics.workbookSignatureFunctionReached).toBe(true)
+    expect(diagnostics.workbookReadSucceeded).toBe(true)
+    expect(diagnostics.workbookSheetNamesRaw).toEqual([mangledSheetName])
+    expect(diagnostics.workbookSheetNamesNormalized).toEqual(['seznam dokladu'])
+    expect(diagnostics.workbookSignatureFailureReason).toBe('')
+
+    expect(detectInvoiceListWorkbookSignature(base64)).toBe(true)
+  })
+
+  it('classifies .xls with codepage-mangled sheet name as previo/invoice_list', () => {
+    const mangledSheetName = 'Seznam dokladù'
+    const base64 = buildInvoiceListWorkbookBase64([
+      INVOICE_LIST_HEADER_ROW,
+      ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+    ], mangledSheetName)
+
+    const result = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'Invoice list.xls',
+        content: '',
+        binaryContentBase64: base64,
+        contentFormat: 'binary-workbook' as const,
+        uploadedAt: '2026-04-01T00:00:00Z'
+      }
+    ])
+    expect(result.fileRoutes[0]).toEqual(expect.objectContaining({
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook'
+    }))
+  })
+
+  it('classifies real production workbook sheets (Doklady + Položky dokladů) as previo/invoice_list', () => {
+    const base64 = buildInvoiceListProductionWorkbookBase64({
+      dokladyRows: [
+        ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Částka celkem', 'Základ DPH'],
+        ['FA-20260331', 'RES-PROD-3', '44332211', '31.03.2026', '01.04.2026', 'Nina Test', 'C303', 'Firma PROD 3', 'CID-303', '3 300 Kč', '2 727 Kč']
+      ],
+      polozkyRows: [
+        ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
+        ['FA-20260331', 'Ubytování', '2 800 Kč', '2 314 Kč'],
+        ['FA-20260331', 'Parkování na den', '500 Kč', '413 Kč']
+      ]
+    })
+
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'invoice_list.xls',
+          content: '',
+          binaryContentBase64: base64,
+          contentFormat: 'binary-workbook' as const,
+          uploadedAt: '2026-04-01T00:00:00Z'
+        }
+      ],
+      reconciliationContext: {
+        runId: 'test-invoice-list-xls-production-shape',
+        requestedAt: '2026-04-01T00:00:00Z'
+      },
+      reportGeneratedAt: '2026-04-01T00:00:00Z'
+    })
+
+    const route = result.fileRoutes[0]
+    expect(route).toEqual(expect.objectContaining({
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook',
+      parserId: 'previo'
+    }))
+    expect(route?.decision.runtimeWorkbookSignatureDiagnostics).toEqual(expect.objectContaining({
+      workbookReadSucceeded: true,
+      workbookSignatureFailureReason: '',
+      invoiceListPrimarySheetUsed: 'Doklady',
+      invoiceListLineItemsSheetUsed: 'Položky dokladů',
+      invoiceListPrimaryDetectedHeaderRowIndex: 2,
+      invoiceListLineItemsDetectedHeaderRowIndex: 2
+    }))
+    expect(route?.extractedCount ?? 0).toBeGreaterThan(0)
   })
 })
 

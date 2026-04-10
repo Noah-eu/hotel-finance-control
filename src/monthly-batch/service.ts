@@ -15,10 +15,12 @@ import {
   parseBookingPayoutExport,
   parseBookingPayoutStatementPdf,
   parseComgateExport,
+  diagnoseInvoiceListWorkbookSignature,
   detectPrevioReservationWorkbookSignature,
   parseExpediaPayoutExport,
   parseFioStatement,
   parseInvoiceDocument,
+  parseInvoiceListWorkbook,
   parsePrevioReservationExport,
   parseReceiptDocument,
   parseRaiffeisenbankStatement
@@ -717,6 +719,10 @@ function selectParser(sourceDocument: SourceDocument, content: string): Parser {
     return parseExpediaPayoutExport
   }
 
+  if (sourceDocument.sourceSystem === 'previo' && sourceDocument.documentType === 'invoice_list') {
+    return parseInvoiceListWorkbook
+  }
+
   if (sourceDocument.sourceSystem === 'previo') {
     return parsePrevioReservationExport
   }
@@ -952,6 +958,16 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
   const fileNameDocumentType = fileNameRole === 'supplemental' && fileNameSourceSystem === 'booking'
     ? 'payout_statement'
     : inferDocumentType(fileNameSourceSystem)
+  const normalizedFileName = input.fileName.trim().toLowerCase()
+  const shouldInspectInvoiceListWorkbookSignature = Boolean(input.binaryContentBase64)
+    && (
+      input.contentFormat === 'binary-workbook'
+      || normalizedFileName.endsWith('.xls')
+      || normalizedFileName.endsWith('.xlsx')
+    )
+  const invoiceListWorkbookDiagnostics = shouldInspectInvoiceListWorkbookSignature && input.binaryContentBase64
+    ? diagnoseInvoiceListWorkbookSignature(input.binaryContentBase64)
+    : undefined
 
   if (ingestionBranch === 'ocr-required') {
     const hintedSourceSystem = capability.documentHints.includes('invoice_like')
@@ -970,7 +986,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         documentType: inferDocumentType(ocrSupportedSourceSystem),
         classificationBasis: sourceSystem === 'unknown' ? 'file-name' : 'file-name',
         role: 'primary',
-        decision: buildResolvedDecision({
+        decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
           capability,
           ingestionBranch,
           sourceSystem: ocrSupportedSourceSystem,
@@ -981,7 +997,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
           matchedRules: ['capability-ocr-required', 'ocr-fallback-parser-supported'],
           missingSignals: [],
           detectedSignals: []
-        })
+        }), invoiceListWorkbookDiagnostics)
       }
     }
 
@@ -995,7 +1011,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       documentType,
       classificationBasis: sourceSystem === 'unknown' ? 'unknown' : 'file-name',
       role,
-      decision: buildUnsupportedDecision({
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildUnsupportedDecision({
         capability,
         ingestionBranch,
         sourceSystem,
@@ -1011,7 +1027,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         detectedSignals: bookingPdfDecision?.detectedSignals ?? [],
         parserSupported: false,
         reason: buildOcrRequiredReason(capability, sourceSystem, documentType)
-      })
+      }), invoiceListWorkbookDiagnostics)
     }
   }
 
@@ -1021,7 +1037,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       documentType: fileNameDocumentType,
       classificationBasis: fileNameSourceSystem === 'unknown' ? 'unknown' : 'file-name',
       role: fileNameRole,
-      decision: {
+      decision: withInvoiceListWorkbookSignatureDiagnostics({
         capability,
         ingestionBranch,
         ingestionReason: input.ingestError,
@@ -1034,8 +1050,50 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         resolvedDocumentType: fileNameDocumentType,
         resolvedRole: fileNameRole,
         resolvedBucket: 'ingest-error'
-      },
+      }, invoiceListWorkbookDiagnostics),
       ingestError: input.ingestError
+    }
+  }
+
+  if (invoiceListWorkbookDiagnostics?.detected) {
+    return {
+      sourceSystem: 'previo',
+      documentType: 'invoice_list',
+      classificationBasis: 'binary-workbook',
+      role: 'supplemental',
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        classificationBasis: 'binary-workbook',
+        role: 'supplemental',
+        parserSupported: true,
+        matchedRules: ['binary-workbook-signature'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      }), invoiceListWorkbookDiagnostics)
+    }
+  }
+
+  if (input.binaryContentBase64 && detectPrevioReservationWorkbookSignature(input.binaryContentBase64)) {
+    return {
+      sourceSystem: 'previo',
+      documentType: 'reservation_export',
+      classificationBasis: 'binary-workbook',
+      role: 'primary',
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem: 'previo',
+        documentType: 'reservation_export',
+        classificationBasis: 'binary-workbook',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: ['binary-workbook-signature'],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      }), invoiceListWorkbookDiagnostics)
     }
   }
 
@@ -1045,7 +1103,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       documentType: 'invoice',
       classificationBasis: 'content',
       role: 'primary',
-      decision: buildResolvedDecision({
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
         capability,
         ingestionBranch,
         sourceSystem: 'invoice',
@@ -1056,7 +1114,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         matchedRules: ['content-signature', 'invoice-summary-strong'],
         missingSignals: [],
         detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-      })
+      }), invoiceListWorkbookDiagnostics)
     }
   }
 
@@ -1066,7 +1124,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       documentType: 'payout_statement',
       classificationBasis: 'content',
       role: 'supplemental',
-      decision: bookingPdfDecision
+      decision: withInvoiceListWorkbookSignatureDiagnostics(bookingPdfDecision, invoiceListWorkbookDiagnostics)
     }
   }
 
@@ -1083,7 +1141,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         documentType: inferDocumentType(byContent),
         classificationBasis: 'content',
         role: 'primary',
-        decision: buildResolvedDecision({
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
           capability,
           ingestionBranch,
           sourceSystem: byContent,
@@ -1094,29 +1152,8 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
           matchedRules: ['content-signature'],
           missingSignals: [],
           detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-        })
+        }), invoiceListWorkbookDiagnostics)
       }
-    }
-  }
-
-  if (input.binaryContentBase64 && detectPrevioReservationWorkbookSignature(input.binaryContentBase64)) {
-    return {
-      sourceSystem: 'previo',
-      documentType: 'reservation_export',
-      classificationBasis: 'binary-workbook',
-      role: 'primary',
-      decision: buildResolvedDecision({
-        capability,
-        ingestionBranch,
-        sourceSystem: 'previo',
-        documentType: 'reservation_export',
-        classificationBasis: 'binary-workbook',
-        role: 'primary',
-        parserSupported: true,
-        matchedRules: ['binary-workbook-signature'],
-        missingSignals: [],
-        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-      })
     }
   }
 
@@ -1126,7 +1163,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       documentType: 'payout_statement',
       classificationBasis: 'file-name',
       role: 'supplemental',
-      decision: buildResolvedDecision({
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
         capability,
         ingestionBranch,
         sourceSystem: 'booking',
@@ -1137,7 +1174,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         matchedRules: ['file-name-pdf-fallback'],
         missingSignals: bookingPdfDecision?.missingSignals ?? [],
         detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-      })
+      }), invoiceListWorkbookDiagnostics)
     }
   }
 
@@ -1149,7 +1186,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       documentType: inferDocumentType(byFileName),
       classificationBasis: 'file-name',
       role: 'primary',
-      decision: buildResolvedDecision({
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
         capability,
         ingestionBranch,
         sourceSystem: byFileName,
@@ -1160,7 +1197,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         matchedRules: ['file-name-signature'],
         missingSignals: bookingPdfDecision?.missingSignals ?? [],
         detectedSignals: bookingPdfDecision?.detectedSignals ?? []
-      })
+      }), invoiceListWorkbookDiagnostics)
     }
   }
 
@@ -1169,14 +1206,50 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     documentType: 'other',
     classificationBasis: 'unknown',
     role: 'primary',
-    decision: bookingPdfDecision ?? buildUnknownDecision({
+    decision: withInvoiceListWorkbookSignatureDiagnostics(bookingPdfDecision ?? buildUnknownDecision({
       capability,
       ingestionBranch,
       detectedSignals: [],
       matchedRules: [],
       missingSignals: [],
       parserSupported: false
-    })
+    }), invoiceListWorkbookDiagnostics)
+  }
+}
+
+function withInvoiceListWorkbookSignatureDiagnostics(
+  decision: UploadedMonthlyFileDecision,
+  diagnostics:
+  | ReturnType<typeof diagnoseInvoiceListWorkbookSignature>
+  | undefined
+): UploadedMonthlyFileDecision {
+  if (!diagnostics) {
+    return decision
+  }
+
+  return {
+    ...decision,
+    runtimeWorkbookSignatureDiagnostics: {
+      workbookSignatureFunctionReached: diagnostics.workbookSignatureFunctionReached,
+      workbookSignatureDetectorName: diagnostics.workbookSignatureDetectorName,
+      workbookReadSucceeded: diagnostics.workbookReadSucceeded,
+      workbookSheetNamesRaw: diagnostics.workbookSheetNamesRaw.slice(),
+      workbookSheetNamesNormalized: diagnostics.workbookSheetNamesNormalized.slice(),
+      workbookSignatureFailureReason: diagnostics.workbookSignatureFailureReason,
+      invoiceListPrimarySheetUsed: diagnostics.invoiceListPrimarySheetUsed,
+      invoiceListLineItemsSheetUsed: diagnostics.invoiceListLineItemsSheetUsed,
+      invoiceListParsedRowCount: diagnostics.invoiceListParsedRowCount,
+      invoiceListParsedLineItemCount: diagnostics.invoiceListParsedLineItemCount,
+      invoiceListPrimaryHeaderScanRows: diagnostics.invoiceListPrimaryHeaderScanRows,
+      invoiceListLineItemsHeaderScanRows: diagnostics.invoiceListLineItemsHeaderScanRows,
+      invoiceListPrimaryDetectedHeaderRowIndex: diagnostics.invoiceListPrimaryDetectedHeaderRowIndex,
+      invoiceListLineItemsDetectedHeaderRowIndex: diagnostics.invoiceListLineItemsDetectedHeaderRowIndex,
+      invoiceListPrimaryHeaderCellsRaw: diagnostics.invoiceListPrimaryHeaderCellsRaw,
+      invoiceListLineItemsHeaderCellsRaw: diagnostics.invoiceListLineItemsHeaderCellsRaw,
+      invoiceListPrimaryHeaderCellsNormalized: diagnostics.invoiceListPrimaryHeaderCellsNormalized,
+      invoiceListLineItemsHeaderCellsNormalized: diagnostics.invoiceListLineItemsHeaderCellsNormalized,
+      invoiceListHeaderFailureReason: diagnostics.invoiceListHeaderFailureReason
+    }
   }
 }
 

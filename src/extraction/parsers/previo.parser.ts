@@ -350,7 +350,36 @@ function isWorkbookHeaderRowCandidate(rows: Array<Array<unknown>>, rowIndex: num
 
 function readPrevioReservationWorkbookSheet(binaryContentBase64: string): XLSX.WorkSheet | undefined {
   const workbook = XLSX.read(binaryContentBase64, { type: 'base64', cellDates: false })
-  return workbook.Sheets[PREVIO_RESERVATION_WORKBOOK_SHEET]
+  return findWorksheetByNormalizedName(workbook, PREVIO_RESERVATION_WORKBOOK_SHEET)
+}
+
+/**
+ * Find a worksheet by name with fallback to diacritics-tolerant matching.
+ * Old .xls files (BIFF8) encode sheet names using the file's codepage (e.g. CP 1250
+ * for Czech). Without the codepage module, the xlsx library maps e.g. 'ů' to 'ù'.
+ */
+function findWorksheetByNormalizedName(workbook: XLSX.WorkBook, targetSheetName: string): XLSX.WorkSheet | undefined {
+  if (workbook.Sheets[targetSheetName]) {
+    return workbook.Sheets[targetSheetName]
+  }
+
+  const normalizedTarget = stripDiacriticsLower(targetSheetName)
+
+  for (const sheetName of workbook.SheetNames) {
+    if (stripDiacriticsLower(sheetName) === normalizedTarget) {
+      return workbook.Sheets[sheetName]
+    }
+  }
+
+  return undefined
+}
+
+function stripDiacriticsLower(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 }
 
 function readWorksheetRows(worksheet: XLSX.WorkSheet): Array<Array<unknown>> {

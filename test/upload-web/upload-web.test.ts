@@ -660,6 +660,70 @@ describe('buildUploadWebFlow', () => {
     ])
   })
 
+  it('routes invoice_list.xls through workbook signature in the real browser runtime path and exposes signature diagnostics', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListWorkbookBase64())],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:05:30.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'invoice_list.xls',
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        classificationBasis: 'binary-workbook',
+        parserId: 'previo',
+        extractedCount: expect.any(Number),
+        decision: expect.objectContaining({
+          runtimeWorkbookSignatureDiagnostics: expect.objectContaining({
+            workbookSignatureFunctionReached: true,
+            workbookSignatureDetectorName: 'detectInvoiceListWorkbookSignature',
+            workbookReadSucceeded: true,
+            workbookSheetNamesRaw: expect.arrayContaining(['Seznam dokladů']),
+            workbookSheetNamesNormalized: expect.arrayContaining(['seznam dokladu']),
+            workbookSignatureFailureReason: ''
+          }),
+          matchedRules: expect.arrayContaining(['binary-workbook-signature'])
+        })
+      })
+    ])
+    expect(result.fileRoutes[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+  })
+
+  it('routes production invoice_list.xls workbook shape from Doklady/Položky dokladů in browser runtime', async () => {
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [createRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListProductionWorkbookBase64())],
+      month: '2026-03',
+      generatedAt: '2026-03-21T09:05:40.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'invoice_list.xls',
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        classificationBasis: 'binary-workbook',
+        parserId: 'previo',
+        extractedCount: expect.any(Number),
+        decision: expect.objectContaining({
+          runtimeWorkbookSignatureDiagnostics: expect.objectContaining({
+            workbookSignatureFunctionReached: true,
+            workbookReadSucceeded: true,
+            workbookSignatureFailureReason: '',
+            invoiceListPrimarySheetUsed: 'Doklady',
+            invoiceListLineItemsSheetUsed: 'Položky dokladů',
+            invoiceListPrimaryDetectedHeaderRowIndex: 2,
+            invoiceListLineItemsDetectedHeaderRowIndex: 2
+          }),
+          matchedRules: expect.arrayContaining(['binary-workbook-signature'])
+        })
+      })
+    ])
+    expect(result.fileRoutes[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(result.fileRoutes[0]?.sourceSystem).not.toBe('invoice')
+  })
+
   it('classifies and extracts the real Previo XLSX workbook shape even when the filename is generic', async () => {
     const result = await createBrowserRuntime().buildRuntimeState({
       files: [createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', buildPrevioBrowserShapeWorkbookBase64())],
@@ -1058,6 +1122,60 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchMatched).toEqual([])
     expect(result.reviewSections.payoutBatchUnmatched).toHaveLength(1)
     expect(result.reviewSections.payoutBatchUnmatched[0]?.title).toContain('Comgate payout dávka')
+  })
+
+  it('routes real monthly Comgate mojibake CSV headers into monthly-settlement and preserves Popis/VS/client anchors in runtime normalization', async () => {
+    const content = [
+      '"Merchant";"Datum zalo�en�";"Datum zaplacen�";"Datum p�evodu";"M�s�c fakturace";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail pl�tce";"Variabiln� symbol pl�tce";"Variabiln� symbol p�evodu";"ID od klienta";"M�na";"Potvrzen� ��stka";"P�eveden� ��stka";"Poplatek celkem";"Poplatek mezibankovn�";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+      '"499465";"2026-02-26 09:28:06";"2026-02-26 09:28:41";"2026-03-02";"";"JV6Y-60HX-NNRK";"Karta online";"";"20250587";"guest@example.com";"1357656777";"1811321483";"108061915";"CZK";"7387,10";"7314,71";"72,39";"14,77";"11,52";"46,10";"EU_CONSUMER"',
+      '"-";"";"";"2026-03-02";"";"";"";"suma";"-";"-";"-";"1811321483";"-";"CZK";"42788,33";"42269,01";"519,32";"113,94";"88,60";"316,78";""'
+    ].join('\n')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('vypis-202603.csv', content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-10T14:20:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-202603.csv',
+        sourceSystem: 'comgate',
+        intakeStatus: 'parsed',
+        parserSupported: true,
+        comgateHeaderDiagnostics: expect.objectContaining({
+          detectedFileKind: 'monthly-settlement',
+          parserVariant: 'monthly-settlement'
+        }),
+        comgatePipelineDiagnostics: expect.objectContaining({
+          parserVariants: ['monthly-settlement']
+        })
+      })
+    )
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-202603.csv',
+        comgatePipelineDiagnostics: expect.objectContaining({
+          parserVariants: ['monthly-settlement'],
+          extractedRecordCount: 2
+        })
+      })
+    )
+
+    const nativeTrace = result.reservationPaymentOverviewDebug.reservationPlusNativeLinkTraces.find((trace) => trace.reference === '1811321483')
+    expect(nativeTrace?.rawParsedSourceRow?.data).toEqual(expect.objectContaining({
+      runtimeComgateParserVariant: 'monthly-settlement',
+      rawPopis: '20250587',
+      rawTransferVariableSymbol: '1811321483',
+      rawPayerVariableSymbol: '1357656777',
+      rawClientId: '108061915',
+      normalizedPayoutReference: '1811321483',
+      normalizedMerchantOrderReference: '20250587',
+      normalizedClientId: '108061915'
+    }))
   })
 
   it('shows a matched payout batch for the mini browser scenario with one daily Comgate CSV and one RB statement', async () => {
@@ -7199,6 +7317,50 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       roomName: 'A101'
     }
   ])
+}
+
+function buildInvoiceListWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    [
+      'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
+      'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
+      'Název', 'Celkem s DPH', 'Celkem bez DPH'
+    ],
+    ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+  ])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Seznam dokladů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
+}
+
+function buildInvoiceListProductionWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklady - export'],
+    [''],
+    ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260325', 'RES-PROD-UPLOAD', '22446688', '25.03.2026', '27.03.2026', 'Dana Upload', 'D404', 'Firma Upload', 'CID-U404', '4 500 Kč', '3 719 Kč']
+  ]), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Položky dokladů - export'],
+    [''],
+    ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260325', 'Ubytování', '4 000 Kč', '3 306 Kč'],
+    ['FA-20260325', 'Parkování na den', '500 Kč', '413 Kč']
+  ]), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '2']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 
 function buildPrevioWorkbookBase64FromRows(rows: Array<{

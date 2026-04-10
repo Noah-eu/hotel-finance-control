@@ -36,6 +36,20 @@ const DAILY_SETTLEMENT_REQUIRED_HEADERS = [
   'clientId'
 ]
 
+const MONTHLY_SETTLEMENT_REQUIRED_HEADERS = [
+  'transactionId',
+  'createdAt',
+  'paidAt',
+  'transferredAt',
+  'merchantOrderReference',
+  'payerVariableSymbol',
+  'transferReference',
+  'clientId',
+  'currency',
+  'confirmedAmountMinor',
+  'transferredAmountMinor'
+]
+
 const HEADER_ALIASES = {
   paidAt: ['paidAt', 'paid_at', 'paymentDate', 'datumPlatby', 'datum', 'datum zaplacení', 'datum úhrady'],
   amountMinor: ['amountMinor', 'amount_minor', 'amount', 'castka', 'částka', 'uhrazená částka', 'zaplacená částka', 'cena'],
@@ -53,12 +67,13 @@ const HEADER_ALIASES = {
   paymentType: ['paymentType', 'payment_type', 'typ transakce', 'typ platby']
 } satisfies Record<string, string[]>
 
-export type ComgateParserVariant = 'legacy' | 'current-portal' | 'daily-settlement'
+export type ComgateParserVariant = 'legacy' | 'current-portal' | 'daily-settlement' | 'monthly-settlement'
 
 export type ComgateDetectedFileKind =
   | 'legacy-guest-payments'
   | 'current-portal-guest-payments'
   | 'daily-settlement'
+  | 'monthly-settlement'
   | 'unknown'
 
 export interface ComgateHeaderDiagnostics {
@@ -86,6 +101,29 @@ interface DailySettlementFieldMap {
   merchant?: string
   paymentMethod?: string
   product?: string
+}
+
+interface MonthlySettlementFieldMap {
+  merchant?: string
+  createdAt?: string
+  paidAt?: string
+  transferredAt?: string
+  transactionId?: string
+  paymentMethod?: string
+  product?: string
+  merchantOrderReference?: string
+  payerEmail?: string
+  payerVariableSymbol?: string
+  transferReference?: string
+  clientId?: string
+  currency?: string
+  confirmedAmountMinor?: string
+  transferredAmountMinor?: string
+  totalFeeMinor?: string
+  interbankFeeMinor?: string
+  associationFeeMinor?: string
+  processorFeeMinor?: string
+  cardType?: string
 }
 
 interface DailySettlementSummary {
@@ -117,6 +155,17 @@ export class ComgateParser {
       return buildDailySettlementRecords(parsed, input, dailyFieldMap)
     }
 
+    if (parserVariant === 'monthly-settlement') {
+      const monthlyFieldMap = resolveMonthlySettlementFieldMap(parsed)
+      const missing = MONTHLY_SETTLEMENT_REQUIRED_HEADERS.filter((header) => !monthlyFieldMap[header as keyof MonthlySettlementFieldMap])
+
+      if (missing.length > 0) {
+        throw new Error(`Comgate export is missing required columns: ${missing.join(', ')}`)
+      }
+
+      return buildMonthlySettlementRecords(parsed, input, monthlyFieldMap)
+    }
+
     const missing = findMissingHeaders(
       rows,
       parserVariant === 'current-portal' ? CURRENT_PORTAL_REQUIRED_HEADERS : LEGACY_REQUIRED_HEADERS
@@ -133,12 +182,16 @@ export class ComgateParser {
 function detectComgateParserVariant(parsed: ParsedDelimitedContent): ComgateParserVariant {
   const headerSet = new Set(parsed.headers)
 
-  if (headerSet.has('payoutDate') && (headerSet.has('transactionId') || headerSet.has('paymentReference') || headerSet.has('paymentType'))) {
-    return 'current-portal'
+  if (isMonthlySettlementComgateShape(parsed)) {
+    return 'monthly-settlement'
   }
 
   if (isDailySettlementComgateShape(parsed)) {
     return 'daily-settlement'
+  }
+
+  if (headerSet.has('payoutDate') && (headerSet.has('transactionId') || headerSet.has('paymentReference') || headerSet.has('paymentType'))) {
+    return 'current-portal'
   }
 
   return 'legacy'
@@ -149,14 +202,21 @@ function buildComgateHeaderDiagnostics(parsed: ParsedDelimitedContent): ComgateH
   const detectedFileKind = detectComgateDetectedFileKind(parsed)
   const dailySettlementFieldMap = resolveDailySettlementFieldMap(parsed)
   const dailySettlementSummary = extractDailySettlementSummary(parsed.rows, dailySettlementFieldMap)
+  const monthlySettlementFieldMap = resolveMonthlySettlementFieldMap(parsed)
+  const monthlySettlementSummary = extractMonthlySettlementSummary(parsed.rows, monthlySettlementFieldMap)
   const requiredCanonicalHeaders = parserVariant === 'current-portal'
     ? CURRENT_PORTAL_REQUIRED_HEADERS
     : parserVariant === 'daily-settlement'
       ? DAILY_SETTLEMENT_REQUIRED_HEADERS
+      : parserVariant === 'monthly-settlement'
+        ? MONTHLY_SETTLEMENT_REQUIRED_HEADERS
       : LEGACY_REQUIRED_HEADERS
   const canonicalHeaders = parserVariant === 'daily-settlement'
     ? parsed.headerColumns.map((column) => resolveDailySettlementCanonicalHeader(column, dailySettlementFieldMap))
-    : [...parsed.headers]
+    : parserVariant === 'monthly-settlement'
+      ? parsed.headerColumns.map((column) => resolveMonthlySettlementCanonicalHeader(column, monthlySettlementFieldMap))
+      : [...parsed.headers]
+  const settlementSummary = parserVariant === 'monthly-settlement' ? monthlySettlementSummary : dailySettlementSummary
 
   return {
     rawHeaderRow: parsed.rawHeaderRow,
@@ -168,24 +228,30 @@ function buildComgateHeaderDiagnostics(parsed: ParsedDelimitedContent): ComgateH
     parserVariant,
     requiredCanonicalHeaders,
     missingCanonicalHeaders: requiredCanonicalHeaders.filter((header) => !canonicalHeaders.includes(header)),
-    containsExplicitSettlementTotal: dailySettlementSummary.containsExplicitSettlementTotal,
-    ...(typeof dailySettlementSummary.explicitSettlementTotalMinor === 'number'
-      ? { explicitSettlementTotalMinor: dailySettlementSummary.explicitSettlementTotalMinor }
+    containsExplicitSettlementTotal: settlementSummary.containsExplicitSettlementTotal,
+    ...(typeof settlementSummary.explicitSettlementTotalMinor === 'number'
+      ? { explicitSettlementTotalMinor: settlementSummary.explicitSettlementTotalMinor }
       : {}),
-    ...(typeof dailySettlementSummary.explicitSettlementGrossTotalMinor === 'number'
-      ? { explicitSettlementGrossTotalMinor: dailySettlementSummary.explicitSettlementGrossTotalMinor }
+    ...(typeof settlementSummary.explicitSettlementGrossTotalMinor === 'number'
+      ? { explicitSettlementGrossTotalMinor: settlementSummary.explicitSettlementGrossTotalMinor }
       : {}),
-    ...(parserVariant === 'daily-settlement' ? { componentRowCount: dailySettlementSummary.componentRowCount } : {})
+    ...(parserVariant === 'daily-settlement' || parserVariant === 'monthly-settlement'
+      ? { componentRowCount: settlementSummary.componentRowCount }
+      : {})
   }
 }
 
 function detectComgateDetectedFileKind(parsed: ParsedDelimitedContent): ComgateDetectedFileKind {
-  if (isCurrentPortalComgateHeaders(parsed.headers)) {
-    return 'current-portal-guest-payments'
+  if (isMonthlySettlementComgateShape(parsed)) {
+    return 'monthly-settlement'
   }
 
   if (isDailySettlementComgateShape(parsed)) {
     return 'daily-settlement'
+  }
+
+  if (isCurrentPortalComgateHeaders(parsed.headers)) {
+    return 'current-portal-guest-payments'
   }
 
   if (isLegacyComgateHeaders(parsed.headers)) {
@@ -221,6 +287,22 @@ function isDailySettlementComgateShape(parsed: ParsedDelimitedContent): boolean 
     && rawHeaders.some((header) => header.includes('eved'))
 }
 
+function isMonthlySettlementComgateShape(parsed: ParsedDelimitedContent): boolean {
+  const rawHeaders = parsed.headerColumns.map((column) => normalizeLooseHeader(column.rawHeader))
+
+  return rawHeaders.some((header) => header === 'merchant')
+    && rawHeaders.some((header) => header.includes('datum zalo'))
+    && rawHeaders.some((header) => header.includes('datum zaplac'))
+    && rawHeaders.some((header) => header.includes('datum') && header.includes('evod'))
+    && rawHeaders.some((header) => header.includes('comgate'))
+    && rawHeaders.some((header) => header.includes('popis'))
+    && rawHeaders.some((header) => header.includes('symbol') && (header.includes('plat') || header.includes('tce')))
+    && rawHeaders.some((header) => header.includes('symbol') && (header.includes('prevod') || header.includes('evod')))
+    && rawHeaders.some((header) => header.includes('id od klienta'))
+    && rawHeaders.some((header) => header.includes('potvrzen'))
+    && rawHeaders.some((header) => header.includes('eved'))
+}
+
 function resolveDailySettlementFieldMap(parsed: ParsedDelimitedContent): DailySettlementFieldMap {
   return parsed.headerColumns.reduce<DailySettlementFieldMap>((fieldMap, column) => {
     const canonicalHeader = resolveDailySettlementCanonicalHeader(column, fieldMap)
@@ -249,6 +331,39 @@ function resolveDailySettlementFieldMap(parsed: ParsedDelimitedContent): DailySe
         break
       case 'product':
         fieldMap.product = column.normalizedHeader
+        break
+    }
+
+    return fieldMap
+  }, {})
+}
+
+function resolveMonthlySettlementFieldMap(parsed: ParsedDelimitedContent): MonthlySettlementFieldMap {
+  return parsed.headerColumns.reduce<MonthlySettlementFieldMap>((fieldMap, column) => {
+    const canonicalHeader = resolveMonthlySettlementCanonicalHeader(column, fieldMap)
+
+    switch (canonicalHeader) {
+      case 'merchant':
+      case 'createdAt':
+      case 'paidAt':
+      case 'transferredAt':
+      case 'transactionId':
+      case 'paymentMethod':
+      case 'product':
+      case 'merchantOrderReference':
+      case 'payerEmail':
+      case 'payerVariableSymbol':
+      case 'transferReference':
+      case 'clientId':
+      case 'currency':
+      case 'confirmedAmountMinor':
+      case 'transferredAmountMinor':
+      case 'totalFeeMinor':
+      case 'interbankFeeMinor':
+      case 'associationFeeMinor':
+      case 'processorFeeMinor':
+      case 'cardType':
+        fieldMap[canonicalHeader] = column.normalizedHeader
         break
     }
 
@@ -293,6 +408,44 @@ function resolveDailySettlementCanonicalHeader(
   if (normalizedRawHeader.includes('eved')) {
     return 'transferredAmountMinor'
   }
+
+  if (fieldMap) {
+    for (const [key, value] of Object.entries(fieldMap)) {
+      if (value === column.normalizedHeader) {
+        return key
+      }
+    }
+  }
+
+  return column.normalizedHeader
+}
+
+function resolveMonthlySettlementCanonicalHeader(
+  column: ParsedDelimitedContent['headerColumns'][number],
+  fieldMap?: MonthlySettlementFieldMap
+): string {
+  const normalizedRawHeader = normalizeLooseHeader(column.rawHeader)
+
+  if (normalizedRawHeader === 'merchant') return 'merchant'
+  if (normalizedRawHeader.includes('datum zalo')) return 'createdAt'
+  if (normalizedRawHeader.includes('datum zaplac')) return 'paidAt'
+  if (normalizedRawHeader.includes('datum') && (normalizedRawHeader.includes('prevod') || normalizedRawHeader.includes('evod'))) return 'transferredAt'
+  if (normalizedRawHeader.includes('comgate')) return 'transactionId'
+  if (normalizedRawHeader.includes('metoda')) return 'paymentMethod'
+  if (normalizedRawHeader === 'produkt') return 'product'
+  if (normalizedRawHeader === 'popis') return 'merchantOrderReference'
+  if (normalizedRawHeader.includes('e-mail')) return 'payerEmail'
+  if (normalizedRawHeader.includes('symbol') && (normalizedRawHeader.includes('prevod') || normalizedRawHeader.includes('evod'))) return 'transferReference'
+  if (normalizedRawHeader.includes('symbol') && (normalizedRawHeader.includes('plat') || normalizedRawHeader.includes('tce'))) return 'payerVariableSymbol'
+  if (normalizedRawHeader.includes('id od klienta')) return 'clientId'
+  if (normalizedRawHeader === 'mena' || (normalizedRawHeader.startsWith('m') && normalizedRawHeader.endsWith('na'))) return 'currency'
+  if (normalizedRawHeader.includes('potvrzen')) return 'confirmedAmountMinor'
+  if (normalizedRawHeader.includes('preveden') || normalizedRawHeader.includes('eveden') || normalizedRawHeader.includes('eved')) return 'transferredAmountMinor'
+  if (normalizedRawHeader === 'poplatek celkem') return 'totalFeeMinor'
+  if (normalizedRawHeader.includes('mezibankovn')) return 'interbankFeeMinor'
+  if (normalizedRawHeader.includes('asociace')) return 'associationFeeMinor'
+  if (normalizedRawHeader.includes('zpracovatel')) return 'processorFeeMinor'
+  if (normalizedRawHeader.includes('typ karty')) return 'cardType'
 
   if (fieldMap) {
     for (const [key, value] of Object.entries(fieldMap)) {
@@ -351,8 +504,64 @@ function extractDailySettlementSummary(
   }
 }
 
+function extractMonthlySettlementSummary(
+  rows: Array<Record<string, string>>,
+  fieldMap: MonthlySettlementFieldMap
+): DailySettlementSummary {
+  let componentRowCount = 0
+  let explicitSettlementTotalMinor: number | undefined
+  let explicitSettlementGrossTotalMinor: number | undefined
+
+  for (const row of rows) {
+    if (isMonthlySettlementSummaryRow(row, fieldMap)) {
+      explicitSettlementTotalMinor = parseOptionalAmountMinor(
+        fieldMap.transferredAmountMinor ? row[fieldMap.transferredAmountMinor] : undefined,
+        'Comgate monthly settlement explicitSettlementTotalMinor'
+      )
+      explicitSettlementGrossTotalMinor = parseOptionalAmountMinor(
+        fieldMap.confirmedAmountMinor ? row[fieldMap.confirmedAmountMinor] : undefined,
+        'Comgate monthly settlement explicitSettlementGrossTotalMinor'
+      )
+      continue
+    }
+
+    if (isMonthlySettlementPaymentRow(row, fieldMap)) {
+      componentRowCount += 1
+    }
+  }
+
+  return {
+    componentRowCount,
+    containsExplicitSettlementTotal: typeof explicitSettlementTotalMinor === 'number',
+    ...(typeof explicitSettlementTotalMinor === 'number' ? { explicitSettlementTotalMinor } : {}),
+    ...(typeof explicitSettlementGrossTotalMinor === 'number' ? { explicitSettlementGrossTotalMinor } : {})
+  }
+}
+
 function isDailySettlementSummaryRow(row: Record<string, string>): boolean {
   return Object.values(row).some((value) => normalizeLooseHeader(value) === 'suma')
+}
+
+function isMonthlySettlementSummaryRow(
+  row: Record<string, string>,
+  fieldMap: MonthlySettlementFieldMap
+): boolean {
+  const product = normalizeLooseHeader(fieldMap.product ? row[fieldMap.product] ?? '' : '')
+  const description = normalizeLooseHeader(fieldMap.merchantOrderReference ? row[fieldMap.merchantOrderReference] ?? '' : '')
+
+  return product === 'suma' || description === 'suma'
+}
+
+function isMonthlySettlementPaymentRow(
+  row: Record<string, string>,
+  fieldMap: MonthlySettlementFieldMap
+): boolean {
+  if (isMonthlySettlementSummaryRow(row, fieldMap)) {
+    return false
+  }
+
+  const transactionId = trimOptionalValue(fieldMap.transactionId ? row[fieldMap.transactionId] : undefined)
+  return Boolean(transactionId && transactionId !== '-')
 }
 
 function buildDailySettlementRecords(
@@ -399,7 +608,7 @@ function buildDailySettlementRecords(
         transferredAmountMinor,
         ...(transferReference ? { reference: transferReference } : {}),
         ...(transactionId ? { transactionId } : {}),
-        ...(clientId ? { clientId } : {}),
+        ...(clientId ? { clientId, reservationId: clientId } : {}),
         ...(merchant ? { merchant } : {}),
         ...(paymentMethod ? { paymentMethod } : {}),
         ...(product ? { product } : {}),
@@ -410,6 +619,207 @@ function buildDailySettlementRecords(
           ? { explicitSettlementGrossTotalMinor: summary.explicitSettlementGrossTotalMinor }
           : {}),
         comgateParserVariant: 'daily-settlement'
+      }
+    })
+  }
+
+  return records
+}
+
+function buildMonthlySettlementRecords(
+  parsed: ParsedDelimitedContent,
+  input: ParseComgateExportInput,
+  fieldMap: MonthlySettlementFieldMap
+): ExtractedRecord[] {
+  const summary = extractMonthlySettlementSummary(parsed.rows, fieldMap)
+  const records: ExtractedRecord[] = []
+
+  for (const row of parsed.rows) {
+    if (isMonthlySettlementSummaryRow(row, fieldMap)) {
+      const transferredAt = parseOptionalIsoDate(
+        fieldMap.transferredAt ? row[fieldMap.transferredAt] : undefined,
+        'Comgate monthly settlement summary transferredAt'
+      )
+      const rawTransferVariableSymbol = fieldMap.transferReference ? row[fieldMap.transferReference] : undefined
+      const payoutReference = trimOptionalValue(rawTransferVariableSymbol)
+      const rawPopis = fieldMap.merchantOrderReference ? row[fieldMap.merchantOrderReference] : undefined
+      const rawPayerVariableSymbol = fieldMap.payerVariableSymbol ? row[fieldMap.payerVariableSymbol] : undefined
+      const rawClientId = fieldMap.clientId ? row[fieldMap.clientId] : undefined
+      const currency = trimOptionalValue(fieldMap.currency ? row[fieldMap.currency] : undefined)
+      const confirmedGrossMinor = parseOptionalAmountMinor(
+        fieldMap.confirmedAmountMinor ? row[fieldMap.confirmedAmountMinor] : undefined,
+        'Comgate monthly settlement summary confirmedGrossMinor'
+      )
+      const transferredNetMinor = parseOptionalAmountMinor(
+        fieldMap.transferredAmountMinor ? row[fieldMap.transferredAmountMinor] : undefined,
+        'Comgate monthly settlement summary transferredNetMinor'
+      )
+      const feeTotalMinor = parseOptionalAmountMinor(
+        fieldMap.totalFeeMinor ? row[fieldMap.totalFeeMinor] : undefined,
+        'Comgate monthly settlement summary feeTotalMinor'
+      )
+      const feeInterbankMinor = parseOptionalAmountMinor(
+        fieldMap.interbankFeeMinor ? row[fieldMap.interbankFeeMinor] : undefined,
+        'Comgate monthly settlement summary feeInterbankMinor'
+      )
+      const feeAssociationMinor = parseOptionalAmountMinor(
+        fieldMap.associationFeeMinor ? row[fieldMap.associationFeeMinor] : undefined,
+        'Comgate monthly settlement summary feeAssociationMinor'
+      )
+      const feeProcessorMinor = parseOptionalAmountMinor(
+        fieldMap.processorFeeMinor ? row[fieldMap.processorFeeMinor] : undefined,
+        'Comgate monthly settlement summary feeProcessorMinor'
+      )
+
+      if (!transferredAt || !payoutReference || !currency || typeof transferredNetMinor !== 'number') {
+        continue
+      }
+
+      records.push({
+        id: `comgate-summary-${records.filter((record) => record.recordType === 'payout-batch-summary').length + 1}`,
+        sourceDocumentId: input.sourceDocument.id,
+        recordType: 'payout-batch-summary',
+        extractedAt: input.extractedAt,
+        rawReference: payoutReference,
+        amountMinor: transferredNetMinor,
+        currency: currency.toUpperCase(),
+        occurredAt: transferredAt,
+        data: {
+          platform: 'comgate',
+          accountId: 'expected-payouts',
+          rowKind: 'payout-batch-summary',
+          payoutReference,
+          ...(rawPopis ? { rawPopis } : {}),
+          ...(rawTransferVariableSymbol ? { rawTransferVariableSymbol } : {}),
+          ...(rawPayerVariableSymbol ? { rawPayerVariableSymbol } : {}),
+          ...(rawClientId ? { rawClientId } : {}),
+          normalizedPayoutReference: payoutReference,
+          bookedAt: transferredAt,
+          transferredAt,
+          transferredNetMinor,
+          ...(typeof confirmedGrossMinor === 'number' ? { confirmedGrossMinor } : {}),
+          ...(typeof feeTotalMinor === 'number' ? { feeTotalMinor } : {}),
+          ...(typeof feeInterbankMinor === 'number' ? { feeInterbankMinor } : {}),
+          ...(typeof feeAssociationMinor === 'number' ? { feeAssociationMinor } : {}),
+          ...(typeof feeProcessorMinor === 'number' ? { feeProcessorMinor } : {}),
+          explicitSettlementTotalMinor: transferredNetMinor,
+          ...(typeof confirmedGrossMinor === 'number'
+            ? { explicitSettlementGrossTotalMinor: confirmedGrossMinor }
+            : {}),
+          comgateParserVariant: 'monthly-settlement',
+          runtimeComgateParserVariant: 'monthly-settlement'
+        }
+      })
+      continue
+    }
+
+    if (!isMonthlySettlementPaymentRow(row, fieldMap)) {
+      continue
+    }
+
+    const transactionId = trimOptionalValue(fieldMap.transactionId ? row[fieldMap.transactionId] : undefined)
+    const merchant = trimOptionalValue(fieldMap.merchant ? row[fieldMap.merchant] : undefined)
+    const paymentMethod = trimOptionalValue(fieldMap.paymentMethod ? row[fieldMap.paymentMethod] : undefined)
+    const product = trimOptionalValue(fieldMap.product ? row[fieldMap.product] : undefined)
+    const rawPopis = fieldMap.merchantOrderReference ? row[fieldMap.merchantOrderReference] : undefined
+    const merchantOrderReference = trimOptionalValue(rawPopis)
+    const payerEmail = trimOptionalValue(fieldMap.payerEmail ? row[fieldMap.payerEmail] : undefined)
+    const rawPayerVariableSymbol = fieldMap.payerVariableSymbol ? row[fieldMap.payerVariableSymbol] : undefined
+    const payerVariableSymbol = trimOptionalValue(rawPayerVariableSymbol)
+    const rawTransferVariableSymbol = fieldMap.transferReference ? row[fieldMap.transferReference] : undefined
+    const payoutReference = trimOptionalValue(rawTransferVariableSymbol)
+    const rawClientId = fieldMap.clientId ? row[fieldMap.clientId] : undefined
+    const clientId = trimOptionalValue(rawClientId)
+    const currency = trimOptionalValue(fieldMap.currency ? row[fieldMap.currency] : undefined)
+    const confirmedGrossMinor = parseAmountMinor(
+      fieldMap.confirmedAmountMinor ? row[fieldMap.confirmedAmountMinor] : '',
+      'Comgate monthly settlement confirmedGrossMinor'
+    )
+    const transferredNetMinor = parseAmountMinor(
+      fieldMap.transferredAmountMinor ? row[fieldMap.transferredAmountMinor] : '',
+      'Comgate monthly settlement transferredNetMinor'
+    )
+    const feeTotalMinor = parseOptionalAmountMinor(
+      fieldMap.totalFeeMinor ? row[fieldMap.totalFeeMinor] : undefined,
+      'Comgate monthly settlement feeTotalMinor'
+    )
+    const feeInterbankMinor = parseOptionalAmountMinor(
+      fieldMap.interbankFeeMinor ? row[fieldMap.interbankFeeMinor] : undefined,
+      'Comgate monthly settlement feeInterbankMinor'
+    )
+    const feeAssociationMinor = parseOptionalAmountMinor(
+      fieldMap.associationFeeMinor ? row[fieldMap.associationFeeMinor] : undefined,
+      'Comgate monthly settlement feeAssociationMinor'
+    )
+    const feeProcessorMinor = parseOptionalAmountMinor(
+      fieldMap.processorFeeMinor ? row[fieldMap.processorFeeMinor] : undefined,
+      'Comgate monthly settlement feeProcessorMinor'
+    )
+    const createdAt = parseOptionalIsoDate(
+      fieldMap.createdAt ? row[fieldMap.createdAt] : undefined,
+      'Comgate monthly settlement createdAt'
+    )
+    const paidAt = parseOptionalIsoDate(
+      fieldMap.paidAt ? row[fieldMap.paidAt] : undefined,
+      'Comgate monthly settlement paidAt'
+    )
+    const transferredAt = parseOptionalIsoDate(
+      fieldMap.transferredAt ? row[fieldMap.transferredAt] : undefined,
+      'Comgate monthly settlement transferredAt'
+    )
+    const bookedAt = transferredAt ?? paidAt ?? createdAt
+    const reference = payoutReference
+
+    records.push({
+      id: `comgate-row-${records.filter((record) => record.recordType === 'payout-line').length + 1}`,
+      sourceDocumentId: input.sourceDocument.id,
+      recordType: 'payout-line',
+      extractedAt: input.extractedAt,
+      ...(transactionId ? { rawReference: transactionId } : reference ? { rawReference: reference } : {}),
+      amountMinor: transferredNetMinor,
+      ...(currency ? { currency: currency.toUpperCase() } : {}),
+      ...(bookedAt ? { occurredAt: bookedAt } : {}),
+      data: {
+        platform: 'comgate',
+        accountId: 'expected-payouts',
+        amountMinor: transferredNetMinor,
+        currency: currency?.toUpperCase() ?? 'CZK',
+        ...(bookedAt ? { bookedAt } : {}),
+        ...(reference ? { reference } : {}),
+        ...(payoutReference ? { payoutReference } : {}),
+        ...(transactionId ? { transactionId } : {}),
+        ...(clientId ? { clientId, reservationId: clientId } : {}),
+        ...(merchantOrderReference ? { merchantOrderReference } : {}),
+        ...(rawPopis ? { rawPopis } : {}),
+        ...(rawTransferVariableSymbol ? { rawTransferVariableSymbol } : {}),
+        ...(rawPayerVariableSymbol ? { rawPayerVariableSymbol } : {}),
+        ...(rawClientId ? { rawClientId } : {}),
+        ...(payoutReference ? { normalizedPayoutReference: payoutReference } : {}),
+        ...(merchantOrderReference ? { normalizedMerchantOrderReference: merchantOrderReference } : {}),
+        ...(clientId ? { normalizedClientId: clientId } : {}),
+        ...(payerVariableSymbol ? { payerVariableSymbol } : {}),
+        ...(payerEmail ? { payerEmail } : {}),
+        ...(createdAt ? { createdAt } : {}),
+        ...(paidAt ? { paidAt } : {}),
+        ...(transferredAt ? { transferredAt } : {}),
+        confirmedGrossMinor,
+        transferredNetMinor,
+        ...(typeof feeTotalMinor === 'number' ? { feeTotalMinor, totalFeeMinor: feeTotalMinor } : {}),
+        ...(typeof feeInterbankMinor === 'number' ? { feeInterbankMinor, interbankFeeMinor: feeInterbankMinor } : {}),
+        ...(typeof feeAssociationMinor === 'number' ? { feeAssociationMinor, associationFeeMinor: feeAssociationMinor } : {}),
+        ...(typeof feeProcessorMinor === 'number' ? { feeProcessorMinor, processorFeeMinor: feeProcessorMinor } : {}),
+        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(product ? { product, paymentPurpose: product } : {}),
+        ...(merchant ? { merchant } : {}),
+        ...(typeof summary.explicitSettlementTotalMinor === 'number'
+          ? { explicitSettlementTotalMinor: summary.explicitSettlementTotalMinor }
+          : {}),
+        ...(typeof summary.explicitSettlementGrossTotalMinor === 'number'
+          ? { explicitSettlementGrossTotalMinor: summary.explicitSettlementGrossTotalMinor }
+          : {}),
+        comgateParserVariant: 'monthly-settlement',
+        runtimeComgateParserVariant: 'monthly-settlement',
+        ...(fieldMap.cardType && trimOptionalValue(row[fieldMap.cardType]) ? { cardType: trimOptionalValue(row[fieldMap.cardType]) } : {})
       }
     })
   }
@@ -485,6 +895,15 @@ function parseOptionalAmountMinor(value: string | undefined, fieldName: string):
   }
 
   return parseAmountMinor(normalized, fieldName)
+}
+
+function parseOptionalIsoDate(value: string | undefined, fieldName: string): string | undefined {
+  const normalized = trimOptionalValue(value)
+  if (!normalized || normalized === '-') {
+    return undefined
+  }
+
+  return parseIsoDate(normalized, fieldName)
 }
 
 function sumDefinedNumbers(values: Array<number | undefined>): number | undefined {

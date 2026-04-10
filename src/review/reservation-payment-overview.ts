@@ -1,6 +1,7 @@
 import type {
   AncillaryRevenueSourceRecord,
   ExtractedRecord,
+  InvoiceListEnrichmentRecord,
   NormalizedTransaction,
   ReservationSettlementMatch,
   ReservationSettlementNoMatch,
@@ -11,7 +12,7 @@ import { formatAmountMinorCs } from '../shared/money'
 
 export type ReservationPaymentOverviewBlockKey = 'airbnb' | 'booking' | 'expedia' | 'reservation_plus' | 'parking'
 export type ReservationPaymentStatusKey = 'paid' | 'partial' | 'unverified' | 'missing'
-export type ReservationPaymentEvidenceKey = 'payout' | 'comgate' | 'terminal' | 'bank' | 'no_evidence'
+export type ReservationPaymentEvidenceKey = 'payout' | 'comgate' | 'terminal' | 'bank' | 'invoice_list' | 'no_evidence'
 
 export interface ReservationPaymentAmountSummary {
   currency: string
@@ -85,6 +86,33 @@ export interface ReservationPaymentOverviewDebug {
   parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[]
   ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[]
   reservationPlusNativeLinkTraces: ReservationPaymentOverviewNativeLinkTrace[]
+  reservationPlusComgateMergeTraces: ReservationPaymentOverviewComgateMergeTrace[]
+  invoiceListLinkTraces: InvoiceListLinkTrace[]
+}
+
+export interface ReservationPaymentOverviewComgateMergeTrace {
+  finalOverviewItemId: string
+  linkedReservationId: string
+  linkedPaymentReference: string
+  chosenLinkReason: 'exact_refId_merge' | 'exact_clientId_merge' | 'no_merge'
+  reservationEntityMatchedByInvoiceList: boolean
+  nativeRowMergedIntoReservationEntity: boolean
+  mergeSource: 'reservation_entity' | 'none'
+  mergeAnchorType?: NativeReservationMergeAnchorType
+  noMergeReason?: 'not_reservation_plus' | 'no_reservation_anchor' | 'no_candidate' | 'ambiguous_candidates'
+  nativeComgateFallbackSuppressed: boolean
+  candidateCount: number
+  comparableReservationValues: string[]
+  comparableNativeAnchorsSample: string[]
+  mergedComgateRowId?: string
+  mergedComgateSourceDocumentId?: string
+  clientId?: string
+  variableSymbol?: string
+  comgateTransactionId?: string
+  reservationGuestName?: string
+  reservationRoomName?: string
+  reservationStayStartAt?: string
+  reservationStayEndAt?: string
 }
 
 type ReservationPaymentOverviewLinkReason =
@@ -94,6 +122,15 @@ type ReservationPaymentOverviewLinkReason =
   | 'ambiguous_exact_identity'
   | 'ambiguous_exact_stay_interval'
   | 'no_candidate'
+
+type NativeReservationMergeAnchorType =
+  | 'reservation_id'
+  | 'reservation_reference'
+  | 'invoice_list_voucher'
+  | 'invoice_list_customer_id'
+  | 'invoice_list_variable_symbol'
+  | 'invoice_list_invoice_number'
+  | 'invoice_list_stay_interval'
 
 export interface ReservationPaymentOverviewAncillaryLinkCandidate {
   sourceDocumentId: string
@@ -191,6 +228,28 @@ export interface ReservationPaymentOverviewNativeRawParsedRow {
     platform?: string
     reference?: string
     reservationId?: string
+    clientId?: string
+    merchantOrderReference?: string
+    payerVariableSymbol?: string
+    rawPopis?: string
+    rawTransferVariableSymbol?: string
+    rawPayerVariableSymbol?: string
+    rawClientId?: string
+    normalizedPayoutReference?: string
+    normalizedMerchantOrderReference?: string
+    normalizedClientId?: string
+    runtimeComgateParserVariant?: string
+    createdAt?: string
+    paidAt?: string
+    transferredAt?: string
+    confirmedGrossMinor?: number
+    transferredNetMinor?: number
+    feeTotalMinor?: number
+    feeInterbankMinor?: number
+    feeAssociationMinor?: number
+    feeProcessorMinor?: number
+    paymentMethod?: string
+    cardType?: string
     bookedAt?: string
     paymentPurpose?: string
     transactionId?: string
@@ -237,7 +296,42 @@ export interface ReservationPaymentOverviewNativeLinkTrace {
   candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  invoiceListCandidateCount: number
+  invoiceListExactIdentityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactDocumentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactStayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  merchantOrderReferenceAnchorFamily: 'empty' | 'numeric' | 'alpha_numeric' | 'mixed'
+  invoiceListVoucherHits: number
+  invoiceListVariableSymbolHits: number
+  invoiceListInvoiceNumberHits: number
+  reservationEntityBridgeHits: number
+  candidateSetAfterFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'ambiguous_multiple_exact_counterparts' | 'no_exact_counterpart_in_selected_files'
+  unresolvedClassification?: 'resolved' | 'exact_counterpart_exists_should_link' | 'ambiguous_multiple_exact_counterparts' | 'no_exact_counterpart_in_selected_files'
+  exactCounterpartExists: boolean
+  ambiguousExactCounterparts: boolean
+  noExactCounterpartInSelectedFiles?: boolean
+  exactCounterpartSourceFamily?: 'reservation_reference' | 'reservation_entity_bridge' | 'voucher' | 'variable_symbol' | 'invoice_number' | 'none'
+  exactCounterpartKey?: string
+  counterpartMonthRelation?: 'same_month' | 'different_month' | 'mixed_multiple_months' | 'unknown'
+  chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
+}
+
+export interface ReservationPaymentOverviewInvoiceListLinkCandidate {
+  sourceDocumentId: string
+  reservationId?: string
+  reference?: string
+  invoiceDocumentType?: string
+  invoiceLineDocumentType?: string
+  voucher?: string
+  variableSymbol?: string
+  invoiceNumber?: string
+  customerId?: string
+  guestName?: string
+  stayStartAt?: string
+  stayEndAt?: string
+  roomName?: string
 }
 
 interface AncillaryLinkInspection {
@@ -247,6 +341,95 @@ interface AncillaryLinkInspection {
   exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
+}
+
+interface NativeLinkInspection {
+  linkedReservation?: ReservationSourceRecord
+  linkedInvoiceRecord?: InvoiceListEnrichmentRecord
+  linkedInvoiceReason?: InvoiceListLinkReason
+  candidateCount: number
+  candidateSetBeforeFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactIdentityHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  exactStayIntervalHits: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  invoiceListCandidateCount: number
+  invoiceListExactIdentityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactDocumentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceListExactStayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  merchantOrderReferenceAnchorFamily: 'empty' | 'numeric' | 'alpha_numeric' | 'mixed'
+  invoiceListVoucherHits: number
+  invoiceListVariableSymbolHits: number
+  invoiceListInvoiceNumberHits: number
+  reservationEntityBridgeHits: number
+  candidateSetAfterFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
+  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'ambiguous_multiple_exact_counterparts' | 'no_exact_counterpart_in_selected_files'
+  unresolvedClassification?: 'resolved' | 'exact_counterpart_exists_should_link' | 'ambiguous_multiple_exact_counterparts' | 'no_exact_counterpart_in_selected_files'
+  exactCounterpartExists: boolean
+  ambiguousExactCounterparts: boolean
+  noExactCounterpartInSelectedFiles?: boolean
+  exactCounterpartSourceFamily?: 'reservation_reference' | 'reservation_entity_bridge' | 'voucher' | 'variable_symbol' | 'invoice_number' | 'none'
+  exactCounterpartKey?: string
+  counterpartMonthRelation?: 'same_month' | 'different_month' | 'mixed_multiple_months' | 'unknown'
+  chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
+  chosenCandidateReason: ReservationPaymentOverviewLinkReason
+}
+
+export type InvoiceListLinkReason =
+  | 'exact_voucher'
+  | 'exact_variable_symbol'
+  | 'exact_customer_id'
+  | 'exact_stay_room'
+  | 'no_match'
+
+export interface InvoiceListLinkTrace {
+  overviewItemId: string
+  blockKey: ReservationPaymentOverviewBlockKey
+  anchorUsed: InvoiceListLinkReason
+  candidateCount: number
+  linkedGuestName?: string
+  linkedStayStartAt?: string
+  linkedStayEndAt?: string
+  linkedRoomName?: string
+  linkedVoucher?: string
+  linkedVariableSymbol?: string
+  invoiceListEvidenceEligible: boolean
+  invoiceListEvidenceApplied: boolean
+  invoiceListEvidenceBlockedReason?: 'blocked_airbnb' | 'blocked_parking' | 'blocked_no_anchor'
+  invoiceListEvidenceAnchorType?: InvoiceListLinkReason
+}
+
+interface InvoiceListLinkResult {
+  record: InvoiceListEnrichmentRecord
+  reason: InvoiceListLinkReason
+}
+
+interface InvoiceListEvidenceResult {
+  eligible: boolean
+  applied: boolean
+  blockedReason?: 'blocked_airbnb' | 'blocked_parking' | 'blocked_no_anchor'
+  anchorType?: InvoiceListLinkReason
+}
+
+function resolveInvoiceListEvidence(
+  blockKey: ReservationPaymentOverviewBlockKey,
+  link: InvoiceListLinkResult | undefined
+): InvoiceListEvidenceResult {
+  if (!link) {
+    return { eligible: false, applied: false, blockedReason: 'blocked_no_anchor' }
+  }
+
+  if (blockKey === 'airbnb') {
+    return { eligible: false, applied: false, blockedReason: 'blocked_airbnb', anchorType: link.reason }
+  }
+
+  if (blockKey === 'parking') {
+    return { eligible: false, applied: false, blockedReason: 'blocked_parking', anchorType: link.reason }
+  }
+
+  if (!INVOICE_LIST_EVIDENCE_ELIGIBLE_BLOCKS.has(blockKey)) {
+    return { eligible: false, applied: false, blockedReason: 'blocked_no_anchor', anchorType: link.reason }
+  }
+
+  return { eligible: true, applied: true, anchorType: link.reason }
 }
 
 interface ExtractedRecordLookup {
@@ -310,8 +493,12 @@ const EVIDENCE_LABELS: Record<ReservationPaymentEvidenceKey, string> = {
   comgate: 'Comgate',
   terminal: 'terminál',
   bank: 'banka',
+  invoice_list: 'faktura',
   no_evidence: 'bez důkazu'
 }
+
+const INVOICE_LIST_EVIDENCE_ELIGIBLE_BLOCKS: ReadonlySet<ReservationPaymentOverviewBlockKey> =
+  new Set<ReservationPaymentOverviewBlockKey>(['booking', 'expedia', 'reservation_plus'])
 
 export function buildReservationPaymentOverview(batch: MonthlyBatchResult): ReservationPaymentOverview {
   const workflowPlan = batch.reconciliation.workflowPlan
@@ -322,6 +509,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
 
   const extractedRecordLookup = buildExtractedRecordLookup(batch.extractedRecords)
   const previoReservationStructureIndex = buildPrevioReservationStructureIndex(batch.extractedRecords)
+  const invoiceListRecords = workflowPlan.invoiceListEnrichment ?? []
   const transactionsById = new Map<string, NormalizedTransaction>(
     batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
   )
@@ -358,6 +546,15 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const directMatch = matchesBySourceKey.get(sourceKey)
       ?? resolveBookingConfirmedPayoutMatch(workflowPlan.reservationSettlementMatches, reservation, blockKey)
       ?? resolveBookingExactPayoutRowMatch(workflowPlan.payoutRows, reservation, blockKey)
+      ?? resolveComgateExactPayoutRowMatch(
+        workflowPlan.payoutRows,
+        reservation,
+        blockKey,
+        extractedRecordLookup,
+        transactionsById,
+        consumedRowIds,
+        invoiceListRecords
+      )
     const bookingPayoutBatchBridge = !directMatch
       ? resolveBookingConfirmedPayoutBatchBridge(batch, reservation, blockKey)
       : undefined
@@ -373,14 +570,28 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
     const noMatch = !match
       ? noMatchesBySourceKey.get(sourceKey)
       : undefined
+    const invoiceListReservationLink = !match
+      ? findInvoiceListEnrichmentForItem(
+        { voucher: reservation.reference ?? reservation.reservationId },
+        invoiceListRecords
+      ).match
+      : undefined
+    const invoiceListEvidence = !match
+      ? resolveInvoiceListEvidence(blockKey, invoiceListReservationLink)
+      : undefined
     const paidAmountMinor = resolveMatchedPaidAmountMinor(match, transactionsById) ?? resolvePaidAmountFromOutstanding(reservation)
+    const hasStrongEvidence = Boolean(match) || (invoiceListEvidence?.applied === true)
     const statusKey = resolveReservationStatus({
       expectedAmountMinor: reservation.grossRevenueMinor,
       outstandingBalanceMinor: reservation.outstandingBalanceMinor,
-      hasStrongEvidence: Boolean(match),
+      hasStrongEvidence,
       blockKey
     })
-    const evidenceKey = match ? mapEvidenceKeyFromMatch(match) : 'no_evidence'
+    const evidenceKey = match
+      ? mapEvidenceKeyFromMatch(match)
+      : invoiceListEvidence?.applied
+        ? 'invoice_list'
+        : 'no_evidence'
     const bookingConfirmationTrace = buildBookingReservationConfirmationTrace(
       batch,
       reservation,
@@ -404,7 +615,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: reservation.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
+      statusDetailCs: invoiceListEvidence?.applied
+        ? 'Fakturační evidence (Invoice list) potvrzuje úhradu rezervace.'
+        : buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: collectReservationSourceDocumentIds(reservation, match, bookingPayoutBatchBridge),
@@ -460,22 +673,45 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       previoReservationStructureIndex
     )
     const linkedReservation = ancillaryLinkInspection.linkedReservation
-    const linkedStayValue = linkedReservation
-      ? buildStayOrDateValue(linkedReservation.stayStartAt, linkedReservation.stayEndAt, undefined)
+    const invoiceListAncillaryLink = !linkedReservation
+      ? blockKey === 'parking'
+        ? findInvoiceListEnrichmentForParkingItem(
+          { voucher: ancillary.reference, variableSymbol: undefined, itemLabel: ancillary.itemLabel },
+          invoiceListRecords
+        )
+        : findInvoiceListEnrichmentForItem(
+          { voucher: ancillary.reference },
+          invoiceListRecords
+        ).match
       : undefined
+    const effectiveAncillaryGuestName = linkedReservation?.guestName ?? invoiceListAncillaryLink?.record.guestName
+    const effectiveAncillaryStayStartAt = linkedReservation?.stayStartAt ?? invoiceListAncillaryLink?.record.stayStartAt
+    const effectiveAncillaryStayEndAt = linkedReservation?.stayEndAt ?? invoiceListAncillaryLink?.record.stayEndAt
+    const effectiveAncillaryRoomName = linkedReservation?.roomName ?? invoiceListAncillaryLink?.record.roomName
+    const linkedStayValue = effectiveAncillaryStayStartAt
+      ? buildStayOrDateValue(effectiveAncillaryStayStartAt, effectiveAncillaryStayEndAt, undefined)
+      : undefined
+    const invoiceListAncillaryEvidence = !candidate
+      ? resolveInvoiceListEvidence(blockKey, invoiceListAncillaryLink)
+      : undefined
+    const ancillaryHasStrongEvidence = Boolean(candidate) || (invoiceListAncillaryEvidence?.applied === true)
     const statusKey = resolveReservationStatus({
       expectedAmountMinor: ancillary.grossRevenueMinor,
       outstandingBalanceMinor: ancillary.outstandingBalanceMinor,
-      hasStrongEvidence: Boolean(candidate),
+      hasStrongEvidence: ancillaryHasStrongEvidence,
       blockKey
     })
-    const evidenceKey: ReservationPaymentEvidenceKey = candidate ? mapEvidenceKeyFromPlatform(candidate.platform) : 'no_evidence'
+    const evidenceKey: ReservationPaymentEvidenceKey = candidate
+      ? mapEvidenceKeyFromPlatform(candidate.platform)
+      : invoiceListAncillaryEvidence?.applied
+        ? 'invoice_list'
+        : 'no_evidence'
 
     items.push({
       id: buildAncillaryOverviewItemId(ancillary),
       blockKey,
       title: ancillary.itemLabel ?? ancillary.reference,
-      subtitle: linkedReservation?.roomName ?? (ancillary.reservationId ? `Rezervace ${ancillary.reservationId}` : undefined),
+      subtitle: effectiveAncillaryRoomName ?? (ancillary.reservationId ? `Rezervace ${ancillary.reservationId}` : undefined),
       primaryReference: ancillary.reference,
       secondaryReference: ancillary.reservationId && ancillary.reservationId !== ancillary.reference
         ? ancillary.reservationId
@@ -487,15 +723,17 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       currency: ancillary.currency,
       statusKey,
       statusLabelCs: STATUS_LABELS[statusKey],
-      statusDetailCs: buildAncillaryStatusDetailCs(candidate, statusKey),
+      statusDetailCs: invoiceListAncillaryEvidence?.applied
+        ? 'Doplňková položka je potvrzená přes fakturační evidenci (Invoice list).'
+        : buildAncillaryStatusDetailCs(candidate, statusKey),
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: [ancillary.sourceDocumentId],
       transactionIds: candidate ? [candidate.rowId] : [],
       detailEntries: compactDetailEntries([
-        buildDetailEntry('Host', linkedReservation?.guestName),
+        buildDetailEntry('Host', effectiveAncillaryGuestName),
         buildDetailEntry('Pobyt', linkedStayValue),
-        buildDetailEntry('Jednotka', linkedReservation?.roomName),
+        buildDetailEntry('Jednotka', effectiveAncillaryRoomName),
         buildDetailEntry('Kanál', toChannelLabel(ancillary.channel, blockKey)),
         buildDetailEntry('Rezervace', ancillary.reservationId),
         buildDetailEntry(
@@ -578,15 +816,51 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       )
       const blockKey = parkingLike ? 'parking' : 'reservation_plus'
       const nativeLinkInspection = !parkingLike
-        ? inspectLinkedReservationForReservationPlusNativeRow(row, extractedRecord, reservationSources)
+        ? inspectLinkedReservationForReservationPlusNativeRow(
+          row,
+          extractedRecord,
+          reservationSources,
+          invoiceListRecords
+        )
         : undefined
       const linkedReservation = nativeLinkInspection?.linkedReservation
-      const linkedStayValue = linkedReservation
-        ? buildStayOrDateValue(linkedReservation.stayStartAt, linkedReservation.stayEndAt, undefined)
+      const invoiceListLink = !linkedReservation
+        ? (nativeLinkInspection?.linkedInvoiceRecord
+          ? {
+              record: nativeLinkInspection.linkedInvoiceRecord,
+              reason: nativeLinkInspection.linkedInvoiceReason ?? 'exact_voucher'
+            }
+          : parkingLike
+          ? findInvoiceListEnrichmentForParkingItem(
+            {
+              voucher: readString(extractedRecord?.data.merchantOrderReference)
+                ?? readString(extractedRecord?.data.reservationId)
+                ?? readString(extractedRecord?.data.clientId),
+              variableSymbol: readString(extractedRecord?.data.reference),
+              itemLabel: readString(extractedRecord?.data.paymentPurpose)
+            },
+            invoiceListRecords
+          )
+        : findInvoiceListEnrichmentForItem(
+            {
+              voucher: readString(extractedRecord?.data.merchantOrderReference)
+                ?? readString(extractedRecord?.data.reservationId)
+                ?? readString(extractedRecord?.data.clientId),
+              variableSymbol: readString(extractedRecord?.data.reference)
+            },
+            invoiceListRecords
+          ).match)
+        : undefined
+      const effectiveGuestName = linkedReservation?.guestName ?? invoiceListLink?.record.guestName
+      const effectiveStayStartAt = linkedReservation?.stayStartAt ?? invoiceListLink?.record.stayStartAt
+      const effectiveStayEndAt = linkedReservation?.stayEndAt ?? invoiceListLink?.record.stayEndAt
+      const effectiveRoomName = linkedReservation?.roomName ?? invoiceListLink?.record.roomName
+      const linkedStayValue = effectiveStayStartAt
+        ? buildStayOrDateValue(effectiveStayStartAt, effectiveStayEndAt, undefined)
         : undefined
       const title = parkingLike
         ? readString(extractedRecord?.data.reference) ?? row.payoutReference
-        : linkedReservation?.guestName ?? row.reservationId ?? row.payoutReference
+        : effectiveGuestName ?? row.reservationId ?? row.payoutReference
 
       items.push({
         id: `reservation-payment:native:${row.rowId}`,
@@ -594,7 +868,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         title,
         subtitle: parkingLike
           ? 'Parkovací platba'
-          : linkedReservation?.roomName ?? 'Vlastní web / Reservation+',
+          : effectiveRoomName ?? 'Vlastní web / Reservation+',
         primaryReference: row.reservationId ?? row.payoutReference,
         secondaryReference: row.reservationId && row.payoutReference !== row.reservationId ? row.payoutReference : undefined,
         dateLabelCs: 'Datum platby',
@@ -612,9 +886,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         sourceDocumentIds: transaction.sourceDocumentIds.slice(),
         transactionIds: [row.rowId],
         detailEntries: compactDetailEntries([
-          buildDetailEntry('Host', linkedReservation?.guestName),
+          buildDetailEntry('Host', effectiveGuestName),
           buildDetailEntry('Pobyt', linkedStayValue),
-          buildDetailEntry('Jednotka', linkedReservation?.roomName),
+          buildDetailEntry('Jednotka', effectiveRoomName),
           buildDetailEntry('Účel platby', parkingLike ? 'parking' : paymentPurpose === 'websitereservation' ? 'website-reservation' : readString(extractedRecord?.data.paymentPurpose)),
           buildDetailEntry('Comgate reference', row.payoutReference)
         ]),
@@ -676,6 +950,8 @@ export function inspectReservationPaymentOverviewClassification(
   const parkingLikeCandidates: ReservationPaymentOverviewDebugCandidate[] = []
   const ancillaryLinkTraces: ReservationPaymentOverviewAncillaryLinkTrace[] = []
   const reservationPlusNativeLinkTraces: ReservationPaymentOverviewNativeLinkTrace[] = []
+  const reservationPlusComgateMergeTraces: ReservationPaymentOverviewComgateMergeTrace[] = []
+  const invoiceListLinkTraces: InvoiceListLinkTrace[] = []
   let parkingCandidatesBeforeGrouping = 0
   let reservationPlusCandidatesBeforeGrouping = 0
 
@@ -724,6 +1000,99 @@ export function inspectReservationPaymentOverviewClassification(
             ? 'Parking-like reservation source resolved into reservation_plus before grouping.'
             : 'Parking-like reservation source resolved into a non-parking OTA block before grouping.'
       })
+    }
+
+    if (blockKey === 'reservation_plus') {
+      const debugConsumedRowIds = new Set(consumedRowIds)
+      const comgateMergeDiag = diagnoseComgateExactPayoutRowMerge(
+        workflowPlan.payoutRows,
+        reservation,
+        blockKey,
+        extractedRecordLookup,
+        transactionsById,
+        debugConsumedRowIds,
+        workflowPlan.invoiceListEnrichment ?? []
+      )
+      const comgateMergeMatch = comgateMergeDiag.match
+      const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
+
+      let mergeTraceClientId: string | undefined
+      let mergeTraceVariableSymbol: string | undefined
+      let mergeTraceComgateTransactionId: string | undefined
+      let mergeTraceChosenLinkReason: ReservationPaymentOverviewComgateMergeTrace['chosenLinkReason'] = 'no_merge'
+
+      if (comgateMergeMatch?.matchedRowId) {
+        const mergedTransaction = transactionsById.get(comgateMergeMatch.matchedRowId)
+        const mergedExtractedRecord = mergedTransaction
+          ? findFirstExtractedRecord(mergedTransaction, extractedRecordLookup)
+          : undefined
+        mergeTraceClientId = readString(mergedExtractedRecord?.data.clientId) || undefined
+        mergeTraceVariableSymbol = readString(mergedExtractedRecord?.data.reference) || undefined
+        mergeTraceComgateTransactionId = readString(mergedExtractedRecord?.data.transactionId) || undefined
+        mergeTraceChosenLinkReason = mergeTraceClientId ? 'exact_clientId_merge' : 'exact_refId_merge'
+      }
+
+      reservationPlusComgateMergeTraces.push({
+        finalOverviewItemId: `reservation-payment:${sourceKey}`,
+        linkedReservationId: reservation.reservationId,
+        linkedPaymentReference: comgateMergeMatch?.matchedRowId ?? '',
+        chosenLinkReason: mergeTraceChosenLinkReason,
+        reservationEntityMatchedByInvoiceList: comgateMergeDiag.reservationEntityMatchedByInvoiceList,
+        nativeRowMergedIntoReservationEntity: Boolean(comgateMergeMatch),
+        mergeSource: comgateMergeMatch ? 'reservation_entity' : 'none',
+        mergeAnchorType: comgateMergeDiag.mergeAnchorType,
+        noMergeReason: mergeTraceChosenLinkReason === 'no_merge' ? comgateMergeDiag.noMergeReason : undefined,
+        nativeComgateFallbackSuppressed: Boolean(comgateMergeMatch),
+        candidateCount: comgateMergeDiag.candidateCount,
+        comparableReservationValues: comgateMergeDiag.comparableReservationValues,
+        comparableNativeAnchorsSample: comgateMergeDiag.comparableNativeAnchorsSample,
+        mergedComgateRowId: comgateMergeMatch?.matchedRowId,
+        mergedComgateSourceDocumentId: comgateMergeMatch?.evidence.find((e) => e.key === 'payoutRowSourceDocumentId')?.value as string | undefined,
+        clientId: mergeTraceClientId,
+        variableSymbol: mergeTraceVariableSymbol,
+        comgateTransactionId: mergeTraceComgateTransactionId,
+        reservationGuestName: reservation.guestName,
+        reservationRoomName: reservation.roomName,
+        reservationStayStartAt: reservation.stayStartAt,
+        reservationStayEndAt: reservation.stayEndAt
+      })
+
+      if (comgateMergeMatch?.matchedRowId) {
+        consumedRowIds.add(comgateMergeMatch.matchedRowId)
+      }
+    }
+
+    const invoiceListDebugRecords = workflowPlan.invoiceListEnrichment ?? []
+    const sourceKey = buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId)
+    const hasExistingMatch = workflowPlan.reservationSettlementMatches.some(
+      (m) => buildReservationSourceKey(m.sourceDocumentId, m.reservationId) === sourceKey
+    )
+
+    if (!hasExistingMatch) {
+      const debugInvoiceLink = findInvoiceListEnrichmentForItem(
+        { voucher: reservation.reference ?? reservation.reservationId },
+        invoiceListDebugRecords
+      ).match
+      const debugEvidence = resolveInvoiceListEvidence(blockKey, debugInvoiceLink)
+
+      if (debugInvoiceLink) {
+        invoiceListLinkTraces.push({
+          overviewItemId: `reservation-payment:${sourceKey}`,
+          blockKey,
+          anchorUsed: debugInvoiceLink.reason,
+          candidateCount: 1,
+          linkedGuestName: debugInvoiceLink.record.guestName,
+          linkedStayStartAt: debugInvoiceLink.record.stayStartAt,
+          linkedStayEndAt: debugInvoiceLink.record.stayEndAt,
+          linkedRoomName: debugInvoiceLink.record.roomName,
+          linkedVoucher: debugInvoiceLink.record.voucher,
+          linkedVariableSymbol: debugInvoiceLink.record.variableSymbol,
+          invoiceListEvidenceEligible: debugEvidence.eligible,
+          invoiceListEvidenceApplied: debugEvidence.applied,
+          invoiceListEvidenceBlockedReason: debugEvidence.blockedReason,
+          invoiceListEvidenceAnchorType: debugEvidence.anchorType
+        })
+      }
     }
   }
 
@@ -814,7 +1183,8 @@ export function inspectReservationPaymentOverviewClassification(
         const nativeLinkInspection = inspectLinkedReservationForReservationPlusNativeRow(
           row,
           extractedRecord,
-          reservationSources
+          reservationSources,
+          workflowPlan.invoiceListEnrichment ?? []
         )
 
         reservationPlusNativeLinkTraces.push({
@@ -828,15 +1198,34 @@ export function inspectReservationPaymentOverviewClassification(
           normalizedNativeRow: buildNativeNormalizedRowPayload(row, extractedRecord),
           overviewLinkingInput: buildNativeLinkingInputPayload(row, extractedRecord),
           computedBlockKey: 'reservation_plus',
-          linkedMainReservationId: nativeLinkInspection.linkedReservation?.reservationId,
-          linkedGuestName: nativeLinkInspection.linkedReservation?.guestName,
-          linkedStayStartAt: nativeLinkInspection.linkedReservation?.stayStartAt,
-          linkedStayEndAt: nativeLinkInspection.linkedReservation?.stayEndAt,
-          linkedRoomName: nativeLinkInspection.linkedReservation?.roomName,
+          linkedMainReservationId: nativeLinkInspection.linkedReservation?.reservationId ?? nativeLinkInspection.linkedInvoiceRecord?.voucher,
+          linkedGuestName: nativeLinkInspection.linkedReservation?.guestName ?? nativeLinkInspection.linkedInvoiceRecord?.guestName,
+          linkedStayStartAt: nativeLinkInspection.linkedReservation?.stayStartAt ?? nativeLinkInspection.linkedInvoiceRecord?.stayStartAt,
+          linkedStayEndAt: nativeLinkInspection.linkedReservation?.stayEndAt ?? nativeLinkInspection.linkedInvoiceRecord?.stayEndAt,
+          linkedRoomName: nativeLinkInspection.linkedReservation?.roomName ?? nativeLinkInspection.linkedInvoiceRecord?.roomName,
           candidateCount: nativeLinkInspection.candidateCount,
           candidateSetBeforeFiltering: nativeLinkInspection.candidateSetBeforeFiltering,
           exactIdentityHits: nativeLinkInspection.exactIdentityHits,
           exactStayIntervalHits: nativeLinkInspection.exactStayIntervalHits,
+          invoiceListCandidateCount: nativeLinkInspection.invoiceListCandidateCount,
+          invoiceListExactIdentityHits: nativeLinkInspection.invoiceListExactIdentityHits,
+          invoiceListExactDocumentHits: nativeLinkInspection.invoiceListExactDocumentHits,
+          invoiceListExactStayIntervalHits: nativeLinkInspection.invoiceListExactStayIntervalHits,
+          merchantOrderReferenceAnchorFamily: nativeLinkInspection.merchantOrderReferenceAnchorFamily,
+          invoiceListVoucherHits: nativeLinkInspection.invoiceListVoucherHits,
+          invoiceListVariableSymbolHits: nativeLinkInspection.invoiceListVariableSymbolHits,
+          invoiceListInvoiceNumberHits: nativeLinkInspection.invoiceListInvoiceNumberHits,
+          reservationEntityBridgeHits: nativeLinkInspection.reservationEntityBridgeHits,
+          candidateSetAfterFiltering: nativeLinkInspection.candidateSetAfterFiltering,
+          candidateCountBlockedReason: nativeLinkInspection.candidateCountBlockedReason,
+          unresolvedClassification: nativeLinkInspection.unresolvedClassification,
+          exactCounterpartExists: nativeLinkInspection.exactCounterpartExists,
+          ambiguousExactCounterparts: nativeLinkInspection.ambiguousExactCounterparts,
+          noExactCounterpartInSelectedFiles: nativeLinkInspection.noExactCounterpartInSelectedFiles,
+          exactCounterpartSourceFamily: nativeLinkInspection.exactCounterpartSourceFamily,
+          exactCounterpartKey: nativeLinkInspection.exactCounterpartKey,
+          counterpartMonthRelation: nativeLinkInspection.counterpartMonthRelation,
+          chosenCandidateSource: nativeLinkInspection.chosenCandidateSource,
           chosenCandidateReason: nativeLinkInspection.chosenCandidateReason
         })
       }
@@ -903,6 +1292,102 @@ export function inspectReservationPaymentOverviewClassification(
       exactStayIntervalHits: linkInspection.exactStayIntervalHits,
       chosenCandidateReason: linkInspection.chosenCandidateReason
     })
+
+    if (!linkInspection.linkedReservation) {
+      const invoiceListDebugRecordsForAncillary = workflowPlan.invoiceListEnrichment ?? []
+      const ancillaryBlockKey = resolveAncillaryBlockKey(ancillary)
+      const ancillaryInvoiceLink = ancillaryBlockKey === 'parking'
+        ? findInvoiceListEnrichmentForParkingItem(
+          { voucher: ancillary.reference, variableSymbol: undefined, itemLabel: ancillary.itemLabel },
+          invoiceListDebugRecordsForAncillary
+        )
+        : findInvoiceListEnrichmentForItem(
+          { voucher: ancillary.reference },
+          invoiceListDebugRecordsForAncillary
+        ).match
+      const ancillaryDebugEvidence = resolveInvoiceListEvidence(ancillaryBlockKey, ancillaryInvoiceLink)
+
+      if (ancillaryInvoiceLink) {
+        const candidate = findAncillaryCandidate(workflowPlan.payoutRows, ancillary)
+        invoiceListLinkTraces.push({
+          overviewItemId: buildAncillaryOverviewItemId(ancillary),
+          blockKey: ancillaryBlockKey,
+          anchorUsed: ancillaryInvoiceLink.reason,
+          candidateCount: 1,
+          linkedGuestName: ancillaryInvoiceLink.record.guestName,
+          linkedStayStartAt: ancillaryInvoiceLink.record.stayStartAt,
+          linkedStayEndAt: ancillaryInvoiceLink.record.stayEndAt,
+          linkedRoomName: ancillaryInvoiceLink.record.roomName,
+          linkedVoucher: ancillaryInvoiceLink.record.voucher,
+          linkedVariableSymbol: ancillaryInvoiceLink.record.variableSymbol,
+          invoiceListEvidenceEligible: ancillaryDebugEvidence.eligible,
+          invoiceListEvidenceApplied: !candidate && ancillaryDebugEvidence.applied,
+          invoiceListEvidenceBlockedReason: ancillaryDebugEvidence.blockedReason,
+          invoiceListEvidenceAnchorType: ancillaryDebugEvidence.anchorType
+        })
+      }
+    }
+  }
+
+  const invoiceListDebugRecords = workflowPlan.invoiceListEnrichment ?? []
+
+  for (const row of workflowPlan.payoutRows) {
+    const transaction = transactionsById.get(row.rowId)
+
+    if (row.platform !== 'comgate' || consumedRowIds.has(row.rowId) || !transaction) {
+      continue
+    }
+
+    const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
+    const blockKey = isParkingLike(
+      readString(extractedRecord?.data.paymentPurpose),
+      readString(extractedRecord?.data.reference),
+      readString(extractedRecord?.data.transactionId),
+      row.payoutReference
+    )
+      ? 'parking'
+      : 'reservation_plus'
+
+    const invoiceLink = blockKey === 'parking'
+      ? findInvoiceListEnrichmentForParkingItem(
+        {
+          voucher: readString(extractedRecord?.data.merchantOrderReference)
+            ?? readString(extractedRecord?.data.reservationId)
+            ?? readString(extractedRecord?.data.clientId),
+          variableSymbol: readString(extractedRecord?.data.reference),
+          itemLabel: readString(extractedRecord?.data.paymentPurpose)
+        },
+        invoiceListDebugRecords
+      )
+      : findInvoiceListEnrichmentForItem(
+        {
+          voucher: readString(extractedRecord?.data.merchantOrderReference)
+            ?? readString(extractedRecord?.data.reservationId)
+            ?? readString(extractedRecord?.data.clientId),
+          variableSymbol: readString(extractedRecord?.data.reference)
+        },
+        invoiceListDebugRecords
+      ).match
+
+    if (invoiceLink) {
+      const comgateInvoiceEvidence = resolveInvoiceListEvidence(blockKey, invoiceLink)
+      invoiceListLinkTraces.push({
+        overviewItemId: `reservation-payment:native:${row.rowId}`,
+        blockKey,
+        anchorUsed: invoiceLink.reason,
+        candidateCount: 1,
+        linkedGuestName: invoiceLink.record.guestName,
+        linkedStayStartAt: invoiceLink.record.stayStartAt,
+        linkedStayEndAt: invoiceLink.record.stayEndAt,
+        linkedRoomName: invoiceLink.record.roomName,
+        linkedVoucher: invoiceLink.record.voucher,
+        linkedVariableSymbol: invoiceLink.record.variableSymbol,
+        invoiceListEvidenceEligible: comgateInvoiceEvidence.eligible,
+        invoiceListEvidenceApplied: false,
+        invoiceListEvidenceBlockedReason: comgateInvoiceEvidence.blockedReason,
+        invoiceListEvidenceAnchorType: comgateInvoiceEvidence.anchorType
+      })
+    }
   }
 
   return {
@@ -913,7 +1398,9 @@ export function inspectReservationPaymentOverviewClassification(
     parkingLikeCandidateIds: parkingLikeCandidates.map((candidate) => candidate.candidateId),
     parkingLikeCandidates,
     ancillaryLinkTraces,
-    reservationPlusNativeLinkTraces
+    reservationPlusNativeLinkTraces,
+    reservationPlusComgateMergeTraces,
+    invoiceListLinkTraces
   }
 }
 
@@ -948,7 +1435,9 @@ function buildEmptyOverviewDebug(): ReservationPaymentOverviewDebug {
     parkingLikeCandidateIds: [],
     parkingLikeCandidates: [],
     ancillaryLinkTraces: [],
-    reservationPlusNativeLinkTraces: []
+    reservationPlusNativeLinkTraces: [],
+    reservationPlusComgateMergeTraces: [],
+    invoiceListLinkTraces: []
   }
 }
 
@@ -1123,6 +1612,230 @@ function resolveBookingExactPayoutRowMatch(
       { key: 'payoutRowSourceDocumentId', value: candidate.sourceDocumentId },
       { key: 'payoutRowId', value: candidate.rowId }
     ])
+  }
+}
+
+function resolveComgateExactPayoutRowMatch(
+  payoutRows: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  extractedRecordLookup: ExtractedRecordLookup,
+  transactionsById: Map<string, NormalizedTransaction>,
+  consumedRowIds: Set<string>,
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): ReservationSettlementMatch | undefined {
+  if (blockKey !== 'reservation_plus') {
+    return undefined
+  }
+
+  const reservationInvoiceLink = findInvoiceListEnrichmentForItem(
+    { voucher: reservation.reference ?? reservation.reservationId },
+    invoiceListRecords
+  ).match
+
+  const candidates = payoutRows
+    .map((row) => {
+      if (row.platform !== 'comgate' || consumedRowIds.has(row.rowId)) {
+        return undefined
+      }
+
+      const transaction = transactionsById.get(row.rowId)
+      if (!transaction) {
+        return undefined
+      }
+
+      const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
+
+      if (isParkingLike(
+        readString(extractedRecord?.data.paymentPurpose),
+        readString(extractedRecord?.data.reference),
+        readString(extractedRecord?.data.transactionId),
+        row.payoutReference
+      )) {
+        return undefined
+      }
+
+      const mergeAnchorType = resolveReservationPlusNativeMergeAnchorType(
+        row,
+        extractedRecord,
+        reservation,
+        reservationInvoiceLink?.record
+      )
+      return mergeAnchorType ? { row, mergeAnchorType } : undefined
+    })
+    .filter((candidate): candidate is {
+      row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number]
+      mergeAnchorType: NativeReservationMergeAnchorType
+    } => Boolean(candidate))
+
+  if (candidates.length !== 1) {
+    return undefined
+  }
+
+  const candidate = candidates[0]!
+  return {
+    sourceDocumentId: reservation.sourceDocumentId,
+    reservationId: reservation.reservationId,
+    reference: reservation.reference,
+    settlementKind: 'payout_row',
+    matchedRowId: candidate.row.rowId,
+    platform: 'comgate',
+    amountMinor: candidate.row.amountMinor,
+    currency: candidate.row.currency,
+    confidence: 1,
+    reasons: buildComgateMergeReasons(candidate.mergeAnchorType),
+    evidence: compactEvidence([
+      { key: 'reservationId', value: reservation.reservationId },
+      reservation.reference ? { key: 'reference', value: reservation.reference } : undefined,
+      { key: 'comgateMergeAnchorType', value: candidate.mergeAnchorType },
+      { key: 'payoutRowSourceDocumentId', value: candidate.row.sourceDocumentId },
+      { key: 'payoutRowId', value: candidate.row.rowId }
+    ])
+  }
+}
+
+interface ComgateExactPayoutRowMergeDiagnostic {
+  match: ReservationSettlementMatch | undefined
+  mergeAnchorType?: NativeReservationMergeAnchorType
+  reservationEntityMatchedByInvoiceList: boolean
+  noMergeReason?: ReservationPaymentOverviewComgateMergeTrace['noMergeReason']
+  candidateCount: number
+  comparableReservationValues: string[]
+  comparableNativeAnchorsSample: string[]
+}
+
+function diagnoseComgateExactPayoutRowMerge(
+  payoutRows: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'],
+  reservation: ReservationSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey,
+  extractedRecordLookup: ExtractedRecordLookup,
+  transactionsById: Map<string, NormalizedTransaction>,
+  consumedRowIds: Set<string>,
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): ComgateExactPayoutRowMergeDiagnostic {
+  const reservationInvoiceLink = findInvoiceListEnrichmentForItem(
+    { voucher: reservation.reference ?? reservation.reservationId },
+    invoiceListRecords
+  ).match
+  const reservationEntityMatchedByInvoiceList = Boolean(reservationInvoiceLink)
+
+  if (blockKey !== 'reservation_plus') {
+    return {
+      match: undefined,
+      reservationEntityMatchedByInvoiceList,
+      noMergeReason: 'not_reservation_plus',
+      candidateCount: 0,
+      comparableReservationValues: [],
+      comparableNativeAnchorsSample: []
+    }
+  }
+
+  const comparableReservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference),
+    normalizeComparable(reservationInvoiceLink?.record.voucher),
+    normalizeComparable(reservationInvoiceLink?.record.customerId),
+    normalizeComparable(reservationInvoiceLink?.record.variableSymbol),
+    normalizeComparable(reservationInvoiceLink?.record.invoiceNumber)
+  ])
+
+  if (comparableReservationValues.length === 0) {
+    return {
+      match: undefined,
+      reservationEntityMatchedByInvoiceList,
+      noMergeReason: 'no_reservation_anchor',
+      candidateCount: 0,
+      comparableReservationValues: [],
+      comparableNativeAnchorsSample: []
+    }
+  }
+
+  const allNativeAnchorsSample: string[] = []
+
+  const candidates = payoutRows
+    .map((row) => {
+      if (row.platform !== 'comgate' || consumedRowIds.has(row.rowId)) {
+        return undefined
+      }
+
+      const transaction = transactionsById.get(row.rowId)
+      if (!transaction) {
+        return undefined
+      }
+
+      const extractedRecord = findFirstExtractedRecord(transaction, extractedRecordLookup)
+
+      if (isParkingLike(
+        readString(extractedRecord?.data.paymentPurpose),
+        readString(extractedRecord?.data.reference),
+        readString(extractedRecord?.data.transactionId),
+        row.payoutReference
+      )) {
+        return undefined
+      }
+
+      const nativeAnchors = collectUniqueTruthyStrings([
+        ...collectComparableNativeIdentityAnchors(row, extractedRecord),
+        ...collectComparableNativeDocumentAnchors(row, extractedRecord)
+      ])
+      if (nativeAnchors.length > 0 && allNativeAnchorsSample.length < 10) {
+        for (const anchor of nativeAnchors) {
+          if (!allNativeAnchorsSample.includes(anchor)) {
+            allNativeAnchorsSample.push(anchor)
+          }
+        }
+      }
+
+      const mergeAnchorType = resolveReservationPlusNativeMergeAnchorType(
+        row,
+        extractedRecord,
+        reservation,
+        reservationInvoiceLink?.record
+      )
+      return mergeAnchorType ? { row, mergeAnchorType } : undefined
+    })
+    .filter((candidate): candidate is {
+      row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number]
+      mergeAnchorType: NativeReservationMergeAnchorType
+    } => Boolean(candidate))
+
+  if (candidates.length !== 1) {
+    return {
+      match: undefined,
+      reservationEntityMatchedByInvoiceList,
+      noMergeReason: candidates.length === 0 ? 'no_candidate' : 'ambiguous_candidates',
+      candidateCount: candidates.length,
+      comparableReservationValues,
+      comparableNativeAnchorsSample: allNativeAnchorsSample.slice(0, 10)
+    }
+  }
+
+  const candidate = candidates[0]!
+  return {
+    match: {
+      sourceDocumentId: reservation.sourceDocumentId,
+      reservationId: reservation.reservationId,
+      reference: reservation.reference,
+      settlementKind: 'payout_row',
+      matchedRowId: candidate.row.rowId,
+      platform: 'comgate',
+      amountMinor: candidate.row.amountMinor,
+      currency: candidate.row.currency,
+      confidence: 1,
+      reasons: buildComgateMergeReasons(candidate.mergeAnchorType),
+      evidence: compactEvidence([
+        { key: 'reservationId', value: reservation.reservationId },
+        reservation.reference ? { key: 'reference', value: reservation.reference } : undefined,
+        { key: 'comgateMergeAnchorType', value: candidate.mergeAnchorType },
+        { key: 'payoutRowSourceDocumentId', value: candidate.row.sourceDocumentId },
+        { key: 'payoutRowId', value: candidate.row.rowId }
+      ])
+    },
+    mergeAnchorType: candidate.mergeAnchorType,
+    reservationEntityMatchedByInvoiceList,
+    candidateCount: 1,
+    comparableReservationValues,
+    comparableNativeAnchorsSample: allNativeAnchorsSample.slice(0, 10)
   }
 }
 
@@ -1745,21 +2458,51 @@ function inspectLinkedReservationForAncillary(
 function inspectLinkedReservationForReservationPlusNativeRow(
   row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
   extractedRecord: ExtractedRecord | undefined,
-  reservationSources: ReservationSourceRecord[]
-): AncillaryLinkInspection {
+  reservationSources: ReservationSourceRecord[],
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): NativeLinkInspection {
+  const merchantOrderReference = readString(extractedRecord?.data.merchantOrderReference)
+  const merchantOrderReferenceAnchorFamily = classifyMerchantOrderReferenceAnchorFamily(merchantOrderReference)
   const candidatePool = reservationSources
     .filter((reservation) => resolveReservationBlockKey(reservation) === 'reservation_plus')
   const candidateSetBeforeFiltering = candidatePool.map(toAncillaryLinkCandidateSnapshot)
   const exactIdentityCandidates = candidatePool.filter((reservation) => matchesReservationPlusNativeExactIdentity(row, extractedRecord, reservation))
   const exactIdentityHits = exactIdentityCandidates.map(toAncillaryLinkCandidateSnapshot)
+  const invoiceListHitSet = collectInvoiceListExactHits(row, extractedRecord, invoiceListRecords)
+  const reservationEntityBridgeHits = exactIdentityCandidates.length
+  const rowMonthKey = resolveComparableMonthKey(
+    readString(extractedRecord?.data.paidAt)
+      ?? readString(extractedRecord?.data.bookedAt)
+      ?? readString(extractedRecord?.data.transferredAt)
+      ?? row.payoutDate
+  )
 
   if (exactIdentityCandidates.length === 1) {
     return {
       linkedReservation: exactIdentityCandidates[0],
       candidateCount: exactIdentityCandidates.length,
       candidateSetBeforeFiltering,
+      candidateSetAfterFiltering: exactIdentityHits,
       exactIdentityHits,
       exactStayIntervalHits: [],
+      invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+      invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+      invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+      invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+      merchantOrderReferenceAnchorFamily,
+      invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
+      invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+      invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
+      reservationEntityBridgeHits,
+      candidateCountBlockedReason: 'none',
+      unresolvedClassification: 'resolved',
+      exactCounterpartExists: true,
+      ambiguousExactCounterparts: false,
+      noExactCounterpartInSelectedFiles: false,
+      exactCounterpartSourceFamily: 'reservation_reference',
+      exactCounterpartKey: resolveReservationBridgeMatchKey(row, extractedRecord, exactIdentityCandidates[0]),
+      counterpartMonthRelation: 'unknown',
+      chosenCandidateSource: 'reservation_export',
       chosenCandidateReason: 'exact_identity'
     }
   }
@@ -1769,20 +2512,223 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       linkedReservation: undefined,
       candidateCount: exactIdentityCandidates.length,
       candidateSetBeforeFiltering,
+      candidateSetAfterFiltering: exactIdentityHits,
       exactIdentityHits,
       exactStayIntervalHits: [],
+      invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+      invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+      invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+      invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+      merchantOrderReferenceAnchorFamily,
+      invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
+      invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+      invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
+      reservationEntityBridgeHits,
+      candidateCountBlockedReason: 'ambiguous_exact_identity',
+      unresolvedClassification: 'exact_counterpart_exists_should_link',
+      exactCounterpartExists: true,
+      ambiguousExactCounterparts: true,
+      noExactCounterpartInSelectedFiles: false,
+      exactCounterpartSourceFamily: 'reservation_entity_bridge',
+      exactCounterpartKey: merchantOrderReference
+        ?? normalizeComparable(readString(extractedRecord?.data.reference))
+        ?? normalizeComparable(row.reservationId)
+        ?? normalizeComparable(readString(extractedRecord?.data.reservationId)),
+      counterpartMonthRelation: 'unknown',
+      chosenCandidateSource: 'none',
       chosenCandidateReason: 'ambiguous_exact_identity'
     }
   }
+
+  const fallbackInvoiceResolution = selectInvoiceListNativeFallback(row, extractedRecord, invoiceListRecords)
+  const fallbackInvoiceLink = fallbackInvoiceResolution.link
+  if (fallbackInvoiceLink) {
+    return {
+      linkedReservation: undefined,
+      linkedInvoiceRecord: fallbackInvoiceLink.record,
+      linkedInvoiceReason: fallbackInvoiceLink.reason,
+      candidateCount: 1,
+      candidateSetBeforeFiltering,
+      candidateSetAfterFiltering: [],
+      exactIdentityHits: [],
+      exactStayIntervalHits: [],
+      invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+      invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+      invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+      invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+      merchantOrderReferenceAnchorFamily,
+      invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
+      invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+      invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
+      reservationEntityBridgeHits,
+      candidateCountBlockedReason: 'none',
+      unresolvedClassification: 'resolved',
+      exactCounterpartExists: true,
+      ambiguousExactCounterparts: false,
+      noExactCounterpartInSelectedFiles: false,
+      exactCounterpartSourceFamily: mapInvoiceLinkReasonToSourceFamily(fallbackInvoiceLink.reason),
+      exactCounterpartKey: resolveInvoiceLinkComparableKey(fallbackInvoiceLink),
+      counterpartMonthRelation: resolveCounterpartMonthRelation(rowMonthKey, [fallbackInvoiceLink.record]),
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity'
+    }
+  }
+
+  const noExactCounterpartInSelectedFiles = hasAnyNativeReservationPlusAnchor(row, extractedRecord)
+    && invoiceListHitSet.candidateCount === 0
+    && reservationEntityBridgeHits === 0
+  const ambiguousInvoiceListExactAnchors = fallbackInvoiceResolution.hasAmbiguousExactCounterparts
+    || (invoiceListHitSet.candidateCount > 1 && reservationEntityBridgeHits === 0)
+  const unresolvedClassification: NativeLinkInspection['unresolvedClassification'] = noExactCounterpartInSelectedFiles
+    ? 'no_exact_counterpart_in_selected_files'
+    : ambiguousInvoiceListExactAnchors
+      ? 'ambiguous_multiple_exact_counterparts'
+      : (invoiceListHitSet.candidateCount > 0 || reservationEntityBridgeHits > 0)
+        ? 'exact_counterpart_exists_should_link'
+        : 'exact_counterpart_exists_should_link'
+  const exactCounterpartSourceFamily = fallbackInvoiceResolution.ambiguousSourceFamily
+    ?? resolveInvoiceHitSourceFamily(invoiceListHitSet, row, extractedRecord)
+  const exactCounterpartKey = fallbackInvoiceResolution.ambiguousKey
+    ?? resolveUnresolvedCounterpartKey(exactCounterpartSourceFamily, row, extractedRecord)
+  const counterpartMonthRelation = noExactCounterpartInSelectedFiles
+    ? 'unknown'
+    : resolveCounterpartMonthRelation(
+      rowMonthKey,
+      resolveCounterpartMonthCandidates(invoiceListHitSet, exactCounterpartSourceFamily)
+    )
 
   return {
     linkedReservation: undefined,
     candidateCount: 0,
     candidateSetBeforeFiltering,
+    candidateSetAfterFiltering: [],
     exactIdentityHits: [],
     exactStayIntervalHits: [],
+    invoiceListCandidateCount: invoiceListHitSet.candidateCount,
+    invoiceListExactIdentityHits: invoiceListHitSet.identityHits,
+    invoiceListExactDocumentHits: invoiceListHitSet.documentHits,
+    invoiceListExactStayIntervalHits: invoiceListHitSet.stayIntervalHits,
+    merchantOrderReferenceAnchorFamily,
+    invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
+    invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+    invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
+    reservationEntityBridgeHits,
+    candidateCountBlockedReason: noExactCounterpartInSelectedFiles
+      ? 'no_exact_counterpart_in_selected_files'
+      : ambiguousInvoiceListExactAnchors
+        ? 'ambiguous_multiple_exact_counterparts'
+        : 'no_exact_anchor',
+    unresolvedClassification,
+    exactCounterpartExists: !noExactCounterpartInSelectedFiles,
+    ambiguousExactCounterparts: ambiguousInvoiceListExactAnchors,
+    noExactCounterpartInSelectedFiles,
+    exactCounterpartSourceFamily: noExactCounterpartInSelectedFiles ? 'none' : exactCounterpartSourceFamily ?? 'none',
+    exactCounterpartKey: noExactCounterpartInSelectedFiles ? undefined : exactCounterpartKey,
+    counterpartMonthRelation,
+    chosenCandidateSource: 'none',
     chosenCandidateReason: 'no_candidate'
   }
+}
+
+function buildComgateMergeReasons(mergeAnchorType: NativeReservationMergeAnchorType): string[] {
+  if (mergeAnchorType === 'reservation_id' || mergeAnchorType === 'reservation_reference') {
+    return ['reservationIdExact', 'comgatePayoutRowMerge']
+  }
+
+  return ['invoiceListAnchorExact', 'comgatePayoutRowMerge']
+}
+
+function resolveReservationPlusNativeMergeAnchorType(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  reservation: ReservationSourceRecord,
+  reservationInvoiceRecord: InvoiceListEnrichmentRecord | undefined
+): NativeReservationMergeAnchorType | undefined {
+  const nativeIdentityAnchors = collectComparableNativeIdentityAnchors(row, extractedRecord)
+  const reservationId = normalizeComparable(reservation.reservationId)
+  const reservationReference = normalizeComparable(reservation.reference)
+
+  if (reservationId && nativeIdentityAnchors.includes(reservationId)) {
+    return 'reservation_id'
+  }
+
+  if (reservationReference && nativeIdentityAnchors.includes(reservationReference)) {
+    return 'reservation_reference'
+  }
+
+  if (!reservationInvoiceRecord) {
+    return undefined
+  }
+
+  const nativeDocumentAnchors = collectComparableNativeDocumentAnchors(row, extractedRecord)
+  const invoiceVoucher = normalizeComparable(reservationInvoiceRecord.voucher)
+  const invoiceCustomerId = normalizeComparable(reservationInvoiceRecord.customerId)
+  const invoiceVariableSymbol = normalizeComparable(reservationInvoiceRecord.variableSymbol)
+  const invoiceNumber = normalizeComparable(reservationInvoiceRecord.invoiceNumber)
+
+  if (invoiceVoucher && nativeIdentityAnchors.includes(invoiceVoucher)) {
+    return 'invoice_list_voucher'
+  }
+
+  if (invoiceCustomerId && nativeIdentityAnchors.includes(invoiceCustomerId)) {
+    return 'invoice_list_customer_id'
+  }
+
+  if (invoiceVariableSymbol && nativeDocumentAnchors.includes(invoiceVariableSymbol)) {
+    return 'invoice_list_variable_symbol'
+  }
+
+  if (invoiceNumber && nativeDocumentAnchors.includes(invoiceNumber)) {
+    return 'invoice_list_invoice_number'
+  }
+
+  const normalizedNativeStayStart = normalizeComparableStayDate(readString(extractedRecord?.data.stayStartAt))
+  const normalizedNativeStayEnd = normalizeComparableStayDate(readString(extractedRecord?.data.stayEndAt))
+  const normalizedNativeRoom = normalizeComparable(readString(extractedRecord?.data.roomName))
+  if (
+    normalizedNativeStayStart
+    && normalizedNativeStayEnd
+    && normalizedNativeRoom
+    && normalizeComparableStayDate(reservationInvoiceRecord.stayStartAt) === normalizedNativeStayStart
+    && normalizeComparableStayDate(reservationInvoiceRecord.stayEndAt) === normalizedNativeStayEnd
+    && normalizeComparable(reservationInvoiceRecord.roomName) === normalizedNativeRoom
+  ) {
+    return 'invoice_list_stay_interval'
+  }
+
+  return undefined
+}
+
+function collectComparableNativeIdentityAnchors(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): string[] {
+  const parserVariant = readString(extractedRecord?.data.comgateParserVariant)
+  const currentPortalReferenceIdentityAnchors = parserVariant === 'current-portal'
+    ? collectUniqueTruthyStrings([
+      normalizeComparable(readString(extractedRecord?.data.reference)),
+      normalizeComparable(row.payoutReference)
+    ])
+    : []
+
+  return collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.merchantOrderReference)),
+    normalizeComparable(row.reservationId),
+    normalizeComparable(readString(extractedRecord?.data.reservationId)),
+    normalizeComparable(readString(extractedRecord?.data.clientId)),
+    ...currentPortalReferenceIdentityAnchors
+  ])
+}
+
+function collectComparableNativeDocumentAnchors(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): string[] {
+  return collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.reference)),
+    normalizeComparable(row.payoutReference),
+    normalizeComparable(readString(extractedRecord?.data.invoiceNumber))
+  ])
 }
 
 function matchesReservationPlusNativeExactIdentity(
@@ -1790,10 +2736,7 @@ function matchesReservationPlusNativeExactIdentity(
   extractedRecord: ExtractedRecord | undefined,
   reservation: ReservationSourceRecord
 ): boolean {
-  const comparableNativeAnchorValues = collectUniqueTruthyStrings([
-    normalizeComparable(row.reservationId),
-    normalizeComparable(readString(extractedRecord?.data.reservationId))
-  ])
+  const comparableNativeAnchorValues = collectComparableNativeIdentityAnchors(row, extractedRecord)
 
   if (comparableNativeAnchorValues.length === 0) {
     return false
@@ -1980,6 +2923,28 @@ function buildNativeRawParsedRowPayload(
       platform: stringOrUndefined(record.data.platform),
       reference: stringOrUndefined(record.data.reference),
       reservationId: stringOrUndefined(record.data.reservationId),
+      clientId: stringOrUndefined(record.data.clientId),
+      merchantOrderReference: stringOrUndefined(record.data.merchantOrderReference),
+      payerVariableSymbol: stringOrUndefined(record.data.payerVariableSymbol),
+      rawPopis: stringOrUndefined(record.data.rawPopis),
+      rawTransferVariableSymbol: stringOrUndefined(record.data.rawTransferVariableSymbol),
+      rawPayerVariableSymbol: stringOrUndefined(record.data.rawPayerVariableSymbol),
+      rawClientId: stringOrUndefined(record.data.rawClientId),
+      normalizedPayoutReference: stringOrUndefined(record.data.normalizedPayoutReference),
+      normalizedMerchantOrderReference: stringOrUndefined(record.data.normalizedMerchantOrderReference),
+      normalizedClientId: stringOrUndefined(record.data.normalizedClientId),
+      runtimeComgateParserVariant: stringOrUndefined(record.data.runtimeComgateParserVariant),
+      createdAt: stringOrUndefined(record.data.createdAt),
+      paidAt: stringOrUndefined(record.data.paidAt),
+      transferredAt: stringOrUndefined(record.data.transferredAt),
+      confirmedGrossMinor: typeof record.data.confirmedGrossMinor === 'number' ? record.data.confirmedGrossMinor : undefined,
+      transferredNetMinor: typeof record.data.transferredNetMinor === 'number' ? record.data.transferredNetMinor : undefined,
+      feeTotalMinor: typeof record.data.feeTotalMinor === 'number' ? record.data.feeTotalMinor : undefined,
+      feeInterbankMinor: typeof record.data.feeInterbankMinor === 'number' ? record.data.feeInterbankMinor : undefined,
+      feeAssociationMinor: typeof record.data.feeAssociationMinor === 'number' ? record.data.feeAssociationMinor : undefined,
+      feeProcessorMinor: typeof record.data.feeProcessorMinor === 'number' ? record.data.feeProcessorMinor : undefined,
+      paymentMethod: stringOrUndefined(record.data.paymentMethod),
+      cardType: stringOrUndefined(record.data.cardType),
       bookedAt: stringOrUndefined(record.data.bookedAt),
       paymentPurpose: stringOrUndefined(record.data.paymentPurpose),
       transactionId: stringOrUndefined(record.data.transactionId),
@@ -2299,4 +3264,627 @@ function normalizeComparable(value: string | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '')
+}
+
+function classifyMerchantOrderReferenceAnchorFamily(
+  merchantOrderReference: string | undefined
+): 'empty' | 'numeric' | 'alpha_numeric' | 'mixed' {
+  const value = (merchantOrderReference ?? '').trim()
+  if (!value) {
+    return 'empty'
+  }
+
+  if (/^\d+$/.test(value)) {
+    return 'numeric'
+  }
+
+  if (/^[a-z0-9-_/]+$/i.test(value)) {
+    return 'alpha_numeric'
+  }
+
+  return 'mixed'
+}
+
+// ── Invoice list enrichment linking ─────────────────────
+
+function toInvoiceListLinkCandidateSnapshot(
+  record: InvoiceListEnrichmentRecord
+): ReservationPaymentOverviewInvoiceListLinkCandidate {
+  return {
+    sourceDocumentId: record.sourceDocumentId,
+    reservationId: record.voucher,
+    reference: record.variableSymbol,
+    invoiceDocumentType: record.invoiceDocumentType,
+    invoiceLineDocumentType: record.invoiceLineDocumentType,
+    voucher: record.voucher,
+    variableSymbol: record.variableSymbol,
+    invoiceNumber: record.invoiceNumber,
+    customerId: record.customerId,
+    guestName: record.guestName,
+    stayStartAt: record.stayStartAt,
+    stayEndAt: record.stayEndAt,
+    roomName: record.roomName
+  }
+}
+
+function collectInvoiceListExactHits(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): {
+  candidateCount: number
+  identityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  documentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  stayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  voucherHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  variableSymbolHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceNumberHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+} {
+  const headers = invoiceListRecords.filter((record) => record.recordKind === 'header')
+  const merchantOrderReference = normalizeComparable(readString(extractedRecord?.data.merchantOrderReference))
+  const comparableVoucherAnchors = collectUniqueTruthyStrings([
+    normalizeComparable(row.reservationId),
+    normalizeComparable(readString(extractedRecord?.data.reservationId)),
+    normalizeComparable(readString(extractedRecord?.data.clientId)),
+    merchantOrderReference
+  ])
+  const comparableDocumentAnchors = collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.reference)),
+    normalizeComparable(row.payoutReference),
+    normalizeComparable(readString(extractedRecord?.data.invoiceNumber)),
+    merchantOrderReference
+  ])
+  const normalizedStayStart = normalizeComparableStayDate(readString(extractedRecord?.data.stayStartAt))
+  const normalizedStayEnd = normalizeComparableStayDate(readString(extractedRecord?.data.stayEndAt))
+  const normalizedRoom = normalizeComparable(readString(extractedRecord?.data.roomName))
+
+  const identityHitRecords = headers.filter((record) => {
+    if (comparableVoucherAnchors.length === 0) {
+      return false
+    }
+
+    const voucher = normalizeComparable(record.voucher)
+    const customerId = normalizeComparable(record.customerId)
+    return comparableVoucherAnchors.includes(voucher) || comparableVoucherAnchors.includes(customerId)
+  })
+
+  const documentHitRecords = headers.filter((record) => {
+    if (comparableDocumentAnchors.length === 0) {
+      return false
+    }
+
+    const variableSymbol = normalizeComparable(record.variableSymbol)
+    const invoiceNumber = normalizeComparable(record.invoiceNumber)
+    return comparableDocumentAnchors.includes(variableSymbol) || comparableDocumentAnchors.includes(invoiceNumber)
+  })
+
+  const voucherHitRecords = headers.filter((record) => {
+    if (!merchantOrderReference) {
+      return false
+    }
+    return normalizeComparable(record.voucher) === merchantOrderReference
+  })
+
+  const variableSymbolHitRecords = headers.filter((record) => {
+    if (!merchantOrderReference) {
+      return false
+    }
+    return normalizeComparable(record.variableSymbol) === merchantOrderReference
+  })
+
+  const invoiceNumberHitRecords = headers.filter((record) => {
+    if (!merchantOrderReference) {
+      return false
+    }
+    return normalizeComparable(record.invoiceNumber) === merchantOrderReference
+  })
+
+  const stayIntervalHitRecords = headers.filter((record) => {
+    if (!normalizedStayStart || !normalizedStayEnd || !normalizedRoom) {
+      return false
+    }
+
+    return normalizeComparableStayDate(record.stayStartAt) === normalizedStayStart
+      && normalizeComparableStayDate(record.stayEndAt) === normalizedStayEnd
+      && normalizeComparable(record.roomName) === normalizedRoom
+  })
+
+  return {
+    candidateCount: new Set([
+      ...identityHitRecords,
+      ...documentHitRecords,
+      ...stayIntervalHitRecords
+    ]).size,
+    identityHits: identityHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    documentHits: documentHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    stayIntervalHits: stayIntervalHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    voucherHits: voucherHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    variableSymbolHits: variableSymbolHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    invoiceNumberHits: invoiceNumberHitRecords.map(toInvoiceListLinkCandidateSnapshot)
+  }
+}
+
+function hasAnyNativeReservationPlusAnchor(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): boolean {
+  return collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.merchantOrderReference)),
+    normalizeComparable(readString(extractedRecord?.data.clientId)),
+    normalizeComparable(readString(extractedRecord?.data.reservationId)),
+    normalizeComparable(readString(extractedRecord?.data.reference)),
+    normalizeComparable(row.payoutReference),
+    normalizeComparable(row.reservationId)
+  ]).length > 0
+}
+
+function selectInvoiceListNativeFallback(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): {
+  link?: InvoiceListLinkResult
+  hasAmbiguousExactCounterparts: boolean
+  ambiguousSourceFamily?: NativeLinkInspection['exactCounterpartSourceFamily']
+  ambiguousKey?: string
+} {
+  const merchantOrderReference = readString(extractedRecord?.data.merchantOrderReference)
+  const baseAnchors = {
+    customerId: readString(extractedRecord?.data.clientId),
+    bookedAt: readString(extractedRecord?.data.paidAt)
+      ?? readString(extractedRecord?.data.bookedAt)
+      ?? readString(extractedRecord?.data.transferredAt)
+      ?? row.payoutDate,
+    stayStartAt: readString(extractedRecord?.data.stayStartAt),
+    stayEndAt: readString(extractedRecord?.data.stayEndAt),
+    roomName: readString(extractedRecord?.data.roomName)
+  }
+  const attempts: Array<{
+    voucher?: string
+    variableSymbol?: string
+    reservationId?: string
+    customerId?: string
+    invoiceNumber?: string
+    stayStartAt?: string
+    stayEndAt?: string
+    roomName?: string
+  }> = [
+    {
+      ...baseAnchors,
+      voucher: merchantOrderReference
+        ?? readString(extractedRecord?.data.reservationId)
+        ?? readString(extractedRecord?.data.clientId)
+        ?? row.reservationId,
+      reservationId: readString(extractedRecord?.data.reservationId)
+        ?? readString(extractedRecord?.data.clientId)
+        ?? row.reservationId,
+      variableSymbol: readString(extractedRecord?.data.reference) ?? row.payoutReference,
+      invoiceNumber: readString(extractedRecord?.data.invoiceNumber)
+    }
+  ]
+
+  if (merchantOrderReference) {
+    attempts.push({
+      ...baseAnchors,
+      variableSymbol: merchantOrderReference
+    })
+    attempts.push({
+      ...baseAnchors,
+      invoiceNumber: merchantOrderReference
+    })
+  }
+
+  let hasAmbiguousExactCounterparts = false
+  let ambiguousSourceFamily: NativeLinkInspection['exactCounterpartSourceFamily'] | undefined
+  let ambiguousKey: string | undefined
+
+  for (const anchors of attempts) {
+    const resolution = findInvoiceListEnrichmentForItem(anchors, invoiceListRecords)
+    hasAmbiguousExactCounterparts = hasAmbiguousExactCounterparts || resolution.hasAmbiguousExactCounterparts
+    if (!ambiguousSourceFamily && resolution.ambiguousSourceFamily) {
+      ambiguousSourceFamily = resolution.ambiguousSourceFamily
+      ambiguousKey = resolution.ambiguousKey
+    }
+
+    if (resolution.match) {
+      return {
+        link: resolution.match,
+        hasAmbiguousExactCounterparts,
+        ambiguousSourceFamily,
+        ambiguousKey
+      }
+    }
+  }
+
+  return {
+    link: undefined,
+    hasAmbiguousExactCounterparts,
+    ambiguousSourceFamily,
+    ambiguousKey
+  }
+}
+
+function findInvoiceListEnrichmentForItem(
+  anchors: {
+    voucher?: string
+    variableSymbol?: string
+    reservationId?: string
+    customerId?: string
+    invoiceNumber?: string
+    bookedAt?: string
+    stayStartAt?: string
+    stayEndAt?: string
+    roomName?: string
+  },
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): {
+  match?: InvoiceListLinkResult
+  hasAmbiguousExactCounterparts: boolean
+  ambiguousSourceFamily?: NativeLinkInspection['exactCounterpartSourceFamily']
+  ambiguousKey?: string
+} {
+  if (invoiceListRecords.length === 0) {
+    return { hasAmbiguousExactCounterparts: false }
+  }
+
+  const headers = invoiceListRecords.filter((r) => r.recordKind === 'header')
+  let hasAmbiguousExactCounterparts = false
+  let ambiguousSourceFamily: NativeLinkInspection['exactCounterpartSourceFamily'] | undefined
+  let ambiguousKey: string | undefined
+
+  if (anchors.voucher) {
+    const byVoucher = headers.filter((r) => r.voucher && normalizeComparable(r.voucher) === normalizeComparable(anchors.voucher))
+    if (byVoucher.length === 1) {
+      return { match: { record: byVoucher[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+    }
+
+    if (byVoucher.length > 1) {
+      const narrowedByCustomer = anchors.customerId
+        ? byVoucher.filter((r) => r.customerId && normalizeComparable(r.customerId) === normalizeComparable(anchors.customerId))
+        : []
+      if (narrowedByCustomer.length === 1) {
+        return { match: { record: narrowedByCustomer[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const narrowedByVariableSymbol = anchors.variableSymbol
+        ? byVoucher.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.variableSymbol))
+        : []
+      if (narrowedByVariableSymbol.length === 1) {
+        return { match: { record: narrowedByVariableSymbol[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const narrowedByReservationIdVariableSymbol = anchors.reservationId
+        ? byVoucher.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.reservationId))
+        : []
+      if (narrowedByReservationIdVariableSymbol.length === 1) {
+        return { match: { record: narrowedByReservationIdVariableSymbol[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const narrowedByReservationIdDpz = anchors.reservationId
+        ? byVoucher.filter((r) => (
+          r.invoiceDocumentType
+          && normalizeComparable(r.invoiceDocumentType) === 'dpz'
+          && r.variableSymbol
+          && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.reservationId)
+        ))
+        : []
+      if (narrowedByReservationIdDpz.length === 1) {
+        return { match: { record: narrowedByReservationIdDpz[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const narrowedByInvoiceNumber = anchors.invoiceNumber
+        ? byVoucher.filter((r) => r.invoiceNumber && normalizeComparable(r.invoiceNumber) === normalizeComparable(anchors.invoiceNumber))
+        : []
+      if (narrowedByInvoiceNumber.length === 1) {
+        return { match: { record: narrowedByInvoiceNumber[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const anchorMonthKey = resolveComparableMonthKey(anchors.bookedAt)
+      const narrowedByMonthKey = anchorMonthKey
+        ? byVoucher.filter((r) => resolveInvoiceListHeaderComparableMonthKey(r) === anchorMonthKey)
+        : []
+      if (narrowedByMonthKey.length === 1) {
+        return { match: { record: narrowedByMonthKey[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      if (byVoucher.length > 1) {
+        hasAmbiguousExactCounterparts = true
+        ambiguousSourceFamily = ambiguousSourceFamily ?? 'voucher'
+        ambiguousKey = ambiguousKey ?? normalizeComparable(anchors.voucher)
+      }
+    }
+  }
+
+  if (anchors.variableSymbol) {
+    const byVS = headers.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.variableSymbol))
+    if (byVS.length === 1) {
+      return { match: { record: byVS[0], reason: 'exact_variable_symbol' }, hasAmbiguousExactCounterparts }
+    }
+    if (byVS.length > 1) {
+      hasAmbiguousExactCounterparts = true
+      ambiguousSourceFamily = ambiguousSourceFamily ?? 'variable_symbol'
+      ambiguousKey = ambiguousKey ?? normalizeComparable(anchors.variableSymbol)
+    }
+  }
+
+  if (anchors.customerId && anchors.invoiceNumber) {
+    const byCustInv = headers.filter(
+      (r) => r.customerId && r.invoiceNumber
+        && normalizeComparable(r.customerId) === normalizeComparable(anchors.customerId)
+        && normalizeComparable(r.invoiceNumber) === normalizeComparable(anchors.invoiceNumber)
+    )
+    if (byCustInv.length === 1) {
+      return { match: { record: byCustInv[0], reason: 'exact_customer_id' }, hasAmbiguousExactCounterparts }
+    }
+    if (byCustInv.length > 1) {
+      hasAmbiguousExactCounterparts = true
+      ambiguousSourceFamily = ambiguousSourceFamily ?? 'reservation_entity_bridge'
+      ambiguousKey = ambiguousKey
+        ?? normalizeComparable(anchors.customerId)
+        ?? normalizeComparable(anchors.invoiceNumber)
+    }
+  }
+
+  if (anchors.stayStartAt && anchors.stayEndAt && anchors.roomName) {
+    const normalizedStart = normalizeComparableStayDate(anchors.stayStartAt)
+    const normalizedEnd = normalizeComparableStayDate(anchors.stayEndAt)
+    const normalizedRoom = normalizeComparable(anchors.roomName)
+
+    const byStayRoom = headers.filter((r) =>
+      normalizeComparableStayDate(r.stayStartAt) === normalizedStart
+      && normalizeComparableStayDate(r.stayEndAt) === normalizedEnd
+      && normalizeComparable(r.roomName) === normalizedRoom
+    )
+    if (byStayRoom.length === 1) {
+      return { match: { record: byStayRoom[0], reason: 'exact_stay_room' }, hasAmbiguousExactCounterparts }
+    }
+    if (byStayRoom.length > 1) {
+      hasAmbiguousExactCounterparts = true
+      ambiguousSourceFamily = ambiguousSourceFamily ?? 'reservation_entity_bridge'
+      ambiguousKey = ambiguousKey ?? normalizeComparable(anchors.roomName)
+    }
+  }
+
+  return { hasAmbiguousExactCounterparts, ambiguousSourceFamily, ambiguousKey }
+}
+
+function resolveComparableMonthKey(value: string | undefined): string | undefined {
+  const normalized = normalizeComparableStayDate(value)
+
+  if (!normalized || normalized.length < 7) {
+    return undefined
+  }
+
+  return `${normalized.slice(0, 4)}${normalized.slice(5, 7)}`
+}
+
+function resolveInvoiceListHeaderComparableMonthKey(record: InvoiceListEnrichmentRecord): string | undefined {
+  const fromVariableSymbol = resolveMonthKeyFromComparableToken(record.variableSymbol)
+  if (fromVariableSymbol) {
+    return fromVariableSymbol
+  }
+
+  return resolveMonthKeyFromComparableToken(record.invoiceNumber)
+}
+
+function resolveMonthKeyFromComparableToken(value: string | undefined): string | undefined {
+  const normalized = normalizeComparable(value)
+
+  if (!normalized) {
+    return undefined
+  }
+
+  const monthMatch = normalized.match(/(20\d{2})(0[1-9]|1[0-2])/)
+  if (!monthMatch) {
+    return undefined
+  }
+
+  return `${monthMatch[1]}${monthMatch[2]}`
+}
+
+function mapInvoiceLinkReasonToSourceFamily(
+  reason: InvoiceListLinkReason
+): NonNullable<NativeLinkInspection['exactCounterpartSourceFamily']> {
+  if (reason === 'exact_voucher') {
+    return 'voucher'
+  }
+
+  if (reason === 'exact_variable_symbol') {
+    return 'variable_symbol'
+  }
+
+  if (reason === 'exact_customer_id') {
+    return 'reservation_entity_bridge'
+  }
+
+  return 'reservation_entity_bridge'
+}
+
+function resolveInvoiceLinkComparableKey(link: InvoiceListLinkResult): string | undefined {
+  if (link.reason === 'exact_voucher') {
+    return normalizeComparable(link.record.voucher)
+  }
+
+  if (link.reason === 'exact_variable_symbol') {
+    return normalizeComparable(link.record.variableSymbol)
+  }
+
+  if (link.reason === 'exact_customer_id') {
+    return normalizeComparable(link.record.customerId)
+      ?? normalizeComparable(link.record.invoiceNumber)
+  }
+
+  return normalizeComparable(link.record.voucher)
+    ?? normalizeComparable(link.record.variableSymbol)
+    ?? normalizeComparable(link.record.invoiceNumber)
+}
+
+function resolveReservationBridgeMatchKey(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined,
+  reservation: ReservationSourceRecord
+): string | undefined {
+  const comparableNativeAnchorValues = collectComparableNativeIdentityAnchors(row, extractedRecord)
+  const reservationValues = collectUniqueTruthyStrings([
+    normalizeComparable(reservation.reservationId),
+    normalizeComparable(reservation.reference)
+  ])
+
+  return reservationValues.find((value) => comparableNativeAnchorValues.includes(value))
+}
+
+function resolveInvoiceHitSourceFamily(
+  hitSet: {
+    voucherHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    variableSymbolHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    invoiceNumberHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  },
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): NonNullable<NativeLinkInspection['exactCounterpartSourceFamily']> | undefined {
+  if (hitSet.voucherHits.length > 0) {
+    return 'voucher'
+  }
+
+  if (hitSet.variableSymbolHits.length > 0) {
+    return 'variable_symbol'
+  }
+
+  if (hitSet.invoiceNumberHits.length > 0) {
+    return 'invoice_number'
+  }
+
+  const comparableReservationReference = normalizeComparable(row.reservationId)
+    ?? normalizeComparable(readString(extractedRecord?.data.reservationId))
+  if (comparableReservationReference) {
+    return 'reservation_reference'
+  }
+
+  return undefined
+}
+
+function resolveUnresolvedCounterpartKey(
+  sourceFamily: NativeLinkInspection['exactCounterpartSourceFamily'],
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): string | undefined {
+  if (sourceFamily === 'voucher') {
+    return normalizeComparable(readString(extractedRecord?.data.merchantOrderReference))
+      ?? normalizeComparable(readString(extractedRecord?.data.reservationId))
+      ?? normalizeComparable(readString(extractedRecord?.data.clientId))
+  }
+
+  if (sourceFamily === 'variable_symbol') {
+    return normalizeComparable(readString(extractedRecord?.data.reference))
+      ?? normalizeComparable(row.payoutReference)
+  }
+
+  if (sourceFamily === 'invoice_number') {
+    return normalizeComparable(readString(extractedRecord?.data.invoiceNumber))
+      ?? normalizeComparable(readString(extractedRecord?.data.merchantOrderReference))
+  }
+
+  if (sourceFamily === 'reservation_reference' || sourceFamily === 'reservation_entity_bridge') {
+    return normalizeComparable(row.reservationId)
+      ?? normalizeComparable(readString(extractedRecord?.data.reservationId))
+      ?? normalizeComparable(readString(extractedRecord?.data.clientId))
+  }
+
+  return undefined
+}
+
+function resolveCounterpartMonthCandidates(
+  hitSet: {
+    voucherHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    variableSymbolHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    invoiceNumberHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    identityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    documentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  },
+  sourceFamily: NativeLinkInspection['exactCounterpartSourceFamily']
+): ReservationPaymentOverviewInvoiceListLinkCandidate[] {
+  if (sourceFamily === 'voucher') {
+    return hitSet.voucherHits
+  }
+
+  if (sourceFamily === 'variable_symbol') {
+    return hitSet.variableSymbolHits
+  }
+
+  if (sourceFamily === 'invoice_number') {
+    return hitSet.invoiceNumberHits
+  }
+
+  if (sourceFamily === 'reservation_entity_bridge' || sourceFamily === 'reservation_reference') {
+    return [...hitSet.identityHits, ...hitSet.documentHits]
+  }
+
+  return [...hitSet.identityHits, ...hitSet.documentHits]
+}
+
+function resolveCounterpartMonthRelation(
+  rowMonthKey: string | undefined,
+  counterparts: Array<{ variableSymbol?: string; invoiceNumber?: string }>
+): 'same_month' | 'different_month' | 'mixed_multiple_months' | 'unknown' {
+  const counterpartMonthKeys = collectUniqueTruthyStrings(
+    counterparts.map((candidate) =>
+      resolveMonthKeyFromComparableToken(candidate.variableSymbol)
+        ?? resolveMonthKeyFromComparableToken(candidate.invoiceNumber)
+    )
+  )
+
+  if (counterpartMonthKeys.length === 0) {
+    return 'unknown'
+  }
+
+  if (counterpartMonthKeys.length > 1) {
+    return 'mixed_multiple_months'
+  }
+
+  if (!rowMonthKey) {
+    return 'unknown'
+  }
+
+  return counterpartMonthKeys[0] === rowMonthKey ? 'same_month' : 'different_month'
+}
+
+function findInvoiceListEnrichmentForParkingItem(
+  anchors: {
+    voucher?: string
+    variableSymbol?: string
+    itemLabel?: string
+  },
+  invoiceListRecords: InvoiceListEnrichmentRecord[]
+): InvoiceListLinkResult | undefined {
+  if (invoiceListRecords.length === 0) {
+    return undefined
+  }
+
+  const lineItems = invoiceListRecords.filter((r) => r.recordKind === 'line-item')
+
+  if (anchors.voucher) {
+    const byVoucher = lineItems.filter((r) =>
+      r.voucher && normalizeComparable(r.voucher) === normalizeComparable(anchors.voucher)
+      && r.itemLabel && isParkingLikeLabel(r.itemLabel)
+    )
+    if (byVoucher.length === 1) {
+      return { record: byVoucher[0], reason: 'exact_voucher' }
+    }
+  }
+
+  if (anchors.variableSymbol) {
+    const byVS = lineItems.filter((r) =>
+      r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.variableSymbol)
+      && r.itemLabel && isParkingLikeLabel(r.itemLabel)
+    )
+    if (byVS.length === 1) {
+      return { record: byVS[0], reason: 'exact_variable_symbol' }
+    }
+  }
+
+  return undefined
+}
+
+function isParkingLikeLabel(label: string): boolean {
+  return normalizeComparable(label).includes('parkov')
 }

@@ -2276,9 +2276,65 @@ ${showRuntimePayoutDiagnostics ? `
             warnings: Array.isArray(file && file.warnings) ? file.warnings.slice() : [],
             reason: typeof (file && file.reason) === 'string' ? String(file.reason) : '',
             errorMessage: typeof (file && file.errorMessage) === 'string' ? String(file.errorMessage) : '',
-            decision: typeof (file && file.decision) === 'string' ? String(file.decision) : ''
+            decision: typeof (file && file.decision) === 'string' ? String(file.decision) : '',
+            runtimeClassifierPath: buildRuntimeClassifierPathFromDecision(file && file.decision),
+            runtimeDetectedContentFormat: String(file && file.decision && file.decision.capability && file.decision.capability.transportProfile || ''),
+            runtimeDetectedCapability: String(file && file.decision && file.decision.capability && file.decision.capability.profile || ''),
+            runtimeWorkbookSignature: Array.isArray(file && file.decision && file.decision.matchedRules)
+              ? file.decision.matchedRules.some(function(rule) { return String(rule || '').indexOf('binary-workbook') >= 0; })
+              : false,
+            workbookSignatureFunctionReached: Boolean(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureFunctionReached),
+            workbookSignatureDetectorName: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureDetectorName || ''),
+            workbookReadSucceeded: Boolean(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookReadSucceeded),
+            workbookSheetNamesRaw: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesRaw)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesRaw.slice()
+              : [],
+            workbookSheetNamesNormalized: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesNormalized)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.workbookSheetNamesNormalized.slice()
+              : [],
+            workbookSignatureFailureReason: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.workbookSignatureFailureReason || ''),
+            invoiceListPrimarySheetUsed: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimarySheetUsed || ''),
+            invoiceListLineItemsSheetUsed: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsSheetUsed || ''),
+            invoiceListParsedRowCount: Number(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListParsedRowCount || 0),
+            invoiceListParsedLineItemCount: Number(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListParsedLineItemCount || 0),
+            invoiceListPrimaryHeaderScanRows: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderScanRows)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderScanRows.slice()
+              : [],
+            invoiceListLineItemsHeaderScanRows: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderScanRows)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderScanRows.slice()
+              : [],
+            invoiceListPrimaryDetectedHeaderRowIndex: typeof (file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryDetectedHeaderRowIndex) === 'number'
+              ? Number(file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryDetectedHeaderRowIndex)
+              : null,
+            invoiceListLineItemsDetectedHeaderRowIndex: typeof (file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsDetectedHeaderRowIndex) === 'number'
+              ? Number(file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsDetectedHeaderRowIndex)
+              : null,
+            invoiceListPrimaryHeaderCellsRaw: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsRaw)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsRaw.slice()
+              : [],
+            invoiceListLineItemsHeaderCellsRaw: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsRaw)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsRaw.slice()
+              : [],
+            invoiceListPrimaryHeaderCellsNormalized: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsNormalized)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListPrimaryHeaderCellsNormalized.slice()
+              : [],
+            invoiceListLineItemsHeaderCellsNormalized: Array.isArray(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsNormalized)
+              ? file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListLineItemsHeaderCellsNormalized.slice()
+              : [],
+            invoiceListHeaderFailureReason: String(file && file.decision && file.decision.runtimeWorkbookSignatureDiagnostics && file.decision.runtimeWorkbookSignatureDiagnostics.invoiceListHeaderFailureReason || ''),
+            runtimeAssignedParserId: String(file && file.parserId || ''),
+            runtimeIngestionBranch: String(file && file.decision && file.decision.ingestionBranch || '')
           };
         });
+      }
+
+      function buildRuntimeClassifierPathFromDecision(decision) {
+        if (!decision) { return 'no-decision'; }
+        var matchedRules = Array.isArray(decision.matchedRules) ? decision.matchedRules : [];
+        var ingestionBranch = String(decision.ingestionBranch || '');
+        var classificationBasis = String(decision.resolvedBucket || '');
+        var capability = decision.capability && decision.capability.profile ? String(decision.capability.profile) : '';
+        return [capability, ingestionBranch, classificationBasis].concat(matchedRules).filter(Boolean).join(' > ');
       }
 
       function isPayoutRelatedWorkspaceFileForDebugExport(file) {
@@ -5998,6 +6054,41 @@ ${showRuntimePayoutDiagnostics ? '' : `
           reservation_plus: [],
           parking: []
         });
+        const invoiceListFiles = uploadedFiles.filter((file) => String(file.documentType || '') === 'invoice_list');
+        const invoiceListDebugSummary = {
+          detected: invoiceListFiles.length > 0,
+          fileCount: invoiceListFiles.length,
+          files: invoiceListFiles.map((file) => ({
+            fileName: String(file.fileName || ''),
+            sourceSystem: String(file.sourceSystem || ''),
+            documentType: String(file.documentType || ''),
+            parserId: String(file.parserId || ''),
+            classificationBasis: String(file.classificationBasis || ''),
+            extractedCount: Number(file.extractedCount || 0),
+            extractedRecordIds: Array.isArray(file.extractedRecordIds) ? file.extractedRecordIds.slice() : [],
+            workbookSignatureFunctionReached: Boolean(file.workbookSignatureFunctionReached),
+            workbookSignatureDetectorName: String(file.workbookSignatureDetectorName || ''),
+            workbookReadSucceeded: Boolean(file.workbookReadSucceeded),
+            workbookSheetNamesRaw: Array.isArray(file.workbookSheetNamesRaw) ? file.workbookSheetNamesRaw.slice() : [],
+            workbookSheetNamesNormalized: Array.isArray(file.workbookSheetNamesNormalized) ? file.workbookSheetNamesNormalized.slice() : [],
+            workbookSignatureFailureReason: String(file.workbookSignatureFailureReason || ''),
+            runtimeWorkbookSignature: Boolean(file.runtimeWorkbookSignature),
+            invoiceListPrimarySheetUsed: String(file.invoiceListPrimarySheetUsed || ''),
+            invoiceListLineItemsSheetUsed: String(file.invoiceListLineItemsSheetUsed || ''),
+            invoiceListParsedRowCount: Number(file.invoiceListParsedRowCount || 0),
+            invoiceListParsedLineItemCount: Number(file.invoiceListParsedLineItemCount || 0),
+            invoiceListPrimaryHeaderScanRows: Array.isArray(file.invoiceListPrimaryHeaderScanRows) ? file.invoiceListPrimaryHeaderScanRows.slice() : [],
+            invoiceListLineItemsHeaderScanRows: Array.isArray(file.invoiceListLineItemsHeaderScanRows) ? file.invoiceListLineItemsHeaderScanRows.slice() : [],
+            invoiceListPrimaryDetectedHeaderRowIndex: typeof file.invoiceListPrimaryDetectedHeaderRowIndex === 'number' ? Number(file.invoiceListPrimaryDetectedHeaderRowIndex) : null,
+            invoiceListLineItemsDetectedHeaderRowIndex: typeof file.invoiceListLineItemsDetectedHeaderRowIndex === 'number' ? Number(file.invoiceListLineItemsDetectedHeaderRowIndex) : null,
+            invoiceListPrimaryHeaderCellsRaw: Array.isArray(file.invoiceListPrimaryHeaderCellsRaw) ? file.invoiceListPrimaryHeaderCellsRaw.slice() : [],
+            invoiceListLineItemsHeaderCellsRaw: Array.isArray(file.invoiceListLineItemsHeaderCellsRaw) ? file.invoiceListLineItemsHeaderCellsRaw.slice() : [],
+            invoiceListPrimaryHeaderCellsNormalized: Array.isArray(file.invoiceListPrimaryHeaderCellsNormalized) ? file.invoiceListPrimaryHeaderCellsNormalized.slice() : [],
+            invoiceListLineItemsHeaderCellsNormalized: Array.isArray(file.invoiceListLineItemsHeaderCellsNormalized) ? file.invoiceListLineItemsHeaderCellsNormalized.slice() : [],
+            invoiceListHeaderFailureReason: String(file.invoiceListHeaderFailureReason || '')
+          })),
+          totalExtractedCount: invoiceListFiles.reduce((sum, file) => sum + Number(file.extractedCount || 0), 0)
+        };
         const bookingBlock = blocks.find((block) => String(block && block.key || '') === 'booking');
         const bookingReservationItems = (Array.isArray(bookingBlock && bookingBlock.items) ? bookingBlock.items : []).map((item) => {
           const linkedPayoutRowIds = (Array.isArray(item && item.transactionIds) ? item.transactionIds : [])
@@ -6035,6 +6126,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const ancillaryLinkTraces = Array.isArray(overviewDebug.ancillaryLinkTraces) ? overviewDebug.ancillaryLinkTraces : [];
         const reservationPlusNativeLinkTraces = Array.isArray(overviewDebug.reservationPlusNativeLinkTraces)
           ? overviewDebug.reservationPlusNativeLinkTraces
+          : [];
+        const reservationPlusComgateMergeTraces = Array.isArray(overviewDebug.reservationPlusComgateMergeTraces)
+          ? overviewDebug.reservationPlusComgateMergeTraces
           : [];
 
         function buildWorkspaceFileRecordDebugPayload(record) {
@@ -6154,6 +6248,33 @@ ${showRuntimePayoutDiagnostics ? '' : `
             exactStayIntervalHits: Array.isArray(trace && trace.exactStayIntervalHits)
               ? trace.exactStayIntervalHits.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
               : [],
+            invoiceListCandidateCount: Number(trace && trace.invoiceListCandidateCount || 0),
+            invoiceListExactIdentityHits: Array.isArray(trace && trace.invoiceListExactIdentityHits)
+              ? trace.invoiceListExactIdentityHits.map((candidate) => buildInvoiceListLinkCandidateDebugPayload(candidate))
+              : [],
+            invoiceListExactDocumentHits: Array.isArray(trace && trace.invoiceListExactDocumentHits)
+              ? trace.invoiceListExactDocumentHits.map((candidate) => buildInvoiceListLinkCandidateDebugPayload(candidate))
+              : [],
+            invoiceListExactStayIntervalHits: Array.isArray(trace && trace.invoiceListExactStayIntervalHits)
+              ? trace.invoiceListExactStayIntervalHits.map((candidate) => buildInvoiceListLinkCandidateDebugPayload(candidate))
+              : [],
+            merchantOrderReferenceAnchorFamily: String(trace && trace.merchantOrderReferenceAnchorFamily || ''),
+            invoiceListVoucherHits: Number(trace && trace.invoiceListVoucherHits || 0),
+            invoiceListVariableSymbolHits: Number(trace && trace.invoiceListVariableSymbolHits || 0),
+            invoiceListInvoiceNumberHits: Number(trace && trace.invoiceListInvoiceNumberHits || 0),
+            reservationEntityBridgeHits: Number(trace && trace.reservationEntityBridgeHits || 0),
+            candidateSetAfterFiltering: Array.isArray(trace && trace.candidateSetAfterFiltering)
+              ? trace.candidateSetAfterFiltering.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            candidateCountBlockedReason: String(trace && trace.candidateCountBlockedReason || ''),
+            unresolvedClassification: String(trace && trace.unresolvedClassification || ''),
+            exactCounterpartExists: Boolean(trace && trace.exactCounterpartExists),
+            ambiguousExactCounterparts: Boolean(trace && trace.ambiguousExactCounterparts),
+            noExactCounterpartInSelectedFiles: Boolean(trace && trace.noExactCounterpartInSelectedFiles),
+            exactCounterpartSourceFamily: String(trace && trace.exactCounterpartSourceFamily || ''),
+            exactCounterpartKey: String(trace && trace.exactCounterpartKey || ''),
+            counterpartMonthRelation: String(trace && trace.counterpartMonthRelation || ''),
+            chosenCandidateSource: String(trace && trace.chosenCandidateSource || 'none'),
             chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
           };
         }
@@ -6178,6 +6299,40 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 platform: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.platform || ''),
                 reference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.reference || ''),
                 reservationId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.reservationId || ''),
+                clientId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.clientId || ''),
+                merchantOrderReference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.merchantOrderReference || ''),
+                payerVariableSymbol: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.payerVariableSymbol || ''),
+                rawPopis: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.rawPopis || ''),
+                rawTransferVariableSymbol: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.rawTransferVariableSymbol || ''),
+                rawPayerVariableSymbol: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.rawPayerVariableSymbol || ''),
+                rawClientId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.rawClientId || ''),
+                normalizedPayoutReference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.normalizedPayoutReference || ''),
+                normalizedMerchantOrderReference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.normalizedMerchantOrderReference || ''),
+                normalizedClientId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.normalizedClientId || ''),
+                runtimeComgateParserVariant: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.runtimeComgateParserVariant || ''),
+                createdAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.createdAt || ''),
+                paidAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paidAt || ''),
+                transferredAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transferredAt || ''),
+                confirmedGrossMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.confirmedGrossMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.confirmedGrossMinor
+                  : null,
+                transferredNetMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transferredNetMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.transferredNetMinor
+                  : null,
+                feeTotalMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeTotalMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeTotalMinor
+                  : null,
+                feeInterbankMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeInterbankMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeInterbankMinor
+                  : null,
+                feeAssociationMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeAssociationMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeAssociationMinor
+                  : null,
+                feeProcessorMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeProcessorMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeProcessorMinor
+                  : null,
+                paymentMethod: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paymentMethod || ''),
+                cardType: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.cardType || ''),
                 bookedAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.bookedAt || ''),
                 paymentPurpose: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paymentPurpose || ''),
                 transactionId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transactionId || ''),
@@ -6299,12 +6454,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
             .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference || String(entry && entry.reservationId || '') === normalizedTargetReference);
           const matchingNativeLinkTraces = reservationPlusNativeLinkTraces
             .filter((entry) => String(entry && entry.reference || '') === normalizedTargetReference || String(entry && entry.reservationId || '') === normalizedTargetReference);
+          const matchingMergeTrace = reservationPlusComgateMergeTraces
+            .find((entry) => String(entry && entry.linkedReservationId || '') === normalizedTargetReference && entry && entry.nativeComgateFallbackSuppressed);
           const trace = selectReservationPlusTrace(finalOverviewItem, matchingAncillaryLinkTraces, matchingNativeLinkTraces);
           const tracePayload = trace && Object.prototype.hasOwnProperty.call(trace, 'normalizedNativeRow')
             ? buildReservationPlusNativeLinkTraceDebugPayload(trace)
             : trace
               ? buildAncillaryLinkTraceDebugPayload(trace)
               : null;
+
+          const mergedLinkedGuestName = matchingMergeTrace ? String(matchingMergeTrace.reservationGuestName || '') : '';
+          const mergedLinkedRoomName = matchingMergeTrace ? String(matchingMergeTrace.reservationRoomName || '') : '';
+          const mergedLinkedReservationId = matchingMergeTrace ? String(matchingMergeTrace.linkedReservationId || '') : '';
+          const mergedStayStartAt = matchingMergeTrace ? String(matchingMergeTrace.reservationStayStartAt || '') : '';
+          const mergedStayEndAt = matchingMergeTrace ? String(matchingMergeTrace.reservationStayEndAt || '') : '';
 
           return {
             targetReference: normalizedTargetReference,
@@ -6318,15 +6481,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 : collectUniqueTruthyStrings([trace && trace.sourceDocumentId]),
               reservationId: String(trace && trace.reservationId || finalOverviewItem && finalOverviewItem.primaryReference || ''),
               reference: String(trace && trace.reference || finalOverviewItem && finalOverviewItem.primaryReference || ''),
-              guestName: String(readReservationPaymentDetailValue(detailEntries, 'Host') || ''),
-              linkedGuestName: String(trace && trace.linkedGuestName || ''),
-              stayStartAt: String(trace && trace.stayStartAt || ''),
-              stayEndAt: String(trace && trace.stayEndAt || ''),
-              linkedStayStartAt: String(trace && trace.linkedStayStartAt || ''),
-              linkedStayEndAt: String(trace && trace.linkedStayEndAt || ''),
-              unit: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
-              roomName: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
-              linkedMainReservationId: String(trace && trace.linkedMainReservationId || ''),
+              guestName: String(readReservationPaymentDetailValue(detailEntries, 'Host') || mergedLinkedGuestName || ''),
+              linkedGuestName: String(trace && trace.linkedGuestName || mergedLinkedGuestName || ''),
+              stayStartAt: String(trace && trace.stayStartAt || mergedStayStartAt || ''),
+              stayEndAt: String(trace && trace.stayEndAt || mergedStayEndAt || ''),
+              linkedStayStartAt: String(trace && trace.linkedStayStartAt || mergedStayStartAt || ''),
+              linkedStayEndAt: String(trace && trace.linkedStayEndAt || mergedStayEndAt || ''),
+              unit: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || mergedLinkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
+              roomName: String(readReservationPaymentDetailValue(detailEntries, 'Jednotka') || trace && trace.linkedRoomName || mergedLinkedRoomName || finalOverviewItem && finalOverviewItem.subtitle || ''),
+              linkedMainReservationId: String(trace && trace.linkedMainReservationId || mergedLinkedReservationId || ''),
               detailEntries
             },
             rawParsedSourceRow: tracePayload && tracePayload.rawParsedSourceRow
@@ -6341,6 +6504,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 : null,
             overviewLinkingInput: tracePayload && tracePayload.overviewLinkingInput ? tracePayload.overviewLinkingInput : null,
             matchingLinkTrace: tracePayload,
+            matchingMergeTrace: matchingMergeTrace || null,
             matchingAncillaryLinkTraces: matchingAncillaryLinkTraces.map((entry) => buildAncillaryLinkTraceDebugPayload(entry)),
             matchingNativeLinkTraces: matchingNativeLinkTraces.map((entry) => buildReservationPlusNativeLinkTraceDebugPayload(entry)),
             linkedCandidateChain: {
@@ -6348,7 +6512,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
               candidateCount: Number(trace && trace.candidateCount || 0),
               exactIdentityHits: tracePayload && Array.isArray(tracePayload.exactIdentityHits) ? tracePayload.exactIdentityHits : [],
               exactStayIntervalHits: tracePayload && Array.isArray(tracePayload.exactStayIntervalHits) ? tracePayload.exactStayIntervalHits : [],
-              chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
+              chosenCandidateReason: String(trace && trace.chosenCandidateReason || matchingMergeTrace && matchingMergeTrace.chosenLinkReason || 'no_candidate')
             }
           };
         }
@@ -6454,6 +6618,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           payoutRelatedFileIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.workspaceFileId)),
           payoutRelatedSourceDocumentIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.sourceDocumentId)),
           reservationLikeItemIdsBySource,
+          invoiceListDebugSummary,
           reservationPaymentOverviewDebug: {
             parkingCandidatesBeforeGrouping: Number(overviewDebug.parkingCandidatesBeforeGrouping || 0),
             reservationPlusCandidatesBeforeGrouping: Number(overviewDebug.reservationPlusCandidatesBeforeGrouping || 0),
@@ -6479,7 +6644,24 @@ ${showRuntimePayoutDiagnostics ? '' : `
               }))
               : [],
             ancillaryLinkTraces: ancillaryLinkTraces.map((trace) => buildAncillaryLinkTraceDebugPayload(trace)),
-            reservationPlusNativeLinkTraces: reservationPlusNativeLinkTraces.map((trace) => buildReservationPlusNativeLinkTraceDebugPayload(trace))
+            reservationPlusNativeLinkTraces: reservationPlusNativeLinkTraces.map((trace) => buildReservationPlusNativeLinkTraceDebugPayload(trace)),
+            reservationPlusComgateMergeTraces: reservationPlusComgateMergeTraces.map((trace) => ({
+              finalOverviewItemId: String(trace && trace.finalOverviewItemId || ''),
+              linkedReservationId: String(trace && trace.linkedReservationId || ''),
+              linkedPaymentReference: String(trace && trace.linkedPaymentReference || ''),
+              chosenLinkReason: String(trace && trace.chosenLinkReason || ''),
+              reservationEntityMatchedByInvoiceList: Boolean(trace && trace.reservationEntityMatchedByInvoiceList),
+              nativeRowMergedIntoReservationEntity: Boolean(trace && trace.nativeRowMergedIntoReservationEntity),
+              mergeSource: String(trace && trace.mergeSource || 'none'),
+              mergeAnchorType: String(trace && trace.mergeAnchorType || ''),
+              nativeComgateFallbackSuppressed: Boolean(trace && trace.nativeComgateFallbackSuppressed),
+              mergedComgateRowId: String(trace && trace.mergedComgateRowId || ''),
+              mergedComgateSourceDocumentId: String(trace && trace.mergedComgateSourceDocumentId || ''),
+              reservationGuestName: String(trace && trace.reservationGuestName || ''),
+              reservationRoomName: String(trace && trace.reservationRoomName || ''),
+              reservationStayStartAt: String(trace && trace.reservationStayStartAt || ''),
+              reservationStayEndAt: String(trace && trace.reservationStayEndAt || '')
+            }))
           },
           previoAncillaryParserTrace: previoAncillaryParserTrace.map((entry) => buildPrevioAncillaryParserTracePayload(entry)),
           mergedWorkspaceReferenceTrace: {

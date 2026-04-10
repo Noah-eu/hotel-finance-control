@@ -1299,6 +1299,119 @@ describe('buildWebDemo', () => {
     ]))
   })
 
+  it('includes invoice_list workbook-signature diagnostics in debug workspace truth export', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-06T10:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-debug-workspace-invoice-list-signature',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListWorkbookBase64())
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      fileName: string
+      jsonContent: string
+    }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      uploadedFiles: Array<{
+        fileName: string
+        sourceSystem: string
+        documentType: string
+        parserId: string
+        extractedCount: number
+        runtimeWorkbookSignature: boolean
+        workbookSignatureFunctionReached: boolean
+        workbookSignatureDetectorName: string
+        workbookReadSucceeded: boolean
+        workbookSheetNamesRaw: string[]
+        workbookSheetNamesNormalized: string[]
+        workbookSignatureFailureReason: string
+      }>
+      invoiceListDebugSummary: {
+        detected: boolean
+        fileCount: number
+        totalExtractedCount: number
+      }
+    }
+
+    expect(payload.uploadedFiles).toEqual([
+      expect.objectContaining({
+        fileName: 'invoice_list.xls',
+        sourceSystem: 'previo',
+        documentType: 'invoice_list',
+        parserId: 'previo',
+        runtimeWorkbookSignature: true,
+        workbookSignatureFunctionReached: true,
+        workbookSignatureDetectorName: 'detectInvoiceListWorkbookSignature',
+        workbookReadSucceeded: true,
+        workbookSheetNamesRaw: expect.arrayContaining(['Seznam dokladů']),
+        workbookSheetNamesNormalized: expect.arrayContaining(['seznam dokladu']),
+        workbookSignatureFailureReason: ''
+      })
+    ])
+    expect(payload.uploadedFiles[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(payload.invoiceListDebugSummary).toEqual(expect.objectContaining({
+      detected: true,
+      fileCount: 1
+    }))
+    expect(payload.invoiceListDebugSummary.totalExtractedCount).toBeGreaterThan(0)
+  })
+
+  it('exports production invoice_list workbook diagnostics with Doklady/Položky dokladů in debug workspace truth', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-06T10:41:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-debug-workspace-invoice-list-production-shape',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeWorkbookFile('invoice_list.xls', buildInvoiceListProductionWorkbookBase64())
+      ]
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as { jsonContent: string }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      uploadedFiles: Array<{
+        runtimeWorkbookSignature: boolean
+        parserId: string
+        extractedCount: number
+      }>
+      invoiceListDebugSummary: {
+        detected: boolean
+        fileCount: number
+        totalExtractedCount: number
+        files: Array<{
+          workbookSignatureFailureReason: string
+          invoiceListPrimarySheetUsed: string
+          invoiceListLineItemsSheetUsed: string
+          invoiceListPrimaryDetectedHeaderRowIndex: number | null
+          invoiceListLineItemsDetectedHeaderRowIndex: number | null
+        }>
+      }
+    }
+
+    expect(payload.uploadedFiles[0]).toEqual(expect.objectContaining({
+      runtimeWorkbookSignature: true,
+      parserId: 'previo'
+    }))
+    expect(payload.uploadedFiles[0]?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(payload.invoiceListDebugSummary).toEqual(expect.objectContaining({
+      detected: true,
+      fileCount: 1
+    }))
+    expect(payload.invoiceListDebugSummary.totalExtractedCount).toBeGreaterThan(0)
+    expect(payload.invoiceListDebugSummary.files[0]).toEqual(expect.objectContaining({
+      workbookSignatureFailureReason: '',
+      invoiceListPrimarySheetUsed: 'Doklady',
+      invoiceListLineItemsSheetUsed: 'Položky dokladů',
+      invoiceListPrimaryDetectedHeaderRowIndex: 2,
+      invoiceListLineItemsDetectedHeaderRowIndex: 2
+    }))
+  })
+
   it('renders the final operator page with a real-like Czech Booking payout PDF as a supported supplement instead of unsupported even when the head preview is just property details', async () => {
     const booking = getRealInputFixture('booking-payout-export-browser-upload-shape')
     const rendered = await executeWebDemoMainWorkflow({
@@ -4750,13 +4863,20 @@ describe('buildWebDemo', () => {
             reservationId: string
           }
         } | null
+        matchingMergeTrace: {
+          linkedReservationId: string
+          chosenLinkReason: string
+          nativeComgateFallbackSuppressed: boolean
+          reservationGuestName: string
+          reservationRoomName: string
+        } | null
         linkedCandidateChain: {
           chosenCandidateReason: string
         }
       }>
     }
 
-    const probe = payload.reservationPlusItemProbes.find((entry) => entry.rawParsedSourceRow?.data?.reservationId === 'WEB-RES-991')
+    const probe = payload.reservationPlusItemProbes.find((entry) => entry.explicitFields?.linkedMainReservationId === 'WEB-RES-991')
 
     expect(probe).toEqual(expect.objectContaining({
       explicitFields: expect.objectContaining({
@@ -4764,15 +4884,15 @@ describe('buildWebDemo', () => {
         linkedMainReservationId: 'WEB-RES-991',
         roomName: 'C301'
       }),
-      rawParsedSourceRow: expect.objectContaining({
-        sourceDocumentId: expect.stringContaining('comgate-target-csv'),
-        rawReference: 'CG-RES-991',
-        data: expect.objectContaining({
-          reservationId: 'WEB-RES-991'
-        })
+      matchingMergeTrace: expect.objectContaining({
+        linkedReservationId: 'WEB-RES-991',
+        chosenLinkReason: 'exact_refId_merge',
+        nativeComgateFallbackSuppressed: true,
+        reservationGuestName: 'Wendy Web',
+        reservationRoomName: 'C301'
       }),
       linkedCandidateChain: expect.objectContaining({
-        chosenCandidateReason: 'exact_identity'
+        chosenCandidateReason: 'exact_refId_merge'
       })
     }))
   })
@@ -7398,6 +7518,71 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: recognized supported')
   })
 
+  it('shows the real monthly Comgate mojibake CSV as monthly-settlement with preserved bridge anchors in debug runtime truth', async () => {
+    const monthlyContent = [
+      '"Merchant";"Datum zalo�en�";"Datum zaplacen�";"Datum p�evodu";"M�s�c fakturace";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail pl�tce";"Variabiln� symbol pl�tce";"Variabiln� symbol p�evodu";"ID od klienta";"M�na";"Potvrzen� ��stka";"P�eveden� ��stka";"Poplatek celkem";"Poplatek mezibankovn�";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+      '"499465";"2026-02-26 09:28:06";"2026-02-26 09:28:41";"2026-03-02";"";"JV6Y-60HX-NNRK";"Karta online";"";"20250587";"guest@example.com";"1357656777";"1811321483";"108061915";"CZK";"7387,10";"7314,71";"72,39";"14,77";"11,52";"46,10";"EU_CONSUMER"',
+      '"-";"";"";"2026-03-02";"";"";"";"suma";"-";"-";"-";"1811321483";"-";"CZK";"42788,33";"42269,01";"519,32";"113,94";"88,60";"316,78";""'
+    ].join('\n')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-10T14:30:00.000Z',
+      month: '2026-03',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('vypis-202603.csv', monthlyContent)
+      ]
+    })
+
+    expect(rendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate detected file kind: monthly-settlement')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variant: monthly-settlement')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variants: monthly-settlement')
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverviewDebug: {
+        reservationPlusNativeLinkTraces?: Array<{
+          merchantOrderReferenceAnchorFamily?: string
+          invoiceListVoucherHits?: number
+          invoiceListVariableSymbolHits?: number
+          invoiceListInvoiceNumberHits?: number
+          candidateCountBlockedReason?: string
+          unresolvedClassification?: string
+          exactCounterpartExists?: boolean
+          ambiguousExactCounterparts?: boolean
+          noExactCounterpartInSelectedFiles?: boolean
+          exactCounterpartSourceFamily?: string
+          exactCounterpartKey?: string
+          counterpartMonthRelation?: string
+          rawParsedSourceRow?: {
+            data?: {
+              runtimeComgateParserVariant?: string
+              normalizedMerchantOrderReference?: string
+              normalizedPayoutReference?: string
+              normalizedClientId?: string
+            }
+          }
+        }>
+      }
+    }
+    const firstTrace = state.reservationPaymentOverviewDebug.reservationPlusNativeLinkTraces?.[0]
+    expect(firstTrace?.rawParsedSourceRow?.data?.runtimeComgateParserVariant).toBe('monthly-settlement')
+    expect(firstTrace?.rawParsedSourceRow?.data?.normalizedMerchantOrderReference).toBe('20250587')
+    expect(firstTrace?.rawParsedSourceRow?.data?.normalizedPayoutReference).toBe('1811321483')
+    expect(firstTrace?.rawParsedSourceRow?.data?.normalizedClientId).toBe('108061915')
+    expect(firstTrace?.merchantOrderReferenceAnchorFamily).toBe('numeric')
+    expect(firstTrace?.invoiceListVoucherHits).toBe(0)
+    expect(firstTrace?.invoiceListVariableSymbolHits).toBe(0)
+    expect(firstTrace?.invoiceListInvoiceNumberHits).toBe(0)
+    expect(firstTrace?.candidateCountBlockedReason).toBe('no_exact_counterpart_in_selected_files')
+    expect(firstTrace?.unresolvedClassification).toBe('no_exact_counterpart_in_selected_files')
+    expect(firstTrace?.exactCounterpartExists).toBe(false)
+    expect(firstTrace?.ambiguousExactCounterparts).toBe(false)
+    expect(firstTrace?.noExactCounterpartInSelectedFiles).toBe(true)
+    expect(firstTrace?.exactCounterpartSourceFamily).toBe('none')
+    expect(firstTrace?.exactCounterpartKey).toBeUndefined()
+    expect(firstTrace?.counterpartMonthRelation).toBe('unknown')
+  })
+
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
@@ -8717,6 +8902,50 @@ function buildPrevioBrowserShapeWorkbookBase64(): string {
       roomName: 'A101'
     }
   ])
+}
+
+function buildInvoiceListWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    [
+      'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoje',
+      'Způsob úhrady', 'Zákazník', 'ID zákazníka', 'Číslo dokladu',
+      'Název', 'Celkem s DPH', 'Celkem bez DPH'
+    ],
+    ['RES-100', '11111111', '01.03.2026', '03.03.2026', 'Jan Novák', 'A101', 'Kartou', 'Firma X', 'C-100', 'FA-100', '', '2 000 Kč', '1 652 Kč']
+  ])
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Seznam dokladů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
+}
+
+function buildInvoiceListProductionWorkbookBase64(): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklady - export'],
+    [''],
+    ['Doklad č.', 'Voucher', 'Variabilní  symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260326', 'RES-PROD-WEB', '77889900', '26.03.2026', '27.03.2026', 'Karel Web', 'E505', 'Firma Web', 'CID-W505', '3 900 Kč', '3 223 Kč']
+  ]), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Položky dokladů - export'],
+    [''],
+    ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260326', 'Ubytování', '3 400 Kč', '2 810 Kč'],
+    ['FA-20260326', 'Parkování na den', '500 Kč', '413 Kč']
+  ]), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '2']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 
 function buildPrevioWorkbookBase64FromRows(rows: Array<{

@@ -190,6 +190,7 @@ describe('buildReconciliationReport', () => {
         workflowPlan: {
           reservationSources: [],
           ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
           reservationSettlementMatches: [],
           reservationSettlementNoMatches: [],
           payoutRows: [
@@ -307,6 +308,7 @@ describe('buildReconciliationReport', () => {
         workflowPlan: {
           reservationSources: [],
           ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
           reservationSettlementMatches: [],
           reservationSettlementNoMatches: [],
           payoutRows: [
@@ -397,6 +399,7 @@ describe('buildReconciliationReport', () => {
         workflowPlan: {
           reservationSources: [],
           ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
           reservationSettlementMatches: [],
           reservationSettlementNoMatches: [],
           payoutRows: [
@@ -465,6 +468,7 @@ describe('buildReconciliationReport', () => {
         workflowPlan: {
           reservationSources: [],
           ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
           reservationSettlementMatches: [],
           reservationSettlementNoMatches: [],
           payoutRows: [
@@ -534,6 +538,7 @@ describe('buildReconciliationReport', () => {
         workflowPlan: {
           reservationSources: [],
           ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
           reservationSettlementMatches: [],
           reservationSettlementNoMatches: [],
           payoutRows: [

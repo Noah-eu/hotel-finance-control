@@ -69,6 +69,22 @@ export interface NormalizedTransaction {
   payoutSupplementReferenceHints?: string[]
   payoutSupplementSourceDocumentIds?: DocumentId[]
   payoutSupplementReservationIds?: string[]
+  payoutReference?: string
+  clientId?: string
+  merchantOrderReference?: string
+  payerVariableSymbol?: string
+  comgateTransactionId?: string
+  createdAt?: ISODateString
+  paidAt?: ISODateString
+  transferredAt?: ISODateString
+  confirmedGrossMinor?: number
+  transferredNetMinor?: number
+  feeTotalMinor?: number
+  feeInterbankMinor?: number
+  feeAssociationMinor?: number
+  feeProcessorMinor?: number
+  paymentMethod?: string
+  cardType?: string
   invoiceNumber?: string
   variableSymbol?: string
   targetBankAccountHint?: string
@@ -137,6 +153,28 @@ export interface AncillaryRevenueSourceRecord {
   channel?: string
   grossRevenueMinor: number
   outstandingBalanceMinor?: number
+  currency: CurrencyCode
+}
+
+export interface InvoiceListEnrichmentRecord {
+  sourceRecordId: string
+  sourceDocumentId: DocumentId
+  recordKind: 'header' | 'line-item'
+  invoiceDocumentType?: string
+  invoiceLineDocumentType?: string
+  voucher?: string
+  variableSymbol?: string
+  invoiceNumber?: string
+  customerId?: string
+  customerName?: string
+  guestName?: string
+  stayStartAt?: ISODateString
+  stayEndAt?: ISODateString
+  roomName?: string
+  paymentMethod?: string
+  itemLabel?: string
+  grossAmountMinor?: number
+  netAmountMinor?: number
   currency: CurrencyCode
 }
 
@@ -258,6 +296,7 @@ export interface ReconciliationWorkflowPlan {
   previoReservationTruth?: ReservationSourceRecord[]
   reservationSources: ReservationSourceRecord[]
   ancillaryRevenueSources: AncillaryRevenueSourceRecord[]
+  invoiceListEnrichment: InvoiceListEnrichmentRecord[]
   reservationSettlementMatches: ReservationSettlementMatch[]
   reservationSettlementNoMatches: ReservationSettlementNoMatch[]
   payoutRows: PayoutRowExpectation[]

@@ -61,6 +61,7 @@ export type DocumentKind =
   | 'payment_gateway_report'
   | 'reservation_export'
   | 'invoice'
+  | 'invoice_list'
   | 'receipt'
   | 'other'
 

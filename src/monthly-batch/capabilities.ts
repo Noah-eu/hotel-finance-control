@@ -45,7 +45,7 @@ export function detectUploadedMonthlyFileCapability(
     return sourceDescriptorCapability
   }
 
-  if (input.contentFormat === 'binary-workbook' || fileName.endsWith('.xlsx')) {
+  if (input.contentFormat === 'binary-workbook' || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
     return buildCapability(
       'structured_tabular',
       'structured_workbook',

@@ -318,7 +318,7 @@ function inferContentFormatFromFileName(fileName: string): 'text' | 'pdf-text' |
     return 'pdf-text'
   }
 
-  if (normalized.endsWith('.xlsx')) {
+  if (normalized.endsWith('.xlsx') || normalized.endsWith('.xls')) {
     return 'binary-workbook'
   }
 
@@ -336,7 +336,7 @@ function inferUploadedBytesContentFormat(
     return 'pdf-text'
   }
 
-  if (normalizedFileName.endsWith('.xlsx')) {
+  if (normalizedFileName.endsWith('.xlsx') || normalizedFileName.endsWith('.xls')) {
     return 'binary-workbook'
   }
 
@@ -344,7 +344,6 @@ function inferUploadedBytesContentFormat(
     normalizedMime?.startsWith('text/')
     || normalizedMime === 'application/csv'
     || normalizedMime === 'text/csv'
-    || normalizedMime === 'application/vnd.ms-excel'
     || normalizedFileName.endsWith('.csv')
     || normalizedFileName.endsWith('.txt')
     || normalizedFileName.endsWith('.tsv')
