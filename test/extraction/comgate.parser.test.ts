@@ -249,4 +249,87 @@ describe('parseComgateExport', () => {
       }
     })
   })
+
+  it('classifies full monthly Comgate export as monthly-settlement and preserves Popis as merchantOrderReference', () => {
+    const fixture = getRealInputFixture('comgate-export')
+    const content = [
+      '"Merchant";"Datum založení";"Datum zaplacení";"Datum převodu";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail plátce";"Variabilní symbol plátce";"Variabilní symbol převodu";"ID od klienta";"Měna";"Potvrzená částka";"Převedená částka";"Poplatek celkem";"Poplatek mezibankovní";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+      '"499465";"27.03.2026 09:15";"27.03.2026 09:16";"28.03.2026";"CG-MONTHLY-TRX-1";"Karta online";"website-reservation";"20250680";"guest1@example.com";"109047421";"1816480742";"999900001";"CZK";"302940,00";"300000,00";"2940,00";"1000,00";"940,00";"1000,00";"VISA"',
+      '"499465";"27.03.2026 09:17";"27.03.2026 09:18";"28.03.2026";"CG-MONTHLY-TRX-2";"Karta online";"website-reservation";"VOUCHER-109003481";"guest2@example.com";"109003481";"1816303586";"999900002";"CZK";"242351,00";"240000,00";"2351,00";"800,00";"751,00";"800,00";"MASTERCARD"',
+      '"499465";"";"";"28.03.2026";"";"";"suma";"suma";"";"";"1816480742";"";"CZK";"545291,00";"540000,00";"5291,00";"1800,00";"1691,00";"1800,00";""'
+    ].join('\n')
+
+    const diagnostics = inspectComgateHeaderDiagnostics(content)
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content,
+      extractedAt: '2026-04-10T14:00:00.000Z'
+    })
+
+    expect(diagnostics).toMatchObject({
+      detectedFileKind: 'monthly-settlement',
+      parserVariant: 'monthly-settlement',
+      requiredCanonicalHeaders: [
+        'transactionId',
+        'createdAt',
+        'paidAt',
+        'transferredAt',
+        'merchantOrderReference',
+        'payerVariableSymbol',
+        'transferReference',
+        'clientId',
+        'currency',
+        'confirmedAmountMinor',
+        'transferredAmountMinor'
+      ],
+      missingCanonicalHeaders: [],
+      containsExplicitSettlementTotal: true,
+      explicitSettlementTotalMinor: 54000000
+    })
+    expect(records).toHaveLength(3)
+    expect(records[0]).toMatchObject({
+      id: 'comgate-row-1',
+      recordType: 'payout-line',
+      rawReference: 'CG-MONTHLY-TRX-1',
+      amountMinor: 30000000,
+      currency: 'CZK',
+      occurredAt: '2026-03-28',
+      data: {
+        comgateParserVariant: 'monthly-settlement',
+        transactionId: 'CG-MONTHLY-TRX-1',
+        reference: '1816480742',
+        clientId: '999900001',
+        reservationId: '999900001',
+        merchantOrderReference: '20250680',
+        payerVariableSymbol: '109047421',
+        createdAt: '2026-03-27T09:15:00',
+        paidAt: '2026-03-27T09:16:00',
+        transferredAt: '2026-03-28',
+        confirmedGrossMinor: 30294000,
+        transferredNetMinor: 30000000,
+        feeTotalMinor: 294000,
+        feeInterbankMinor: 100000,
+        feeAssociationMinor: 94000,
+        feeProcessorMinor: 100000,
+        paymentMethod: 'Karta online',
+        cardType: 'VISA'
+      }
+    })
+    expect(records[2]).toMatchObject({
+      id: 'comgate-summary-1',
+      recordType: 'payout-batch-summary',
+      rawReference: '1816480742',
+      amountMinor: 54000000,
+      currency: 'CZK',
+      occurredAt: '2026-03-28',
+      data: {
+        comgateParserVariant: 'monthly-settlement',
+        rowKind: 'payout-batch-summary',
+        payoutReference: '1816480742',
+        transferredAt: '2026-03-28',
+        transferredNetMinor: 54000000,
+        confirmedGrossMinor: 54529100
+      }
+    })
+  })
 })

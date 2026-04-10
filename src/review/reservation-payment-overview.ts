@@ -228,6 +228,20 @@ export interface ReservationPaymentOverviewNativeRawParsedRow {
     platform?: string
     reference?: string
     reservationId?: string
+    clientId?: string
+    merchantOrderReference?: string
+    payerVariableSymbol?: string
+    createdAt?: string
+    paidAt?: string
+    transferredAt?: string
+    confirmedGrossMinor?: number
+    transferredNetMinor?: number
+    feeTotalMinor?: number
+    feeInterbankMinor?: number
+    feeAssociationMinor?: number
+    feeProcessorMinor?: number
+    paymentMethod?: string
+    cardType?: string
     bookedAt?: string
     paymentPurpose?: string
     transactionId?: string
@@ -781,7 +795,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
           : parkingLike
           ? findInvoiceListEnrichmentForParkingItem(
             {
-              voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId),
+              voucher: readString(extractedRecord?.data.merchantOrderReference)
+                ?? readString(extractedRecord?.data.reservationId)
+                ?? readString(extractedRecord?.data.clientId),
               variableSymbol: readString(extractedRecord?.data.reference),
               itemLabel: readString(extractedRecord?.data.paymentPurpose)
             },
@@ -789,7 +805,9 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
           )
           : findInvoiceListEnrichmentForItem(
             {
-              voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId),
+              voucher: readString(extractedRecord?.data.merchantOrderReference)
+                ?? readString(extractedRecord?.data.reservationId)
+                ?? readString(extractedRecord?.data.clientId),
               variableSymbol: readString(extractedRecord?.data.reference)
             },
             invoiceListRecords
@@ -1281,7 +1299,9 @@ export function inspectReservationPaymentOverviewClassification(
     const invoiceLink = blockKey === 'parking'
       ? findInvoiceListEnrichmentForParkingItem(
         {
-          voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId),
+          voucher: readString(extractedRecord?.data.merchantOrderReference)
+            ?? readString(extractedRecord?.data.reservationId)
+            ?? readString(extractedRecord?.data.clientId),
           variableSymbol: readString(extractedRecord?.data.reference),
           itemLabel: readString(extractedRecord?.data.paymentPurpose)
         },
@@ -1289,7 +1309,9 @@ export function inspectReservationPaymentOverviewClassification(
       )
       : findInvoiceListEnrichmentForItem(
         {
-          voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId),
+          voucher: readString(extractedRecord?.data.merchantOrderReference)
+            ?? readString(extractedRecord?.data.reservationId)
+            ?? readString(extractedRecord?.data.clientId),
           variableSymbol: readString(extractedRecord?.data.reference)
         },
         invoiceListDebugRecords
@@ -2542,6 +2564,7 @@ function collectComparableNativeIdentityAnchors(
     : []
 
   return collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.merchantOrderReference)),
     normalizeComparable(row.reservationId),
     normalizeComparable(readString(extractedRecord?.data.reservationId)),
     normalizeComparable(readString(extractedRecord?.data.clientId)),
@@ -2752,6 +2775,20 @@ function buildNativeRawParsedRowPayload(
       platform: stringOrUndefined(record.data.platform),
       reference: stringOrUndefined(record.data.reference),
       reservationId: stringOrUndefined(record.data.reservationId),
+      clientId: stringOrUndefined(record.data.clientId),
+      merchantOrderReference: stringOrUndefined(record.data.merchantOrderReference),
+      payerVariableSymbol: stringOrUndefined(record.data.payerVariableSymbol),
+      createdAt: stringOrUndefined(record.data.createdAt),
+      paidAt: stringOrUndefined(record.data.paidAt),
+      transferredAt: stringOrUndefined(record.data.transferredAt),
+      confirmedGrossMinor: typeof record.data.confirmedGrossMinor === 'number' ? record.data.confirmedGrossMinor : undefined,
+      transferredNetMinor: typeof record.data.transferredNetMinor === 'number' ? record.data.transferredNetMinor : undefined,
+      feeTotalMinor: typeof record.data.feeTotalMinor === 'number' ? record.data.feeTotalMinor : undefined,
+      feeInterbankMinor: typeof record.data.feeInterbankMinor === 'number' ? record.data.feeInterbankMinor : undefined,
+      feeAssociationMinor: typeof record.data.feeAssociationMinor === 'number' ? record.data.feeAssociationMinor : undefined,
+      feeProcessorMinor: typeof record.data.feeProcessorMinor === 'number' ? record.data.feeProcessorMinor : undefined,
+      paymentMethod: stringOrUndefined(record.data.paymentMethod),
+      cardType: stringOrUndefined(record.data.cardType),
       bookedAt: stringOrUndefined(record.data.bookedAt),
       paymentPurpose: stringOrUndefined(record.data.paymentPurpose),
       transactionId: stringOrUndefined(record.data.transactionId),
@@ -3107,7 +3144,8 @@ function collectInvoiceListExactHits(
   const comparableVoucherAnchors = collectUniqueTruthyStrings([
     normalizeComparable(row.reservationId),
     normalizeComparable(readString(extractedRecord?.data.reservationId)),
-    normalizeComparable(readString(extractedRecord?.data.clientId))
+    normalizeComparable(readString(extractedRecord?.data.clientId)),
+    normalizeComparable(readString(extractedRecord?.data.merchantOrderReference))
   ])
   const comparableDocumentAnchors = collectUniqueTruthyStrings([
     normalizeComparable(readString(extractedRecord?.data.reference)),
@@ -3167,7 +3205,10 @@ function selectInvoiceListNativeFallback(
 ): InvoiceListLinkResult | undefined {
   return findInvoiceListEnrichmentForItem(
     {
-      voucher: readString(extractedRecord?.data.reservationId) ?? readString(extractedRecord?.data.clientId) ?? row.reservationId,
+      voucher: readString(extractedRecord?.data.merchantOrderReference)
+        ?? readString(extractedRecord?.data.reservationId)
+        ?? readString(extractedRecord?.data.clientId)
+        ?? row.reservationId,
       variableSymbol: readString(extractedRecord?.data.reference) ?? row.payoutReference,
       customerId: readString(extractedRecord?.data.clientId),
       invoiceNumber: readString(extractedRecord?.data.invoiceNumber),

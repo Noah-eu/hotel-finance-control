@@ -6267,6 +6267,32 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 platform: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.platform || ''),
                 reference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.reference || ''),
                 reservationId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.reservationId || ''),
+                clientId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.clientId || ''),
+                merchantOrderReference: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.merchantOrderReference || ''),
+                payerVariableSymbol: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.payerVariableSymbol || ''),
+                createdAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.createdAt || ''),
+                paidAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paidAt || ''),
+                transferredAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transferredAt || ''),
+                confirmedGrossMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.confirmedGrossMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.confirmedGrossMinor
+                  : null,
+                transferredNetMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transferredNetMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.transferredNetMinor
+                  : null,
+                feeTotalMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeTotalMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeTotalMinor
+                  : null,
+                feeInterbankMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeInterbankMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeInterbankMinor
+                  : null,
+                feeAssociationMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeAssociationMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeAssociationMinor
+                  : null,
+                feeProcessorMinor: typeof (trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.feeProcessorMinor) === 'number'
+                  ? trace.rawParsedSourceRow.data.feeProcessorMinor
+                  : null,
+                paymentMethod: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paymentMethod || ''),
+                cardType: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.cardType || ''),
                 bookedAt: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.bookedAt || ''),
                 paymentPurpose: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.paymentPurpose || ''),
                 transactionId: String(trace.rawParsedSourceRow.data && trace.rawParsedSourceRow.data.transactionId || ''),

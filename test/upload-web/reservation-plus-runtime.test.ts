@@ -370,4 +370,58 @@ describe('Reservation+ runtime enrichment', () => {
       reservationRoomName: 'C303'
     }))
   })
+
+  it('merges native monthly-settlement Comgate row via Popis bridge anchor and keeps suma rows out of reservation cards', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', [
+          {
+            createdAt: '13.03.2026 09:15',
+            stayStartAt: '27.03.2026',
+            stayEndAt: '30.03.2026',
+            voucher: '109047421',
+            guestName: 'Klara Vesela',
+            companyName: 'Acme Travel',
+            channel: 'direct-web',
+            amountText: '302940,00',
+            outstandingText: '0,00',
+            roomName: 'C303'
+          }
+        ]),
+        createRuntimeInvoiceListFileForCurrentPortalBridge('invoice_list.xls'),
+        createRuntimeTextFile(
+          'vypis-202603.csv',
+          [
+            '"Merchant";"Datum založení";"Datum zaplacení";"Datum převodu";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail plátce";"Variabilní symbol plátce";"Variabilní symbol převodu";"ID od klienta";"Měna";"Potvrzená částka";"Převedená částka";"Poplatek celkem";"Poplatek mezibankovní";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+            '"499465";"27.03.2026 09:15";"27.03.2026 09:16";"28.03.2026";"CG-MONTHLY-TRX-1";"Karta online";"website-reservation";"109047421";"guest@example.com";"109047421";"1816480742";"999900001";"CZK";"302940,00";"300000,00";"2940,00";"1000,00";"940,00";"1000,00";"VISA"',
+            '"499465";"";"";"28.03.2026";"";"";"suma";"suma";"";"";"1816480742";"";"CZK";"302940,00";"300000,00";"2940,00";"1000,00";"940,00";"1000,00";""'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-10T12:15:00.000Z'
+    })
+
+    const reservationPlusItems = state.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items ?? []
+    const mergedItem = reservationPlusItems.find((entry) => entry.title === 'Klara Vesela')
+    const nativeFallbackItem = reservationPlusItems.find((entry) => entry.id.includes('reservation-payment:native:'))
+    const mergeTrace = state.reservationPaymentOverviewDebug.reservationPlusComgateMergeTraces
+      .find((trace) => trace.linkedReservationId === '109047421')
+
+    expect(mergedItem).toEqual(expect.objectContaining({
+      title: 'Klara Vesela',
+      evidenceKey: 'comgate'
+    }))
+    expect(mergedItem?.transactionIds.length).toBeGreaterThan(0)
+    expect(nativeFallbackItem).toBeUndefined()
+    expect(reservationPlusItems.some((entry) => entry.title.toLowerCase().includes('suma'))).toBe(false)
+    expect(mergeTrace).toEqual(expect.objectContaining({
+      chosenLinkReason: 'exact_clientId_merge',
+      nativeComgateFallbackSuppressed: true,
+      reservationEntityMatchedByInvoiceList: true,
+      nativeRowMergedIntoReservationEntity: true,
+      mergeSource: 'reservation_entity',
+      mergeAnchorType: 'reservation_id'
+    }))
+  })
 })

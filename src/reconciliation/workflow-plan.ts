@@ -37,6 +37,7 @@ export function buildReconciliationWorkflowPlan(
     )
     const rowBasedPayoutBatches = buildPayoutBatches(payoutRows)
     const rowAndFallbackPayoutBatches = rowBasedPayoutBatches
+        .concat(buildComgateMonthlySummaryBatches(input.extractedRecords, payoutRows))
         .concat(buildBookingPayoutStatementFallbackBatches(input.extractedRecords, payoutRows, rowBasedPayoutBatches))
         .concat(
             buildCarryoverPayoutBatches(input.previousMonthCarryoverSource)
@@ -530,6 +531,70 @@ function shouldPreferAirbnbSourceDrivenReference(
 
     return !isDeterministicAirbnbProviderReference(existing.payoutReference)
         && isDeterministicAirbnbProviderReference(addition.payoutReference)
+}
+
+function buildComgateMonthlySummaryBatches(
+    extractedRecords: ExtractedRecord[],
+    payoutRows: PayoutRowExpectation[]
+): PayoutBatchExpectation[] {
+    const groupedRows = new Map<string, PayoutRowExpectation[]>()
+
+    for (const row of payoutRows) {
+        if (row.platform !== 'comgate') {
+            continue
+        }
+
+        const key = `${row.payoutDate}:${row.payoutReference}`
+        const items = groupedRows.get(key) ?? []
+        items.push(row)
+        groupedRows.set(key, items)
+    }
+
+    return extractedRecords
+        .filter((record) => record.recordType === 'payout-batch-summary')
+        .filter((record) => optionalString(record.data.platform) === 'comgate')
+        .flatMap((record) => {
+            const payoutReference = optionalString(record.data.payoutReference) ?? optionalString(record.data.reference) ?? record.rawReference
+            const payoutDate = optionalString(record.data.transferredAt) ?? optionalString(record.data.bookedAt) ?? record.occurredAt
+            const currency = optionalString(record.data.currency) ?? record.currency
+            const expectedTotalMinor = optionalNumber(record.data.transferredNetMinor) ?? record.amountMinor
+
+            if (!payoutReference || !payoutDate || !currency || typeof expectedTotalMinor !== 'number') {
+                return []
+            }
+
+            const key = `${payoutDate}:${payoutReference}`
+            const rows = groupedRows.get(key) ?? []
+            const componentReservationIds = uniqueValues(
+                rows
+                    .map((row) => row.reservationId)
+                    .filter((value): value is string => Boolean(value && value.trim().length > 0))
+            ) ?? []
+
+            return [{
+                payoutBatchKey: buildGenericPayoutBatchKey('comgate', payoutDate, payoutReference),
+                platform: 'comgate',
+                payoutReference,
+                payoutDate,
+                bankRoutingTarget: 'rb_bank_inflow',
+                rowIds: rows.map((row) => row.rowId),
+                expectedTotalMinor,
+                ...(typeof optionalNumber(record.data.confirmedGrossMinor) === 'number'
+                    ? { grossTotalMinor: optionalNumber(record.data.confirmedGrossMinor)! }
+                    : {}),
+                ...(typeof optionalNumber(record.data.feeTotalMinor) === 'number'
+                    ? { feeTotalMinor: optionalNumber(record.data.feeTotalMinor)! }
+                    : {}),
+                ...(typeof optionalNumber(record.data.transferredNetMinor) === 'number'
+                    ? { netSettlementTotalMinor: optionalNumber(record.data.transferredNetMinor)! }
+                    : {}),
+                currency,
+                ...(componentReservationIds.length > 0 ? { componentReservationIds } : {}),
+                sourceEvidenceSummary: [
+                    `comgate monthly summary row (${record.sourceDocumentId}:${record.id})`
+                ]
+            }]
+        })
 }
 
 function buildBookingPayoutStatementFallbackBatches(

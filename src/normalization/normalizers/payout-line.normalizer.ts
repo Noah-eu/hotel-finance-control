@@ -71,6 +71,25 @@ export class PayoutLineNormalizer implements Normalizer {
 
       const id = makeTransactionId(record.id)
       const source = resolveSource(data, context.sourceSystem)
+      const isMonthlySettlementComgateRow = data.comgateParserVariant === 'monthly-settlement'
+      const comgateMonthlyFields: Partial<NormalizedTransaction> = {
+        ...(isMonthlySettlementComgateRow && typeof data.payoutReference === 'string' ? { payoutReference: data.payoutReference } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.clientId === 'string' ? { clientId: data.clientId } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.merchantOrderReference === 'string' ? { merchantOrderReference: data.merchantOrderReference } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.payerVariableSymbol === 'string' ? { payerVariableSymbol: data.payerVariableSymbol } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.transactionId === 'string' ? { comgateTransactionId: data.transactionId } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.createdAt === 'string' ? { createdAt: data.createdAt } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.paidAt === 'string' ? { paidAt: data.paidAt } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.transferredAt === 'string' ? { transferredAt: data.transferredAt } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.confirmedGrossMinor === 'number' ? { confirmedGrossMinor: data.confirmedGrossMinor } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.transferredNetMinor === 'number' ? { transferredNetMinor: data.transferredNetMinor } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.feeTotalMinor === 'number' ? { feeTotalMinor: data.feeTotalMinor } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.feeInterbankMinor === 'number' ? { feeInterbankMinor: data.feeInterbankMinor } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.feeAssociationMinor === 'number' ? { feeAssociationMinor: data.feeAssociationMinor } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.feeProcessorMinor === 'number' ? { feeProcessorMinor: data.feeProcessorMinor } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.paymentMethod === 'string' ? { paymentMethod: data.paymentMethod } : {}),
+        ...(isMonthlySettlementComgateRow && typeof data.cardType === 'string' ? { cardType: data.cardType } : {})
+      }
 
       const transaction: NormalizedTransaction = {
         id,
@@ -120,6 +139,7 @@ export class PayoutLineNormalizer implements Normalizer {
         payoutSupplementReservationIds: Array.isArray(data.payoutSupplementReservationIds)
           ? data.payoutSupplementReservationIds.filter((value): value is string => typeof value === 'string')
           : undefined,
+        ...comgateMonthlyFields,
         extractedRecordIds: [record.id],
         sourceDocumentIds: [record.sourceDocumentId]
       }

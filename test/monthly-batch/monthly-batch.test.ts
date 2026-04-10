@@ -2068,7 +2068,7 @@ describe('runMonthlyReconciliationBatch', () => {
       'booking-payout-statement-2026-03.pdf'
     ])
     expect(result.batch.report.summary.payoutBatchMatchCount).toBe(15)
-    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(2)
+    expect(result.batch.report.summary.unmatchedPayoutBatchCount).toBe(3)
   })
 
   it('merges Booking payout PDF supplement metadata into the Booking payout batch without changing its batch key', () => {

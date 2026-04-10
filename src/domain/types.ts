@@ -69,6 +69,22 @@ export interface NormalizedTransaction {
   payoutSupplementReferenceHints?: string[]
   payoutSupplementSourceDocumentIds?: DocumentId[]
   payoutSupplementReservationIds?: string[]
+  payoutReference?: string
+  clientId?: string
+  merchantOrderReference?: string
+  payerVariableSymbol?: string
+  comgateTransactionId?: string
+  createdAt?: ISODateString
+  paidAt?: ISODateString
+  transferredAt?: ISODateString
+  confirmedGrossMinor?: number
+  transferredNetMinor?: number
+  feeTotalMinor?: number
+  feeInterbankMinor?: number
+  feeAssociationMinor?: number
+  feeProcessorMinor?: number
+  paymentMethod?: string
+  cardType?: string
   invoiceNumber?: string
   variableSymbol?: string
   targetBankAccountHint?: string
