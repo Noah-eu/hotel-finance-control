@@ -7552,6 +7552,7 @@ describe('buildWebDemo', () => {
           noExactCounterpartInSelectedFiles?: boolean
           exactCounterpartSourceFamily?: string
           exactCounterpartKey?: string
+          counterpartMonthRelation?: string
           rawParsedSourceRow?: {
             data?: {
               runtimeComgateParserVariant?: string
@@ -7579,6 +7580,7 @@ describe('buildWebDemo', () => {
     expect(firstTrace?.noExactCounterpartInSelectedFiles).toBe(true)
     expect(firstTrace?.exactCounterpartSourceFamily).toBe('none')
     expect(firstTrace?.exactCounterpartKey).toBeUndefined()
+    expect(firstTrace?.counterpartMonthRelation).toBe('unknown')
   })
 
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {

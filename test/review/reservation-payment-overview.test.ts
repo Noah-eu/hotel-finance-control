@@ -1638,6 +1638,7 @@ describe('buildReservationPaymentOverview', () => {
       ambiguousExactCounterparts: false,
       exactCounterpartSourceFamily: 'voucher',
       exactCounterpartKey: '6121722338',
+      counterpartMonthRelation: 'same_month',
       noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
@@ -1656,6 +1657,7 @@ describe('buildReservationPaymentOverview', () => {
       ambiguousExactCounterparts: false,
       exactCounterpartSourceFamily: 'voucher',
       exactCounterpartKey: '5159718129',
+      counterpartMonthRelation: 'same_month',
       noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
@@ -1671,6 +1673,7 @@ describe('buildReservationPaymentOverview', () => {
       exactCounterpartExists: false,
       ambiguousExactCounterparts: false,
       exactCounterpartSourceFamily: 'none',
+      counterpartMonthRelation: 'unknown',
       noExactCounterpartInSelectedFiles: true,
       chosenCandidateReason: 'no_candidate'
     }))
@@ -1774,6 +1777,7 @@ describe('buildReservationPaymentOverview', () => {
       ambiguousExactCounterparts: true,
       exactCounterpartSourceFamily: 'voucher',
       exactCounterpartKey: '5159718129',
+      counterpartMonthRelation: 'same_month',
       noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'none',
       chosenCandidateReason: 'no_candidate'

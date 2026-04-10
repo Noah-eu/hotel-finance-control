@@ -6268,6 +6268,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             noExactCounterpartInSelectedFiles: Boolean(trace && trace.noExactCounterpartInSelectedFiles),
             exactCounterpartSourceFamily: String(trace && trace.exactCounterpartSourceFamily || ''),
             exactCounterpartKey: String(trace && trace.exactCounterpartKey || ''),
+            counterpartMonthRelation: String(trace && trace.counterpartMonthRelation || ''),
             chosenCandidateSource: String(trace && trace.chosenCandidateSource || 'none'),
             chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
           };

@@ -313,6 +313,7 @@ export interface ReservationPaymentOverviewNativeLinkTrace {
   noExactCounterpartInSelectedFiles?: boolean
   exactCounterpartSourceFamily?: 'reservation_reference' | 'reservation_entity_bridge' | 'voucher' | 'variable_symbol' | 'invoice_number' | 'none'
   exactCounterpartKey?: string
+  counterpartMonthRelation?: 'same_month' | 'different_month' | 'mixed_multiple_months' | 'unknown'
   chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
@@ -365,6 +366,7 @@ interface NativeLinkInspection {
   noExactCounterpartInSelectedFiles?: boolean
   exactCounterpartSourceFamily?: 'reservation_reference' | 'reservation_entity_bridge' | 'voucher' | 'variable_symbol' | 'invoice_number' | 'none'
   exactCounterpartKey?: string
+  counterpartMonthRelation?: 'same_month' | 'different_month' | 'mixed_multiple_months' | 'unknown'
   chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
@@ -1220,6 +1222,7 @@ export function inspectReservationPaymentOverviewClassification(
           noExactCounterpartInSelectedFiles: nativeLinkInspection.noExactCounterpartInSelectedFiles,
           exactCounterpartSourceFamily: nativeLinkInspection.exactCounterpartSourceFamily,
           exactCounterpartKey: nativeLinkInspection.exactCounterpartKey,
+          counterpartMonthRelation: nativeLinkInspection.counterpartMonthRelation,
           chosenCandidateSource: nativeLinkInspection.chosenCandidateSource,
           chosenCandidateReason: nativeLinkInspection.chosenCandidateReason
         })
@@ -2465,6 +2468,12 @@ function inspectLinkedReservationForReservationPlusNativeRow(
   const exactIdentityHits = exactIdentityCandidates.map(toAncillaryLinkCandidateSnapshot)
   const invoiceListHitSet = collectInvoiceListExactHits(row, extractedRecord, invoiceListRecords)
   const reservationEntityBridgeHits = exactIdentityCandidates.length
+  const rowMonthKey = resolveComparableMonthKey(
+    readString(extractedRecord?.data.paidAt)
+      ?? readString(extractedRecord?.data.bookedAt)
+      ?? readString(extractedRecord?.data.transferredAt)
+      ?? row.payoutDate
+  )
 
   if (exactIdentityCandidates.length === 1) {
     return {
@@ -2490,6 +2499,7 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       noExactCounterpartInSelectedFiles: false,
       exactCounterpartSourceFamily: 'reservation_reference',
       exactCounterpartKey: resolveReservationBridgeMatchKey(row, extractedRecord, exactIdentityCandidates[0]),
+      counterpartMonthRelation: 'unknown',
       chosenCandidateSource: 'reservation_export',
       chosenCandidateReason: 'exact_identity'
     }
@@ -2522,6 +2532,7 @@ function inspectLinkedReservationForReservationPlusNativeRow(
         ?? normalizeComparable(readString(extractedRecord?.data.reference))
         ?? normalizeComparable(row.reservationId)
         ?? normalizeComparable(readString(extractedRecord?.data.reservationId)),
+      counterpartMonthRelation: 'unknown',
       chosenCandidateSource: 'none',
       chosenCandidateReason: 'ambiguous_exact_identity'
     }
@@ -2555,6 +2566,7 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       noExactCounterpartInSelectedFiles: false,
       exactCounterpartSourceFamily: mapInvoiceLinkReasonToSourceFamily(fallbackInvoiceLink.reason),
       exactCounterpartKey: resolveInvoiceLinkComparableKey(fallbackInvoiceLink),
+      counterpartMonthRelation: resolveCounterpartMonthRelation(rowMonthKey, [fallbackInvoiceLink.record]),
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
     }
@@ -2576,6 +2588,12 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     ?? resolveInvoiceHitSourceFamily(invoiceListHitSet, row, extractedRecord)
   const exactCounterpartKey = fallbackInvoiceResolution.ambiguousKey
     ?? resolveUnresolvedCounterpartKey(exactCounterpartSourceFamily, row, extractedRecord)
+  const counterpartMonthRelation = noExactCounterpartInSelectedFiles
+    ? 'unknown'
+    : resolveCounterpartMonthRelation(
+      rowMonthKey,
+      resolveCounterpartMonthCandidates(invoiceListHitSet, exactCounterpartSourceFamily)
+    )
 
   return {
     linkedReservation: undefined,
@@ -2604,6 +2622,7 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     noExactCounterpartInSelectedFiles,
     exactCounterpartSourceFamily: noExactCounterpartInSelectedFiles ? 'none' : exactCounterpartSourceFamily ?? 'none',
     exactCounterpartKey: noExactCounterpartInSelectedFiles ? undefined : exactCounterpartKey,
+    counterpartMonthRelation,
     chosenCandidateSource: 'none',
     chosenCandidateReason: 'no_candidate'
   }
@@ -3744,6 +3763,61 @@ function resolveUnresolvedCounterpartKey(
   }
 
   return undefined
+}
+
+function resolveCounterpartMonthCandidates(
+  hitSet: {
+    voucherHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    variableSymbolHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    invoiceNumberHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    identityHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+    documentHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  },
+  sourceFamily: NativeLinkInspection['exactCounterpartSourceFamily']
+): ReservationPaymentOverviewInvoiceListLinkCandidate[] {
+  if (sourceFamily === 'voucher') {
+    return hitSet.voucherHits
+  }
+
+  if (sourceFamily === 'variable_symbol') {
+    return hitSet.variableSymbolHits
+  }
+
+  if (sourceFamily === 'invoice_number') {
+    return hitSet.invoiceNumberHits
+  }
+
+  if (sourceFamily === 'reservation_entity_bridge' || sourceFamily === 'reservation_reference') {
+    return [...hitSet.identityHits, ...hitSet.documentHits]
+  }
+
+  return [...hitSet.identityHits, ...hitSet.documentHits]
+}
+
+function resolveCounterpartMonthRelation(
+  rowMonthKey: string | undefined,
+  counterparts: Array<{ variableSymbol?: string; invoiceNumber?: string }>
+): 'same_month' | 'different_month' | 'mixed_multiple_months' | 'unknown' {
+  const counterpartMonthKeys = collectUniqueTruthyStrings(
+    counterparts.map((candidate) =>
+      resolveMonthKeyFromComparableToken(candidate.variableSymbol)
+        ?? resolveMonthKeyFromComparableToken(candidate.invoiceNumber)
+    )
+  )
+
+  if (counterpartMonthKeys.length === 0) {
+    return 'unknown'
+  }
+
+  if (counterpartMonthKeys.length > 1) {
+    return 'mixed_multiple_months'
+  }
+
+  if (!rowMonthKey) {
+    return 'unknown'
+  }
+
+  return counterpartMonthKeys[0] === rowMonthKey ? 'same_month' : 'different_month'
 }
 
 function findInvoiceListEnrichmentForParkingItem(
