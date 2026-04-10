@@ -393,32 +393,22 @@ function renderOperatorWebDemoHtml(input: {
         align-items: start;
         gap: 16px;
       }
-      .control-detail-grid-wrap {
-        overflow-x: auto;
-        padding-bottom: 2px;
+      .detail-grid > * {
+        min-width: 0;
       }
       .control-detail-grid {
-        grid-template-columns: minmax(280px, 0.82fr) minmax(280px, 0.82fr) minmax(680px, 1.36fr);
-        min-width: 1320px;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       }
       #control-manual-matched-section,
       #ancillary-settlement-overview-section,
       #unmatched-reservations-section {
         grid-column: 1 / -1;
       }
-      #matched-payout-batches-section,
-      #unmatched-payout-batches-section,
       #reservation-settlement-overview-section {
         min-width: 0;
       }
-      #matched-payout-batches-section {
-        grid-column: 1;
-      }
-      #unmatched-payout-batches-section {
-        grid-column: 2;
-      }
       #reservation-settlement-overview-section {
-        grid-column: 3;
+        grid-column: 1 / -1;
       }
       .expense-detail-grid {
         display: grid;
@@ -550,18 +540,19 @@ function renderOperatorWebDemoHtml(input: {
       }
       .reservation-overview-grid {
         display: grid;
-        grid-auto-flow: column;
-        grid-auto-columns: minmax(280px, 1fr);
-        gap: 14px;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 10px;
         align-items: start;
-        overflow-x: auto;
-        padding-bottom: 4px;
+        min-width: 0;
       }
       .reservation-overview-block {
         border: 1px solid #dce6f5;
         border-radius: 14px;
         background: #fbfdff;
         padding: 16px;
+        min-width: 0;
+      }
+      .reservation-overview-grid > * {
         min-width: 0;
       }
       .reservation-overview-block-header {
@@ -594,6 +585,7 @@ function renderOperatorWebDemoHtml(input: {
         border-top: 1px solid #e4ebf6;
         padding-top: 12px;
         margin-top: 12px;
+        min-width: 0;
       }
       .reservation-payment-item:first-of-type {
         border-top: 0;
@@ -608,12 +600,18 @@ function renderOperatorWebDemoHtml(input: {
       }
       .reservation-payment-item-title {
         margin: 0;
-        font-size: 16px;
-        line-height: 1.4;
+        font-size: 15px;
+        line-height: 1.35;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .reservation-payment-item-subtitle {
         margin-top: 4px;
         color: #52627a;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .reservation-payment-item-badges {
         display: flex;
@@ -626,6 +624,7 @@ function renderOperatorWebDemoHtml(input: {
         flex-wrap: wrap;
         gap: 8px;
         margin-top: 10px;
+        min-width: 0;
       }
       .reservation-payment-chip {
         display: inline-flex;
@@ -637,11 +636,21 @@ function renderOperatorWebDemoHtml(input: {
         color: #274160;
         font-size: 12px;
         line-height: 1.35;
+        min-width: 0;
+        max-width: 100%;
       }
       .reservation-payment-chip strong {
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.03em;
+        flex: 0 0 auto;
+      }
+      .reservation-payment-chip > span {
+        display: inline-block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .reservation-payment-chip-value-host {
         font-size: 16px;
@@ -667,6 +676,33 @@ function renderOperatorWebDemoHtml(input: {
       .reservation-payment-detail li {
         margin-bottom: 6px;
         color: #52627a;
+      }
+      .payout-compact-header {
+        display: grid;
+        gap: 3px;
+        margin-bottom: 8px;
+        min-width: 0;
+      }
+      .payout-compact-amount {
+        font-size: 16px;
+        line-height: 1.2;
+        font-weight: 800;
+        color: #1c4879;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .payout-compact-status,
+      .payout-compact-reference {
+        color: #52627a;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .payout-compact-reference {
+        font-size: 12px;
       }
       .status-badge.paid { background: #e7f6ec; color: #0f7a32; }
       .status-badge.partial { background: #fff4dd; color: #946200; }
@@ -848,9 +884,6 @@ function renderOperatorWebDemoHtml(input: {
       @media (max-width: 1080px) {
         .document-preview-overlay {
           grid-template-columns: minmax(220px, 0.46fr) minmax(220px, 0.46fr) minmax(720px, 2.08fr);
-        }
-        .reservation-overview-grid {
-          grid-auto-columns: minmax(240px, 1fr);
         }
         .document-preview-shell {
           max-height: calc(100vh - 24px);
@@ -1291,7 +1324,6 @@ ${showRuntimePayoutDiagnostics ? `
             <tbody id="report-preview-body" data-runtime-phase="placeholder"><tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr></tbody>
           </table>
         </section>
-        <div class="control-detail-grid-wrap">
         <div id="control-detail-layout" class="detail-grid control-detail-grid">
           <section id="control-manual-matched-section" class="detail-panel" data-runtime-phase="placeholder" hidden>
             <h3>Ručně spárováno</h3>
@@ -1299,13 +1331,13 @@ ${showRuntimePayoutDiagnostics ? `
               <p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>
             </div>
           </section>
-          <section id="matched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder">
+          <section id="matched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder" hidden>
             <h3>Spárované Airbnb / OTA payout dávky</h3>
             <div id="matched-payout-batches-content">
               <p class="hint">Po spuštění se zde zobrazí business-facing přehled spárovaných payout dávek včetně reference, bankovního přípisu a částky.</p>
             </div>
           </section>
-          <section id="unmatched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder">
+          <section id="unmatched-payout-batches-section" class="detail-panel" data-runtime-phase="placeholder" hidden>
             <h3>Nespárované payout dávky</h3>
             <div id="unmatched-payout-batches-content">
               <p class="hint">Po spuštění se zde zobrazí payout dávky, které stále čekají na dohledání v bance.</p>
@@ -1330,7 +1362,6 @@ ${showRuntimePayoutDiagnostics ? `
               <p class="hint">Po spuštění se zde zobrazí konkrétní rezervace čekající na dohledání úhrady.</p>
             </div>
           </section>
-        </div>
         </div>
       </section>
 
@@ -8914,42 +8945,175 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].join('');
       }
 
-      function buildReservationPaymentOverviewMarkup(overview) {
+      function buildPayoutCompactStatusText(item) {
+        const normalizedStatusLabel = String(item && item.statusLabelCs || '').trim();
+        if (normalizedStatusLabel) {
+          return normalizedStatusLabel;
+        }
+
+        const normalizedDetail = formatReservationOperatorReasonText(String(item && item.detail || '').trim());
+        if (!normalizedDetail) {
+          return 'Bez detailu';
+        }
+
+        return normalizedDetail;
+      }
+
+      function buildPayoutCompactSupplementText(item) {
+        const values = [
+          item && item.secondaryReference,
+          item && item.primaryReference,
+          Array.isArray(item && item.sourceDocumentIds) && item.sourceDocumentIds.length > 0
+            ? item.sourceDocumentIds[0]
+            : '',
+          Array.isArray(item && item.transactionIds) && item.transactionIds.length > 0
+            ? item.transactionIds[0]
+            : ''
+        ].map((value) => String(value || '').trim()).filter(Boolean);
+
+        return values[0] || '';
+      }
+
+      function buildPayoutCompactAmountMarkup(item) {
+        const rendered = buildReviewAmountMarkup(item);
+        if (rendered) {
+          return rendered;
+        }
+
+        return '<span class="payout-compact-amount">Částka bez detailu</span>';
+      }
+
+      function buildPayoutCompactItemMarkup(item, pageKey, bucketKey) {
+        return [
+          '<article class="reservation-payment-item">',
+          '<div class="payout-compact-header">',
+          '<h5 class="reservation-payment-item-title">' + escapeHtml(String(item && item.title || 'Bez názvu dávky')) + '</h5>',
+          buildPayoutCompactAmountMarkup(item),
+          '<div class="payout-compact-status">' + escapeHtml(buildPayoutCompactStatusText(item)) + '</div>',
+          (buildPayoutCompactSupplementText(item)
+            ? '<div class="payout-compact-reference">' + escapeHtml(buildPayoutCompactSupplementText(item)) + '</div>'
+            : ''),
+          '</div>',
+          '<details class="reservation-payment-detail"><summary>Detail</summary>'
+            + '<ul>'
+            + '<li>'
+            + '<strong>' + escapeHtml(String(item && item.title || 'Bez názvu dávky')) + '</strong>'
+            + (pageKey === 'control' ? '' : buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item))
+            + buildReviewDetailMarkup(item)
+            + buildReviewAuditMarkup(item)
+            + '</li>'
+            + '</ul>'
+            + '</details>',
+          '</article>'
+        ].join('');
+      }
+
+      function buildReservationPaymentSearchIndex(item) {
+        return normalizeExpenseSearchValue([
+          item && item.title,
+          item && item.subtitle,
+          item && item.primaryReference,
+          item && item.secondaryReference,
+          item && item.statusDetailCs,
+          Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds.join(' ') : '',
+          Array.isArray(item && item.transactionIds) ? item.transactionIds.join(' ') : '',
+          Array.isArray(item && item.detailEntries)
+            ? item.detailEntries.map((entry) => String(entry && entry.value || '')).join(' ')
+            : ''
+        ].filter(Boolean).join(' '));
+      }
+
+      function buildPayoutSearchIndex(item) {
+        return normalizeExpenseSearchValue([
+          item && item.title,
+          item && item.detail,
+          item && item.primaryReference,
+          item && item.secondaryReference,
+          Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds.join(' ') : '',
+          Array.isArray(item && item.transactionIds) ? item.transactionIds.join(' ') : '',
+          Array.isArray(item && item.evidenceSummary)
+            ? item.evidenceSummary.map((entry) => String(entry && entry.value || '')).join(' ')
+            : ''
+        ].filter(Boolean).join(' '));
+      }
+
+      function buildReservationPaymentOverviewMarkup(overview, payoutProjection) {
         const normalizedOverview = overview && Array.isArray(overview.blocks)
           ? overview
           : buildEmptyReservationPaymentOverview();
+        const normalizedPayoutProjection = payoutProjection || { matchedItems: [], unmatchedItems: [] };
+        const blocksByKey = normalizedOverview.blocks.reduce((accumulator, block) => {
+          accumulator[String(block.key || '')] = block;
+          return accumulator;
+        }, {});
         const normalizedNeedle = normalizeExpenseSearchValue(currentReservationDetailSearch);
-        const visibleBlocks = normalizedOverview.blocks
-          .filter((block) => currentReservationDetailFilter === 'all' || block.key === currentReservationDetailFilter)
-          .map((block) => {
-            const visibleItems = (Array.isArray(block.items) ? block.items : []).filter((item) => {
-              if (!normalizedNeedle) {
-                return true;
-              }
+        const visibleReservationBlock = (blockKey) => {
+          const block = blocksByKey[blockKey] || { key: blockKey, labelCs: 'Blok', expectedTotals: [], paidTotals: [], items: [] };
+          const blockItems = Array.isArray(block.items) ? block.items : [];
+          const visibleItems = blockItems.filter((item) => {
+            if (currentReservationDetailFilter !== 'all' && block.key !== currentReservationDetailFilter) {
+              return false;
+            }
 
-              const searchParts = [
-                item && item.title,
-                item && item.subtitle,
-                item && item.primaryReference,
-                item && item.secondaryReference,
-                item && item.statusDetailCs,
-                Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds.join(' ') : '',
-                Array.isArray(item && item.transactionIds) ? item.transactionIds.join(' ') : '',
-                Array.isArray(item && item.detailEntries)
-                  ? item.detailEntries.map((entry) => String(entry && entry.value || '')).join(' ')
-                  : ''
-              ].filter(Boolean).join(' ');
+            if (!normalizedNeedle) {
+              return true;
+            }
 
-              return normalizeExpenseSearchValue(searchParts).includes(normalizedNeedle);
-            });
-
-            return {
-              ...block,
-              visibleItems
-            };
+            return buildReservationPaymentSearchIndex(item).includes(normalizedNeedle);
           });
-        const visibleCount = visibleBlocks.reduce((sum, block) => sum + block.visibleItems.length, 0);
-        const markup = '<div class="reservation-overview-grid">' + visibleBlocks.map((block) => [
+
+          return {
+            ...block,
+            visibleItems
+          };
+        };
+        const visiblePayoutItems = (items) => (Array.isArray(items) ? items : []).filter((item) => {
+          if (!normalizedNeedle) {
+            return true;
+          }
+
+          return buildPayoutSearchIndex(item).includes(normalizedNeedle);
+        });
+        const columns = [
+          {
+            key: 'payout-matched',
+            labelCs: 'Spárované payout dávky',
+            expectedTotals: [],
+            paidTotals: [],
+            visibleItems: visiblePayoutItems(normalizedPayoutProjection.matchedItems),
+            renderItem: (item) => buildPayoutCompactItemMarkup(item, 'control', 'matched')
+          },
+          {
+            key: 'payout-unmatched',
+            labelCs: 'Nespárované payout dávky',
+            expectedTotals: [],
+            paidTotals: [],
+            visibleItems: visiblePayoutItems(normalizedPayoutProjection.unmatchedItems),
+            renderItem: (item) => buildPayoutCompactItemMarkup(item, 'control', 'payoutBatchUnmatched')
+          },
+          {
+            ...visibleReservationBlock('airbnb'),
+            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+          },
+          {
+            ...visibleReservationBlock('booking'),
+            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+          },
+          {
+            ...visibleReservationBlock('expedia'),
+            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+          },
+          {
+            ...visibleReservationBlock('reservation_plus'),
+            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+          },
+          {
+            ...visibleReservationBlock('parking'),
+            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+          }
+        ];
+        const visibleCount = columns.reduce((sum, block) => sum + (Array.isArray(block.visibleItems) ? block.visibleItems.length : 0), 0);
+        const markup = '<div class="reservation-overview-grid">' + columns.map((block) => [
           '<section class="reservation-overview-block">',
           '<div class="reservation-overview-block-header">',
           '<div>',
@@ -8960,7 +9124,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '</div>',
           (!Array.isArray(block.visibleItems) || block.visibleItems.length === 0
             ? '<p class="hint">Žádné položky v tomto bloku.</p>'
-            : block.visibleItems.map((item) => buildReservationPaymentItemMarkup(item)).join('')),
+            : block.visibleItems.map((item) => block.renderItem(item)).join('')),
           '</section>'
         ].join('')).join('') + '</div>';
 
@@ -9269,7 +9433,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
         matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
         unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
-        const reservationOverviewRenderResult = buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview);
+        const reservationOverviewRenderResult = buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview, payoutProjection);
         reservationSettlementOverviewContent.innerHTML = reservationOverviewRenderResult.markup;
         if (reservationDetailVisibleCount) {
           reservationDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(reservationOverviewRenderResult.visibleCount);

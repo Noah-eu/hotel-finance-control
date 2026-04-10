@@ -7780,9 +7780,11 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('id="reservation-settlement-overview-content"')
     expect(result.html).toContain('id="reservation-detail-filter-buttons"')
     expect(result.html).toContain('id="reservation-detail-visible-count"')
+    expect(result.html).toContain('grid-template-columns: repeat(7, minmax(0, 1fr));')
+    expect(result.html).not.toContain('control-detail-grid-wrap')
     expect(result.html).toContain('Rezervace a úhrady')
     expect(result.html).toContain('Po spuštění se zde zobrazí kompaktní bloky Airbnb, Booking, Expedia, Reservation+ / vlastní web a Parkování.')
-    expect(result.html).toContain('buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview)')
+    expect(result.html).toContain('buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview, payoutProjection)')
     expect(result.html).toContain('Přehled Rezervace a úhrady se právě načítá ze sdíleného runtime běhu…')
   })
 
