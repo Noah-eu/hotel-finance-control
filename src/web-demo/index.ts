@@ -551,6 +551,7 @@ function renderOperatorWebDemoHtml(input: {
         background: #fbfdff;
         padding: 16px;
         min-width: 0;
+        overflow: hidden;
       }
       .reservation-overview-grid > * {
         min-width: 0;
@@ -586,6 +587,7 @@ function renderOperatorWebDemoHtml(input: {
         padding-top: 12px;
         margin-top: 12px;
         min-width: 0;
+        overflow: hidden;
       }
       .reservation-payment-item:first-of-type {
         border-top: 0;
@@ -597,27 +599,45 @@ function renderOperatorWebDemoHtml(input: {
         align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
+        min-width: 0;
+      }
+      .reservation-payment-item-heading {
+        min-width: 0;
+        flex: 1 1 auto;
       }
       .reservation-payment-item-title {
         margin: 0;
         font-size: 15px;
         line-height: 1.35;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
       .reservation-payment-item-subtitle {
         margin-top: 4px;
         color: #52627a;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
       .reservation-payment-item-badges {
         display: flex;
         flex-wrap: wrap;
         justify-content: flex-end;
         gap: 6px;
+        min-width: 0;
+        flex: 0 1 auto;
+      }
+      .status-badge {
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .reservation-payment-meta {
         display: flex;
@@ -628,7 +648,8 @@ function renderOperatorWebDemoHtml(input: {
       }
       .reservation-payment-chip {
         display: inline-flex;
-        align-items: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
         gap: 6px;
         padding: 6px 10px;
         border-radius: 999px;
@@ -638,6 +659,14 @@ function renderOperatorWebDemoHtml(input: {
         line-height: 1.35;
         min-width: 0;
         max-width: 100%;
+        flex: 1 1 100%;
+      }
+      .reservation-payment-chip-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        min-width: 0;
+        width: 100%;
       }
       .reservation-payment-chip strong {
         font-size: 11px;
@@ -646,17 +675,30 @@ function renderOperatorWebDemoHtml(input: {
         flex: 0 0 auto;
       }
       .reservation-payment-chip > span {
-        display: inline-block;
+        display: block;
         min-width: 0;
+        max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
       }
       .reservation-payment-chip-value-host {
         font-size: 16px;
         line-height: 1.2;
         font-weight: 800;
         color: #163a63;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+      }
+      .reservation-payment-chip-value-amount {
+        white-space: nowrap;
+        -webkit-line-clamp: 1;
+        line-clamp: 1;
       }
       .reservation-payment-item.is-parking .reservation-payment-chip-value-host {
         font-size: 17px;
@@ -682,6 +724,7 @@ function renderOperatorWebDemoHtml(input: {
         gap: 3px;
         margin-bottom: 8px;
         min-width: 0;
+        overflow: hidden;
       }
       .payout-compact-amount {
         font-size: 16px;
@@ -699,7 +742,10 @@ function renderOperatorWebDemoHtml(input: {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
       }
       .payout-compact-reference {
         font-size: 12px;
@@ -8851,7 +8897,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         return entries.map((entry) =>
-          '<span class="reservation-payment-chip"><strong>' + escapeHtml(entry.label) + '</strong><span>' + escapeHtml(entry.value) + '</span></span>'
+          '<span class="reservation-payment-chip reservation-payment-chip--amount"><strong>' + escapeHtml(entry.label) + '</strong><span class="reservation-payment-chip-value-amount">' + escapeHtml(entry.value) + '</span></span>'
         ).join('');
       }
 
@@ -8871,20 +8917,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const detailEntries = Array.isArray(item.detailEntries) ? item.detailEntries : [];
         const parkingHost = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Host') : '';
         const parkingStay = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Pobyt') : '';
-        const parkingUnit = item.blockKey === 'parking' ? readReservationPaymentDetailValue(detailEntries, 'Jednotka') : '';
-        const subtitleValue = item.blockKey === 'parking'
-          ? parkingUnit || (String(item.subtitle || '').startsWith('Rezervace ') ? '' : String(item.subtitle || ''))
-          : String(item.subtitle || '');
+        const compactDateValue = item.dateValue ? String(item.dateValue) : '';
         const chips = [
           parkingHost ? '<span class="reservation-payment-chip"><strong>Host</strong><span class="reservation-payment-chip-value-host">' + escapeHtml(parkingHost) + '</span></span>' : '',
           parkingStay
             ? '<span class="reservation-payment-chip"><strong>Pobyt</strong><span>' + escapeHtml(parkingStay) + '</span></span>'
-            : item.dateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(String(item.dateValue)) + '</span></span>' : '',
-          subtitleValue ? '<span class="reservation-payment-chip"><strong>Jednotka</strong><span>' + escapeHtml(subtitleValue) + '</span></span>' : '',
-          item.primaryReference ? '<span class="reservation-payment-chip"><strong>Reference</strong><span>' + escapeHtml(String(item.primaryReference)) + '</span></span>' : ''
+            : compactDateValue ? '<span class="reservation-payment-chip"><strong>' + escapeHtml(item.dateLabelCs || 'Datum') + '</strong><span>' + escapeHtml(compactDateValue) + '</span></span>' : ''
         ].filter(Boolean);
 
-        return chips.join('') + buildReservationPaymentAmountMarkup(item);
+        const primaryChips = chips.length > 0
+          ? '<div class="reservation-payment-chip-group">' + chips.join('') + '</div>'
+          : '';
+        const amountChips = '<div class="reservation-payment-chip-group">' + buildReservationPaymentAmountMarkup(item) + '</div>';
+
+        return primaryChips + amountChips;
       }
 
       function readReservationPaymentDetailValue(detailEntries, label) {
@@ -8930,7 +8976,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return [
           '<article class="' + escapeHtml(itemClassName) + '">',
           '<div class="reservation-payment-item-header">',
-          '<div>',
+          '<div class="reservation-payment-item-heading">',
           '<h5 class="reservation-payment-item-title">' + escapeHtml(String(item.title || 'Bez názvu')) + '</h5>',
           item.secondaryReference ? '<div class="reservation-payment-item-subtitle">' + escapeHtml(String(item.secondaryReference)) + '</div>' : '',
           '</div>',
@@ -8956,7 +9002,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
           return 'Bez detailu';
         }
 
-        return normalizedDetail;
+        const shortened = normalizedDetail
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (shortened.length <= 64) {
+          return shortened;
+        }
+
+        return shortened.slice(0, 61).trimEnd() + '…';
       }
 
       function buildPayoutCompactSupplementText(item) {
@@ -8975,9 +9029,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function buildPayoutCompactAmountMarkup(item) {
-        const rendered = buildReviewAmountMarkup(item);
-        if (rendered) {
-          return rendered;
+        const amountEntries = collectReviewAmountEntries(item);
+        if (amountEntries.length > 0) {
+          return '<span class="payout-compact-amount">' + escapeHtml(String(amountEntries[0].value || '')) + '</span>';
         }
 
         return '<span class="payout-compact-amount">Částka bez detailu</span>';

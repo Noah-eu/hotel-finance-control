@@ -7788,6 +7788,20 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Přehled Rezervace a úhrady se právě načítá ze sdíleného runtime běhu…')
   })
 
+  it('renders compact reservation cards with shrink-safe metadata and wrap-safe chip rows', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-03-22T10:15:00.000Z'
+    })
+
+    expect(result.html).toContain('.reservation-payment-item-heading')
+    expect(result.html).toContain('min-width: 0;')
+    expect(result.html).toContain('.reservation-payment-chip-group')
+    expect(result.html).toContain('flex-wrap: wrap;')
+    expect(result.html).toContain('.reservation-payment-chip > span')
+    expect(result.html).toContain('line-clamp: 2;')
+    expect(result.html).toContain("shortened.slice(0, 61).trimEnd() + '…'")
+  })
+
   it('keeps the exact Fio GPC upload out of ingest failure after the preview workspace roundtrip', async () => {
     const fioGpc = getRealInputFixture('fio-gpc-statement')
 
