@@ -176,7 +176,7 @@ describe('Previo parking runtime', () => {
     ]))
   })
 
-  it('keeps the current fallback when a parking row has no unique linked main reservation', async () => {
+  it('hydrates parking row from deterministic Reservation+ parent context when voucher identity is missing', async () => {
     const state = await createBrowserRuntime().buildRuntimeState({
       files: [
         createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', [
@@ -212,9 +212,11 @@ describe('Previo parking runtime', () => {
       title: 'Parkování bez pobytu',
       primaryReference: 'PREVIO-PARK-ONLY'
     }))
-    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Host')
-    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
-    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Jana Svobodova' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-14 – 2026-03-16' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'B202' })
+    ]))
   })
 
   it('links a parking row through exact Previo stay interval when ancillary and main vouchers differ', async () => {

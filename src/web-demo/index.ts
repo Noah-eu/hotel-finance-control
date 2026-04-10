@@ -6229,8 +6229,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             finalStatus: {
               key: String(item && item.statusKey || ''),
               labelCs: String(item && item.statusLabelCs || ''),
-              detailCs: String(item && item.statusDetailCs || '')
+              detailCs: String(item && item.statusDetailCs || ''),
+              operatorKey: String(item && item.operatorStatusKey || item && item.statusKey || ''),
+              operatorLabelCs: String(item && item.operatorStatusLabelCs || item && item.statusLabelCs || '')
             },
+            paymentEvidenceStatus: String(item && item.paymentEvidenceStatus || ''),
+            bankReconciliationStatus: String(item && item.bankReconciliationStatus || ''),
             payoutRowEvidenceExists,
             evidence: {
               key: String(item && item.evidenceKey || ''),
@@ -8972,6 +8976,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const itemClassName = item.blockKey === 'parking'
           ? 'reservation-payment-item is-parking'
           : 'reservation-payment-item';
+        const renderedStatusKey = String(item && item.operatorStatusKey || item && item.statusKey || 'unverified');
+        const renderedStatusLabel = String(item && item.operatorStatusLabelCs || item && item.statusLabelCs || 'neověřeno');
+        const hasDocumentEvidenceWithoutBankMatch = String(item && item.paymentEvidenceStatus || '') === 'document_confirmed'
+          && String(item && item.bankReconciliationStatus || '') === 'unmatched';
 
         return [
           '<article class="' + escapeHtml(itemClassName) + '">',
@@ -8981,7 +8989,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           item.secondaryReference ? '<div class="reservation-payment-item-subtitle">' + escapeHtml(String(item.secondaryReference)) + '</div>' : '',
           '</div>',
           '<div class="reservation-payment-item-badges">',
-          '<span class="status-badge ' + escapeHtml(String(item.statusKey || 'unverified')) + '">' + escapeHtml(String(item.statusLabelCs || 'neověřeno')) + '</span>',
+          '<span class="status-badge ' + escapeHtml(renderedStatusKey) + '">' + escapeHtml(renderedStatusLabel) + '</span>',
+          hasDocumentEvidenceWithoutBankMatch
+            ? '<span class="status-badge unverified">banka nespárována</span>'
+            : '',
           '<span class="status-badge evidence">' + escapeHtml(String(item.evidenceLabelCs || 'bez důkazu')) + '</span>',
           '</div>',
           '</div>',

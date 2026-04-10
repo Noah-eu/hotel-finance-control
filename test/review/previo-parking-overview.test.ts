@@ -193,7 +193,7 @@ describe('Previo parking overview', () => {
     ]))
   })
 
-  it('keeps fallback parking detail when no unique linked main reservation exists', () => {
+  it('keeps parking row hydrated from the closest deterministic Reservation+ parent when no voucher identity exists', () => {
     const batch = buildBatchFromPrevioRows([
       {
         createdAt: '13.03.2026 09:15',
@@ -224,9 +224,11 @@ describe('Previo parking overview', () => {
       title: 'Parkování bez pobytu',
       primaryReference: 'PREVIO-PARK-ONLY'
     }))
-    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Host')
-    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Pobyt')
-    expect(parkingItem?.detailEntries.map((entry) => entry.labelCs)).not.toContain('Jednotka')
+    expect(parkingItem?.detailEntries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ labelCs: 'Host', value: 'Jana Svobodova' }),
+      expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-14 – 2026-03-16' }),
+      expect.objectContaining({ labelCs: 'Jednotka', value: 'B202' })
+    ]))
   })
 
   it('links a parking row through exact Previo stay interval when ancillary and main vouchers differ', () => {

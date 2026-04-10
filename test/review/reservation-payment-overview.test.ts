@@ -341,6 +341,91 @@ describe('buildReservationPaymentOverview', () => {
     ])
   })
 
+  it('renders invoice-evidence-only Reservation+ payment as intermediate status until bank reconciliation exists', () => {
+    const batch = {
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:bank:unmatched:1',
+            source: 'bank',
+            subtype: 'inflow',
+            amountMinor: 197000,
+            currency: 'CZK',
+            bookedAt: '2026-03-21',
+            reference: 'BANK-UNMATCHED-197000',
+            sourceDocumentIds: ['doc:bank'],
+            extractedRecordIds: []
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: 'WEB-9001',
+              guestName: 'Alena Test',
+              roomName: 'A303',
+              reference: 'WEB-9001',
+              channel: 'direct_web',
+              bookedAt: '2026-03-10',
+              stayStartAt: '2026-03-20',
+              stayEndAt: '2026-03-22',
+              grossRevenueMinor: 197000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: 'WEB-9001',
+              noMatchReason: 'noCandidate'
+            }
+          ],
+          payoutRows: [],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-1',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: 'WEB-9001',
+              variableSymbol: '90010001',
+              invoiceNumber: 'FAK-9001',
+              customerId: 'CUST-9001',
+              guestName: 'Alena Test',
+              roomName: 'A303',
+              stayStartAt: '2026-03-20',
+              stayEndAt: '2026-03-22',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      blockKey: 'reservation_plus',
+      primaryReference: 'WEB-9001',
+      statusKey: 'paid',
+      statusLabelCs: 'uhrazeno dle dokladu',
+      operatorStatusKey: 'unverified',
+      operatorStatusLabelCs: 'uhrazeno dle dokladu',
+      paymentEvidenceStatus: 'document_confirmed',
+      bankReconciliationStatus: 'unmatched',
+      evidenceKey: 'invoice_list'
+    }))
+    expect(item?.statusDetailCs).toContain('bez spárování s bankou')
+  })
+
   it('enriches native Reservation+ Comgate rows when a unique reservation anchor resolves by exact identity', () => {
     const batch = {
       extractedRecords: [

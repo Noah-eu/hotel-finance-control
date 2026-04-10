@@ -13,6 +13,8 @@ import { formatAmountMinorCs } from '../shared/money'
 export type ReservationPaymentOverviewBlockKey = 'airbnb' | 'booking' | 'expedia' | 'reservation_plus' | 'parking'
 export type ReservationPaymentStatusKey = 'paid' | 'partial' | 'unverified' | 'missing'
 export type ReservationPaymentEvidenceKey = 'payout' | 'comgate' | 'terminal' | 'bank' | 'invoice_list' | 'no_evidence'
+export type ReservationPaymentEvidenceStatus = 'bank_confirmed' | 'document_confirmed' | 'none'
+export type ReservationPaymentBankReconciliationStatus = 'matched' | 'unmatched'
 
 export interface ReservationPaymentAmountSummary {
   currency: string
@@ -39,6 +41,10 @@ export interface ReservationPaymentOverviewItem {
   statusKey: ReservationPaymentStatusKey
   statusLabelCs: string
   statusDetailCs: string
+  operatorStatusKey: ReservationPaymentStatusKey
+  operatorStatusLabelCs: string
+  paymentEvidenceStatus: ReservationPaymentEvidenceStatus
+  bankReconciliationStatus: ReservationPaymentBankReconciliationStatus
   evidenceKey: ReservationPaymentEvidenceKey
   evidenceLabelCs: string
   sourceDocumentIds: string[]
@@ -488,6 +494,29 @@ const STATUS_LABELS: Record<ReservationPaymentStatusKey, string> = {
   missing: 'chybí platba'
 }
 
+function resolveOperatorStatusPresentation(input: {
+  statusKey: ReservationPaymentStatusKey
+  paymentEvidenceStatus: ReservationPaymentEvidenceStatus
+  bankReconciliationStatus: ReservationPaymentBankReconciliationStatus
+}): { operatorStatusKey: ReservationPaymentStatusKey; operatorStatusLabelCs: string; operatorStatusDetailCs?: string } {
+  if (
+    input.statusKey === 'paid'
+    && input.paymentEvidenceStatus === 'document_confirmed'
+    && input.bankReconciliationStatus === 'unmatched'
+  ) {
+    return {
+      operatorStatusKey: 'unverified',
+      operatorStatusLabelCs: 'uhrazeno dle dokladu',
+      operatorStatusDetailCs: 'Fakturační evidence (Invoice list) potvrzuje úhradu, ale zatím bez spárování s bankou.'
+    }
+  }
+
+  return {
+    operatorStatusKey: input.statusKey,
+    operatorStatusLabelCs: STATUS_LABELS[input.statusKey]
+  }
+}
+
 const EVIDENCE_LABELS: Record<ReservationPaymentEvidenceKey, string> = {
   payout: 'payout',
   comgate: 'Comgate',
@@ -587,6 +616,17 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       hasStrongEvidence,
       blockKey
     })
+    const paymentEvidenceStatus: ReservationPaymentEvidenceStatus = match
+      ? 'bank_confirmed'
+      : invoiceListEvidence?.applied
+        ? 'document_confirmed'
+        : 'none'
+    const bankReconciliationStatus: ReservationPaymentBankReconciliationStatus = match ? 'matched' : 'unmatched'
+    const operatorStatus = resolveOperatorStatusPresentation({
+      statusKey,
+      paymentEvidenceStatus,
+      bankReconciliationStatus
+    })
     const evidenceKey = match
       ? mapEvidenceKeyFromMatch(match)
       : invoiceListEvidence?.applied
@@ -614,10 +654,14 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       paidAmountMinor,
       currency: reservation.currency,
       statusKey,
-      statusLabelCs: STATUS_LABELS[statusKey],
+      statusLabelCs: operatorStatus.operatorStatusLabelCs,
       statusDetailCs: invoiceListEvidence?.applied
-        ? 'Fakturační evidence (Invoice list) potvrzuje úhradu rezervace.'
+        ? operatorStatus.operatorStatusDetailCs ?? 'Fakturační evidence (Invoice list) potvrzuje úhradu rezervace.'
         : buildReservationStatusDetailCs(reservation, match, noMatch, statusKey, blockKey, bookingPayoutBatchBridge),
+      operatorStatusKey: operatorStatus.operatorStatusKey,
+      operatorStatusLabelCs: operatorStatus.operatorStatusLabelCs,
+      paymentEvidenceStatus,
+      bankReconciliationStatus,
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: collectReservationSourceDocumentIds(reservation, match, bookingPayoutBatchBridge),
@@ -701,6 +745,17 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       hasStrongEvidence: ancillaryHasStrongEvidence,
       blockKey
     })
+    const paymentEvidenceStatus: ReservationPaymentEvidenceStatus = candidate
+      ? 'bank_confirmed'
+      : invoiceListAncillaryEvidence?.applied
+        ? 'document_confirmed'
+        : 'none'
+    const bankReconciliationStatus: ReservationPaymentBankReconciliationStatus = candidate ? 'matched' : 'unmatched'
+    const operatorStatus = resolveOperatorStatusPresentation({
+      statusKey,
+      paymentEvidenceStatus,
+      bankReconciliationStatus
+    })
     const evidenceKey: ReservationPaymentEvidenceKey = candidate
       ? mapEvidenceKeyFromPlatform(candidate.platform)
       : invoiceListAncillaryEvidence?.applied
@@ -722,10 +777,14 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       paidAmountMinor,
       currency: ancillary.currency,
       statusKey,
-      statusLabelCs: STATUS_LABELS[statusKey],
+      statusLabelCs: operatorStatus.operatorStatusLabelCs,
       statusDetailCs: invoiceListAncillaryEvidence?.applied
-        ? 'Doplňková položka je potvrzená přes fakturační evidenci (Invoice list).'
+        ? operatorStatus.operatorStatusDetailCs ?? 'Doplňková položka je potvrzená přes fakturační evidenci (Invoice list).'
         : buildAncillaryStatusDetailCs(candidate, statusKey),
+      operatorStatusKey: operatorStatus.operatorStatusKey,
+      operatorStatusLabelCs: operatorStatus.operatorStatusLabelCs,
+      paymentEvidenceStatus,
+      bankReconciliationStatus,
       evidenceKey,
       evidenceLabelCs: EVIDENCE_LABELS[evidenceKey],
       sourceDocumentIds: [ancillary.sourceDocumentId],
@@ -776,6 +835,10 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       statusDetailCs: expectedAmountMinor !== transaction.amountMinor
         ? 'Zdrojový Airbnb payout potvrzuje úhradu; očekávaná a vyplacená částka se mohou lišit o platformní poplatky.'
         : 'Zdrojový Airbnb payout potvrzuje úhradu této položky.',
+      operatorStatusKey: 'paid',
+      operatorStatusLabelCs: STATUS_LABELS.paid,
+      paymentEvidenceStatus: 'bank_confirmed',
+      bankReconciliationStatus: 'matched',
       evidenceKey: 'payout',
       evidenceLabelCs: EVIDENCE_LABELS.payout,
       sourceDocumentIds: transaction.sourceDocumentIds.slice(),
@@ -881,6 +944,10 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         statusDetailCs: parkingLike
           ? 'Zdrojová platba Comgate potvrzuje parkovací úhradu.'
           : 'Zdrojová platba Comgate potvrzuje online úhradu rezervace.',
+        operatorStatusKey: 'paid',
+        operatorStatusLabelCs: STATUS_LABELS.paid,
+        paymentEvidenceStatus: 'bank_confirmed',
+        bankReconciliationStatus: 'matched',
         evidenceKey: 'comgate',
         evidenceLabelCs: EVIDENCE_LABELS.comgate,
         sourceDocumentIds: transaction.sourceDocumentIds.slice(),
@@ -917,6 +984,10 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       statusKey: 'paid',
       statusLabelCs: STATUS_LABELS.paid,
       statusDetailCs: 'Přímý bankovní settlement na Fio potvrzuje úhradu Expedia rezervace.',
+      operatorStatusKey: 'paid',
+      operatorStatusLabelCs: STATUS_LABELS.paid,
+      paymentEvidenceStatus: 'bank_confirmed',
+      bankReconciliationStatus: 'matched',
       evidenceKey: 'terminal',
       evidenceLabelCs: EVIDENCE_LABELS.terminal,
       sourceDocumentIds: [],
