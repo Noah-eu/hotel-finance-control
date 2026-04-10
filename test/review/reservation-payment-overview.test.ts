@@ -1662,6 +1662,105 @@ describe('buildReservationPaymentOverview', () => {
     }))
   })
 
+  it('surfaces ambiguous_multiple_exact_counterparts when duplicate exact voucher hits remain unresolved within the same month', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-ambiguous-same-month',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-04-19T16:23:23.000Z',
+          amountMinor: 147060,
+          currency: 'CZK',
+          occurredAt: '2026-04-23',
+          rawReference: 'AMB-1',
+          data: {
+            platform: 'comgate',
+            reference: '1819990001',
+            clientId: '108806109',
+            merchantOrderReference: '5159718129',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'AMB-1',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:ambiguous1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 147060,
+            currency: 'CZK',
+            bookedAt: '2026-04-23',
+            reference: '1819990001',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-ambiguous-same-month']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:ambiguous1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1819990001',
+              payoutDate: '2026-04-23',
+              amountMinor: 147060,
+              matchingAmountMinor: 147060,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-ambiguous-a',
+              sourceDocumentId: 'doc:invoice-list-A',
+              recordKind: 'header',
+              voucher: '5159718129',
+              variableSymbol: '20260401',
+              invoiceNumber: 'FA20260401',
+              guestName: 'Kluvanec Jozef',
+              roomName: '203,Parkování 1',
+              currency: 'CZK'
+            },
+            {
+              sourceRecordId: 'invoice-list-header-ambiguous-b',
+              sourceDocumentId: 'doc:invoice-list-B',
+              recordKind: 'header',
+              voucher: '5159718129',
+              variableSymbol: '20260499',
+              invoiceNumber: 'FA20260499',
+              guestName: 'Kluvanec Jozef',
+              roomName: '203,Parkování 1',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+    expect(trace).toEqual(expect.objectContaining({
+      merchantOrderReferenceAnchorFamily: 'numeric',
+      linkedMainReservationId: undefined,
+      candidateCount: 0,
+      invoiceListVoucherHits: 2,
+      candidateCountBlockedReason: 'ambiguous_multiple_exact_counterparts',
+      noExactCounterpartInSelectedFiles: false,
+      chosenCandidateSource: 'none',
+      chosenCandidateReason: 'no_candidate'
+    }))
+  })
+
   it('links native parking Comgate rows via invoice-list parking line-item exact anchor', () => {
     const batch = {
       extractedRecords: [

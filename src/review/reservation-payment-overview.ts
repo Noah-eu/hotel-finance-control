@@ -306,7 +306,7 @@ export interface ReservationPaymentOverviewNativeLinkTrace {
   invoiceListInvoiceNumberHits: number
   reservationEntityBridgeHits: number
   candidateSetAfterFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'no_exact_counterpart_in_selected_files'
+  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'ambiguous_multiple_exact_counterparts' | 'no_exact_counterpart_in_selected_files'
   noExactCounterpartInSelectedFiles?: boolean
   chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
@@ -353,7 +353,7 @@ interface NativeLinkInspection {
   invoiceListInvoiceNumberHits: number
   reservationEntityBridgeHits: number
   candidateSetAfterFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'no_exact_counterpart_in_selected_files'
+  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'ambiguous_multiple_exact_counterparts' | 'no_exact_counterpart_in_selected_files'
   noExactCounterpartInSelectedFiles?: boolean
   chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
@@ -560,7 +560,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       ? findInvoiceListEnrichmentForItem(
         { voucher: reservation.reference ?? reservation.reservationId },
         invoiceListRecords
-      )
+      ).match
       : undefined
     const invoiceListEvidence = !match
       ? resolveInvoiceListEvidence(blockKey, invoiceListReservationLink)
@@ -668,7 +668,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         : findInvoiceListEnrichmentForItem(
           { voucher: ancillary.reference },
           invoiceListRecords
-        )
+        ).match
       : undefined
     const effectiveAncillaryGuestName = linkedReservation?.guestName ?? invoiceListAncillaryLink?.record.guestName
     const effectiveAncillaryStayStartAt = linkedReservation?.stayStartAt ?? invoiceListAncillaryLink?.record.stayStartAt
@@ -827,7 +827,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
             },
             invoiceListRecords
           )
-          : findInvoiceListEnrichmentForItem(
+        : findInvoiceListEnrichmentForItem(
             {
               voucher: readString(extractedRecord?.data.merchantOrderReference)
                 ?? readString(extractedRecord?.data.reservationId)
@@ -835,7 +835,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
               variableSymbol: readString(extractedRecord?.data.reference)
             },
             invoiceListRecords
-          ))
+          ).match)
         : undefined
       const effectiveGuestName = linkedReservation?.guestName ?? invoiceListLink?.record.guestName
       const effectiveStayStartAt = linkedReservation?.stayStartAt ?? invoiceListLink?.record.stayStartAt
@@ -1058,7 +1058,7 @@ export function inspectReservationPaymentOverviewClassification(
       const debugInvoiceLink = findInvoiceListEnrichmentForItem(
         { voucher: reservation.reference ?? reservation.reservationId },
         invoiceListDebugRecords
-      )
+      ).match
       const debugEvidence = resolveInvoiceListEvidence(blockKey, debugInvoiceLink)
 
       if (debugInvoiceLink) {
@@ -1284,7 +1284,7 @@ export function inspectReservationPaymentOverviewClassification(
         : findInvoiceListEnrichmentForItem(
           { voucher: ancillary.reference },
           invoiceListDebugRecordsForAncillary
-        )
+        ).match
       const ancillaryDebugEvidence = resolveInvoiceListEvidence(ancillaryBlockKey, ancillaryInvoiceLink)
 
       if (ancillaryInvoiceLink) {
@@ -1347,7 +1347,7 @@ export function inspectReservationPaymentOverviewClassification(
           variableSymbol: readString(extractedRecord?.data.reference)
         },
         invoiceListDebugRecords
-      )
+      ).match
 
     if (invoiceLink) {
       const comgateInvoiceEvidence = resolveInvoiceListEvidence(blockKey, invoiceLink)
@@ -1611,7 +1611,7 @@ function resolveComgateExactPayoutRowMatch(
   const reservationInvoiceLink = findInvoiceListEnrichmentForItem(
     { voucher: reservation.reference ?? reservation.reservationId },
     invoiceListRecords
-  )
+  ).match
 
   const candidates = payoutRows
     .map((row) => {
@@ -1696,7 +1696,7 @@ function diagnoseComgateExactPayoutRowMerge(
   const reservationInvoiceLink = findInvoiceListEnrichmentForItem(
     { voucher: reservation.reference ?? reservation.reservationId },
     invoiceListRecords
-  )
+  ).match
   const reservationEntityMatchedByInvoiceList = Boolean(reservationInvoiceLink)
 
   if (blockKey !== 'reservation_plus') {
@@ -2499,7 +2499,8 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     }
   }
 
-  const fallbackInvoiceLink = selectInvoiceListNativeFallback(row, extractedRecord, invoiceListRecords)
+  const fallbackInvoiceResolution = selectInvoiceListNativeFallback(row, extractedRecord, invoiceListRecords)
+  const fallbackInvoiceLink = fallbackInvoiceResolution.link
   if (fallbackInvoiceLink) {
     return {
       linkedReservation: undefined,
@@ -2529,7 +2530,8 @@ function inspectLinkedReservationForReservationPlusNativeRow(
   const noExactCounterpartInSelectedFiles = hasAnyNativeReservationPlusAnchor(row, extractedRecord)
     && invoiceListHitSet.candidateCount === 0
     && reservationEntityBridgeHits === 0
-  const ambiguousInvoiceListExactAnchors = invoiceListHitSet.candidateCount > 1 && reservationEntityBridgeHits === 0
+  const ambiguousInvoiceListExactAnchors = fallbackInvoiceResolution.hasAmbiguousExactCounterparts
+    || (invoiceListHitSet.candidateCount > 1 && reservationEntityBridgeHits === 0)
 
   return {
     linkedReservation: undefined,
@@ -2550,7 +2552,7 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     candidateCountBlockedReason: noExactCounterpartInSelectedFiles
       ? 'no_exact_counterpart_in_selected_files'
       : ambiguousInvoiceListExactAnchors
-        ? 'ambiguous_exact_identity'
+        ? 'ambiguous_multiple_exact_counterparts'
         : 'no_exact_anchor',
     noExactCounterpartInSelectedFiles,
     chosenCandidateSource: 'none',
@@ -3348,7 +3350,10 @@ function selectInvoiceListNativeFallback(
   row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
   extractedRecord: ExtractedRecord | undefined,
   invoiceListRecords: InvoiceListEnrichmentRecord[]
-): InvoiceListLinkResult | undefined {
+): {
+  link?: InvoiceListLinkResult
+  hasAmbiguousExactCounterparts: boolean
+} {
   const merchantOrderReference = readString(extractedRecord?.data.merchantOrderReference)
   const baseAnchors = {
     customerId: readString(extractedRecord?.data.clientId),
@@ -3391,14 +3396,24 @@ function selectInvoiceListNativeFallback(
     })
   }
 
+  let hasAmbiguousExactCounterparts = false
+
   for (const anchors of attempts) {
-    const match = findInvoiceListEnrichmentForItem(anchors, invoiceListRecords)
-    if (match) {
-      return match
+    const resolution = findInvoiceListEnrichmentForItem(anchors, invoiceListRecords)
+    hasAmbiguousExactCounterparts = hasAmbiguousExactCounterparts || resolution.hasAmbiguousExactCounterparts
+
+    if (resolution.match) {
+      return {
+        link: resolution.match,
+        hasAmbiguousExactCounterparts
+      }
     }
   }
 
-  return undefined
+  return {
+    link: undefined,
+    hasAmbiguousExactCounterparts
+  }
 }
 
 function findInvoiceListEnrichmentForItem(
@@ -3413,17 +3428,21 @@ function findInvoiceListEnrichmentForItem(
     roomName?: string
   },
   invoiceListRecords: InvoiceListEnrichmentRecord[]
-): InvoiceListLinkResult | undefined {
+): {
+  match?: InvoiceListLinkResult
+  hasAmbiguousExactCounterparts: boolean
+} {
   if (invoiceListRecords.length === 0) {
-    return undefined
+    return { hasAmbiguousExactCounterparts: false }
   }
 
   const headers = invoiceListRecords.filter((r) => r.recordKind === 'header')
+  let hasAmbiguousExactCounterparts = false
 
   if (anchors.voucher) {
     const byVoucher = headers.filter((r) => r.voucher && normalizeComparable(r.voucher) === normalizeComparable(anchors.voucher))
     if (byVoucher.length === 1) {
-      return { record: byVoucher[0], reason: 'exact_voucher' }
+      return { match: { record: byVoucher[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
     }
 
     if (byVoucher.length > 1) {
@@ -3431,21 +3450,21 @@ function findInvoiceListEnrichmentForItem(
         ? byVoucher.filter((r) => r.customerId && normalizeComparable(r.customerId) === normalizeComparable(anchors.customerId))
         : []
       if (narrowedByCustomer.length === 1) {
-        return { record: narrowedByCustomer[0], reason: 'exact_voucher' }
+        return { match: { record: narrowedByCustomer[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
       }
 
       const narrowedByVariableSymbol = anchors.variableSymbol
         ? byVoucher.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.variableSymbol))
         : []
       if (narrowedByVariableSymbol.length === 1) {
-        return { record: narrowedByVariableSymbol[0], reason: 'exact_voucher' }
+        return { match: { record: narrowedByVariableSymbol[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
       }
 
       const narrowedByInvoiceNumber = anchors.invoiceNumber
         ? byVoucher.filter((r) => r.invoiceNumber && normalizeComparable(r.invoiceNumber) === normalizeComparable(anchors.invoiceNumber))
         : []
       if (narrowedByInvoiceNumber.length === 1) {
-        return { record: narrowedByInvoiceNumber[0], reason: 'exact_voucher' }
+        return { match: { record: narrowedByInvoiceNumber[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
       }
 
       const anchorMonthKey = resolveComparableMonthKey(anchors.bookedAt)
@@ -3453,7 +3472,11 @@ function findInvoiceListEnrichmentForItem(
         ? byVoucher.filter((r) => resolveInvoiceListHeaderComparableMonthKey(r) === anchorMonthKey)
         : []
       if (narrowedByMonthKey.length === 1) {
-        return { record: narrowedByMonthKey[0], reason: 'exact_voucher' }
+        return { match: { record: narrowedByMonthKey[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      if (byVoucher.length > 1) {
+        hasAmbiguousExactCounterparts = true
       }
     }
   }
@@ -3461,7 +3484,10 @@ function findInvoiceListEnrichmentForItem(
   if (anchors.variableSymbol) {
     const byVS = headers.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.variableSymbol))
     if (byVS.length === 1) {
-      return { record: byVS[0], reason: 'exact_variable_symbol' }
+      return { match: { record: byVS[0], reason: 'exact_variable_symbol' }, hasAmbiguousExactCounterparts }
+    }
+    if (byVS.length > 1) {
+      hasAmbiguousExactCounterparts = true
     }
   }
 
@@ -3472,7 +3498,10 @@ function findInvoiceListEnrichmentForItem(
         && normalizeComparable(r.invoiceNumber) === normalizeComparable(anchors.invoiceNumber)
     )
     if (byCustInv.length === 1) {
-      return { record: byCustInv[0], reason: 'exact_customer_id' }
+      return { match: { record: byCustInv[0], reason: 'exact_customer_id' }, hasAmbiguousExactCounterparts }
+    }
+    if (byCustInv.length > 1) {
+      hasAmbiguousExactCounterparts = true
     }
   }
 
@@ -3487,11 +3516,14 @@ function findInvoiceListEnrichmentForItem(
       && normalizeComparable(r.roomName) === normalizedRoom
     )
     if (byStayRoom.length === 1) {
-      return { record: byStayRoom[0], reason: 'exact_stay_room' }
+      return { match: { record: byStayRoom[0], reason: 'exact_stay_room' }, hasAmbiguousExactCounterparts }
+    }
+    if (byStayRoom.length > 1) {
+      hasAmbiguousExactCounterparts = true
     }
   }
 
-  return undefined
+  return { hasAmbiguousExactCounterparts }
 }
 
 function resolveComparableMonthKey(value: string | undefined): string | undefined {
