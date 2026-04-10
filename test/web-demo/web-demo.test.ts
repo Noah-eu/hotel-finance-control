@@ -51,6 +51,8 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain('Kompaktní přehled měsíčního běhu')
     expect(result.html).toContain('id="open-expense-review-button"')
     expect(result.html).toContain('id="open-control-detail-button"')
+    expect(result.html).toContain('id="reservation-detail-search"')
+    expect(result.html).toContain('id="reservation-filter-all"')
     expect(result.html).toContain('id="expense-detail-search"')
     expect(result.html).toContain('id="expense-detail-sort"')
     expect(result.html).toContain('id="expense-filter-expenseUnmatchedOutflows"')
@@ -7776,6 +7778,8 @@ describe('buildWebDemo', () => {
 
     expect(result.html).toContain('id="reservation-settlement-overview-section"')
     expect(result.html).toContain('id="reservation-settlement-overview-content"')
+    expect(result.html).toContain('id="reservation-detail-filter-buttons"')
+    expect(result.html).toContain('id="reservation-detail-visible-count"')
     expect(result.html).toContain('Rezervace a úhrady')
     expect(result.html).toContain('Po spuštění se zde zobrazí kompaktní bloky Airbnb, Booking, Expedia, Reservation+ / vlastní web a Parkování.')
     expect(result.html).toContain('buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview)')
@@ -8597,6 +8601,15 @@ function createWebDemoDomStub(): Record<string, StubDomElement> {
     'report-preview-body',
     'reservation-settlement-overview-section',
     'reservation-settlement-overview-content',
+    'reservation-detail-filter-buttons',
+    'reservation-filter-all',
+    'reservation-filter-airbnb',
+    'reservation-filter-booking',
+    'reservation-filter-expedia',
+    'reservation-filter-reservation_plus',
+    'reservation-filter-parking',
+    'reservation-detail-search',
+    'reservation-detail-visible-count',
     'ancillary-settlement-overview-section',
     'ancillary-settlement-overview-content',
     'matched-payout-batches-section',
