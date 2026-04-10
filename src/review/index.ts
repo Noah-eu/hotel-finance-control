@@ -615,6 +615,11 @@ function buildExpenseReviewSections(
   const matchedRevenueTransactionIds = new Set(
     batch.report.matches.flatMap((match) => match.transactionIds)
   )
+  for (const match of batch.reconciliation.workflowPlan?.reservationSettlementMatches ?? []) {
+    if (match.settlementKind === 'direct_bank_settlement' && match.matchedSettlementId) {
+      matchedRevenueTransactionIds.add(match.matchedSettlementId)
+    }
+  }
   const payoutMatchedBankTransactionIds = new Set(
     (batch.reconciliation.payoutBatchMatches ?? [])
       .filter((match) => match.matched)

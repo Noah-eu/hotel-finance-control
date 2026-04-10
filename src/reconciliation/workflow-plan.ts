@@ -53,8 +53,20 @@ export function buildReconciliationWorkflowPlan(
         payoutRows: reservationMatchingPayoutRows,
         directBankSettlements
     })
+    const manualBankTransferMatches = buildManualReservationBankTransferMatches({
+        reservationSources,
+        invoiceListEnrichment,
+        normalizedTransactions: input.normalizedTransactions,
+        existingMatches: reservationSettlementMatching.matches.concat(previoReservationTruthMatching.matches),
+        payoutRows: reservationMatchingPayoutRows
+    })
     const reservationSettlementMatches = dedupeReservationSettlementMatches(
-        reservationSettlementMatching.matches.concat(previoReservationTruthMatching.matches)
+        reservationSettlementMatching.matches
+            .concat(previoReservationTruthMatching.matches)
+            .concat(manualBankTransferMatches)
+    )
+    const matchedReservationSourceKeys = new Set(
+        reservationSettlementMatches.map((match) => buildReservationSourceKey(match.sourceDocumentId, match.reservationId))
     )
     const payoutBatches = mergePayoutBatches(
         rowAndFallbackPayoutBatches,
@@ -74,7 +86,9 @@ export function buildReconciliationWorkflowPlan(
         ancillaryRevenueSources,
         invoiceListEnrichment,
         reservationSettlementMatches,
-        reservationSettlementNoMatches: reservationSettlementMatching.noMatches,
+        reservationSettlementNoMatches: reservationSettlementMatching.noMatches.filter(
+            (noMatch) => !matchedReservationSourceKeys.has(buildReservationSourceKey(noMatch.sourceDocumentId, noMatch.reservationId))
+        ),
         payoutRows,
         payoutBatches,
         directBankSettlements,
@@ -1078,6 +1092,10 @@ function normalizeReservationSettlementChannel(value: string | undefined): Reser
         return 'expedia_direct_bank'
     }
 
+    if (normalized === 'direct_bank_transfer' || normalized === 'bank-transfer' || normalized === 'bank transfer') {
+        return 'direct_bank_transfer'
+    }
+
     if (
         normalized === 'comgate'
         || normalized === 'direct-web'
@@ -1112,6 +1130,205 @@ function dedupeReservationSettlementMatches(
     }
 
     return Array.from(uniqueMatches.values())
+}
+
+function buildManualReservationBankTransferMatches(input: {
+    reservationSources: ReservationSourceRecord[]
+    invoiceListEnrichment: InvoiceListEnrichmentRecord[]
+    normalizedTransactions: NormalizedTransaction[]
+    existingMatches: ReconciliationWorkflowPlan['reservationSettlementMatches']
+    payoutRows: PayoutRowExpectation[]
+}): ReconciliationWorkflowPlan['reservationSettlementMatches'] {
+    const matches: ReconciliationWorkflowPlan['reservationSettlementMatches'] = []
+    const matchedReservationSourceKeys = new Set(
+        input.existingMatches.map((match) => buildReservationSourceKey(match.sourceDocumentId, match.reservationId))
+    )
+    const usedSettlementIds = new Set(
+        input.existingMatches
+            .map((match) => match.matchedSettlementId)
+            .filter((value): value is string => Boolean(value))
+    )
+    const comparablePayoutReferences = new Set(
+        input.payoutRows
+            .map((row) => normalizeComparable(row.payoutReference))
+            .filter(Boolean)
+    )
+    const candidateBankTransactions = input.normalizedTransactions.filter((transaction) =>
+        transaction.source === 'bank'
+        && transaction.direction === 'in'
+        && !usedSettlementIds.has(transaction.id)
+        && !isLikelyComgateOrOtaPayoutBankTransaction(transaction, comparablePayoutReferences)
+    )
+
+    for (const reservation of input.reservationSources) {
+        if (matchedReservationSourceKeys.has(buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId))) {
+            continue
+        }
+
+        if (!isEligibleDirectReservationBankTransferReservation(reservation)) {
+            continue
+        }
+
+        if (!hasInvoiceEvidenceAnchorForReservation(reservation, input.invoiceListEnrichment)) {
+            continue
+        }
+
+        const reservationMonthKey = resolveMonthKey(
+            reservation.bookedAt,
+            reservation.stayStartAt,
+            reservation.createdAt
+        )
+
+        if (!reservationMonthKey) {
+            continue
+        }
+
+        const uniqueCandidates = candidateBankTransactions.filter((transaction) =>
+            !usedSettlementIds.has(transaction.id)
+            && transaction.currency === reservation.currency
+            && transaction.amountMinor === reservation.grossRevenueMinor
+            && resolveMonthKey(transaction.bookedAt) === reservationMonthKey
+            && isWithinReservationBankTransferDateWindow(reservation, transaction.bookedAt)
+        )
+
+        if (uniqueCandidates.length !== 1) {
+            continue
+        }
+
+        const winner = uniqueCandidates[0]!
+        usedSettlementIds.add(winner.id)
+
+        matches.push({
+            reservationId: reservation.reservationId,
+            reference: reservation.reference,
+            sourceDocumentId: reservation.sourceDocumentId,
+            settlementKind: 'direct_bank_settlement',
+            matchedSettlementId: winner.id,
+            platform: 'direct_bank_transfer',
+            amountMinor: winner.amountMinor,
+            currency: winner.currency,
+            confidence: 1,
+            reasons: [
+                'directBankTransferUniqueAmountCurrency',
+                'directBankTransferSameMonth',
+                'invoiceEvidenceReferenceExact'
+            ],
+            evidence: [
+                { key: 'settlementChannel', value: 'direct_bank_transfer' },
+                { key: 'amountMinor', value: winner.amountMinor },
+                { key: 'currency', value: winner.currency },
+                { key: 'bookedAt', value: winner.bookedAt }
+            ]
+        })
+    }
+
+    return matches
+}
+
+function hasInvoiceEvidenceAnchorForReservation(
+    reservation: ReservationSourceRecord,
+    records: InvoiceListEnrichmentRecord[]
+): boolean {
+    const reservationAnchors = new Set(
+        [reservation.reference, reservation.reservationId]
+            .map((value) => normalizeComparable(value))
+            .filter(Boolean)
+    )
+
+    if (reservationAnchors.size === 0) {
+        return false
+    }
+
+    return records.some((record) => {
+        const voucher = normalizeComparable(record.voucher)
+        const variableSymbol = normalizeComparable(record.variableSymbol)
+        const invoiceNumber = normalizeComparable(record.invoiceNumber)
+        const customerId = normalizeComparable(record.customerId)
+
+        return reservationAnchors.has(voucher)
+            || reservationAnchors.has(variableSymbol)
+            || reservationAnchors.has(invoiceNumber)
+            || reservationAnchors.has(customerId)
+    })
+}
+
+function isEligibleDirectReservationBankTransferReservation(reservation: ReservationSourceRecord): boolean {
+    if (!(reservation.grossRevenueMinor > 0)) {
+        return false
+    }
+
+    const channels = reservation.expectedSettlementChannels.length > 0
+        ? reservation.expectedSettlementChannels
+        : [normalizeReservationSettlementChannel(reservation.channel)].filter((value): value is ReservationSettlementChannel => Boolean(value))
+
+    if (channels.includes('direct_bank_transfer')) {
+        return true
+    }
+
+    const normalizedChannel = normalizeComparable(reservation.channel)
+    return normalizedChannel === 'directweb' || normalizedChannel === 'direct'
+}
+
+function isLikelyComgateOrOtaPayoutBankTransaction(
+    transaction: NormalizedTransaction,
+    payoutReferences: Set<string>
+): boolean {
+    const comparableReference = normalizeComparable(transaction.reference)
+    const comparableCounterparty = normalizeComparable(transaction.counterparty)
+    const comparableText = `${comparableReference} ${comparableCounterparty}`.trim()
+
+    if (!comparableText) {
+        return false
+    }
+
+    if (
+        comparableText.includes('comgate')
+        || comparableText.includes('booking')
+        || comparableText.includes('airbnb')
+        || comparableText.includes('expedia')
+        || comparableText.includes('payout')
+    ) {
+        return true
+    }
+
+    return Boolean(comparableReference && payoutReferences.has(comparableReference))
+}
+
+function isWithinReservationBankTransferDateWindow(
+    reservation: ReservationSourceRecord,
+    bankBookedAt: string
+): boolean {
+    const anchors = [reservation.bookedAt, reservation.stayStartAt].filter((value): value is string => Boolean(value))
+    if (anchors.length === 0) {
+        return true
+    }
+
+    return anchors.some((anchor) => calculateDateDistanceInDays(anchor, bankBookedAt) <= 45)
+}
+
+function calculateDateDistanceInDays(left: string, right: string): number {
+    const leftDate = new Date(`${left.slice(0, 10)}T00:00:00Z`)
+    const rightDate = new Date(`${right.slice(0, 10)}T00:00:00Z`)
+    if (!Number.isFinite(leftDate.getTime()) || !Number.isFinite(rightDate.getTime())) {
+        return Number.POSITIVE_INFINITY
+    }
+
+    return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function resolveMonthKey(...values: Array<string | undefined>): string | undefined {
+    for (const value of values) {
+        const normalized = (value ?? '').trim()
+        if (/^\d{4}-\d{2}/.test(normalized)) {
+            return normalized.slice(0, 7)
+        }
+    }
+
+    return undefined
+}
+
+function buildReservationSourceKey(sourceDocumentId: string, reservationId: string): string {
+    return `${sourceDocumentId}:${reservationId}`
 }
 
 function hasFiniteNumber(...values: Array<unknown>): boolean {

@@ -1055,6 +1055,94 @@ describe('buildReconciliationWorkflowPlan', () => {
         ])
     })
 
+    it('matches manual Reservation+ bank transfer via unique exact amount/currency/month when invoice evidence exists', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-reservation-1',
+                    sourceDocumentId: 'doc-previo-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-03-20T10:00:00.000Z',
+                    rawReference: 'RES-WEB-2000',
+                    amountMinor: 200000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-20',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'reservation',
+                        reservationId: 'RES-WEB-2000',
+                        reference: 'RES-WEB-2000',
+                        guestName: 'Honza Říha',
+                        channel: 'direct-web',
+                        bookedAt: '2026-03-20',
+                        stayStartAt: '2026-03-25',
+                        stayEndAt: '2026-03-27',
+                        amountMinor: 200000,
+                        outstandingBalanceMinor: 0,
+                        currency: 'CZK'
+                    }
+                },
+                {
+                    id: 'invoice-list-header-1',
+                    sourceDocumentId: 'doc-invoice-list-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'invoice-list-row',
+                    extractedAt: '2026-03-20T10:01:00.000Z',
+                    rawReference: 'RES-WEB-2000',
+                    amountMinor: 200000,
+                    currency: 'CZK',
+                    occurredAt: '2026-03-20',
+                    data: {
+                        platform: 'previo-invoice-list',
+                        rowKind: 'header',
+                        voucher: 'RES-WEB-2000',
+                        currency: 'CZK'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:bank:manual-web-2000' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'bank',
+                    amountMinor: 200000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-21',
+                    accountId: 'fio-main',
+                    counterparty: 'Jan Riha',
+                    reference: 'Uhrada rezervace RES-WEB-2000',
+                    extractedRecordIds: ['bank-1'],
+                    sourceDocumentIds: ['doc-bank-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                },
+                {
+                    id: 'txn:bank:other-500' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'bank',
+                    amountMinor: 50000,
+                    currency: 'CZK',
+                    bookedAt: '2026-03-21',
+                    accountId: 'fio-main',
+                    counterparty: 'Other Guest',
+                    reference: 'Uhrada rezervace RES-OTHER',
+                    extractedRecordIds: ['bank-2'],
+                    sourceDocumentIds: ['doc-bank-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-03-21T08:00:00.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                reservationId: 'RES-WEB-2000',
+                settlementKind: 'direct_bank_settlement',
+                matchedSettlementId: 'txn:bank:manual-web-2000',
+                platform: 'direct_bank_transfer',
+                currency: 'CZK',
+                amountMinor: 200000
+            })
+        ]))
+        expect(plan.reservationSettlementNoMatches).toEqual([])
+    })
+
     it('does not treat ancillary revenue rows as accommodation reservation settlement matches', () => {
         const plan = buildReconciliationWorkflowPlan({
             extractedRecords: [

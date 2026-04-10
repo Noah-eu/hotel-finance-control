@@ -2343,6 +2343,98 @@ describe('buildReviewScreen', () => {
     expect(review.reservationSettlementOverview[0]?.detail).not.toContain('noCandidate')
     expect(review.ancillarySettlementOverview[0]?.detail).not.toContain('noCandidate')
   })
+
+  it('removes uniquely matched manual Reservation+ bank transfer from unmatched incoming bank payments', () => {
+    const review = buildReviewScreen({
+      generatedAt: '2026-03-22T10:00:00.000Z',
+      batch: {
+        files: [],
+        extractedRecords: [],
+        reconciliation: {
+          normalizedTransactions: [
+            {
+              id: toTransactionId('txn:bank:honza-2000'),
+              direction: 'in',
+              source: 'bank',
+              amountMinor: 200000,
+              currency: 'CZK',
+              bookedAt: '2026-03-21',
+              accountId: 'fio-main',
+              reference: 'Uhrada rezervace RES-WEB-2000',
+              extractedRecordIds: [],
+              sourceDocumentIds: [toDocumentId('doc:bank')]
+            }
+          ],
+          matching: buildMatchingResult(),
+          matchGroups: [],
+          exceptionCases: [],
+          supportedExpenseLinks: [],
+          workflowPlan: {
+            reservationSources: [],
+            ancillaryRevenueSources: [],
+            invoiceListEnrichment: [],
+            reservationSettlementMatches: [
+              {
+                reservationId: 'RES-WEB-2000',
+                reference: 'RES-WEB-2000',
+                sourceDocumentId: toDocumentId('doc:previo-web'),
+                settlementKind: 'direct_bank_settlement',
+                matchedSettlementId: toTransactionId('txn:bank:honza-2000'),
+                platform: 'direct_bank_transfer',
+                amountMinor: 200000,
+                currency: 'CZK',
+                confidence: 1,
+                reasons: ['directBankTransferUniqueAmountCurrency'],
+                evidence: [{ key: 'amountMinor', value: 200000 }]
+              }
+            ],
+            reservationSettlementNoMatches: [],
+            payoutRows: [],
+            payoutBatches: [],
+            directBankSettlements: [],
+            expenseDocuments: [],
+            bankFeeClassifications: []
+          },
+          payoutBatchMatches: [],
+          normalization: {
+            warnings: [],
+            trace: []
+          },
+          exceptions: {
+            cases: [],
+            trace: []
+          },
+          summary: {
+            normalizedTransactionCount: 1,
+            matchedGroupCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 1
+          }
+        },
+        report: {
+          generatedAt: '2026-03-22T10:00:00.000Z',
+          summary: {
+            normalizedTransactionCount: 1,
+            matchedGroupCount: 0,
+            payoutBatchMatchCount: 0,
+            unmatchedPayoutBatchCount: 0,
+            exceptionCount: 0,
+            unmatchedExpectedCount: 0,
+            unmatchedActualCount: 1
+          },
+          matches: [],
+          exceptions: [],
+          supportedExpenseLinks: [],
+          payoutBatchMatches: [],
+          unmatchedPayoutBatches: [],
+          transactions: []
+        }
+      }
+    })
+
+    expect(review.expenseUnmatchedInflows).toEqual([])
+  })
 })
 
 function buildExceptionCase(overrides: Partial<ExceptionCase> & Pick<ExceptionCase, 'id' | 'explanation'>): ExceptionCase {

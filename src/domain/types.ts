@@ -185,7 +185,7 @@ export interface ReservationSettlementMatch {
   settlementKind: 'payout_row' | 'direct_bank_settlement'
   matchedRowId?: string
   matchedSettlementId?: string
-  platform: 'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'
+  platform: 'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank' | 'direct_bank_transfer'
   amountMinor: number
   currency: CurrencyCode
   confidence: number
@@ -261,7 +261,7 @@ export interface PayoutBatchExpectation {
 
 export interface DirectBankSettlementExpectation {
   settlementId: string
-  channel: 'expedia_direct_bank'
+  channel: 'expedia_direct_bank' | 'direct_bank_transfer'
   reservationId: string
   bankRoutingTarget: 'fio_bank_inflow'
   accountIdHint?: string

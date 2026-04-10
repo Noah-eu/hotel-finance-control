@@ -426,6 +426,90 @@ describe('buildReservationPaymentOverview', () => {
     expect(item?.statusDetailCs).toContain('bez spárování s bankou')
   })
 
+  it('marks manual Reservation+ bank transfer as fully bank matched when a unique direct bank settlement exists', () => {
+    const batch = {
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:bank:honza-2000',
+            source: 'bank',
+            subtype: 'inflow',
+            amountMinor: 200000,
+            currency: 'CZK',
+            bookedAt: '2026-03-21',
+            reference: 'Uhrada rezervace RES-WEB-2000',
+            sourceDocumentIds: ['doc:bank'],
+            extractedRecordIds: []
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: 'RES-WEB-2000',
+              guestName: 'Honza Říha',
+              roomName: 'A101',
+              reference: 'RES-WEB-2000',
+              channel: 'direct-web',
+              bookedAt: '2026-03-20',
+              stayStartAt: '2026-03-25',
+              stayEndAt: '2026-03-27',
+              grossRevenueMinor: 200000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['direct_bank_transfer']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [
+            {
+              sourceDocumentId: 'doc:previo-web',
+              reservationId: 'RES-WEB-2000',
+              reference: 'RES-WEB-2000',
+              settlementKind: 'direct_bank_settlement',
+              matchedSettlementId: 'txn:bank:honza-2000',
+              platform: 'direct_bank_transfer',
+              amountMinor: 200000,
+              currency: 'CZK',
+              confidence: 1,
+              reasons: ['directBankTransferUniqueAmountCurrency'],
+              evidence: [{ key: 'amountMinor', value: 200000 }]
+            }
+          ],
+          reservationSettlementNoMatches: [],
+          payoutRows: [],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-1',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: 'RES-WEB-2000',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      blockKey: 'reservation_plus',
+      title: 'Honza Říha',
+      statusKey: 'paid',
+      statusLabelCs: 'zaplaceno',
+      paymentEvidenceStatus: 'bank_confirmed',
+      bankReconciliationStatus: 'matched',
+      evidenceKey: 'bank',
+      transactionIds: ['txn:bank:honza-2000']
+    }))
+  })
+
   it('enriches native Reservation+ Comgate rows when a unique reservation anchor resolves by exact identity', () => {
     const batch = {
       extractedRecords: [
@@ -2076,6 +2160,53 @@ describe('buildReservationPaymentOverview', () => {
       expect.objectContaining({ labelCs: 'Pobyt', value: '2026-03-27 – 2026-03-29' }),
       expect.objectContaining({ labelCs: 'Jednotka', value: 'Parking' })
     ]))
+  })
+
+  it('renders parking included in accommodation price as neutral included state instead of unpaid/unverified issue', () => {
+    const batch = {
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions: [],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [
+            {
+              sourceRecordId: 'anc-park-0',
+              sourceDocumentId: 'doc:previo',
+              sourceSystem: 'previo',
+              reference: 'PARK-INCLUDED-1',
+              reservationId: 'RES-INC-1',
+              itemLabel: 'Parkování v ceně ubytování',
+              channel: 'parking',
+              bookedAt: '2026-03-22',
+              grossRevenueMinor: 0,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK'
+            }
+          ],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'parking')?.items[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      blockKey: 'parking',
+      statusKey: 'paid',
+      statusLabelCs: 'v ceně ubytování',
+      operatorStatusKey: 'paid',
+      operatorStatusLabelCs: 'v ceně ubytování',
+      evidenceKey: 'no_evidence'
+    }))
+    expect(item?.statusDetailCs).toContain('zahrnuto v hlavní rezervaci')
   })
 
   it('marks Greta as paid from unique Booking payout-row evidence and keeps Tatiana unverified without payout-row evidence', () => {

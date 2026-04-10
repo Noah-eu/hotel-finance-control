@@ -33,6 +33,7 @@ export type ReservationSettlementChannel =
   | 'airbnb'
   | 'comgate'
   | 'expedia_direct_bank'
+  | 'direct_bank_transfer'
 
 export type DocumentSettlementDirection =
   | 'payable_outgoing'

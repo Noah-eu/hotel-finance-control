@@ -33,7 +33,7 @@ type Candidate =
     }
     | {
         settlementKind: 'direct_bank_settlement'
-        platform: 'expedia_direct_bank'
+        platform: 'expedia_direct_bank' | 'direct_bank_transfer'
         settlementId: string
         reservationId: string
         amountMinor: number
@@ -242,7 +242,7 @@ function toPayoutCandidate(row: PayoutRowExpectation): Candidate {
 function toDirectBankCandidate(settlement: DirectBankSettlementExpectation): Candidate {
     return {
         settlementKind: 'direct_bank_settlement',
-        platform: 'expedia_direct_bank',
+        platform: settlement.channel,
         settlementId: settlement.settlementId,
         reservationId: settlement.reservationId,
         amountMinor: settlement.amountMinor,
@@ -260,7 +260,7 @@ function isWithinDayTolerance(left: string, right: string, toleranceDays: number
 
 function inferReservationSettlementChannels(
     reservation: ReservationSourceRecord
-): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'> {
+): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank' | 'direct_bank_transfer'> {
     if (reservation.expectedSettlementChannels.length > 0) {
         return reservation.expectedSettlementChannels
     }
@@ -269,14 +269,16 @@ function inferReservationSettlementChannels(
     if (channel === 'booking') return ['booking']
     if (channel === 'airbnb') return ['airbnb']
     if (channel === 'comgate') return ['comgate']
+    if (channel === 'direct_bank_transfer' || channel === 'bank-transfer' || channel === 'bank transfer') return ['direct_bank_transfer']
     if (channel === 'expedia_direct_bank') return ['expedia_direct_bank']
-    if (channel === 'direct-web' || channel === 'direct') return ['comgate']
+    if (channel === 'direct-web' || channel === 'direct') return ['comgate', 'direct_bank_transfer']
 
     const reference = `${reservation.reference ?? ''} ${reservation.reservationId}`.toLowerCase()
     if (reference.includes('booking')) return ['booking']
     if (reference.includes('airbnb')) return ['airbnb']
     if (reference.includes('comgate') || reference.includes('web')) return ['comgate']
     if (reference.includes('expedia')) return ['expedia_direct_bank']
+    if (reference.includes('banktransfer') || reference.includes('bankovni')) return ['direct_bank_transfer']
 
     return []
 }

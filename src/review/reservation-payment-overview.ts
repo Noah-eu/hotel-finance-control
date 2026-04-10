@@ -745,6 +745,8 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       hasStrongEvidence: ancillaryHasStrongEvidence,
       blockKey
     })
+    const includedInMainReservationPrice = isParkingIncludedInMainReservationPrice(ancillary, blockKey)
+    const effectiveStatusKey: ReservationPaymentStatusKey = includedInMainReservationPrice ? 'paid' : statusKey
     const paymentEvidenceStatus: ReservationPaymentEvidenceStatus = candidate
       ? 'bank_confirmed'
       : invoiceListAncillaryEvidence?.applied
@@ -752,7 +754,7 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
         : 'none'
     const bankReconciliationStatus: ReservationPaymentBankReconciliationStatus = candidate ? 'matched' : 'unmatched'
     const operatorStatus = resolveOperatorStatusPresentation({
-      statusKey,
+      statusKey: effectiveStatusKey,
       paymentEvidenceStatus,
       bankReconciliationStatus
     })
@@ -776,13 +778,15 @@ export function buildReservationPaymentOverview(batch: MonthlyBatchResult): Rese
       expectedAmountMinor: ancillary.grossRevenueMinor,
       paidAmountMinor,
       currency: ancillary.currency,
-      statusKey,
-      statusLabelCs: operatorStatus.operatorStatusLabelCs,
-      statusDetailCs: invoiceListAncillaryEvidence?.applied
-        ? operatorStatus.operatorStatusDetailCs ?? 'Doplňková položka je potvrzená přes fakturační evidenci (Invoice list).'
-        : buildAncillaryStatusDetailCs(candidate, statusKey),
-      operatorStatusKey: operatorStatus.operatorStatusKey,
-      operatorStatusLabelCs: operatorStatus.operatorStatusLabelCs,
+      statusKey: effectiveStatusKey,
+      statusLabelCs: includedInMainReservationPrice ? 'v ceně ubytování' : operatorStatus.operatorStatusLabelCs,
+      statusDetailCs: includedInMainReservationPrice
+        ? 'Parkování je zahrnuto v hlavní rezervaci.'
+        : invoiceListAncillaryEvidence?.applied
+          ? operatorStatus.operatorStatusDetailCs ?? 'Doplňková položka je potvrzená přes fakturační evidenci (Invoice list).'
+          : buildAncillaryStatusDetailCs(candidate, statusKey),
+      operatorStatusKey: includedInMainReservationPrice ? 'paid' : operatorStatus.operatorStatusKey,
+      operatorStatusLabelCs: includedInMainReservationPrice ? 'v ceně ubytování' : operatorStatus.operatorStatusLabelCs,
       paymentEvidenceStatus,
       bankReconciliationStatus,
       evidenceKey,
@@ -2367,6 +2371,24 @@ function resolveAncillaryBlockKey(item: AncillaryRevenueSourceRecord): Reservati
   return isParkingLike(item.channel, item.reference, item.itemLabel) ? 'parking' : 'reservation_plus'
 }
 
+function isParkingIncludedInMainReservationPrice(
+  item: AncillaryRevenueSourceRecord,
+  blockKey: ReservationPaymentOverviewBlockKey
+): boolean {
+  if (blockKey !== 'parking') {
+    return false
+  }
+
+  if (item.grossRevenueMinor === 0) {
+    return true
+  }
+
+  const normalizedItemLabel = normalizeComparable(item.itemLabel)
+  return normalizedItemLabel.includes('vceneubytovani')
+    || normalizedItemLabel.includes('zahrnutovhlavni')
+    || normalizedItemLabel.includes('includedinaccommodation')
+}
+
 function countReservationLikeCandidate(
   blockKey: ReservationPaymentOverviewBlockKey,
   handlers: {
@@ -2383,7 +2405,7 @@ function countReservationLikeCandidate(
   }
 }
 
-function inferChannelsFromFallback(channel: string | undefined): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank'> {
+function inferChannelsFromFallback(channel: string | undefined): Array<'booking' | 'airbnb' | 'comgate' | 'expedia_direct_bank' | 'direct_bank_transfer'> {
   const normalized = normalizeComparable(channel)
 
   if (!normalized) return []
@@ -2391,6 +2413,7 @@ function inferChannelsFromFallback(channel: string | undefined): Array<'booking'
   if (normalized.includes('booking')) return ['booking']
   if (normalized.includes('airbnb')) return ['airbnb']
   if (normalized.includes('expedia')) return ['expedia_direct_bank']
+  if (normalized.includes('banktransfer') || normalized.includes('bankovni')) return ['direct_bank_transfer']
   if (
     normalized.includes('comgate')
     || normalized.includes('directweb')
@@ -2410,6 +2433,7 @@ function buildExpectedPathLabel(expectedChannels: string[], fallbackChannel: str
   if (channels.includes('booking')) return 'Booking payout / RB účet'
   if (channels.includes('airbnb')) return 'Airbnb payout / RB účet'
   if (channels.includes('comgate')) return 'Comgate / RB účet'
+  if (channels.includes('direct_bank_transfer')) return 'Přímý bankovní převod'
   if (channels.includes('expedia_direct_bank')) return 'Expedia terminal / Fio účet'
   return 'Zatím bez spolehlivé očekávané cesty úhrady'
 }
@@ -2418,6 +2442,7 @@ function toChannelLabel(channel: string | undefined, blockKey: ReservationPaymen
   const normalized = normalizeComparable(channel)
 
   if (normalized === 'directweb' || normalized === 'direct') return 'vlastní web'
+  if (normalized === 'directbanktransfer' || normalized === 'banktransfer') return 'bankovní převod'
   if (normalized === 'expediadirectbank') return 'Expedia / terminál'
   if (normalized === 'parking') return 'parkování'
   if (channel && channel.trim().length > 0) return channel
