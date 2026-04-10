@@ -7541,6 +7541,10 @@ describe('buildWebDemo', () => {
     const state = rendered.getLastVisibleRuntimeState() as {
       reservationPaymentOverviewDebug: {
         reservationPlusNativeLinkTraces?: Array<{
+          merchantOrderReferenceAnchorFamily?: string
+          invoiceListVoucherHits?: number
+          invoiceListVariableSymbolHits?: number
+          candidateCountBlockedReason?: string
           rawParsedSourceRow?: {
             data?: {
               runtimeComgateParserVariant?: string
@@ -7557,6 +7561,10 @@ describe('buildWebDemo', () => {
     expect(firstTrace?.rawParsedSourceRow?.data?.normalizedMerchantOrderReference).toBe('20250587')
     expect(firstTrace?.rawParsedSourceRow?.data?.normalizedPayoutReference).toBe('1811321483')
     expect(firstTrace?.rawParsedSourceRow?.data?.normalizedClientId).toBe('108061915')
+    expect(firstTrace?.merchantOrderReferenceAnchorFamily).toBe('numeric')
+    expect(firstTrace?.invoiceListVoucherHits).toBe(0)
+    expect(firstTrace?.invoiceListVariableSymbolHits).toBe(0)
+    expect(firstTrace?.candidateCountBlockedReason).toBe('no_exact_anchor')
   })
 
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {

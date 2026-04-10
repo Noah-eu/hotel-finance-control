@@ -682,6 +682,7 @@ describe('buildReservationPaymentOverview', () => {
       reference: 'CG-WEB-2001',
       linkedMainReservationId: undefined,
       invoiceListCandidateCount: 0,
+      candidateCountBlockedReason: 'no_exact_anchor',
       chosenCandidateSource: 'none',
       chosenCandidateReason: 'no_candidate'
     }))
@@ -1236,6 +1237,193 @@ describe('buildReservationPaymentOverview', () => {
       invoiceListExactDocumentHits: [expect.objectContaining({ variableSymbol: '1817482862' })],
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
+    }))
+  })
+
+  it('links native Reservation+ row via voucher-like merchantOrderReference when reservationId/clientId are not anchorable', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-mor-voucher-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-28T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-28',
+          rawReference: 'CG-MOR-1',
+          data: {
+            platform: 'comgate',
+            reference: '1817482862',
+            clientId: 'UNMAPPED-CLIENT-1',
+            merchantOrderReference: 'MOR-VOUCHER-777',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-MOR-1',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:morVoucher1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 242351,
+            currency: 'CZK',
+            bookedAt: '2026-03-28',
+            reference: '1817482862',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-mor-voucher-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:morVoucher1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1817482862',
+              payoutDate: '2026-03-28',
+              amountMinor: 242351,
+              matchingAmountMinor: 242351,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-mor-voucher',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: 'MOR-VOUCHER-777',
+              variableSymbol: '1817482862',
+              guestName: 'Mila Voucher',
+              roomName: 'A111',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-29',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      title: 'Mila Voucher'
+    }))
+    expect(trace).toEqual(expect.objectContaining({
+      merchantOrderReferenceAnchorFamily: 'alpha_numeric',
+      invoiceListVoucherHits: 1,
+      reservationEntityBridgeHits: 0,
+      linkedMainReservationId: 'MOR-VOUCHER-777',
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity',
+      candidateCountBlockedReason: 'none'
+    }))
+  })
+
+  it('links native Reservation+ row via document-family merchantOrderReference as exact invoice-list variable symbol', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-mor-doc-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-28T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-28',
+          rawReference: 'CG-MOR-2',
+          data: {
+            platform: 'comgate',
+            reference: 'UNMAPPED-PAYOUT-REF',
+            clientId: 'UNMAPPED-CLIENT-2',
+            merchantOrderReference: '1816303586',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-MOR-2',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:morDoc1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 242351,
+            currency: 'CZK',
+            bookedAt: '2026-03-28',
+            reference: 'UNMAPPED-PAYOUT-REF',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-mor-doc-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:morDoc1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: 'UNMAPPED-PAYOUT-REF',
+              payoutDate: '2026-03-28',
+              amountMinor: 242351,
+              matchingAmountMinor: 242351,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-mor-doc',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: 'INVOICE-VOUCHER-3586',
+              variableSymbol: '1816303586',
+              guestName: 'Karel Symbol',
+              roomName: 'B208',
+              stayStartAt: '2026-03-26',
+              stayEndAt: '2026-03-28',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const item = overview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+
+    expect(item).toEqual(expect.objectContaining({
+      title: 'Karel Symbol'
+    }))
+    expect(trace).toEqual(expect.objectContaining({
+      merchantOrderReferenceAnchorFamily: 'numeric',
+      invoiceListVariableSymbolHits: 1,
+      linkedMainReservationId: 'INVOICE-VOUCHER-3586',
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity',
+      candidateCountBlockedReason: 'none'
     }))
   })
 

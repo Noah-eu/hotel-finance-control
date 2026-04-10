@@ -6243,6 +6243,25 @@ ${showRuntimePayoutDiagnostics ? '' : `
             exactStayIntervalHits: Array.isArray(trace && trace.exactStayIntervalHits)
               ? trace.exactStayIntervalHits.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
               : [],
+            invoiceListCandidateCount: Number(trace && trace.invoiceListCandidateCount || 0),
+            invoiceListExactIdentityHits: Array.isArray(trace && trace.invoiceListExactIdentityHits)
+              ? trace.invoiceListExactIdentityHits.map((candidate) => buildInvoiceListLinkCandidateDebugPayload(candidate))
+              : [],
+            invoiceListExactDocumentHits: Array.isArray(trace && trace.invoiceListExactDocumentHits)
+              ? trace.invoiceListExactDocumentHits.map((candidate) => buildInvoiceListLinkCandidateDebugPayload(candidate))
+              : [],
+            invoiceListExactStayIntervalHits: Array.isArray(trace && trace.invoiceListExactStayIntervalHits)
+              ? trace.invoiceListExactStayIntervalHits.map((candidate) => buildInvoiceListLinkCandidateDebugPayload(candidate))
+              : [],
+            merchantOrderReferenceAnchorFamily: String(trace && trace.merchantOrderReferenceAnchorFamily || ''),
+            invoiceListVoucherHits: Number(trace && trace.invoiceListVoucherHits || 0),
+            invoiceListVariableSymbolHits: Number(trace && trace.invoiceListVariableSymbolHits || 0),
+            reservationEntityBridgeHits: Number(trace && trace.reservationEntityBridgeHits || 0),
+            candidateSetAfterFiltering: Array.isArray(trace && trace.candidateSetAfterFiltering)
+              ? trace.candidateSetAfterFiltering.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
+              : [],
+            candidateCountBlockedReason: String(trace && trace.candidateCountBlockedReason || ''),
+            chosenCandidateSource: String(trace && trace.chosenCandidateSource || 'none'),
             chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
           };
         }
