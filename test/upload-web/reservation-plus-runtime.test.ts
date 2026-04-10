@@ -93,6 +93,35 @@ function buildInvoiceListWorkbookBase64(): string {
   return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
 }
 
+function buildInvoiceListWorkbookBase64ForCurrentPortalBridge(): string {
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Doklady - export'],
+    [''],
+    ['Doklad č.', 'Voucher', 'Variabilní symbol', 'Termín od', 'Termín do', 'Jméno hosta', 'Pokoj', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260328', '109047421', '1816480742', '27.03.2026', '30.03.2026', 'Klara Vesela', 'C303', '302 940 Kč', '250 364 Kč']
+  ]), 'Doklady')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn', 'Hodnota'],
+    ['Počet dokladů', '1']
+  ]), 'Souhrn')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Položky dokladů - export'],
+    [''],
+    ['Doklad č.', 'Název položky', 'Částka celkem', 'Základ DPH'],
+    ['FA-20260328', 'Ubytování', '302 940 Kč', '250 364 Kč']
+  ]), 'Položky dokladů')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn položek', 'Hodnota'],
+    ['Počet položek', '1']
+  ]), 'Souhrn položek')
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Souhrn podle rastrů', 'Hodnota'],
+    ['Rastr', 'A']
+  ]), 'Souhrn podle rastrů')
+  return XLSX.write(workbook, { type: 'base64', bookType: 'xls' })
+}
+
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const bytes = Buffer.from(base64, 'base64')
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
@@ -111,6 +140,17 @@ function createRuntimeWorkbookFile(name: string, rows: PrevioWorkbookRow[]) {
 
 function createRuntimeInvoiceListFile(name: string) {
   const binaryContentBase64 = buildInvoiceListWorkbookBase64()
+
+  return {
+    name,
+    type: 'application/vnd.ms-excel',
+    text: async () => '',
+    arrayBuffer: async () => base64ToArrayBuffer(binaryContentBase64)
+  }
+}
+
+function createRuntimeInvoiceListFileForCurrentPortalBridge(name: string) {
+  const binaryContentBase64 = buildInvoiceListWorkbookBase64ForCurrentPortalBridge()
 
   return {
     name,
@@ -279,6 +319,55 @@ describe('Reservation+ runtime enrichment', () => {
       nativeRowMergedIntoReservationEntity: true,
       mergeSource: 'reservation_entity',
       mergeAnchorType: 'invoice_list_variable_symbol'
+    }))
+  })
+
+  it('merges current-portal native Comgate row when reference carries reservation identity from ID od klienta', async () => {
+    const state = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeWorkbookFile('reservations-export-2026-03.xlsx', [
+          {
+            createdAt: '13.03.2026 09:15',
+            stayStartAt: '27.03.2026',
+            stayEndAt: '30.03.2026',
+            voucher: '109047421',
+            guestName: 'Klara Vesela',
+            companyName: 'Acme Travel',
+            channel: 'direct-web',
+            amountText: '302940,00',
+            outstandingText: '0,00',
+            roomName: 'C303'
+          }
+        ]),
+        createRuntimeInvoiceListFileForCurrentPortalBridge('invoice_list.xls'),
+        createRuntimeTextFile(
+          'comgate-current-portal.csv',
+          [
+            '"Comgate ID";"ID od klienta";"Datum založení";"Datum zaplacení";"Datum převodu";"E-mail plátce";"Obchod";"Cena";"Měna";"Typ platby";"Mezibankovní poplatek";"Poplatek asociace";"Poplatek zpracovatel";"Poplatek celkem"',
+            '"CG-PORTAL-TRX-3002";"109047421";"27.03.2026 09:15";"27.03.2026 09:16";"28.03.2026";"guest@example.com";"JOKELAND s.r.o.";"302940,00";"CZK";"website-reservation";"0,00";"0,00";"0,00";"0,00"'
+          ].join('\n')
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-10T11:15:00.000Z'
+    })
+
+    const reservationPlusItems = state.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items ?? []
+    const mergedItem = reservationPlusItems.find((entry) => entry.title === 'Klara Vesela')
+    const nativeFallbackItem = reservationPlusItems.find((entry) => entry.id.includes('reservation-payment:native:'))
+    const mergeTrace = state.reservationPaymentOverviewDebug.reservationPlusComgateMergeTraces
+      .find((trace) => trace.linkedReservationId === '109047421')
+
+    expect(mergedItem).toEqual(expect.objectContaining({
+      title: 'Klara Vesela',
+      evidenceKey: 'comgate'
+    }))
+    expect(mergedItem?.transactionIds.length).toBeGreaterThan(0)
+    expect(nativeFallbackItem).toBeUndefined()
+    expect(mergeTrace).toEqual(expect.objectContaining({
+      reservationEntityMatchedByInvoiceList: true,
+      reservationGuestName: 'Klara Vesela',
+      reservationRoomName: 'C303'
     }))
   })
 })

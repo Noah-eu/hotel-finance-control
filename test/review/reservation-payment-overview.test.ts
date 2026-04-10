@@ -907,6 +907,119 @@ describe('buildReservationPaymentOverview', () => {
     }))
   })
 
+  it('merges current-portal native Comgate row when reference carries deterministic reservation identity', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-cp-1',
+          sourceDocumentId: 'doc:comgate-current',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-27T10:00:00.000Z',
+          amountMinor: 302940,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          rawReference: '109047421',
+          data: {
+            platform: 'comgate',
+            reference: '109047421',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-CP-109047421',
+            comgateParserVariant: 'current-portal'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:cp1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 302940,
+            currency: 'CZK',
+            bookedAt: '2026-03-27',
+            reference: '109047421',
+            sourceDocumentIds: ['doc:comgate-current'],
+            extractedRecordIds: ['comgate-row-cp-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo',
+              reservationId: '109047421',
+              guestName: 'Klara Vesela',
+              roomName: 'C303',
+              reference: '109047421',
+              channel: 'direct_web',
+              bookedAt: '2026-03-20',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-30',
+              grossRevenueMinor: 302940,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:cp1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate-current',
+              payoutReference: '109047421',
+              payoutDate: '2026-03-27',
+              amountMinor: 302940,
+              matchingAmountMinor: 302940,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-header-cp-1',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: '109047421',
+              variableSymbol: '1816480742',
+              guestName: 'Klara Vesela',
+              roomName: 'C303',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-30',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((block) => block.key === 'reservation_plus')!
+    const debug = inspectReservationPaymentOverviewClassification(batch)
+    const mergeTrace = debug.reservationPlusComgateMergeTraces.find((trace) => trace.linkedReservationId === '109047421')!
+
+    expect(resBlock.items).toHaveLength(1)
+    expect(resBlock.items[0]).toEqual(expect.objectContaining({
+      title: 'Klara Vesela',
+      evidenceKey: 'comgate',
+      transactionIds: ['txn:comgate:cp1']
+    }))
+    expect(debug.reservationPlusNativeLinkTraces.find((trace) => trace.rowId === 'txn:comgate:cp1')).toBeUndefined()
+    expect(mergeTrace).toEqual(expect.objectContaining({
+      chosenLinkReason: 'exact_refId_merge',
+      nativeComgateFallbackSuppressed: true,
+      reservationEntityMatchedByInvoiceList: true,
+      nativeRowMergedIntoReservationEntity: true,
+      mergeSource: 'reservation_entity',
+      mergeAnchorType: 'reservation_id',
+      mergedComgateRowId: 'txn:comgate:cp1'
+    }))
+  })
+
   it('links native Reservation+ Comgate rows via invoice-list exact voucher anchor when reservation export is missing', () => {
     const batch = {
       extractedRecords: [

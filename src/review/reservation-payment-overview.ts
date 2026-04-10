@@ -2533,10 +2533,19 @@ function collectComparableNativeIdentityAnchors(
   row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
   extractedRecord: ExtractedRecord | undefined
 ): string[] {
+  const parserVariant = readString(extractedRecord?.data.comgateParserVariant)
+  const currentPortalReferenceIdentityAnchors = parserVariant === 'current-portal'
+    ? collectUniqueTruthyStrings([
+      normalizeComparable(readString(extractedRecord?.data.reference)),
+      normalizeComparable(row.payoutReference)
+    ])
+    : []
+
   return collectUniqueTruthyStrings([
     normalizeComparable(row.reservationId),
     normalizeComparable(readString(extractedRecord?.data.reservationId)),
-    normalizeComparable(readString(extractedRecord?.data.clientId))
+    normalizeComparable(readString(extractedRecord?.data.clientId)),
+    ...currentPortalReferenceIdentityAnchors
   ])
 }
 
