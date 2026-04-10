@@ -1784,6 +1784,121 @@ describe('buildReservationPaymentOverview', () => {
     }))
   })
 
+  it('resolves duplicate exact voucher hits when DPZ variableSymbol matches native reservation identity anchor', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-dpz-tiebreak',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-24T10:00:00.000Z',
+          amountMinor: 147060,
+          currency: 'CZK',
+          occurredAt: '2026-03-24',
+          rawReference: '1816117953',
+          data: {
+            platform: 'comgate',
+            reference: '1816117953',
+            clientId: '107967177',
+            reservationId: '107967177',
+            merchantOrderReference: 'S1_2400101437',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-DPZ-TB',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:dpz-tiebreak',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 147060,
+            currency: 'CZK',
+            bookedAt: '2026-03-24',
+            reference: '1816117953',
+            reservationId: '107967177',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-dpz-tiebreak']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:dpz-tiebreak',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1816117953',
+              payoutDate: '2026-03-24',
+              amountMinor: 147060,
+              matchingAmountMinor: 147060,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-fak',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              invoiceDocumentType: 'FAK',
+              voucher: 'S1_2400101437',
+              variableSymbol: '20260255',
+              invoiceNumber: 'FA20260255',
+              guestName: 'Radicanin Dalibor',
+              roomName: '302,Parkování 2',
+              currency: 'CZK'
+            },
+            {
+              sourceRecordId: 'invoice-list-header-dpz',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              invoiceDocumentType: 'DPZ',
+              voucher: 'S1_2400101437',
+              variableSymbol: '107967177',
+              invoiceNumber: '20260061',
+              guestName: 'Radicanin Dalibor',
+              roomName: '302,Parkování 2',
+              currency: 'CZK'
+            },
+            {
+              sourceRecordId: 'invoice-list-header-zlv',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              invoiceDocumentType: 'ZLV',
+              voucher: 'S1_2400101437',
+              variableSymbol: '12400101437',
+              invoiceNumber: '20260061',
+              guestName: 'Radicanin Dalibor',
+              roomName: '302,Parkování 2',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const trace = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces[0]
+    expect(trace).toEqual(expect.objectContaining({
+      linkedMainReservationId: 'S1_2400101437',
+      linkedGuestName: 'Radicanin Dalibor',
+      candidateCount: 1,
+      invoiceListVoucherHits: 3,
+      candidateCountBlockedReason: 'none',
+      unresolvedClassification: 'resolved',
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity'
+    }))
+  })
+
   it('links native parking Comgate rows via invoice-list parking line-item exact anchor', () => {
     const batch = {
       extractedRecords: [

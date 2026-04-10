@@ -43,6 +43,7 @@ const INVOICE_LIST_DATE_CELL_PATTERN = /^(\d{1,2}\.\d{1,2}\.(\d{2}|\d{4})(?:\s+\
 const INVOICE_LIST_AMOUNT_CELL_PATTERN = /^(?:(?:€|EUR|Kč|CZK)?\s*-?\d[\d\s,.]*(?:€|EUR|Kč|CZK)?)$/i
 
 const INVOICE_LIST_HEADER_FIELD_ALIASES = {
+  invoiceDocumentType: ['Typ', 'Typ dokladu', 'Typ faktury'],
   voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo', 'Rezervacni cislo'],
   variableSymbol: ['Variabilní symbol', 'VS'],
   stayStartAt: ['Příjezd', 'Termín od', 'Datum od', 'Prijezd', 'Termin od'],
@@ -58,6 +59,7 @@ const INVOICE_LIST_HEADER_FIELD_ALIASES = {
 } as const
 
 const INVOICE_LIST_LINE_FIELD_ALIASES = {
+  invoiceLineDocumentType: ['Typ dokladu', 'Typ'],
   invoiceNumber: ['Číslo dokladu', 'Doklad', 'Číslo', 'Číslo faktury', 'Doklad č.', 'Cislo dokladu', 'Cislo faktury'],
   voucher: ['Voucher', 'Rezervace', 'Číslo rezervace', 'Rezervační číslo'],
   itemLabel: ['Název', 'Popis', 'Položka', 'Nazev', 'Název položky', 'Nazev polozky'],
@@ -788,6 +790,7 @@ function buildInvoiceListHeaderRecord(input: {
   }
   extractedRowCount: number
 }): ExtractedRecord {
+  const invoiceDocumentType = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceDocumentType)
   const voucher = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.voucher)
   const variableSymbol = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.variableSymbol)
   const invoiceNumber = readRowString(input.row, INVOICE_LIST_HEADER_FIELD_ALIASES.invoiceNumber)
@@ -816,6 +819,7 @@ function buildInvoiceListHeaderRecord(input: {
       platform: 'previo-invoice-list',
       rowKind: 'header',
       enrichmentOnly: true,
+      invoiceDocumentType,
       voucher,
       variableSymbol,
       invoiceNumber,
@@ -860,6 +864,7 @@ function buildInvoiceListLineItemRecord(input: {
   parentRoomName?: string
   parentPaymentMethod?: string
 }): ExtractedRecord {
+  const invoiceLineDocumentType = readRowString(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.invoiceLineDocumentType)
   const itemLabel = readRowString(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.itemLabel)
   const itemAmount = readRowAmount(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.amountGross, 'InvoiceList line amount')
   const itemNetAmount = readRowAmount(input.row, INVOICE_LIST_LINE_FIELD_ALIASES.amountNet, 'InvoiceList line net amount')
@@ -878,6 +883,7 @@ function buildInvoiceListLineItemRecord(input: {
       platform: 'previo-invoice-list',
       rowKind: 'line-item',
       enrichmentOnly: true,
+      invoiceLineDocumentType,
       parentHeaderIndex: input.parentHeaderIndex,
       voucher: input.parentVoucher,
       variableSymbol: input.parentVariableSymbol,

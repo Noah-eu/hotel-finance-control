@@ -307,13 +307,13 @@ describe('Invoice list parser and enrichment', () => {
   it('parses production workbook shape from Doklady and Položky dokladů and produces workflow-plan enrichment', () => {
     const base64 = buildInvoiceListProductionShapeBase64({
       dokladyRows: [
-        ['Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
-        ['FA-20260322', 'RES-PROD-2', '99335577', '22.03.2026', '24.03.2026', 'Igor Černý', 'B202', 'Firma PROD 2', 'CID-202', '5 200 Kč', '4 298 Kč']
+        ['Typ', 'Doklad', 'Voucher', 'Variabilní symbol', 'Příjezd', 'Odjezd', 'Jméno', 'Pokoj', 'Zákazník', 'ID zákazníka', 'Celkem s DPH', 'Celkem bez DPH'],
+        ['DPZ', 'FA-20260322', 'RES-PROD-2', '99335577', '22.03.2026', '24.03.2026', 'Igor Černý', 'B202', 'Firma PROD 2', 'CID-202', '5 200 Kč', '4 298 Kč']
       ],
       polozkyRows: [
-        ['Doklad', 'Název', 'Částka', 'Cena bez DPH'],
-        ['FA-20260322', 'Ubytování', '4 700 Kč', '3 884 Kč'],
-        ['FA-20260322', 'Parkování na den', '500 Kč', '413 Kč']
+        ['Doklad', 'Typ dokladu', 'Název', 'Částka', 'Cena bez DPH'],
+        ['FA-20260322', 'DPZ', 'Ubytování', '4 700 Kč', '3 884 Kč'],
+        ['FA-20260322', 'DPZ', 'Parkování na den', '500 Kč', '413 Kč']
       ]
     })
 
@@ -327,6 +327,8 @@ describe('Invoice list parser and enrichment', () => {
     expect(records.length).toBeGreaterThan(1)
     expect(records.some((record) => record.recordType === 'invoice-list-header')).toBe(true)
     expect(records.some((record) => record.recordType === 'invoice-list-line')).toBe(true)
+    expect(records.find((record) => record.recordType === 'invoice-list-header')?.data.invoiceDocumentType).toBe('DPZ')
+    expect(records.find((record) => record.recordType === 'invoice-list-line')?.data.invoiceLineDocumentType).toBe('DPZ')
 
     const plan = buildReconciliationWorkflowPlan({
       extractedRecords: records,
@@ -336,6 +338,8 @@ describe('Invoice list parser and enrichment', () => {
 
     expect(plan.invoiceListEnrichment.some((entry) => entry.voucher === 'RES-PROD-2')).toBe(true)
     expect(plan.invoiceListEnrichment.some((entry) => entry.itemLabel === 'Parkování na den')).toBe(true)
+    expect(plan.invoiceListEnrichment.some((entry) => entry.recordKind === 'header' && entry.invoiceDocumentType === 'DPZ')).toBe(true)
+    expect(plan.invoiceListEnrichment.some((entry) => entry.recordKind === 'line-item' && entry.invoiceLineDocumentType === 'DPZ')).toBe(true)
   })
 
   it('detects and parses production headers when title/blank rows are above header and labels are variants', () => {

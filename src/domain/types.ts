@@ -160,6 +160,8 @@ export interface InvoiceListEnrichmentRecord {
   sourceRecordId: string
   sourceDocumentId: DocumentId
   recordKind: 'header' | 'line-item'
+  invoiceDocumentType?: string
+  invoiceLineDocumentType?: string
   voucher?: string
   variableSymbol?: string
   invoiceNumber?: string

@@ -145,6 +145,8 @@ function buildInvoiceListEnrichment(extractedRecords: ExtractedRecord[]): Invoic
             sourceRecordId: record.id,
             sourceDocumentId: record.sourceDocumentId,
             recordKind: record.data.rowKind === 'header' ? 'header' as const : 'line-item' as const,
+            invoiceDocumentType: optionalString(record.data.invoiceDocumentType),
+            invoiceLineDocumentType: optionalString(record.data.invoiceLineDocumentType),
             voucher: optionalString(record.data.voucher),
             variableSymbol: optionalString(record.data.variableSymbol),
             invoiceNumber: optionalString(record.data.invoiceNumber),

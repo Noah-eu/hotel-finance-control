@@ -322,6 +322,8 @@ export interface ReservationPaymentOverviewInvoiceListLinkCandidate {
   sourceDocumentId: string
   reservationId?: string
   reference?: string
+  invoiceDocumentType?: string
+  invoiceLineDocumentType?: string
   voucher?: string
   variableSymbol?: string
   invoiceNumber?: string
@@ -3292,6 +3294,8 @@ function toInvoiceListLinkCandidateSnapshot(
     sourceDocumentId: record.sourceDocumentId,
     reservationId: record.voucher,
     reference: record.variableSymbol,
+    invoiceDocumentType: record.invoiceDocumentType,
+    invoiceLineDocumentType: record.invoiceLineDocumentType,
     voucher: record.voucher,
     variableSymbol: record.variableSymbol,
     invoiceNumber: record.invoiceNumber,
@@ -3438,6 +3442,7 @@ function selectInvoiceListNativeFallback(
   const attempts: Array<{
     voucher?: string
     variableSymbol?: string
+    reservationId?: string
     customerId?: string
     invoiceNumber?: string
     stayStartAt?: string
@@ -3448,6 +3453,9 @@ function selectInvoiceListNativeFallback(
       ...baseAnchors,
       voucher: merchantOrderReference
         ?? readString(extractedRecord?.data.reservationId)
+        ?? readString(extractedRecord?.data.clientId)
+        ?? row.reservationId,
+      reservationId: readString(extractedRecord?.data.reservationId)
         ?? readString(extractedRecord?.data.clientId)
         ?? row.reservationId,
       variableSymbol: readString(extractedRecord?.data.reference) ?? row.payoutReference,
@@ -3500,6 +3508,7 @@ function findInvoiceListEnrichmentForItem(
   anchors: {
     voucher?: string
     variableSymbol?: string
+    reservationId?: string
     customerId?: string
     invoiceNumber?: string
     bookedAt?: string
@@ -3542,6 +3551,25 @@ function findInvoiceListEnrichmentForItem(
         : []
       if (narrowedByVariableSymbol.length === 1) {
         return { match: { record: narrowedByVariableSymbol[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const narrowedByReservationIdVariableSymbol = anchors.reservationId
+        ? byVoucher.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.reservationId))
+        : []
+      if (narrowedByReservationIdVariableSymbol.length === 1) {
+        return { match: { record: narrowedByReservationIdVariableSymbol[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
+      }
+
+      const narrowedByReservationIdDpz = anchors.reservationId
+        ? byVoucher.filter((r) => (
+          r.invoiceDocumentType
+          && normalizeComparable(r.invoiceDocumentType) === 'dpz'
+          && r.variableSymbol
+          && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.reservationId)
+        ))
+        : []
+      if (narrowedByReservationIdDpz.length === 1) {
+        return { match: { record: narrowedByReservationIdDpz[0], reason: 'exact_voucher' }, hasAmbiguousExactCounterparts }
       }
 
       const narrowedByInvoiceNumber = anchors.invoiceNumber
