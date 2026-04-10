@@ -1124,6 +1124,60 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.payoutBatchUnmatched[0]?.title).toContain('Comgate payout dávka')
   })
 
+  it('routes real monthly Comgate mojibake CSV headers into monthly-settlement and preserves Popis/VS/client anchors in runtime normalization', async () => {
+    const content = [
+      '"Merchant";"Datum zalo�en�";"Datum zaplacen�";"Datum p�evodu";"M�s�c fakturace";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail pl�tce";"Variabiln� symbol pl�tce";"Variabiln� symbol p�evodu";"ID od klienta";"M�na";"Potvrzen� ��stka";"P�eveden� ��stka";"Poplatek celkem";"Poplatek mezibankovn�";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+      '"499465";"2026-02-26 09:28:06";"2026-02-26 09:28:41";"2026-03-02";"";"JV6Y-60HX-NNRK";"Karta online";"";"20250587";"guest@example.com";"1357656777";"1811321483";"108061915";"CZK";"7387,10";"7314,71";"72,39";"14,77";"11,52";"46,10";"EU_CONSUMER"',
+      '"-";"";"";"2026-03-02";"";"";"";"suma";"-";"-";"-";"1811321483";"-";"CZK";"42788,33";"42269,01";"519,32";"113,94";"88,60";"316,78";""'
+    ].join('\n')
+
+    const result = await createBrowserRuntime().buildRuntimeState({
+      files: [
+        createRuntimeFile('vypis-202603.csv', content)
+      ],
+      month: '2026-03',
+      generatedAt: '2026-04-10T14:20:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-202603.csv',
+        sourceSystem: 'comgate',
+        intakeStatus: 'parsed',
+        parserSupported: true,
+        comgateHeaderDiagnostics: expect.objectContaining({
+          detectedFileKind: 'monthly-settlement',
+          parserVariant: 'monthly-settlement'
+        }),
+        comgatePipelineDiagnostics: expect.objectContaining({
+          parserVariants: ['monthly-settlement']
+        })
+      })
+    )
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'vypis-202603.csv',
+        comgatePipelineDiagnostics: expect.objectContaining({
+          parserVariants: ['monthly-settlement'],
+          extractedRecordCount: 2
+        })
+      })
+    )
+
+    const nativeTrace = result.reservationPaymentOverviewDebug.reservationPlusNativeLinkTraces.find((trace) => trace.reference === '1811321483')
+    expect(nativeTrace?.rawParsedSourceRow?.data).toEqual(expect.objectContaining({
+      runtimeComgateParserVariant: 'monthly-settlement',
+      rawPopis: '20250587',
+      rawTransferVariableSymbol: '1811321483',
+      rawPayerVariableSymbol: '1357656777',
+      rawClientId: '108061915',
+      normalizedPayoutReference: '1811321483',
+      normalizedMerchantOrderReference: '20250587',
+      normalizedClientId: '108061915'
+    }))
+  })
+
   it('shows a matched payout batch for the mini browser scenario with one daily Comgate CSV and one RB statement', async () => {
     const fixture = getRealInputFixture('comgate-daily-payout-export')
 

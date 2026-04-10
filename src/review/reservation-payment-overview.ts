@@ -231,6 +231,14 @@ export interface ReservationPaymentOverviewNativeRawParsedRow {
     clientId?: string
     merchantOrderReference?: string
     payerVariableSymbol?: string
+    rawPopis?: string
+    rawTransferVariableSymbol?: string
+    rawPayerVariableSymbol?: string
+    rawClientId?: string
+    normalizedPayoutReference?: string
+    normalizedMerchantOrderReference?: string
+    normalizedClientId?: string
+    runtimeComgateParserVariant?: string
     createdAt?: string
     paidAt?: string
     transferredAt?: string
@@ -2778,6 +2786,14 @@ function buildNativeRawParsedRowPayload(
       clientId: stringOrUndefined(record.data.clientId),
       merchantOrderReference: stringOrUndefined(record.data.merchantOrderReference),
       payerVariableSymbol: stringOrUndefined(record.data.payerVariableSymbol),
+      rawPopis: stringOrUndefined(record.data.rawPopis),
+      rawTransferVariableSymbol: stringOrUndefined(record.data.rawTransferVariableSymbol),
+      rawPayerVariableSymbol: stringOrUndefined(record.data.rawPayerVariableSymbol),
+      rawClientId: stringOrUndefined(record.data.rawClientId),
+      normalizedPayoutReference: stringOrUndefined(record.data.normalizedPayoutReference),
+      normalizedMerchantOrderReference: stringOrUndefined(record.data.normalizedMerchantOrderReference),
+      normalizedClientId: stringOrUndefined(record.data.normalizedClientId),
+      runtimeComgateParserVariant: stringOrUndefined(record.data.runtimeComgateParserVariant),
       createdAt: stringOrUndefined(record.data.createdAt),
       paidAt: stringOrUndefined(record.data.paidAt),
       transferredAt: stringOrUndefined(record.data.transferredAt),

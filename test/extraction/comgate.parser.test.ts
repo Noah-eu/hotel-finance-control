@@ -332,4 +332,55 @@ describe('parseComgateExport', () => {
       }
     })
   })
+
+  it('classifies mojibake monthly export headers from real vypis-202603.csv as monthly-settlement and keeps deterministic anchors', () => {
+    const fixture = getRealInputFixture('comgate-export')
+    const content = [
+      '"Merchant";"Datum zalo�en�";"Datum zaplacen�";"Datum p�evodu";"M�s�c fakturace";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail pl�tce";"Variabiln� symbol pl�tce";"Variabiln� symbol p�evodu";"ID od klienta";"M�na";"Potvrzen� ��stka";"P�eveden� ��stka";"Poplatek celkem";"Poplatek mezibankovn�";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+      '"499465";"2026-02-26 09:28:06";"2026-02-26 09:28:41";"2026-03-02";"";"JV6Y-60HX-NNRK";"Karta online";"";"20250587";"guest@example.com";"1357656777";"1811321483";"108061915";"CZK";"7387,10";"7314,71";"72,39";"14,77";"11,52";"46,10";"EU_CONSUMER"',
+      '"-";"";"";"2026-03-02";"";"";"";"suma";"-";"-";"-";"1811321483";"-";"CZK";"42788,33";"42269,01";"519,32";"113,94";"88,60";"316,78";""'
+    ].join('\n')
+
+    const diagnostics = inspectComgateHeaderDiagnostics(content)
+    const records = parseComgateExport({
+      sourceDocument: fixture.sourceDocument,
+      content,
+      extractedAt: '2026-04-10T14:15:00.000Z'
+    })
+
+    expect(diagnostics).toMatchObject({
+      detectedFileKind: 'monthly-settlement',
+      parserVariant: 'monthly-settlement',
+      missingCanonicalHeaders: []
+    })
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      recordType: 'payout-line',
+      data: {
+        comgateParserVariant: 'monthly-settlement',
+        runtimeComgateParserVariant: 'monthly-settlement',
+        reference: '1811321483',
+        payoutReference: '1811321483',
+        merchantOrderReference: '20250587',
+        payerVariableSymbol: '1357656777',
+        clientId: '108061915',
+        rawPopis: '20250587',
+        rawTransferVariableSymbol: '1811321483',
+        rawPayerVariableSymbol: '1357656777',
+        rawClientId: '108061915',
+        normalizedPayoutReference: '1811321483',
+        normalizedMerchantOrderReference: '20250587',
+        normalizedClientId: '108061915'
+      }
+    })
+    expect(records[1]).toMatchObject({
+      recordType: 'payout-batch-summary',
+      data: {
+        comgateParserVariant: 'monthly-settlement',
+        rowKind: 'payout-batch-summary',
+        payoutReference: '1811321483',
+        runtimeComgateParserVariant: 'monthly-settlement'
+      }
+    })
+  })
 })

@@ -291,15 +291,16 @@ function isMonthlySettlementComgateShape(parsed: ParsedDelimitedContent): boolea
   const rawHeaders = parsed.headerColumns.map((column) => normalizeLooseHeader(column.rawHeader))
 
   return rawHeaders.some((header) => header === 'merchant')
-    && rawHeaders.some((header) => header.includes('datum zalozen'))
-    && rawHeaders.some((header) => header.includes('datum zaplacen'))
-    && rawHeaders.some((header) => header.includes('datum prevodu'))
+    && rawHeaders.some((header) => header.includes('datum zalo'))
+    && rawHeaders.some((header) => header.includes('datum zaplac'))
+    && rawHeaders.some((header) => header.includes('datum') && header.includes('evod'))
     && rawHeaders.some((header) => header.includes('comgate'))
     && rawHeaders.some((header) => header.includes('popis'))
-    && rawHeaders.some((header) => header.includes('symbol platce'))
-    && rawHeaders.some((header) => header.includes('symbol prevodu'))
+    && rawHeaders.some((header) => header.includes('symbol') && (header.includes('plat') || header.includes('tce')))
+    && rawHeaders.some((header) => header.includes('symbol') && (header.includes('prevod') || header.includes('evod')))
     && rawHeaders.some((header) => header.includes('id od klienta'))
-    && rawHeaders.some((header) => header.includes('typ karty'))
+    && rawHeaders.some((header) => header.includes('potvrzen'))
+    && rawHeaders.some((header) => header.includes('eved'))
 }
 
 function resolveDailySettlementFieldMap(parsed: ParsedDelimitedContent): DailySettlementFieldMap {
@@ -426,20 +427,20 @@ function resolveMonthlySettlementCanonicalHeader(
   const normalizedRawHeader = normalizeLooseHeader(column.rawHeader)
 
   if (normalizedRawHeader === 'merchant') return 'merchant'
-  if (normalizedRawHeader.includes('datum zalozen')) return 'createdAt'
-  if (normalizedRawHeader.includes('datum zaplacen')) return 'paidAt'
-  if (normalizedRawHeader.includes('datum prevodu')) return 'transferredAt'
+  if (normalizedRawHeader.includes('datum zalo')) return 'createdAt'
+  if (normalizedRawHeader.includes('datum zaplac')) return 'paidAt'
+  if (normalizedRawHeader.includes('datum') && (normalizedRawHeader.includes('prevod') || normalizedRawHeader.includes('evod'))) return 'transferredAt'
   if (normalizedRawHeader.includes('comgate')) return 'transactionId'
   if (normalizedRawHeader.includes('metoda')) return 'paymentMethod'
   if (normalizedRawHeader === 'produkt') return 'product'
   if (normalizedRawHeader === 'popis') return 'merchantOrderReference'
   if (normalizedRawHeader.includes('e-mail')) return 'payerEmail'
-  if (normalizedRawHeader.includes('symbol platce')) return 'payerVariableSymbol'
-  if (normalizedRawHeader.includes('symbol prevodu')) return 'transferReference'
+  if (normalizedRawHeader.includes('symbol') && (normalizedRawHeader.includes('prevod') || normalizedRawHeader.includes('evod'))) return 'transferReference'
+  if (normalizedRawHeader.includes('symbol') && (normalizedRawHeader.includes('plat') || normalizedRawHeader.includes('tce'))) return 'payerVariableSymbol'
   if (normalizedRawHeader.includes('id od klienta')) return 'clientId'
-  if (normalizedRawHeader === 'mena') return 'currency'
+  if (normalizedRawHeader === 'mena' || (normalizedRawHeader.startsWith('m') && normalizedRawHeader.endsWith('na'))) return 'currency'
   if (normalizedRawHeader.includes('potvrzen')) return 'confirmedAmountMinor'
-  if (normalizedRawHeader.includes('preveden')) return 'transferredAmountMinor'
+  if (normalizedRawHeader.includes('preveden') || normalizedRawHeader.includes('eveden') || normalizedRawHeader.includes('eved')) return 'transferredAmountMinor'
   if (normalizedRawHeader === 'poplatek celkem') return 'totalFeeMinor'
   if (normalizedRawHeader.includes('mezibankovn')) return 'interbankFeeMinor'
   if (normalizedRawHeader.includes('asociace')) return 'associationFeeMinor'
@@ -639,7 +640,11 @@ function buildMonthlySettlementRecords(
         fieldMap.transferredAt ? row[fieldMap.transferredAt] : undefined,
         'Comgate monthly settlement summary transferredAt'
       )
-      const payoutReference = trimOptionalValue(fieldMap.transferReference ? row[fieldMap.transferReference] : undefined)
+      const rawTransferVariableSymbol = fieldMap.transferReference ? row[fieldMap.transferReference] : undefined
+      const payoutReference = trimOptionalValue(rawTransferVariableSymbol)
+      const rawPopis = fieldMap.merchantOrderReference ? row[fieldMap.merchantOrderReference] : undefined
+      const rawPayerVariableSymbol = fieldMap.payerVariableSymbol ? row[fieldMap.payerVariableSymbol] : undefined
+      const rawClientId = fieldMap.clientId ? row[fieldMap.clientId] : undefined
       const currency = trimOptionalValue(fieldMap.currency ? row[fieldMap.currency] : undefined)
       const confirmedGrossMinor = parseOptionalAmountMinor(
         fieldMap.confirmedAmountMinor ? row[fieldMap.confirmedAmountMinor] : undefined,
@@ -684,6 +689,11 @@ function buildMonthlySettlementRecords(
           accountId: 'expected-payouts',
           rowKind: 'payout-batch-summary',
           payoutReference,
+          ...(rawPopis ? { rawPopis } : {}),
+          ...(rawTransferVariableSymbol ? { rawTransferVariableSymbol } : {}),
+          ...(rawPayerVariableSymbol ? { rawPayerVariableSymbol } : {}),
+          ...(rawClientId ? { rawClientId } : {}),
+          normalizedPayoutReference: payoutReference,
           bookedAt: transferredAt,
           transferredAt,
           transferredNetMinor,
@@ -696,7 +706,8 @@ function buildMonthlySettlementRecords(
           ...(typeof confirmedGrossMinor === 'number'
             ? { explicitSettlementGrossTotalMinor: confirmedGrossMinor }
             : {}),
-          comgateParserVariant: 'monthly-settlement'
+          comgateParserVariant: 'monthly-settlement',
+          runtimeComgateParserVariant: 'monthly-settlement'
         }
       })
       continue
@@ -710,11 +721,15 @@ function buildMonthlySettlementRecords(
     const merchant = trimOptionalValue(fieldMap.merchant ? row[fieldMap.merchant] : undefined)
     const paymentMethod = trimOptionalValue(fieldMap.paymentMethod ? row[fieldMap.paymentMethod] : undefined)
     const product = trimOptionalValue(fieldMap.product ? row[fieldMap.product] : undefined)
-    const merchantOrderReference = trimOptionalValue(fieldMap.merchantOrderReference ? row[fieldMap.merchantOrderReference] : undefined)
+    const rawPopis = fieldMap.merchantOrderReference ? row[fieldMap.merchantOrderReference] : undefined
+    const merchantOrderReference = trimOptionalValue(rawPopis)
     const payerEmail = trimOptionalValue(fieldMap.payerEmail ? row[fieldMap.payerEmail] : undefined)
-    const payerVariableSymbol = trimOptionalValue(fieldMap.payerVariableSymbol ? row[fieldMap.payerVariableSymbol] : undefined)
-    const payoutReference = trimOptionalValue(fieldMap.transferReference ? row[fieldMap.transferReference] : undefined)
-    const clientId = trimOptionalValue(fieldMap.clientId ? row[fieldMap.clientId] : undefined)
+    const rawPayerVariableSymbol = fieldMap.payerVariableSymbol ? row[fieldMap.payerVariableSymbol] : undefined
+    const payerVariableSymbol = trimOptionalValue(rawPayerVariableSymbol)
+    const rawTransferVariableSymbol = fieldMap.transferReference ? row[fieldMap.transferReference] : undefined
+    const payoutReference = trimOptionalValue(rawTransferVariableSymbol)
+    const rawClientId = fieldMap.clientId ? row[fieldMap.clientId] : undefined
+    const clientId = trimOptionalValue(rawClientId)
     const currency = trimOptionalValue(fieldMap.currency ? row[fieldMap.currency] : undefined)
     const confirmedGrossMinor = parseAmountMinor(
       fieldMap.confirmedAmountMinor ? row[fieldMap.confirmedAmountMinor] : '',
@@ -775,6 +790,13 @@ function buildMonthlySettlementRecords(
         ...(transactionId ? { transactionId } : {}),
         ...(clientId ? { clientId, reservationId: clientId } : {}),
         ...(merchantOrderReference ? { merchantOrderReference } : {}),
+        ...(rawPopis ? { rawPopis } : {}),
+        ...(rawTransferVariableSymbol ? { rawTransferVariableSymbol } : {}),
+        ...(rawPayerVariableSymbol ? { rawPayerVariableSymbol } : {}),
+        ...(rawClientId ? { rawClientId } : {}),
+        ...(payoutReference ? { normalizedPayoutReference: payoutReference } : {}),
+        ...(merchantOrderReference ? { normalizedMerchantOrderReference: merchantOrderReference } : {}),
+        ...(clientId ? { normalizedClientId: clientId } : {}),
         ...(payerVariableSymbol ? { payerVariableSymbol } : {}),
         ...(payerEmail ? { payerEmail } : {}),
         ...(createdAt ? { createdAt } : {}),
@@ -796,6 +818,7 @@ function buildMonthlySettlementRecords(
           ? { explicitSettlementGrossTotalMinor: summary.explicitSettlementGrossTotalMinor }
           : {}),
         comgateParserVariant: 'monthly-settlement',
+        runtimeComgateParserVariant: 'monthly-settlement',
         ...(fieldMap.cardType && trimOptionalValue(row[fieldMap.cardType]) ? { cardType: trimOptionalValue(row[fieldMap.cardType]) } : {})
       }
     })

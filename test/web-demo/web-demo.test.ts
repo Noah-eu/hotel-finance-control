@@ -7518,6 +7518,47 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Finální bucket: recognized supported')
   })
 
+  it('shows the real monthly Comgate mojibake CSV as monthly-settlement with preserved bridge anchors in debug runtime truth', async () => {
+    const monthlyContent = [
+      '"Merchant";"Datum zalo�en�";"Datum zaplacen�";"Datum p�evodu";"M�s�c fakturace";"ID ComGate";"Metoda";"Produkt";"Popis";"E-mail pl�tce";"Variabiln� symbol pl�tce";"Variabiln� symbol p�evodu";"ID od klienta";"M�na";"Potvrzen� ��stka";"P�eveden� ��stka";"Poplatek celkem";"Poplatek mezibankovn�";"Poplatek asociace";"Poplatek zpracovatel";"Typ karty"',
+      '"499465";"2026-02-26 09:28:06";"2026-02-26 09:28:41";"2026-03-02";"";"JV6Y-60HX-NNRK";"Karta online";"";"20250587";"guest@example.com";"1357656777";"1811321483";"108061915";"CZK";"7387,10";"7314,71";"72,39";"14,77";"11,52";"46,10";"EU_CONSUMER"',
+      '"-";"";"";"2026-03-02";"";"";"";"suma";"-";"-";"-";"1811321483";"-";"CZK";"42788,33";"42269,01";"519,32";"113,94";"88,60";"316,78";""'
+    ].join('\n')
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-10T14:30:00.000Z',
+      month: '2026-03',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeFile('vypis-202603.csv', monthlyContent)
+      ]
+    })
+
+    expect(rendered.runtimeFileIntakeDiagnosticsSection.hidden).toBe(false)
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate detected file kind: monthly-settlement')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variant: monthly-settlement')
+    expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Comgate parser variants: monthly-settlement')
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      reservationPaymentOverviewDebug: {
+        reservationPlusNativeLinkTraces?: Array<{
+          rawParsedSourceRow?: {
+            data?: {
+              runtimeComgateParserVariant?: string
+              normalizedMerchantOrderReference?: string
+              normalizedPayoutReference?: string
+              normalizedClientId?: string
+            }
+          }
+        }>
+      }
+    }
+    const firstTrace = state.reservationPaymentOverviewDebug.reservationPlusNativeLinkTraces?.[0]
+    expect(firstTrace?.rawParsedSourceRow?.data?.runtimeComgateParserVariant).toBe('monthly-settlement')
+    expect(firstTrace?.rawParsedSourceRow?.data?.normalizedMerchantOrderReference).toBe('20250587')
+    expect(firstTrace?.rawParsedSourceRow?.data?.normalizedPayoutReference).toBe('1811321483')
+    expect(firstTrace?.rawParsedSourceRow?.data?.normalizedClientId).toBe('108061915')
+  })
+
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {
     const invoice = getRealInputFixture('invoice-document-czech-pdf')
     const rendered = await executeWebDemoMainWorkflow({
