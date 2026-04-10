@@ -7544,7 +7544,9 @@ describe('buildWebDemo', () => {
           merchantOrderReferenceAnchorFamily?: string
           invoiceListVoucherHits?: number
           invoiceListVariableSymbolHits?: number
+          invoiceListInvoiceNumberHits?: number
           candidateCountBlockedReason?: string
+          noExactCounterpartInSelectedFiles?: boolean
           rawParsedSourceRow?: {
             data?: {
               runtimeComgateParserVariant?: string
@@ -7564,7 +7566,9 @@ describe('buildWebDemo', () => {
     expect(firstTrace?.merchantOrderReferenceAnchorFamily).toBe('numeric')
     expect(firstTrace?.invoiceListVoucherHits).toBe(0)
     expect(firstTrace?.invoiceListVariableSymbolHits).toBe(0)
-    expect(firstTrace?.candidateCountBlockedReason).toBe('no_exact_anchor')
+    expect(firstTrace?.invoiceListInvoiceNumberHits).toBe(0)
+    expect(firstTrace?.candidateCountBlockedReason).toBe('no_exact_counterpart_in_selected_files')
+    expect(firstTrace?.noExactCounterpartInSelectedFiles).toBe(true)
   })
 
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {

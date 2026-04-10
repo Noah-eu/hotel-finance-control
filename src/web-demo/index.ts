@@ -6256,11 +6256,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
             merchantOrderReferenceAnchorFamily: String(trace && trace.merchantOrderReferenceAnchorFamily || ''),
             invoiceListVoucherHits: Number(trace && trace.invoiceListVoucherHits || 0),
             invoiceListVariableSymbolHits: Number(trace && trace.invoiceListVariableSymbolHits || 0),
+            invoiceListInvoiceNumberHits: Number(trace && trace.invoiceListInvoiceNumberHits || 0),
             reservationEntityBridgeHits: Number(trace && trace.reservationEntityBridgeHits || 0),
             candidateSetAfterFiltering: Array.isArray(trace && trace.candidateSetAfterFiltering)
               ? trace.candidateSetAfterFiltering.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
               : [],
             candidateCountBlockedReason: String(trace && trace.candidateCountBlockedReason || ''),
+            noExactCounterpartInSelectedFiles: Boolean(trace && trace.noExactCounterpartInSelectedFiles),
             chosenCandidateSource: String(trace && trace.chosenCandidateSource || 'none'),
             chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
           };

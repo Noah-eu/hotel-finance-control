@@ -682,7 +682,8 @@ describe('buildReservationPaymentOverview', () => {
       reference: 'CG-WEB-2001',
       linkedMainReservationId: undefined,
       invoiceListCandidateCount: 0,
-      candidateCountBlockedReason: 'no_exact_anchor',
+      candidateCountBlockedReason: 'no_exact_counterpart_in_selected_files',
+      noExactCounterpartInSelectedFiles: true,
       chosenCandidateSource: 'none',
       chosenCandidateReason: 'no_candidate'
     }))
@@ -1420,10 +1421,208 @@ describe('buildReservationPaymentOverview', () => {
     expect(trace).toEqual(expect.objectContaining({
       merchantOrderReferenceAnchorFamily: 'numeric',
       invoiceListVariableSymbolHits: 1,
+      invoiceListInvoiceNumberHits: 0,
       linkedMainReservationId: 'INVOICE-VOUCHER-3586',
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity',
       candidateCountBlockedReason: 'none'
+    }))
+  })
+
+  it('classifies unresolved monthly-settlement merchantOrderReference anchors and links only rows with exact counterparts', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-unresolved-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-05T15:42:56.000Z',
+          amountMinor: 146160,
+          currency: 'CZK',
+          occurredAt: '2026-03-09',
+          rawReference: 'TI62-BE9H-XUZ0',
+          data: {
+            platform: 'comgate',
+            reference: '1813398831',
+            clientId: '108286707',
+            merchantOrderReference: '6121722338',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'TI62-BE9H-XUZ0',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        },
+        {
+          id: 'comgate-row-unresolved-2',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-19T16:23:23.000Z',
+          amountMinor: 147060,
+          currency: 'CZK',
+          occurredAt: '2026-03-23',
+          rawReference: 'E6EZ-XCYW-D4AT',
+          data: {
+            platform: 'comgate',
+            reference: '1815905986',
+            clientId: '108806109',
+            merchantOrderReference: '5159718129',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'E6EZ-XCYW-D4AT',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        },
+        {
+          id: 'comgate-row-unresolved-3',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-26T16:37:53.000Z',
+          amountMinor: 305938,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          rawReference: 'BHOV-M0TY-LBQV',
+          data: {
+            platform: 'comgate',
+            reference: '1816656820',
+            clientId: '108929843',
+            merchantOrderReference: '6946461725',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'BHOV-M0TY-LBQV',
+            comgateParserVariant: 'monthly-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:unresolved1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 146160,
+            currency: 'CZK',
+            bookedAt: '2026-03-09',
+            reference: '1813398831',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-unresolved-1']
+          },
+          {
+            id: 'txn:comgate:unresolved2',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 147060,
+            currency: 'CZK',
+            bookedAt: '2026-03-23',
+            reference: '1815905986',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-unresolved-2']
+          },
+          {
+            id: 'txn:comgate:unresolved3',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 305938,
+            currency: 'CZK',
+            bookedAt: '2026-03-27',
+            reference: '1816656820',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-unresolved-3']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:unresolved1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1813398831',
+              payoutDate: '2026-03-09',
+              amountMinor: 146160,
+              matchingAmountMinor: 146160,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            },
+            {
+              rowId: 'txn:comgate:unresolved2',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1815905986',
+              payoutDate: '2026-03-23',
+              amountMinor: 147060,
+              matchingAmountMinor: 147060,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            },
+            {
+              rowId: 'txn:comgate:unresolved3',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1816656820',
+              payoutDate: '2026-03-27',
+              amountMinor: 305938,
+              matchingAmountMinor: 305938,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-list-header-5159718129',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: '5159718129',
+              variableSymbol: 'VS-5159718129',
+              invoiceNumber: 'INV-5159718129',
+              guestName: 'Jana Link',
+              roomName: 'C105',
+              stayStartAt: '2026-03-19',
+              stayEndAt: '2026-03-21',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const traces = inspectReservationPaymentOverviewClassification(batch).reservationPlusNativeLinkTraces
+    const first = traces.find((trace) => trace.reference === '1813398831')
+    const second = traces.find((trace) => trace.reference === '1815905986')
+    const third = traces.find((trace) => trace.reference === '1816656820')
+
+    expect(first).toEqual(expect.objectContaining({
+      merchantOrderReferenceAnchorFamily: 'numeric',
+      linkedMainReservationId: undefined,
+      invoiceListVoucherHits: 0,
+      invoiceListVariableSymbolHits: 0,
+      invoiceListInvoiceNumberHits: 0,
+      candidateCountBlockedReason: 'no_exact_counterpart_in_selected_files',
+      noExactCounterpartInSelectedFiles: true,
+      chosenCandidateReason: 'no_candidate'
+    }))
+    expect(second).toEqual(expect.objectContaining({
+      merchantOrderReferenceAnchorFamily: 'numeric',
+      linkedMainReservationId: '5159718129',
+      invoiceListVoucherHits: 1,
+      invoiceListVariableSymbolHits: 0,
+      invoiceListInvoiceNumberHits: 0,
+      candidateCountBlockedReason: 'none',
+      noExactCounterpartInSelectedFiles: false,
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity'
+    }))
+    expect(third).toEqual(expect.objectContaining({
+      merchantOrderReferenceAnchorFamily: 'numeric',
+      linkedMainReservationId: undefined,
+      invoiceListVoucherHits: 0,
+      invoiceListVariableSymbolHits: 0,
+      invoiceListInvoiceNumberHits: 0,
+      candidateCountBlockedReason: 'no_exact_counterpart_in_selected_files',
+      noExactCounterpartInSelectedFiles: true,
+      chosenCandidateReason: 'no_candidate'
     }))
   })
 

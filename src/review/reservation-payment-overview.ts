@@ -303,9 +303,11 @@ export interface ReservationPaymentOverviewNativeLinkTrace {
   merchantOrderReferenceAnchorFamily: 'empty' | 'numeric' | 'alpha_numeric' | 'mixed'
   invoiceListVoucherHits: number
   invoiceListVariableSymbolHits: number
+  invoiceListInvoiceNumberHits: number
   reservationEntityBridgeHits: number
   candidateSetAfterFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity'
+  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'no_exact_counterpart_in_selected_files'
+  noExactCounterpartInSelectedFiles?: boolean
   chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
@@ -348,9 +350,11 @@ interface NativeLinkInspection {
   merchantOrderReferenceAnchorFamily: 'empty' | 'numeric' | 'alpha_numeric' | 'mixed'
   invoiceListVoucherHits: number
   invoiceListVariableSymbolHits: number
+  invoiceListInvoiceNumberHits: number
   reservationEntityBridgeHits: number
   candidateSetAfterFiltering: ReservationPaymentOverviewAncillaryLinkCandidate[]
-  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity'
+  candidateCountBlockedReason?: 'none' | 'no_exact_anchor' | 'ambiguous_exact_identity' | 'no_exact_counterpart_in_selected_files'
+  noExactCounterpartInSelectedFiles?: boolean
   chosenCandidateSource: 'reservation_export' | 'invoice_list' | 'none'
   chosenCandidateReason: ReservationPaymentOverviewLinkReason
 }
@@ -1196,9 +1200,11 @@ export function inspectReservationPaymentOverviewClassification(
           merchantOrderReferenceAnchorFamily: nativeLinkInspection.merchantOrderReferenceAnchorFamily,
           invoiceListVoucherHits: nativeLinkInspection.invoiceListVoucherHits,
           invoiceListVariableSymbolHits: nativeLinkInspection.invoiceListVariableSymbolHits,
+          invoiceListInvoiceNumberHits: nativeLinkInspection.invoiceListInvoiceNumberHits,
           reservationEntityBridgeHits: nativeLinkInspection.reservationEntityBridgeHits,
           candidateSetAfterFiltering: nativeLinkInspection.candidateSetAfterFiltering,
           candidateCountBlockedReason: nativeLinkInspection.candidateCountBlockedReason,
+          noExactCounterpartInSelectedFiles: nativeLinkInspection.noExactCounterpartInSelectedFiles,
           chosenCandidateSource: nativeLinkInspection.chosenCandidateSource,
           chosenCandidateReason: nativeLinkInspection.chosenCandidateReason
         })
@@ -2460,8 +2466,10 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       merchantOrderReferenceAnchorFamily,
       invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
       invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+      invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
       reservationEntityBridgeHits,
       candidateCountBlockedReason: 'none',
+      noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'reservation_export',
       chosenCandidateReason: 'exact_identity'
     }
@@ -2482,8 +2490,10 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       merchantOrderReferenceAnchorFamily,
       invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
       invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+      invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
       reservationEntityBridgeHits,
       candidateCountBlockedReason: 'ambiguous_exact_identity',
+      noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'none',
       chosenCandidateReason: 'ambiguous_exact_identity'
     }
@@ -2507,12 +2517,18 @@ function inspectLinkedReservationForReservationPlusNativeRow(
       merchantOrderReferenceAnchorFamily,
       invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
       invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+      invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
       reservationEntityBridgeHits,
       candidateCountBlockedReason: 'none',
+      noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
     }
   }
+
+  const noExactCounterpartInSelectedFiles = hasAnyNativeReservationPlusAnchor(row, extractedRecord)
+    && invoiceListHitSet.candidateCount === 0
+    && reservationEntityBridgeHits === 0
 
   return {
     linkedReservation: undefined,
@@ -2528,8 +2544,12 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     merchantOrderReferenceAnchorFamily,
     invoiceListVoucherHits: invoiceListHitSet.voucherHits.length,
     invoiceListVariableSymbolHits: invoiceListHitSet.variableSymbolHits.length,
+    invoiceListInvoiceNumberHits: invoiceListHitSet.invoiceNumberHits.length,
     reservationEntityBridgeHits,
-    candidateCountBlockedReason: 'no_exact_anchor',
+    candidateCountBlockedReason: noExactCounterpartInSelectedFiles
+      ? 'no_exact_counterpart_in_selected_files'
+      : 'no_exact_anchor',
+    noExactCounterpartInSelectedFiles,
     chosenCandidateSource: 'none',
     chosenCandidateReason: 'no_candidate'
   }
@@ -3221,6 +3241,7 @@ function collectInvoiceListExactHits(
   stayIntervalHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
   voucherHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
   variableSymbolHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
+  invoiceNumberHits: ReservationPaymentOverviewInvoiceListLinkCandidate[]
 } {
   const headers = invoiceListRecords.filter((record) => record.recordKind === 'header')
   const merchantOrderReference = normalizeComparable(readString(extractedRecord?.data.merchantOrderReference))
@@ -3274,6 +3295,13 @@ function collectInvoiceListExactHits(
     return normalizeComparable(record.variableSymbol) === merchantOrderReference
   })
 
+  const invoiceNumberHitRecords = headers.filter((record) => {
+    if (!merchantOrderReference) {
+      return false
+    }
+    return normalizeComparable(record.invoiceNumber) === merchantOrderReference
+  })
+
   const stayIntervalHitRecords = headers.filter((record) => {
     if (!normalizedStayStart || !normalizedStayEnd || !normalizedRoom) {
       return false
@@ -3294,8 +3322,23 @@ function collectInvoiceListExactHits(
     documentHits: documentHitRecords.map(toInvoiceListLinkCandidateSnapshot),
     stayIntervalHits: stayIntervalHitRecords.map(toInvoiceListLinkCandidateSnapshot),
     voucherHits: voucherHitRecords.map(toInvoiceListLinkCandidateSnapshot),
-    variableSymbolHits: variableSymbolHitRecords.map(toInvoiceListLinkCandidateSnapshot)
+    variableSymbolHits: variableSymbolHitRecords.map(toInvoiceListLinkCandidateSnapshot),
+    invoiceNumberHits: invoiceNumberHitRecords.map(toInvoiceListLinkCandidateSnapshot)
   }
+}
+
+function hasAnyNativeReservationPlusAnchor(
+  row: NonNullable<MonthlyBatchResult['reconciliation']['workflowPlan']>['payoutRows'][number],
+  extractedRecord: ExtractedRecord | undefined
+): boolean {
+  return collectUniqueTruthyStrings([
+    normalizeComparable(readString(extractedRecord?.data.merchantOrderReference)),
+    normalizeComparable(readString(extractedRecord?.data.clientId)),
+    normalizeComparable(readString(extractedRecord?.data.reservationId)),
+    normalizeComparable(readString(extractedRecord?.data.reference)),
+    normalizeComparable(row.payoutReference),
+    normalizeComparable(row.reservationId)
+  ]).length > 0
 }
 
 function selectInvoiceListNativeFallback(
