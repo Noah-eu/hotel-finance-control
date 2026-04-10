@@ -7546,7 +7546,12 @@ describe('buildWebDemo', () => {
           invoiceListVariableSymbolHits?: number
           invoiceListInvoiceNumberHits?: number
           candidateCountBlockedReason?: string
+          unresolvedClassification?: string
+          exactCounterpartExists?: boolean
+          ambiguousExactCounterparts?: boolean
           noExactCounterpartInSelectedFiles?: boolean
+          exactCounterpartSourceFamily?: string
+          exactCounterpartKey?: string
           rawParsedSourceRow?: {
             data?: {
               runtimeComgateParserVariant?: string
@@ -7568,7 +7573,12 @@ describe('buildWebDemo', () => {
     expect(firstTrace?.invoiceListVariableSymbolHits).toBe(0)
     expect(firstTrace?.invoiceListInvoiceNumberHits).toBe(0)
     expect(firstTrace?.candidateCountBlockedReason).toBe('no_exact_counterpart_in_selected_files')
+    expect(firstTrace?.unresolvedClassification).toBe('no_exact_counterpart_in_selected_files')
+    expect(firstTrace?.exactCounterpartExists).toBe(false)
+    expect(firstTrace?.ambiguousExactCounterparts).toBe(false)
     expect(firstTrace?.noExactCounterpartInSelectedFiles).toBe(true)
+    expect(firstTrace?.exactCounterpartSourceFamily).toBe('none')
+    expect(firstTrace?.exactCounterpartKey).toBeUndefined()
   })
 
   it('shows live browser workflow progress before the larger selected-file run completes', async () => {

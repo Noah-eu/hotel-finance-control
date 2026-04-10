@@ -1633,6 +1633,11 @@ describe('buildReservationPaymentOverview', () => {
       invoiceListVariableSymbolHits: 0,
       invoiceListInvoiceNumberHits: 0,
       candidateCountBlockedReason: 'none',
+      unresolvedClassification: 'resolved',
+      exactCounterpartExists: true,
+      ambiguousExactCounterparts: false,
+      exactCounterpartSourceFamily: 'voucher',
+      exactCounterpartKey: '6121722338',
       noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
@@ -1646,6 +1651,11 @@ describe('buildReservationPaymentOverview', () => {
       invoiceListVariableSymbolHits: 0,
       invoiceListInvoiceNumberHits: 0,
       candidateCountBlockedReason: 'none',
+      unresolvedClassification: 'resolved',
+      exactCounterpartExists: true,
+      ambiguousExactCounterparts: false,
+      exactCounterpartSourceFamily: 'voucher',
+      exactCounterpartKey: '5159718129',
       noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'invoice_list',
       chosenCandidateReason: 'exact_identity'
@@ -1657,6 +1667,10 @@ describe('buildReservationPaymentOverview', () => {
       invoiceListVariableSymbolHits: 0,
       invoiceListInvoiceNumberHits: 0,
       candidateCountBlockedReason: 'no_exact_counterpart_in_selected_files',
+      unresolvedClassification: 'no_exact_counterpart_in_selected_files',
+      exactCounterpartExists: false,
+      ambiguousExactCounterparts: false,
+      exactCounterpartSourceFamily: 'none',
       noExactCounterpartInSelectedFiles: true,
       chosenCandidateReason: 'no_candidate'
     }))
@@ -1755,6 +1769,11 @@ describe('buildReservationPaymentOverview', () => {
       candidateCount: 0,
       invoiceListVoucherHits: 2,
       candidateCountBlockedReason: 'ambiguous_multiple_exact_counterparts',
+      unresolvedClassification: 'ambiguous_multiple_exact_counterparts',
+      exactCounterpartExists: true,
+      ambiguousExactCounterparts: true,
+      exactCounterpartSourceFamily: 'voucher',
+      exactCounterpartKey: '5159718129',
       noExactCounterpartInSelectedFiles: false,
       chosenCandidateSource: 'none',
       chosenCandidateReason: 'no_candidate'

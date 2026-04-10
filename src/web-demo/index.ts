@@ -6262,7 +6262,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
               ? trace.candidateSetAfterFiltering.map((candidate) => buildAncillaryLinkCandidateDebugPayload(candidate))
               : [],
             candidateCountBlockedReason: String(trace && trace.candidateCountBlockedReason || ''),
+            unresolvedClassification: String(trace && trace.unresolvedClassification || ''),
+            exactCounterpartExists: Boolean(trace && trace.exactCounterpartExists),
+            ambiguousExactCounterparts: Boolean(trace && trace.ambiguousExactCounterparts),
             noExactCounterpartInSelectedFiles: Boolean(trace && trace.noExactCounterpartInSelectedFiles),
+            exactCounterpartSourceFamily: String(trace && trace.exactCounterpartSourceFamily || ''),
+            exactCounterpartKey: String(trace && trace.exactCounterpartKey || ''),
             chosenCandidateSource: String(trace && trace.chosenCandidateSource || 'none'),
             chosenCandidateReason: String(trace && trace.chosenCandidateReason || 'no_candidate')
           };
