@@ -2529,6 +2529,7 @@ function inspectLinkedReservationForReservationPlusNativeRow(
   const noExactCounterpartInSelectedFiles = hasAnyNativeReservationPlusAnchor(row, extractedRecord)
     && invoiceListHitSet.candidateCount === 0
     && reservationEntityBridgeHits === 0
+  const ambiguousInvoiceListExactAnchors = invoiceListHitSet.candidateCount > 1 && reservationEntityBridgeHits === 0
 
   return {
     linkedReservation: undefined,
@@ -2548,7 +2549,9 @@ function inspectLinkedReservationForReservationPlusNativeRow(
     reservationEntityBridgeHits,
     candidateCountBlockedReason: noExactCounterpartInSelectedFiles
       ? 'no_exact_counterpart_in_selected_files'
-      : 'no_exact_anchor',
+      : ambiguousInvoiceListExactAnchors
+        ? 'ambiguous_exact_identity'
+        : 'no_exact_anchor',
     noExactCounterpartInSelectedFiles,
     chosenCandidateSource: 'none',
     chosenCandidateReason: 'no_candidate'
@@ -3349,6 +3352,10 @@ function selectInvoiceListNativeFallback(
   const merchantOrderReference = readString(extractedRecord?.data.merchantOrderReference)
   const baseAnchors = {
     customerId: readString(extractedRecord?.data.clientId),
+    bookedAt: readString(extractedRecord?.data.paidAt)
+      ?? readString(extractedRecord?.data.bookedAt)
+      ?? readString(extractedRecord?.data.transferredAt)
+      ?? row.payoutDate,
     stayStartAt: readString(extractedRecord?.data.stayStartAt),
     stayEndAt: readString(extractedRecord?.data.stayEndAt),
     roomName: readString(extractedRecord?.data.roomName)
@@ -3400,6 +3407,7 @@ function findInvoiceListEnrichmentForItem(
     variableSymbol?: string
     customerId?: string
     invoiceNumber?: string
+    bookedAt?: string
     stayStartAt?: string
     stayEndAt?: string
     roomName?: string
@@ -3416,6 +3424,37 @@ function findInvoiceListEnrichmentForItem(
     const byVoucher = headers.filter((r) => r.voucher && normalizeComparable(r.voucher) === normalizeComparable(anchors.voucher))
     if (byVoucher.length === 1) {
       return { record: byVoucher[0], reason: 'exact_voucher' }
+    }
+
+    if (byVoucher.length > 1) {
+      const narrowedByCustomer = anchors.customerId
+        ? byVoucher.filter((r) => r.customerId && normalizeComparable(r.customerId) === normalizeComparable(anchors.customerId))
+        : []
+      if (narrowedByCustomer.length === 1) {
+        return { record: narrowedByCustomer[0], reason: 'exact_voucher' }
+      }
+
+      const narrowedByVariableSymbol = anchors.variableSymbol
+        ? byVoucher.filter((r) => r.variableSymbol && normalizeComparable(r.variableSymbol) === normalizeComparable(anchors.variableSymbol))
+        : []
+      if (narrowedByVariableSymbol.length === 1) {
+        return { record: narrowedByVariableSymbol[0], reason: 'exact_voucher' }
+      }
+
+      const narrowedByInvoiceNumber = anchors.invoiceNumber
+        ? byVoucher.filter((r) => r.invoiceNumber && normalizeComparable(r.invoiceNumber) === normalizeComparable(anchors.invoiceNumber))
+        : []
+      if (narrowedByInvoiceNumber.length === 1) {
+        return { record: narrowedByInvoiceNumber[0], reason: 'exact_voucher' }
+      }
+
+      const anchorMonthKey = resolveComparableMonthKey(anchors.bookedAt)
+      const narrowedByMonthKey = anchorMonthKey
+        ? byVoucher.filter((r) => resolveInvoiceListHeaderComparableMonthKey(r) === anchorMonthKey)
+        : []
+      if (narrowedByMonthKey.length === 1) {
+        return { record: narrowedByMonthKey[0], reason: 'exact_voucher' }
+      }
     }
   }
 
@@ -3453,6 +3492,40 @@ function findInvoiceListEnrichmentForItem(
   }
 
   return undefined
+}
+
+function resolveComparableMonthKey(value: string | undefined): string | undefined {
+  const normalized = normalizeComparableStayDate(value)
+
+  if (!normalized || normalized.length < 7) {
+    return undefined
+  }
+
+  return `${normalized.slice(0, 4)}${normalized.slice(5, 7)}`
+}
+
+function resolveInvoiceListHeaderComparableMonthKey(record: InvoiceListEnrichmentRecord): string | undefined {
+  const fromVariableSymbol = resolveMonthKeyFromComparableToken(record.variableSymbol)
+  if (fromVariableSymbol) {
+    return fromVariableSymbol
+  }
+
+  return resolveMonthKeyFromComparableToken(record.invoiceNumber)
+}
+
+function resolveMonthKeyFromComparableToken(value: string | undefined): string | undefined {
+  const normalized = normalizeComparable(value)
+
+  if (!normalized) {
+    return undefined
+  }
+
+  const monthMatch = normalized.match(/(20\d{2})(0[1-9]|1[0-2])/)
+  if (!monthMatch) {
+    return undefined
+  }
+
+  return `${monthMatch[1]}${monthMatch[2]}`
 }
 
 function findInvoiceListEnrichmentForParkingItem(

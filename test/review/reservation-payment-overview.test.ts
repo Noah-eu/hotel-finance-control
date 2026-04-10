@@ -1571,16 +1571,47 @@ describe('buildReservationPaymentOverview', () => {
           directBankSettlements: [],
           invoiceListEnrichment: [
             {
-              sourceRecordId: 'invoice-list-header-5159718129',
-              sourceDocumentId: 'doc:invoice-list',
+              sourceRecordId: 'invoice-list-header-6121722338-feb',
+              sourceDocumentId: 'doc:invoice-list-feb',
+              recordKind: 'header',
+              voucher: '6121722338',
+              variableSymbol: '20260242',
+              invoiceNumber: 'FA20260242',
+              guestName: 'Roessler Yvonne',
+              roomName: '303,Parkování 4',
+              currency: 'CZK'
+            },
+            {
+              sourceRecordId: 'invoice-list-header-6121722338-mar',
+              sourceDocumentId: 'doc:invoice-list-mar',
+              recordKind: 'header',
+              voucher: '6121722338',
+              variableSymbol: '20260322',
+              invoiceNumber: 'FA20260322',
+              guestName: 'Roessler Yvonne',
+              roomName: '303,Parkování 4',
+              currency: 'CZK'
+            },
+            {
+              sourceRecordId: 'invoice-list-header-5159718129-feb',
+              sourceDocumentId: 'doc:invoice-list-feb',
               recordKind: 'header',
               voucher: '5159718129',
-              variableSymbol: 'VS-5159718129',
-              invoiceNumber: 'INV-5159718129',
-              guestName: 'Jana Link',
-              roomName: 'C105',
-              stayStartAt: '2026-03-19',
-              stayEndAt: '2026-03-21',
+              variableSymbol: '20260263',
+              invoiceNumber: 'FA20260263',
+              guestName: 'Kluvanec Jozef',
+              roomName: '203,Parkování 1',
+              currency: 'CZK'
+            },
+            {
+              sourceRecordId: 'invoice-list-header-5159718129-mar',
+              sourceDocumentId: 'doc:invoice-list-mar',
+              recordKind: 'header',
+              voucher: '5159718129',
+              variableSymbol: '20260306',
+              invoiceNumber: 'FA20260306',
+              guestName: 'Kluvanec Jozef',
+              roomName: '203,Parkování 1',
               currency: 'CZK'
             }
           ]
@@ -1595,18 +1626,23 @@ describe('buildReservationPaymentOverview', () => {
 
     expect(first).toEqual(expect.objectContaining({
       merchantOrderReferenceAnchorFamily: 'numeric',
-      linkedMainReservationId: undefined,
-      invoiceListVoucherHits: 0,
+      linkedMainReservationId: '6121722338',
+      linkedGuestName: 'Roessler Yvonne',
+      candidateCount: 1,
+      invoiceListVoucherHits: 2,
       invoiceListVariableSymbolHits: 0,
       invoiceListInvoiceNumberHits: 0,
-      candidateCountBlockedReason: 'no_exact_counterpart_in_selected_files',
-      noExactCounterpartInSelectedFiles: true,
-      chosenCandidateReason: 'no_candidate'
+      candidateCountBlockedReason: 'none',
+      noExactCounterpartInSelectedFiles: false,
+      chosenCandidateSource: 'invoice_list',
+      chosenCandidateReason: 'exact_identity'
     }))
     expect(second).toEqual(expect.objectContaining({
       merchantOrderReferenceAnchorFamily: 'numeric',
       linkedMainReservationId: '5159718129',
-      invoiceListVoucherHits: 1,
+      linkedGuestName: 'Kluvanec Jozef',
+      candidateCount: 1,
+      invoiceListVoucherHits: 2,
       invoiceListVariableSymbolHits: 0,
       invoiceListInvoiceNumberHits: 0,
       candidateCountBlockedReason: 'none',
