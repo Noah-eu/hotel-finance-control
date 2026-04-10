@@ -687,6 +687,226 @@ describe('buildReservationPaymentOverview', () => {
     }))
   })
 
+  it('merges native Comgate row into an invoice-backed Reservation+ reservation entity via exact variable symbol', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-bridge-1',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-27T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          rawReference: '1816656820',
+          data: {
+            platform: 'comgate',
+            reference: '1816656820',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-BRIDGE-TRX-1',
+            comgateParserVariant: 'daily-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:bridge1',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 242351,
+            currency: 'CZK',
+            bookedAt: '2026-03-27',
+            reference: '1816656820',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-bridge-1']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo',
+              reservationId: 'RES-ENTITY-108929843',
+              guestName: 'Eva Svobodova',
+              roomName: 'B202',
+              reference: 'RES-ENTITY-108929843',
+              channel: 'direct_web',
+              bookedAt: '2026-03-20',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-30',
+              grossRevenueMinor: 302940,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:bridge1',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1816656820',
+              payoutDate: '2026-03-27',
+              amountMinor: 242351,
+              matchingAmountMinor: 242351,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-header-bridge-1',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: 'RES-ENTITY-108929843',
+              variableSymbol: '1816656820',
+              guestName: 'Eva Svobodova',
+              roomName: 'B202',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-30',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((block) => block.key === 'reservation_plus')!
+    const debug = inspectReservationPaymentOverviewClassification(batch)
+    const mergeTrace = debug.reservationPlusComgateMergeTraces.find((trace) => trace.linkedReservationId === 'RES-ENTITY-108929843')!
+
+    expect(resBlock.items).toHaveLength(1)
+    expect(resBlock.items[0]).toEqual(expect.objectContaining({
+      title: 'Eva Svobodova',
+      evidenceKey: 'comgate',
+      transactionIds: ['txn:comgate:bridge1']
+    }))
+    expect(debug.reservationPlusNativeLinkTraces.find((trace) => trace.rowId === 'txn:comgate:bridge1')).toBeUndefined()
+    expect(mergeTrace).toEqual(expect.objectContaining({
+      chosenLinkReason: 'exact_refId_merge',
+      nativeComgateFallbackSuppressed: true,
+      reservationEntityMatchedByInvoiceList: true,
+      nativeRowMergedIntoReservationEntity: true,
+      mergeSource: 'reservation_entity',
+      mergeAnchorType: 'invoice_list_variable_symbol',
+      mergedComgateRowId: 'txn:comgate:bridge1'
+    }))
+  })
+
+  it('keeps native Comgate row separate when invoice-backed reservation entity has no deterministic merge anchor', () => {
+    const batch = {
+      extractedRecords: [
+        {
+          id: 'comgate-row-bridge-2',
+          sourceDocumentId: 'doc:comgate',
+          recordType: 'payout-line',
+          extractedAt: '2026-03-27T10:00:00.000Z',
+          amountMinor: 242351,
+          currency: 'CZK',
+          occurredAt: '2026-03-27',
+          rawReference: '1816656999',
+          data: {
+            platform: 'comgate',
+            reference: '1816656999',
+            paymentPurpose: 'website-reservation',
+            transactionId: 'CG-BRIDGE-TRX-2',
+            comgateParserVariant: 'daily-settlement'
+          }
+        }
+      ],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:comgate:bridge2',
+            source: 'comgate',
+            subtype: 'payment',
+            amountMinor: 242351,
+            currency: 'CZK',
+            bookedAt: '2026-03-27',
+            reference: '1816656999',
+            sourceDocumentIds: ['doc:comgate'],
+            extractedRecordIds: ['comgate-row-bridge-2']
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo',
+              reservationId: 'RES-ENTITY-109047421',
+              guestName: 'Petr Novak',
+              roomName: 'C301',
+              reference: 'RES-ENTITY-109047421',
+              channel: 'direct_web',
+              bookedAt: '2026-03-20',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-30',
+              grossRevenueMinor: 302940,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['comgate']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [],
+          reservationSettlementNoMatches: [],
+          payoutRows: [
+            {
+              rowId: 'txn:comgate:bridge2',
+              platform: 'comgate',
+              sourceDocumentId: 'doc:comgate',
+              payoutReference: '1816656999',
+              payoutDate: '2026-03-27',
+              amountMinor: 242351,
+              matchingAmountMinor: 242351,
+              currency: 'CZK',
+              bankRoutingTarget: 'rb_bank_inflow'
+            }
+          ],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: [
+            {
+              sourceRecordId: 'invoice-header-bridge-2',
+              sourceDocumentId: 'doc:invoice-list',
+              recordKind: 'header',
+              voucher: 'RES-ENTITY-109047421',
+              variableSymbol: '1816480742',
+              guestName: 'Petr Novak',
+              roomName: 'C301',
+              stayStartAt: '2026-03-27',
+              stayEndAt: '2026-03-30',
+              currency: 'CZK'
+            }
+          ]
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const resBlock = overview.blocks.find((block) => block.key === 'reservation_plus')!
+    const debug = inspectReservationPaymentOverviewClassification(batch)
+    const mergeTrace = debug.reservationPlusComgateMergeTraces.find((trace) => trace.linkedReservationId === 'RES-ENTITY-109047421')!
+
+    expect(resBlock.items).toHaveLength(2)
+    expect(resBlock.items.some((item) => item.id === 'reservation-payment:native:txn:comgate:bridge2')).toBe(true)
+    expect(mergeTrace).toEqual(expect.objectContaining({
+      chosenLinkReason: 'no_merge',
+      nativeComgateFallbackSuppressed: false,
+      reservationEntityMatchedByInvoiceList: true,
+      nativeRowMergedIntoReservationEntity: false,
+      mergeSource: 'none',
+      noMergeReason: 'no_candidate'
+    }))
+  })
+
   it('links native Reservation+ Comgate rows via invoice-list exact voucher anchor when reservation export is missing', () => {
     const batch = {
       extractedRecords: [
