@@ -9640,7 +9640,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : unmatchedIncomingBankItems.map((item) => buildPayoutCompactItemMarkup(item, 'control', 'expenseUnmatchedInflows')).join('')),
           '</section>'
         ].join('');
-        const markup = unmatchedIncomingMarkup + '<div class="reservation-overview-grid" data-reservation-overview-grid="shared-7-columns">' + columns.map((block) => [
+        const sharedGridMarkup = '<div class="reservation-overview-grid" data-reservation-overview-grid="shared-7-columns">' + columns.map((block) => [
           '<section class="reservation-overview-block">',
           '<div class="reservation-overview-block-header">',
           '<div>',
@@ -9654,6 +9654,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : block.visibleItems.map((item) => block.renderItem(item)).join('')),
           '</section>'
         ].join('')).join('') + '</div>';
+        const markup = sharedGridMarkup + unmatchedIncomingMarkup;
 
         return {
           markup,

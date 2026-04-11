@@ -8075,11 +8075,16 @@ describe('buildWebDemo', () => {
     rendered.openControlDetailPage()
     const reservationOverviewMarkup = rendered.reservationSettlementOverviewContent.innerHTML
     const gridColumnCount = (reservationOverviewMarkup.match(/class=\"reservation-overview-block\"/g) || []).length
+    const gridIndex = reservationOverviewMarkup.indexOf('data-reservation-overview-grid="shared-7-columns"')
+    const incomingSectionIndex = reservationOverviewMarkup.indexOf('Nespárované příchozí bankovní platby')
 
     expect(reservationOverviewMarkup).toContain('data-reservation-overview-grid="shared-7-columns"')
     expect(reservationOverviewMarkup).toContain('Spárované payout dávky')
     expect(reservationOverviewMarkup).toContain('Nespárované payout dávky')
     expect(gridColumnCount).toBe(7)
+    expect(gridIndex).toBeGreaterThanOrEqual(0)
+    expect(incomingSectionIndex).toBeGreaterThanOrEqual(0)
+    expect(gridIndex).toBeLessThan(incomingSectionIndex)
     expect(rendered.matchedPayoutBatchesSection.hidden).toBe(true)
     expect(rendered.unmatchedPayoutBatchesSection.hidden).toBe(true)
   })
