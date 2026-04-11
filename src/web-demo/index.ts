@@ -2829,9 +2829,33 @@ ${showRuntimePayoutDiagnostics ? `
         return bytes.buffer;
       }
 
-      function detectBinaryWorkspaceFile(fileName, mimeType) {
+      function looksLikePdfWorkspaceBytes(bytes) {
+        return Array.isArray(bytes) || bytes instanceof Uint8Array
+          ? bytes.length >= 4
+            && bytes[0] === 0x25
+            && bytes[1] === 0x50
+            && bytes[2] === 0x44
+            && bytes[3] === 0x46
+          : false;
+      }
+
+      function resolveWorkspaceFileMimeType(fileName, mimeType, bytes) {
+        const normalizedMimeType = String(mimeType || '').trim();
+
+        if (normalizedMimeType) {
+          return normalizedMimeType;
+        }
+
+        if (looksLikePdfWorkspaceBytes(bytes)) {
+          return 'application/pdf';
+        }
+
+        return normalizedMimeType;
+      }
+
+      function detectBinaryWorkspaceFile(fileName, mimeType, bytes) {
         const normalizedName = String(fileName || '').toLowerCase();
-        const normalizedType = String(mimeType || '').toLowerCase();
+        const normalizedType = String(resolveWorkspaceFileMimeType(fileName, mimeType, bytes) || '').toLowerCase();
 
         return normalizedType.includes('pdf')
           || normalizedType.startsWith('image/')
@@ -2839,6 +2863,7 @@ ${showRuntimePayoutDiagnostics ? `
           || normalizedType.includes('excel')
           || normalizedType.includes('officedocument')
           || normalizedType.includes('octet-stream')
+          || looksLikePdfWorkspaceBytes(bytes)
           || /\.(pdf|xlsx|xls|gpc|png|jpe?g|gif|webp|bmp|tiff?)$/i.test(normalizedName);
       }
 
@@ -2884,23 +2909,47 @@ ${showRuntimePayoutDiagnostics ? `
         const uploadedAt = new Date().toISOString();
 
         try {
-          if (detectBinaryWorkspaceFile(fileName, mimeType) && file && typeof file.arrayBuffer === 'function') {
+          if (file && typeof file.arrayBuffer === 'function') {
             const buffer = await file.arrayBuffer();
             const bytes = new Uint8Array(buffer);
-            const contentBase64 = encodeBytesToBase64(bytes);
-            const contentHash = hashByteArray(bytes);
+            const resolvedMimeType = resolveWorkspaceFileMimeType(fileName, mimeType, bytes);
+
+            if (detectBinaryWorkspaceFile(fileName, resolvedMimeType, bytes)) {
+              const contentBase64 = encodeBytesToBase64(bytes);
+              const contentHash = hashByteArray(bytes);
+
+              return {
+                id: buildWorkspaceFileId({
+                  fileName,
+                  mimeType: resolvedMimeType,
+                  encoding: 'base64',
+                  contentHash
+                }),
+                fileName,
+                mimeType: resolvedMimeType,
+                encoding: 'base64',
+                contentBase64,
+                contentHash,
+                uploadedAt
+              };
+            }
+
+            const textContent = file && typeof file.text === 'function'
+              ? await file.text()
+              : (typeof TextDecoder === 'function' ? new TextDecoder().decode(bytes) : '');
+            const contentHash = hashStringContent(textContent);
 
             return {
               id: buildWorkspaceFileId({
                 fileName,
-                mimeType,
-                encoding: 'base64',
+                mimeType: resolvedMimeType,
+                encoding: 'text',
                 contentHash
               }),
               fileName,
-              mimeType,
-              encoding: 'base64',
-              contentBase64,
+              mimeType: resolvedMimeType,
+              encoding: 'text',
+              textContent,
               contentHash,
               uploadedAt
             };
@@ -5058,17 +5107,22 @@ ${showRuntimePayoutDiagnostics ? `
         const fileName = String(file && file.fileName || workspaceRecord && workspaceRecord.fileName || 'Doklad');
         const mimeType = String(workspaceRecord && workspaceRecord.mimeType || '');
         const transportProfile = String(file && file.decision && file.decision.capability && file.decision.capability.transportProfile || '');
+        const resolvedMimeType = mimeType || (
+          transportProfile === 'text_pdf' || transportProfile === 'image_pdf'
+            ? 'application/pdf'
+            : ''
+        );
         const sourceDocumentId = String(file && file.sourceDocumentId || '');
         const documentLike = isDocumentLikeTransportProfile(transportProfile)
-          || isPdfWorkspaceFile(fileName, mimeType)
-          || isImageWorkspaceFile(fileName, mimeType);
+          || isPdfWorkspaceFile(fileName, resolvedMimeType)
+          || isImageWorkspaceFile(fileName, resolvedMimeType);
 
         if (!documentLike || !workspaceRecord) {
           return undefined;
         }
 
-        if (workspaceRecord.encoding === 'base64' && isPdfWorkspaceFile(fileName, mimeType)) {
-          const dataUrl = 'data:' + escapeHtml(mimeType || 'application/pdf') + ';base64,' + escapeHtml(String(workspaceRecord.contentBase64 || ''));
+        if (workspaceRecord.encoding === 'base64' && isPdfWorkspaceFile(fileName, resolvedMimeType)) {
+          const dataUrl = 'data:' + escapeHtml(resolvedMimeType || 'application/pdf') + ';base64,' + escapeHtml(String(workspaceRecord.contentBase64 || ''));
 
           return {
             open: true,
@@ -5083,8 +5137,8 @@ ${showRuntimePayoutDiagnostics ? `
           };
         }
 
-        if (workspaceRecord.encoding === 'base64' && isImageWorkspaceFile(fileName, mimeType)) {
-          const dataUrl = 'data:' + escapeHtml(mimeType || 'image/*') + ';base64,' + escapeHtml(String(workspaceRecord.contentBase64 || ''));
+        if (workspaceRecord.encoding === 'base64' && isImageWorkspaceFile(fileName, resolvedMimeType)) {
+          const dataUrl = 'data:' + escapeHtml(resolvedMimeType || 'image/*') + ';base64,' + escapeHtml(String(workspaceRecord.contentBase64 || ''));
 
           return {
             open: true,

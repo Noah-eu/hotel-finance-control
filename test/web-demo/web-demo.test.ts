@@ -5644,6 +5644,143 @@ describe('buildWebDemo', () => {
     expect(rendered.preparedFilesContent.innerHTML).not.toContain(buildWorkspaceFilePreviewActionElementId(String(csvRecord?.id)))
   })
 
+  it('keeps extension-less mime-less ScanDMPDF renderable and non-empty through workspace persistence reruns', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-11T18:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-scandmpdf-workspace-preview-rerun',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: [
+        createWebDemoRuntimePdfFile(
+          'ScanDMPDF',
+          buildWebDemoRuntimePdfFromToUnicodeTextLines([
+            'Daňový doklad - FAKTURA 358260017610',
+            'Dodavatel: HP TRONIC Zlin, spol. s r.o.',
+            'IBAN CZ12080000000000004582802',
+            'Celkem k uhrade 349,00 K6'
+          ]),
+          ''
+        )
+      ]
+    })
+
+    const initialState = rendered.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{
+        fileName: string
+        sourceSystem: string
+        parserId?: string
+        status: string
+        intakeStatus: string
+        extractedCount: number
+        extractedRecordIds: string[]
+      }>
+      extractedRecords: Array<{
+        fileName: string
+        extractedCount: number
+        extractedRecordIds: string[]
+      }>
+    }
+    const persistedWorkspace = JSON.parse(String(workspacePersistenceState.get('2026-03') || '{}')) as {
+      files: Array<{
+        id: string
+        fileName: string
+        mimeType?: string
+        encoding: string
+        contentBase64?: string
+      }>
+      runtimeState?: {
+        runtimeBuildInfo?: Record<string, string>
+      }
+    }
+    const persistedScan = persistedWorkspace.files.find((file) => file.fileName === 'ScanDMPDF')
+    const route = initialState.fileRoutes.find((file) => file.fileName === 'ScanDMPDF')
+    const extractedScan = initialState.extractedRecords.find((file) => file.fileName === 'ScanDMPDF')
+
+    expect(persistedScan).toEqual(expect.objectContaining({
+      encoding: 'base64',
+      mimeType: 'application/pdf',
+      contentBase64: expect.any(String)
+    }))
+    expect(route).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      status: 'supported',
+      intakeStatus: 'parsed',
+      sourceSystem: 'invoice',
+      parserId: 'invoice'
+    }))
+    expect(route?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(route?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+    expect(extractedScan?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(extractedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+    expect(rendered.preparedFilesContent.innerHTML).toContain(buildWorkspaceFilePreviewActionElementId(String(persistedScan?.id)))
+
+    await rendered.openPreviewCurrentMonthWorkspaceFile(String(persistedScan?.id))
+
+    expect(rendered.getLastDocumentPreviewState()).toMatchObject({
+      open: true,
+      renderMode: 'pdf',
+      printAvailable: true,
+      workspaceFileId: String(persistedScan?.id)
+    })
+    expect(rendered.documentPreviewContent.innerHTML).toContain('document-preview-frame')
+    expect(rendered.documentPreviewContent.innerHTML).toContain('data:application/pdf;base64,')
+
+    persistedWorkspace.runtimeState = {
+      ...persistedWorkspace.runtimeState,
+      runtimeBuildInfo: {
+        ...(persistedWorkspace.runtimeState?.runtimeBuildInfo || {}),
+        runtimeModuleVersion: 'stale-browser-runtime-module'
+      }
+    }
+    workspacePersistenceState.set('2026-03', JSON.stringify(persistedWorkspace))
+
+    const reloaded = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-11T18:12:00.000Z',
+      month: '',
+      outputDirName: 'test-web-demo-scandmpdf-workspace-preview-rerun-reload',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      skipStart: true,
+      files: []
+    })
+    const reloadedState = reloaded.getLastVisibleRuntimeState() as {
+      fileRoutes: Array<{
+        fileName: string
+        sourceSystem: string
+        parserId?: string
+        extractedCount: number
+        extractedRecordIds: string[]
+      }>
+    }
+    const reloadedRoute = reloadedState.fileRoutes.find((file) => file.fileName === 'ScanDMPDF')
+
+    expect(reloaded.runtimeWorkspaceMergeDebugContent.innerHTML).toContain('Render source:</strong> persistedWorkspaceRerun')
+    expect(reloadedRoute).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      sourceSystem: 'invoice',
+      parserId: 'invoice'
+    }))
+    expect(reloadedRoute?.extractedCount ?? 0).toBeGreaterThan(0)
+    expect(reloadedRoute?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+
+    await reloaded.openPreviewCurrentMonthWorkspaceFile(String(persistedScan?.id))
+
+    expect(reloaded.getLastDocumentPreviewState()).toMatchObject({
+      open: true,
+      renderMode: 'pdf',
+      printAvailable: true,
+      workspaceFileId: String(persistedScan?.id)
+    })
+    expect(reloaded.documentPreviewContent.innerHTML).toContain('document-preview-frame')
+    expect(reloaded.documentPreviewContent.innerHTML).toContain('data:application/pdf;base64,')
+  }, 15000)
+
   it('opens an uploaded PDF document preview without losing the current expense detail state and restores that state after close', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-03T20:25:00.000Z',
@@ -9498,12 +9635,12 @@ function createWebDemoRuntimePdfFileFromToUnicodeTextLines(name: string, lines: 
   return createWebDemoRuntimePdfFile(name, buildWebDemoRuntimePdfFromToUnicodeTextLines(lines))
 }
 
-function createWebDemoRuntimePdfFile(name: string, base64: string) {
+function createWebDemoRuntimePdfFile(name: string, base64: string, type = 'application/pdf') {
   const binary = Buffer.from(base64, 'base64')
 
   return {
     name,
-    type: 'application/pdf',
+    type,
     async text() {
       return ''
     },
