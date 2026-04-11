@@ -410,6 +410,9 @@ function renderOperatorWebDemoHtml(input: {
       #reservation-settlement-overview-section {
         grid-column: 1 / -1;
       }
+      #reservation-settlement-overview-content {
+        min-width: 0;
+      }
       .expense-detail-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -544,6 +547,10 @@ function renderOperatorWebDemoHtml(input: {
         gap: 10px;
         align-items: start;
         min-width: 0;
+      }
+      #reservation-settlement-overview-content > .reservation-overview-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
       }
       .reservation-overview-bank-linking {
         border: 1px solid #dce6f5;
@@ -9633,7 +9640,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             : unmatchedIncomingBankItems.map((item) => buildPayoutCompactItemMarkup(item, 'control', 'expenseUnmatchedInflows')).join('')),
           '</section>'
         ].join('');
-        const markup = unmatchedIncomingMarkup + '<div class="reservation-overview-grid">' + columns.map((block) => [
+        const markup = unmatchedIncomingMarkup + '<div class="reservation-overview-grid" data-reservation-overview-grid="shared-7-columns">' + columns.map((block) => [
           '<section class="reservation-overview-block">',
           '<div class="reservation-overview-block-header">',
           '<div>',
@@ -9957,6 +9964,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         controlManualMatchSummary.hidden = false;
         controlManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('control', visibleState);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
+        matchedPayoutBatchesSection.hidden = true;
+        unmatchedPayoutBatchesSection.hidden = true;
         matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
         unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
         const reservationOverviewRenderResult = buildReservationPaymentOverviewMarkup(

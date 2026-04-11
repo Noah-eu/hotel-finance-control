@@ -8060,8 +8060,28 @@ describe('buildWebDemo', () => {
     expect(result.html).not.toContain('control-detail-grid-wrap')
     expect(result.html).toContain('Rezervace a úhrady')
     expect(result.html).toContain('Po spuštění se zde zobrazí kompaktní bloky Airbnb, Booking, Expedia, Reservation+ / vlastní web a Parkování.')
-    expect(result.html).toContain('buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview, payoutProjection)')
+    expect(result.html).toContain('buildReservationPaymentOverviewMarkup(')
     expect(result.html).toContain('Přehled Rezervace a úhrady se právě načítá ze sdíleného runtime běhu…')
+  })
+
+  it('keeps reservation overview in a single shared 7-column grid shell and does not fall back to split payout layout', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-14T08:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-reservation-overview-shared-grid-shell',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openControlDetailPage()
+    const reservationOverviewMarkup = rendered.reservationSettlementOverviewContent.innerHTML
+    const gridColumnCount = (reservationOverviewMarkup.match(/class=\"reservation-overview-block\"/g) || []).length
+
+    expect(reservationOverviewMarkup).toContain('data-reservation-overview-grid="shared-7-columns"')
+    expect(reservationOverviewMarkup).toContain('Spárované payout dávky')
+    expect(reservationOverviewMarkup).toContain('Nespárované payout dávky')
+    expect(gridColumnCount).toBe(7)
+    expect(rendered.matchedPayoutBatchesSection.hidden).toBe(true)
+    expect(rendered.unmatchedPayoutBatchesSection.hidden).toBe(true)
   })
 
   it('renders compact reservation cards with shrink-safe metadata and wrap-safe chip rows', async () => {
