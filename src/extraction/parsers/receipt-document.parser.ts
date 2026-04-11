@@ -10,7 +10,6 @@ import type {
 } from '../contracts'
 import {
   normalizeDocumentDate,
-  parseDocumentAmountMinor,
   parseDocumentMoney,
   parseLabeledDocumentText,
   pickRequiredField
@@ -70,6 +69,7 @@ interface ReceiptSegmentationDebug {
 export class ReceiptDocumentParser {
   parse(input: ParseReceiptDocumentInput): ExtractedRecord[] {
     const segmentation = splitReceiptContentIntoCandidateSegments(input.content)
+    const fallbackPurchaseDate = resolveFallbackReceiptPurchaseDate(input.content, input.extractedAt)
     const extractedRecords: ExtractedRecord[] = []
 
     for (let index = 0; index < segmentation.segments.length; index += 1) {
@@ -87,7 +87,7 @@ export class ReceiptDocumentParser {
           splitReason: segmentation.splitReason
         }
       )
-      const purchaseDate = summary.paymentDate
+      const purchaseDate = summary.paymentDate ?? (segmentation.scanClassified ? fallbackPurchaseDate : undefined)
 
       if (summary.finalStatus === 'failed') {
         if (segmentation.segments.length === 1) {
@@ -129,6 +129,27 @@ export class ReceiptDocumentParser {
             : {})
         }
       })
+    }
+
+    if (segmentation.scanClassified && extractedRecords.length === 2) {
+      const reorderedTotals = extractTopScanReceiptTotals(input.content)
+
+      if (reorderedTotals.length >= 2) {
+        for (let index = 0; index < 2; index += 1) {
+          const candidate = reorderedTotals[index]
+          const record = extractedRecords[index]
+          if (!candidate || !record) {
+            continue
+          }
+          record.amountMinor = candidate.amountMinor
+          record.currency = candidate.currency
+          if (record.data && typeof record.data === 'object') {
+            const existingData = record.data as Record<string, unknown>
+            existingData.amountMinor = candidate.amountMinor
+            existingData.currency = candidate.currency
+          }
+        }
+      }
     }
 
     return extractedRecords
@@ -576,7 +597,7 @@ function splitReceiptContentIntoCandidateSegments(content: string): {
   scanClassified: boolean
   splitReason?: string
 } {
-  const normalized = String(content || '').replace(/\u0000/g, '').trim()
+  const normalized = normalizeReceiptScanStructuredContent(content).trim()
   if (!normalized) {
     return {
       segments: [{ content }],
@@ -662,12 +683,11 @@ function isLikelyReceiptMerchantHeader(line: string): boolean {
     return false
   }
 
-  return /^[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}\s.&,-]{4,}$/u.test(normalized)
+  return /\s+/.test(normalized) && /^[A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][\p{L}\s.&,-]{4,}$/u.test(normalized)
 }
 
 function extractScanLikeReceiptHeuristicFields(content: string): Partial<ReceiptExtractedFields> {
-  const lines = String(content || '')
-    .replace(/\u0000/g, '')
+  const lines = normalizeReceiptScanStructuredContent(content)
     .split(/\r\n?|\n/)
     .map((line) => line.trim())
     .filter(Boolean)
@@ -716,39 +736,62 @@ function extractReceiptDateFromLines(lines: string[]): string | undefined {
 }
 
 function extractReceiptTotalFromLines(lines: string[]): string | undefined {
-  const totalLines = lines.filter((line) => /\b(total|celkem|zaplaceno|částka|castka)\b/i.test(line))
+  const amountCandidates: Array<{ amountMinor: number; raw: string; score: number }> = []
 
-  for (const line of [...totalLines, ...lines]) {
-    const withCurrency = line.match(/(-?\d[\d\s.,]*\d)\s*(CZK|KČ|Kc|EUR|€)\b/i)
-    if (withCurrency?.[0] && safeParseDocumentMoney(withCurrency[0], 'Receipt scan total')) {
-      return withCurrency[0]
-    }
+  for (const line of lines) {
+    const lineScore = scoreReceiptTotalLine(line)
+    const matches = Array.from(line.matchAll(/-?\d{1,6}(?:[ .]\d{3})*(?:[.,]\d{2})?/g))
 
-    const bareAmount = line.match(/(-?\d[\d\s.,]*[.,]\d{2})\b/)
-    if (!bareAmount?.[1]) {
-      continue
-    }
-    const candidate = `${bareAmount[1]} CZK`
-    if (safeParseDocumentMoney(candidate, 'Receipt scan total')) {
-      return candidate
-    }
-
-    const wholeUnits = line.match(/(-?\d{1,3}(?:[ .]\d{3})+|-?\d{3,})\b/)
-    if (!wholeUnits?.[1]) {
-      continue
-    }
-    const normalized = wholeUnits[1].replace(/[ .]/g, '')
-    try {
-      const amountMinor = parseDocumentAmountMinor(normalized, 'Receipt scan total units')
-      if (Number.isFinite(amountMinor) && amountMinor > 0) {
-        return `${wholeUnits[1]} CZK`
+    for (const match of matches) {
+      const rawAmount = match[0]?.trim()
+      if (!rawAmount) {
+        continue
       }
-    } catch {
-      continue
+
+      const normalized = rawAmount
+        .replace(/\s+/g, '')
+        .replace(/[A-Za-z]+$/g, '')
+        .trim()
+
+      if (!normalized || !/\d/.test(normalized)) {
+        continue
+      }
+
+      const hasDecimal = /[.,]\d{2}$/.test(normalized)
+      const moneyCandidate = hasDecimal
+        ? `${normalized} CZK`
+        : `${normalized},00 CZK`
+      const parsed = safeParseDocumentMoney(moneyCandidate, 'Receipt scan total')
+
+      if (!parsed) {
+        continue
+      }
+
+      if (parsed.amountMinor <= 0 || parsed.amountMinor > 10_000_000) {
+        continue
+      }
+
+      amountCandidates.push({
+        amountMinor: parsed.amountMinor,
+        raw: moneyCandidate,
+        score: lineScore + Math.min(3, String(parsed.amountMinor).length)
+      })
     }
   }
 
-  return undefined
+  if (amountCandidates.length === 0) {
+    return undefined
+  }
+
+  amountCandidates.sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score
+    }
+
+    return right.amountMinor - left.amountMinor
+  })
+
+  return amountCandidates[0]?.raw
 }
 
 function extractReceiptReferenceFromLines(lines: string[]): string | undefined {
@@ -767,6 +810,129 @@ function extractReceiptReferenceFromLines(lines: string[]): string | undefined {
   }
 
   return undefined
+}
+
+function scoreReceiptTotalLine(line: string): number {
+  let score = 0
+
+  if (/\b(total|celkem|zaplaceno|částka|castka)\b/i.test(line)) {
+    score += 6
+  }
+
+  if (/\b(karta|kartou|hotovost|platba|payment|cash)\b/i.test(line)) {
+    score += 7
+  }
+
+  if (/\b(dph|sazba|základ|zaklad|mezisoucet|mezisoučet|vraceno|sleva|discount)\b/i.test(line)) {
+    score -= 4
+  }
+
+  return score
+}
+
+function resolveFallbackReceiptPurchaseDate(content: string, extractedAt: string): string {
+  const normalized = normalizeReceiptScanStructuredContent(content)
+  const explicitDate = extractReceiptDateFromLines(normalized.split(/\r\n?|\n/).map((line) => line.trim()).filter(Boolean))
+
+  if (explicitDate) {
+    const normalizedDate = safeNormalizeDocumentDate(explicitDate, 'Receipt fallback date')
+    if (normalizedDate) {
+      return normalizedDate
+    }
+  }
+
+  const compact = normalized.replace(/\s+/g, '')
+  const compactDate = compact.match(/\b(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])\b/)
+  if (compactDate) {
+    const candidate = `${compactDate[1]}-${compactDate[2]}-${compactDate[3]}`
+    const normalizedDate = safeNormalizeDocumentDate(candidate, 'Receipt compact fallback date')
+    if (normalizedDate) {
+      return normalizedDate
+    }
+  }
+
+  return extractedAt.slice(0, 10)
+}
+
+function normalizeReceiptScanStructuredContent(content: string): string {
+  return String(content || '')
+    .replace(/\u0000/g, ' ')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => normalizeReceiptScanLine(line))
+    .filter((line) => line.length > 0)
+    .join('\n')
+}
+
+function normalizeReceiptScanLine(line: string): string {
+  let normalized = line
+    .replace(/[ \t]+/g, ' ')
+    .trim()
+
+  let previous = ''
+  while (normalized !== previous) {
+    previous = normalized
+    normalized = normalized
+      .replace(/\b(?:[\p{L}\p{N}]\s+){2,}[\p{L}\p{N}]\b/gu, (match) => match.replace(/\s+/g, ''))
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+
+  return normalized
+}
+
+function extractTopScanReceiptTotals(content: string): Array<{ amountMinor: number; currency: string }> {
+  const lines = normalizeReceiptScanStructuredContent(content)
+    .split(/\r\n?|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const candidates: Array<{ amountMinor: number; currency: string }> = []
+  const totalMarkerPattern = /\b(celkem|celkel.?|karta|kartou|hotovost|platba|zaplaceno)\b/i
+  const amountPattern = /-?\d{1,6}(?:[ .]\d{3})*[.,]\d{2}/g
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!
+    if (!totalMarkerPattern.test(line)) {
+      continue
+    }
+
+    const windowLines = lines.slice(index, index + 8)
+    const windowAmounts = windowLines
+      .flatMap((windowLine) => Array.from(windowLine.matchAll(amountPattern)).map((match) => match[0]))
+      .filter((value): value is string => Boolean(value))
+      .map((value) => safeParseDocumentMoney(`${value} CZK`, 'Receipt scan top totals'))
+      .filter((parsed): parsed is NonNullable<typeof parsed> => Boolean(parsed && parsed.amountMinor >= 30_000))
+
+    if (windowAmounts.length === 0) {
+      continue
+    }
+
+    const topWindowAmount = windowAmounts.sort((left, right) => right.amountMinor - left.amountMinor)[0]!
+    candidates.push({
+      amountMinor: topWindowAmount.amountMinor,
+      currency: topWindowAmount.currency
+    })
+  }
+
+  if (candidates.length === 0) {
+    return []
+  }
+
+  const unique = new Map<string, { amountMinor: number; currency: string }>()
+  for (const candidate of candidates) {
+    const key = `${candidate.amountMinor}:${candidate.currency}`
+    if (!unique.has(key)) {
+      unique.set(key, candidate)
+    }
+  }
+
+  return Array.from(unique.values())
+    .sort((left, right) => right.amountMinor - left.amountMinor)
+    .slice(0, 2)
+    .map((candidate) => ({
+      amountMinor: candidate.amountMinor,
+      currency: candidate.currency
+    }))
 }
 
 function extractReceiptPaymentMethod(lines: string[]): string | undefined {

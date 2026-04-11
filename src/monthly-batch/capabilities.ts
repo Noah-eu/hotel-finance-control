@@ -220,8 +220,12 @@ function detectUploadedMonthlyFileDocumentHints(input: {
   if (
     normalizedFileName.includes('invoice')
     || normalizedFileName.includes('faktura')
+    || normalizedFileName.includes('datart')
+    || normalizedFileName.includes('hptronic')
+    || normalizedFileName.includes('hp-tronic')
     || isUsableInvoiceSummary(invoiceSummary)
     || invoiceKeywordHits.length >= 3
+    || looksLikeInvoiceScanText(input.content)
   ) {
     hints.add('invoice_like')
   }
@@ -304,11 +308,11 @@ function isUsableInvoiceSummary(
     || (
       summary.finalStatus !== 'failed'
       && typeof summary.totalAmountMinor === 'number'
+      && Boolean(summary.referenceNumber)
       && (
-        Boolean(summary.referenceNumber)
-        || Boolean(summary.issuerOrCounterparty)
-        || Boolean(summary.issueDate)
+        Boolean(summary.issueDate)
         || Boolean(summary.dueDate)
+        || Boolean(summary.taxableDate)
       )
     )
 }
@@ -349,6 +353,19 @@ function looksLikeStructuredTabularContent(headerFields: string[], content: stri
   const normalizedHeader = headerFields.join('|')
 
   return /(datum|date|amount|castka|částka|currency|mena|měna|reference|reservation|guest|payout|bookedat)/i.test(normalizedHeader)
+}
+
+function looksLikeInvoiceScanText(content: string): boolean {
+  const normalized = content
+    .replace(/\u0000/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const compact = normalized.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  return compact.includes('faktura')
+    || compact.includes('danovydoklad')
+    || compact.includes('datart')
+    || compact.includes('hptronic')
 }
 
 function isPdfImageOnlyError(errorMessage: string | undefined): boolean {

@@ -3437,6 +3437,90 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('keeps noisy scan PDF browser text on the supported document path with non-zero extracted counts', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('Scan 2 účtenky.PDF', [
+          'TESCO',
+          '117,BoA',
+          '379.',
+          '109,90A',
+          '699,',
+          '3841,30',
+          'POTRAVINY',
+          'Cislo',
+          'účtenky',
+          '2026032000006',
+          'Celkem',
+          '640,00',
+          'Kartou',
+          '645,00',
+          'CELKEl1',
+          'Pl atebnl',
+          'karta',
+          '3254,30',
+          '3254.30'
+        ]),
+        createRuntimePdfFileFromToUnicodeTextLines('scanDatart349.PDF', [
+          'booking-reservation-reference 109157713',
+          'Daňový doklad - FAKTURA 358260017610',
+          'Dodavatel: HP TRONIC Zlin',
+          'Datart',
+          '349,00 CLK',
+          '0,00 czK',
+          '0,00 czK'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T09:55:00.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Scan 2 účtenky.PDF',
+          status: 'supported',
+          intakeStatus: 'parsed',
+          sourceSystem: 'receipt',
+          documentType: 'receipt',
+          extractedCount: expect.any(Number)
+        }),
+        expect.objectContaining({
+          fileName: 'scanDatart349.PDF',
+          status: 'supported',
+          intakeStatus: 'parsed',
+          sourceSystem: 'invoice',
+          documentType: 'invoice',
+          extractedCount: 1
+        })
+      ])
+    )
+
+    expect(result.routingSummary.unsupportedFileCount).toBe(0)
+    expect(result.fileRoutes.find((file) => file.fileName === 'Scan 2 účtenky.PDF')?.extractedCount).toBeGreaterThan(0)
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '3 254,30 Kč' })
+          ])
+        }),
+        expect.objectContaining({
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '645,00 Kč' })
+          ])
+        }),
+        expect.objectContaining({
+          title: 'Nespárovaný doklad 358260017610',
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '349,00 Kč' }),
+            expect.objectContaining({ label: 'reference', value: '358260017610' })
+          ])
+        })
+      ])
+    )
+  })
+
   it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

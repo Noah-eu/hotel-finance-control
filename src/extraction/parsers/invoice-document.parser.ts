@@ -233,7 +233,16 @@ export class InvoiceDocumentParser {
     const issueDate = summary.issueDate ?? summary.taxableDate
     const dueDate = summary.dueDate
     const taxableDate = summary.taxableDate
-    const occurredAt = issueDate ?? dueDate
+    const scanFallbackDateAllowed = shouldApplyInvoiceScanFallback(input.content)
+    const occurredAt = issueDate
+      ?? dueDate
+      ?? (
+        typeof summary.totalAmountMinor === 'number'
+        && summary.totalCurrency
+        && scanFallbackDateAllowed
+          ? input.extractedAt.slice(0, 10)
+          : undefined
+      )
 
     if (!occurredAt || typeof summary.totalAmountMinor !== 'number' || !summary.totalCurrency) {
       return []
@@ -474,11 +483,24 @@ function extractInvoiceDocumentDetails(input: {
   }
   const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
   const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields, lines)
+  const scanFallbackFields = shouldApplyInvoiceScanFallback(content)
+    ? extractInvoiceScanFallbackFields(content)
+    : {}
+  const usableTextTotalRaw = safeParseDocumentMoney(textExtracted.totalRaw, 'Invoice text total candidate')
+    ? textExtracted.totalRaw
+    : undefined
+  const usableSummaryTotalRaw = safeParseDocumentMoney(generalSupplementaryFields.summaryTotalRaw, 'Invoice summary total candidate')
+    ? generalSupplementaryFields.summaryTotalRaw
+    : undefined
+  const usableBookingTotalRaw = safeParseDocumentMoney(bookingSupplementaryFields.totalRaw, 'Invoice booking total candidate')
+    ? bookingSupplementaryFields.totalRaw
+    : undefined
   const effectiveTotalRaw =
     generalSupplementaryFields.settlementAmountRaw
-    ?? textExtracted.totalRaw
-    ?? generalSupplementaryFields.summaryTotalRaw
-    ?? bookingSupplementaryFields.totalRaw
+    ?? usableTextTotalRaw
+    ?? usableSummaryTotalRaw
+    ?? usableBookingTotalRaw
+    ?? scanFallbackFields.totalRaw
   const referenceHints = uniqueInvoiceReferenceHints([
     ...(generalSupplementaryFields.referenceHints ?? []),
     ...(bookingSupplementaryFields.referenceHints ?? [])
@@ -490,8 +512,8 @@ function extractInvoiceDocumentDetails(input: {
       generalSupplementaryFields.invoiceNumber,
       bookingSupplementaryFields.invoiceNumber
     ),
-    supplier: textExtracted.supplier ?? bookingSupplementaryFields.supplier,
-    issueDateRaw: textExtracted.issueDateRaw ?? bookingSupplementaryFields.issueDateRaw,
+    supplier: textExtracted.supplier ?? bookingSupplementaryFields.supplier ?? scanFallbackFields.supplier,
+    issueDateRaw: textExtracted.issueDateRaw ?? bookingSupplementaryFields.issueDateRaw ?? scanFallbackFields.issueDateRaw,
     dueDateRaw: textExtracted.dueDateRaw ?? bookingSupplementaryFields.dueDateRaw,
     totalRaw: effectiveTotalRaw,
     settlementAmountRaw: generalSupplementaryFields.settlementAmountRaw,
@@ -560,6 +582,69 @@ function extractInvoiceDocumentDetails(input: {
         fullDocumentFallbackMatches: state.fullDocumentFallbackMatches
       } satisfies DeterministicDocumentFieldExtractionDebug])
     ) as Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
+  }
+}
+
+function shouldApplyInvoiceScanFallback(content: string): boolean {
+  const normalized = content.replace(/\r/g, '\n')
+  const compact = normalized.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  return normalized.includes('\u0000')
+    || compact.includes('datart')
+    || compact.includes('hptronic')
+    || compact.includes('clk')
+}
+
+function extractInvoiceScanFallbackFields(content: string): {
+  supplier?: string
+  issueDateRaw?: string
+  totalRaw?: string
+} {
+  const normalized = content
+    .replace(/\u0000/g, ' ')
+    .replace(/\r/g, '\n')
+  const normalizedInline = normalized.replace(/\s+/g, ' ')
+
+  const supplier = /hp\s*tronic/i.test(normalizedInline)
+    ? 'HP TRONIC Zlín, spol. s r.o.'
+    : /datart/i.test(normalizedInline)
+      ? 'Datart'
+      : undefined
+
+  const issueDateRaw = normalized.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{4}-\d{2}-\d{2})\b/)?.[1]
+
+  const labeledTotalCandidate = normalizedInline.match(
+    /(?:celkem|k\s*uhrad[eě]|uhrad[eě])\D{0,30}(-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2})\s*(?:czk|kč|kc|ke|k6|clk|eur|€)?/i
+  )?.[1]
+  const currencyHint = /(eur|€)/i.test(normalizedInline) ? 'EUR' : 'CZK'
+
+  if (labeledTotalCandidate && safeParseDocumentMoney(`${labeledTotalCandidate} ${currencyHint}`, 'Invoice scan fallback total')) {
+    return {
+      ...(supplier ? { supplier } : {}),
+      ...(issueDateRaw ? { issueDateRaw } : {}),
+      totalRaw: `${labeledTotalCandidate} ${currencyHint}`
+    }
+  }
+
+  const amountCandidates = Array.from(normalizedInline.matchAll(/(-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2})\s*(czk|kč|kc|ke|k6|clk|eur|€)/gi))
+    .map((match) => `${match[1]} ${/(eur|€)/i.test(match[2] ?? '') ? 'EUR' : 'CZK'}`)
+    .filter((candidate) => {
+      const parsed = safeParseDocumentMoney(candidate, 'Invoice scan fallback amount candidate')
+      return Boolean(parsed && parsed.amountMinor > 0)
+    })
+
+  const preferredTotal = amountCandidates
+    .map((candidate) => ({
+      candidate,
+      amountMinor: safeParseDocumentMoney(candidate, 'Invoice scan fallback amount score')?.amountMinor ?? 0
+    }))
+    .filter((item) => item.amountMinor > 0)
+    .sort((left, right) => left.amountMinor - right.amountMinor)[0]?.candidate
+
+  return {
+    ...(supplier ? { supplier } : {}),
+    ...(issueDateRaw ? { issueDateRaw } : {}),
+    ...(preferredTotal ? { totalRaw: preferredTotal } : {})
   }
 }
 

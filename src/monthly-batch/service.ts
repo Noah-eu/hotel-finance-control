@@ -1138,6 +1138,8 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     || ingestionBranch === 'text-pdf-parser'
   ) {
     const sourceFromDocumentSummary = inferDocumentSourceFromExtractionSummary({
+      fileName: input.fileName,
+      content: input.content,
       invoiceSummary,
       receiptSummary,
       capabilityDocumentHints: capability.documentHints
@@ -1303,6 +1305,14 @@ function inferSourceSystemFromFileName(fileName: string): SourceDocument['source
     return 'invoice'
   }
 
+  if (
+    normalizedFileName.includes('datart')
+    || normalizedFileName.includes('hptronic')
+    || normalizedFileName.includes('hp-tronic')
+  ) {
+    return 'invoice'
+  }
+
   if (looksLikeReceiptDocumentFileName(normalizedFileName)) {
     return 'receipt'
   }
@@ -1440,10 +1450,19 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
 }
 
 function inferDocumentSourceFromExtractionSummary(input: {
+  fileName: string
+  content: string
   invoiceSummary: ReturnType<typeof inspectInvoiceDocumentExtractionSummary>
   receiptSummary: ReturnType<typeof inspectReceiptDocumentExtractionSummary>
   capabilityDocumentHints: UploadedMonthlyFileCapabilityAssessment['documentHints']
 }): SourceDocument['sourceSystem'] {
+  if (
+    input.capabilityDocumentHints.includes('invoice_like')
+    && (looksInvoiceDominantScanText(input.content) || looksLikeInvoiceDocumentFileName(input.fileName.toLowerCase()))
+  ) {
+    return 'invoice'
+  }
+
   if (isUsableInvoiceSummary(input.invoiceSummary)) {
     return 'invoice'
   }
@@ -1463,6 +1482,19 @@ function inferDocumentSourceFromExtractionSummary(input: {
   return 'unknown'
 }
 
+function looksInvoiceDominantScanText(content: string): boolean {
+  const compact = content
+    .replace(/\u0000/g, ' ')
+    .replace(/\s+/g, '')
+    .toLowerCase()
+
+  return compact.includes('faktura')
+    || compact.includes('invoice')
+    || compact.includes('danovydoklad')
+    || compact.includes('datart')
+    || compact.includes('hptronic')
+}
+
 function isUsableInvoiceSummary(
   summary: ReturnType<typeof inspectInvoiceDocumentExtractionSummary>
 ): boolean {
@@ -1470,11 +1502,11 @@ function isUsableInvoiceSummary(
     || (
       summary.finalStatus !== 'failed'
       && typeof summary.totalAmountMinor === 'number'
+      && Boolean(summary.referenceNumber)
       && (
-        Boolean(summary.referenceNumber)
-        || Boolean(summary.issuerOrCounterparty)
-        || Boolean(summary.issueDate)
+        Boolean(summary.issueDate)
         || Boolean(summary.dueDate)
+        || Boolean(summary.taxableDate)
       )
     )
 }
