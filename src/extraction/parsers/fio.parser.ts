@@ -181,7 +181,7 @@ export function looksLikeFioGpcStatement(content: string, fileName = ''): boolea
   const headerLooksLikeFio = headerLine?.trim().toUpperCase().endsWith('FIO') === true
 
   const fileNameLooksLikeFio = normalizedFileName.length === 0
-    || (normalizedFileName.endsWith('.gpc') && normalizedFileName.startsWith('vypis_z_uctu-'))
+    || normalizedFileName.endsWith('.gpc')
 
   return fileNameLooksLikeFio
     && Boolean(headerLine)

@@ -3596,6 +3596,46 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('keeps browser GPC arrayBuffer uploads on the bank statement path even with octet-stream mime type', async () => {
+    const gpc = getRealInputFixture('fio-gpc-statement')
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeArrayBufferTextFile(
+          'Pohyby_na_uctu-8888997777_20260401-20260411.gpc',
+          gpc.rawInput.content,
+          'application/octet-stream'
+        )
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-11T14:35:00.000Z'
+    })
+
+    expect(result.routingSummary.unsupportedFileCount).toBe(0)
+    const route = result.fileRoutes.find((file) => file.fileName === 'Pohyby_na_uctu-8888997777_20260401-20260411.gpc')
+    expect(route).toEqual(
+      expect.objectContaining({
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'bank',
+        documentType: 'bank_statement',
+        parserId: 'fio'
+      })
+    )
+    expect(route?.decision.ingestionBranch).toBe('structured-parser')
+    expect(route?.decision.capability.transportProfile).toBe('structured_csv')
+    expect(route?.decision.capability.profile).toBe('structured_tabular')
+    expect((route?.extractedCount ?? 0)).toBeGreaterThan(0)
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Pohyby_na_uctu-8888997777_20260401-20260411.gpc',
+          parserDebugLabel: 'fio-gpc'
+        })
+      ])
+    )
+  })
+
   it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

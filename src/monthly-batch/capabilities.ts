@@ -112,13 +112,6 @@ export function detectUploadedMonthlyFileCapability(
     )
   }
 
-  if (input.contentFormat === 'binary' || mimeType === 'application/octet-stream') {
-    return buildCapability('unsupported_binary', 'unsupported_binary', documentHints, 'strong', [
-      'binary-upload',
-      ...buildDocumentHintEvidence(documentHints)
-    ])
-  }
-
   if (looksLikeRaiffeisenbankGpcStatement(trimmedContent, fileName)) {
     return buildCapability(
       'structured_tabular',
@@ -159,6 +152,13 @@ export function detectUploadedMonthlyFileCapability(
   if (trimmedContent.length > 0 && /[:]/.test(trimmedContent)) {
     return buildCapability('text_document', 'text_document', documentHints, 'hint', [
       'labeled-text-content',
+      ...buildDocumentHintEvidence(documentHints)
+    ])
+  }
+
+  if (input.contentFormat === 'binary' || mimeType === 'application/octet-stream') {
+    return buildCapability('unsupported_binary', 'unsupported_binary', documentHints, 'strong', [
+      'binary-upload',
       ...buildDocumentHintEvidence(documentHints)
     ])
   }

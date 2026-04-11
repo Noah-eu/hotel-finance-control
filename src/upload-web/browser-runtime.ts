@@ -345,6 +345,7 @@ function inferUploadedBytesContentFormat(
     || normalizedMime === 'application/csv'
     || normalizedMime === 'text/csv'
     || normalizedFileName.endsWith('.csv')
+    || normalizedFileName.endsWith('.gpc')
     || normalizedFileName.endsWith('.txt')
     || normalizedFileName.endsWith('.tsv')
   ) {
