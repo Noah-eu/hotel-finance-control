@@ -1408,6 +1408,56 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('returns a minimal partial invoice record instead of [] when ScanDMPDF only carries invoice-context and IBAN evidence', () => {
+    const binaryContentBase64 = Buffer.from('%PDF-1.4\nminimal\n%%EOF', 'latin1').toString('base64')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: {
+        id: 'doc-scandmpdf-context-only' as any,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        fileName: 'ScanDMPDF',
+        uploadedAt: '2026-04-11T19:05:00.000Z'
+      },
+      content: [
+        'Faktura',
+        'IBAN CZ12080000000000004582802'
+      ].join('\n'),
+      binaryContentBase64,
+      extractedAt: '2026-04-11T19:05:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      sourceDocumentId: 'doc-scandmpdf-context-only',
+      data: expect.objectContaining({
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        ibanHint: 'CZ12080000000000004582802',
+        debug: expect.objectContaining({
+          finalStatus: 'needs_review',
+          partialRecordCreated: true,
+          partialRecordDropped: false,
+          invoiceScanFallbackApplied: true,
+          invoiceScanFallbackRecordCreated: true
+        })
+      })
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary({
+      content: [
+        'Faktura',
+        'IBAN CZ12080000000000004582802'
+      ].join('\n'),
+      binaryContentBase64
+    })).toMatchObject({
+      finalStatus: 'needs_review',
+      ibanHint: 'CZ12080000000000004582802',
+      requiredFieldsCheck: 'failed'
+    })
+  })
+
   it('sends handwritten-like receipts with partial OCR data to needs_review instead of failing the ingest path', () => {
     const receipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
     const records = parseReceiptDocument({

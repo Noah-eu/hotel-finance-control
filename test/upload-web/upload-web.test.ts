@@ -3740,6 +3740,68 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('keeps application/pdf base64 invoice-classified ScanDMPDF non-empty even when parser only has invoice-context and IBAN evidence', () => {
+    const result = buildBrowserRuntimeUploadStateFromFiles({
+      files: [
+        {
+          name: 'ScanDMPDF',
+          content: [
+            'Faktura',
+            'IBAN CZ12080000000000004582802'
+          ].join('\n'),
+          uploadedAt: '2026-04-11T19:05:00.000Z',
+          binaryContentBase64: Buffer.from('%PDF-1.4\nminimal\n%%EOF', 'latin1').toString('base64'),
+          contentFormat: 'pdf-text',
+          sourceDescriptor: {
+            mimeType: 'application/pdf',
+            browserTextExtraction: {
+              mode: 'pdf-text',
+              status: 'extracted',
+              textPreview: 'Faktura',
+              detectedSignatures: []
+            },
+            capability: {
+              profile: 'pdf_text_layer',
+              transportProfile: 'text_pdf',
+              documentHints: ['invoice_like'],
+              confidence: 'strong',
+              evidence: ['pdf-upload', 'text-layer-extracted', 'document-hint:invoice_like']
+            }
+          }
+        }
+      ],
+      runId: 'browser-runtime-scandmpdf-context-only',
+      generatedAt: '2026-04-11T19:05:00.000Z'
+    })
+
+    const route = result.fileRoutes.find((file) => file.fileName === 'ScanDMPDF')
+    const extractedScan = result.extractedRecords.find((entry) => entry.fileName === 'ScanDMPDF')
+
+    expect(route).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      status: 'supported',
+      intakeStatus: 'parsed',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      parserId: 'invoice',
+      extractedCount: 1,
+      parserReturnedRecordCount: 1,
+      parserReturnedPartialRecord: true
+    }))
+    expect(route?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+
+    expect(extractedScan).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      sourceSystem: 'invoice',
+      documentType: 'invoice',
+      parserId: 'invoice',
+      extractedCount: 1,
+      parserReturnedRecordCount: 1,
+      parserReturnedPartialRecord: true
+    }))
+    expect(extractedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+  })
+
   it('keeps the current Pohyby_5599955956 monthly CSV on the bank statement path even when content includes invoice-like counterparties', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

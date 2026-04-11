@@ -255,6 +255,8 @@ export class InvoiceDocumentParser {
     const issueDate = summary.issueDate ?? summary.taxableDate
     const dueDate = summary.dueDate
     const taxableDate = summary.taxableDate
+    const referenceCandidate = extracted.invoiceNumber ?? summary.referenceNumber
+    const supplierCandidate = extracted.supplier ?? summary.issuerOrCounterparty
     const occurredAt = issueDate
       ?? dueDate
       ?? (
@@ -272,6 +274,9 @@ export class InvoiceDocumentParser {
       && resolvedCurrency
     )
     const partialRecordAllowed = scanFallbackRecordAllowed || shouldAllowInvoicePartialRecord({
+      sourceDocument: input.sourceDocument,
+      content: input.content,
+      binaryContentBase64: input.binaryContentBase64,
       extracted,
       summary,
       resolvedAmountMinor,
@@ -318,16 +323,18 @@ export class InvoiceDocumentParser {
       sourceDocumentId: input.sourceDocument.id,
       recordType: 'invoice-document',
       extractedAt: input.extractedAt,
-      ...(extracted.invoiceNumber ? { rawReference: extracted.invoiceNumber } : {}),
+      ...(referenceCandidate ? { rawReference: referenceCandidate } : {}),
       ...(typeof resolvedAmountMinor === 'number' ? { amountMinor: resolvedAmountMinor } : {}),
       ...(resolvedCurrency ? { currency: resolvedCurrency } : {}),
       ...(occurredAt ? { occurredAt } : {}),
       data: {
         sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
         ...(extracted.settlementDirection ? { settlementDirection: extracted.settlementDirection } : {}),
-        ...(extracted.invoiceNumber ? { invoiceNumber: extracted.invoiceNumber } : {}),
+        ...(referenceCandidate ? { invoiceNumber: referenceCandidate } : {}),
         ...(extracted.variableSymbol ? { variableSymbol: extracted.variableSymbol } : {}),
-        ...(extracted.supplier ? { supplier: extracted.supplier } : {}),
+        ...(supplierCandidate ? { supplier: supplierCandidate } : {}),
         ...(extracted.customer ? { customer: extracted.customer } : {}),
         ...(issueDate ? { issueDate } : {}),
         ...(dueDate ? { dueDate } : {}),
@@ -544,20 +551,13 @@ function shouldCreatePartialInvoiceScanRecord(input: {
     return false
   }
 
-  return Boolean(
-    input.extracted.invoiceNumber
-    || input.summary.referenceNumber
-    || input.extracted.supplier
-    || input.summary.issuerOrCounterparty
-    || typeof input.resolvedAmountMinor === 'number'
-    || input.resolvedCurrency
-    || input.summary.issueDate
-    || input.summary.taxableDate
-    || input.summary.dueDate
-  )
+  return true
 }
 
 function shouldAllowInvoicePartialRecord(input: {
+  sourceDocument: ParseInvoiceDocumentInput['sourceDocument']
+  content: string
+  binaryContentBase64?: string
   extracted: InvoiceDocumentExtractionDetails['fields']
   summary: DeterministicDocumentExtractionSummary
   resolvedAmountMinor: number | undefined
@@ -577,6 +577,33 @@ function shouldAllowInvoicePartialRecord(input: {
     || input.summary.issueDate
     || input.summary.taxableDate
     || input.summary.dueDate
+    || shouldAllowInvoiceContextFallbackRecord({
+      sourceDocument: input.sourceDocument,
+      content: input.content,
+      binaryContentBase64: input.binaryContentBase64,
+      summary: input.summary
+    })
+  )
+}
+
+function shouldAllowInvoiceContextFallbackRecord(input: {
+  sourceDocument: ParseInvoiceDocumentInput['sourceDocument']
+  content: string
+  binaryContentBase64?: string
+  summary: DeterministicDocumentExtractionSummary
+}): boolean {
+  if (input.summary.finalStatus === 'failed') {
+    return false
+  }
+
+  if (input.sourceDocument.sourceSystem !== 'invoice' || input.sourceDocument.documentType !== 'invoice') {
+    return false
+  }
+
+  return Boolean(
+    input.binaryContentBase64?.trim()
+    || input.summary.ibanHint
+    || detectInvoiceDocumentKeywordHits(input.content).length > 0
   )
 }
 
