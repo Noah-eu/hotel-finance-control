@@ -1326,7 +1326,16 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     return 'invoice'
   }
 
-  if (receiptSummary.confidence === 'strong' || looksLikeReceiptDocumentText(content)) {
+  if (
+    receiptSummary.confidence === 'strong'
+    || (
+      receiptSummary.finalStatus !== 'failed'
+      && Boolean(receiptSummary.issuerOrCounterparty)
+      && Boolean(receiptSummary.paymentDate)
+      && typeof receiptSummary.totalAmountMinor === 'number'
+    )
+    || looksLikeReceiptDocumentText(content)
+  ) {
     return 'receipt'
   }
 

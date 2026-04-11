@@ -3257,6 +3257,82 @@ describe('buildUploadWebFlow', () => {
     expect(result.fileRoutes.some((file) => file.fileName === 'receipt-handwritten.pdf' && file.status === 'error')).toBe(false)
   })
 
+  it('keeps browser-first multi-receipt scan PDFs as two standalone receipt documents with extracted Tesco and Potraviny totals', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('scan-receipts-tesco-potraviny.pdf', [
+          'TESCO Praha Eden',
+          'Účtenka č. TESCO-20260329-01',
+          'Datum 29.03.2026 10:15',
+          'Celkem 3 254,30 CZK',
+          'Platba karta',
+          '',
+          'Potraviny U Nádraží',
+          'Doklad č. POTR-20260329-77',
+          'Datum 29.03.2026 11:05',
+          'Celkem 645,00',
+          'Hotovost'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T09:40:00.000Z'
+    })
+
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'scan-receipts-tesco-potraviny.pdf',
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        extractedCount: 2
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'scan-receipts-tesco-potraviny.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          sourceSystem: 'receipt',
+          documentType: 'receipt',
+          finalStatus: expect.stringMatching(/parsed|needs_review/),
+          extractionStages: expect.arrayContaining([
+            expect.objectContaining({
+              stage: 'validation_and_confidence',
+              notes: expect.arrayContaining(['scanClassified=true', 'segmentedDocuments=2'])
+            })
+          ])
+        })
+      })
+    )
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'scan-receipts-tesco-potraviny.pdf',
+          extractedCount: 2,
+          extractedRecordIds: ['receipt-record-1', 'receipt-record-2']
+        })
+      ])
+    )
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'expense-unmatched-document:receipt-record-1',
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '3 254,30 Kč' }),
+            expect.objectContaining({ label: 'protistrana / dodavatel', value: 'TESCO Praha Eden' })
+          ])
+        }),
+        expect.objectContaining({
+          id: 'expense-unmatched-document:receipt-record-2',
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '645,00 Kč' }),
+            expect.objectContaining({ label: 'protistrana / dodavatel', value: 'Potraviny U Nádraží' })
+          ])
+        })
+      ])
+    )
+  })
+
   it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

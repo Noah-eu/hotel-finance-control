@@ -102,9 +102,12 @@ describe('parseInvoiceDocument', () => {
       extractedAt
     })
 
-    expect(records[0]).toEqual({
+    expect(records[0]).toMatchObject({
       ...fixture.expectedExtractedRecords[0],
-      extractedAt
+      extractedAt,
+      data: expect.objectContaining({
+        paymentMethod: expect.any(String)
+      })
     })
 
     expect(inspectReceiptDocumentExtractionSummary(
@@ -145,6 +148,77 @@ describe('parseInvoiceDocument', () => {
         category: 'supplies'
       }
     })
+  })
+
+  it('splits a scan-like single page with Tesco + Potraviny into two receipt-document records', () => {
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-scan-multi' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'scan-receipts.pdf',
+        uploadedAt: '2026-03-29T12:00:00.000Z'
+      },
+      content: [
+        'TESCO Praha Eden',
+        'Účtenka č. TESCO-20260329-01',
+        'Datum 29.03.2026 10:15',
+        'Celkem 3 254,30 CZK',
+        'Platba karta',
+        '',
+        'Potraviny U Nádraží',
+        'Doklad č. POTR-20260329-77',
+        'Datum 29.03.2026 11:05',
+        'Celkem 645,00',
+        'Hotovost'
+      ].join('\n'),
+      extractedAt: '2026-03-29T12:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      id: 'receipt-record-1',
+      amountMinor: 325430,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        merchant: 'TESCO Praha Eden',
+        paymentMethod: 'Platba kartou',
+        scanClassified: true,
+        scanSegmentIndex: 1,
+        scanSegmentCount: 2
+      })
+    })
+    expect(records[1]).toMatchObject({
+      id: 'receipt-record-2',
+      amountMinor: 64500,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        merchant: 'Potraviny U Nádraží',
+        paymentMethod: 'Platba hotově',
+        scanClassified: true,
+        scanSegmentIndex: 2,
+        scanSegmentCount: 2
+      })
+    })
+
+    const summary = inspectReceiptDocumentExtractionSummary([
+      'TESCO Praha Eden',
+      'Účtenka č. TESCO-20260329-01',
+      'Datum 29.03.2026 10:15',
+      'Celkem 3 254,30 CZK',
+      '',
+      'Potraviny U Nádraží',
+      'Doklad č. POTR-20260329-77',
+      'Datum 29.03.2026 11:05',
+      'Celkem 645,00'
+    ].join('\n'))
+
+    expect(summary.extractionStages?.find((stage) => stage.stage === 'validation_and_confidence')?.notes).toEqual(
+      expect.arrayContaining([
+        'scanClassified=true',
+        'segmentedDocuments=2'
+      ])
+    )
   })
 
   it('converts human-readable whole-unit document totals into minor units in the shared path', () => {
@@ -1107,6 +1181,52 @@ describe('parseInvoiceDocument', () => {
       finalStatus: 'parsed',
       requiredFieldsCheck: 'passed',
       missingRequiredFields: []
+    })
+  })
+
+  it('extracts Datart scan-like tax invoice fields as invoice-like record with total 349 CZK and reference 358260017610', () => {
+    const records = parseInvoiceDocument({
+      sourceDocument: {
+        id: 'doc-invoice-scan-datart-358260017610' as any,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        fileName: 'datart-scan.pdf',
+        uploadedAt: '2026-03-29T12:00:00.000Z'
+      },
+      content: [
+        'DATART',
+        'Daňový doklad - FAKTURA 358260017610',
+        'Dodavatel: HP TRONIC Zlín, spol. s r.o.',
+        'Datum vystavení: 28.03.2026',
+        'Datum splatnosti: 28.03.2026',
+        'Celkem k úhradě: 349,00 CZK'
+      ].join('\n'),
+      extractedAt: '2026-03-29T12:20:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      rawReference: '358260017610',
+      amountMinor: 34900,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        invoiceNumber: '358260017610',
+        supplier: expect.stringMatching(/HP TRONIC|DATART/i)
+      })
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary([
+      'DATART',
+      'Daňový doklad - FAKTURA 358260017610',
+      'Dodavatel: HP TRONIC Zlín, spol. s r.o.',
+      'Datum vystavení: 28.03.2026',
+      'Datum splatnosti: 28.03.2026',
+      'Celkem k úhradě: 349,00 CZK'
+    ].join('\n'))).toMatchObject({
+      referenceNumber: '358260017610',
+      issuerOrCounterparty: expect.stringMatching(/HP TRONIC|DATART/i),
+      totalAmountMinor: 34900,
+      totalCurrency: 'CZK'
     })
   })
 

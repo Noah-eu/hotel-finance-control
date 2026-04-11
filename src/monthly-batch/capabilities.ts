@@ -230,7 +230,7 @@ function detectUploadedMonthlyFileDocumentHints(input: {
     normalizedFileName.includes('receipt')
     || normalizedFileName.includes('uctenka')
     || normalizedFileName.includes('účtenka')
-    || receiptSummary?.confidence === 'strong'
+    || isUsableReceiptSummary(receiptSummary)
     || looksLikeReceiptDocumentText(input.content)
   ) {
     hints.add('receipt_like')
@@ -272,6 +272,22 @@ function looksLikeReceiptDocumentText(content: string): boolean {
     /\bnote\b/i,
     /\bpozn[aá]mka\b/i
   ]) >= 3
+}
+
+function isUsableReceiptSummary(
+  summary: ReturnType<typeof inspectReceiptDocumentExtractionSummary> | undefined
+): boolean {
+  if (!summary) {
+    return false
+  }
+
+  return summary.confidence === 'strong'
+    || (
+      summary.finalStatus !== 'failed'
+      && Boolean(summary.issuerOrCounterparty)
+      && Boolean(summary.paymentDate)
+      && typeof summary.totalAmountMinor === 'number'
+    )
 }
 
 function countMatchingPatterns(content: string, patterns: RegExp[]): number {
