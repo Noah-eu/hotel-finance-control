@@ -3521,6 +3521,40 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('keeps extension-less and mime-less PDF-like scans with IBAN text on document intake path instead of unsupported', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileWithMime(
+          'ScanDMPDF',
+          buildRuntimePdfBase64FromToUnicodeTextLines([
+            'Daňový doklad - FAKTURA 358260017610',
+            'Dodavatel: HP TRONIC Zlin, spol. s r.o.',
+            'Datum vystavení 30.03.2026',
+            'Celkem k úhradě 349,00 Kč',
+            'IBAN CZ12080000000000004582802'
+          ]),
+          ''
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T10:00:00.000Z'
+    })
+
+    expect(result.routingSummary.unsupportedFileCount).toBe(0)
+    const route = result.fileRoutes.find((file) => file.fileName === 'ScanDMPDF')
+    expect(route).toBeDefined()
+    expect(route?.status).toBe('supported')
+    expect(route?.intakeStatus).toBe('parsed')
+    expect(route?.sourceSystem).not.toBe('unknown')
+    expect(route?.parserId).toBeTruthy()
+    expect(route?.decision.ingestionBranch).toBe('text-pdf-parser')
+    expect(route?.decision.matchedRules.some((rule) =>
+      rule === 'text-pdf-document-fallback' || rule === 'document-summary-fallback'
+    )).toBe(true)
+    expect((route?.extractedCount ?? 0)).toBeGreaterThan(0)
+    expect(result.reviewSections.expenseUnmatchedDocuments.length).toBeGreaterThan(0)
+  })
+
   it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -7729,9 +7763,13 @@ function buildRealMixedAirbnbVoucherMatchContent(): string {
 }
 
 function createRuntimePdfFile(name: string, binaryContentBase64: string) {
+  return createRuntimePdfFileWithMime(name, binaryContentBase64, 'application/pdf')
+}
+
+function createRuntimePdfFileWithMime(name: string, binaryContentBase64: string, mimeType: string) {
   return {
     name,
-    type: 'application/pdf',
+    type: mimeType,
     async text() {
       return ''
     },

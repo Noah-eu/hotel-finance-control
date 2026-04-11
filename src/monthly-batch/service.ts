@@ -1234,6 +1234,42 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
+  const bookingSignalSet = new Set(bookingPdfDecision?.detectedSignals ?? [])
+  const hasStrongBookingPayoutSignals = bookingSignalSet.has('booking-branding')
+    || bookingSignalSet.has('booking-payout-statement-wording')
+    || bookingSignalSet.has('booking-payment-id')
+    || bookingSignalSet.has('booking-payout-date')
+    || bookingSignalSet.has('booking-payout-total')
+  const documentLikePdfFallbackSource = inferDocumentLikePdfFallbackSource({
+    capability,
+    ingestionBranch,
+    bookingSignalSet
+  })
+
+  if (documentLikePdfFallbackSource !== 'unknown' && !hasStrongBookingPayoutSignals) {
+    return {
+      sourceSystem: documentLikePdfFallbackSource,
+      documentType: inferDocumentType(documentLikePdfFallbackSource),
+      classificationBasis: 'content',
+      role: 'primary',
+      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
+        capability,
+        ingestionBranch,
+        sourceSystem: documentLikePdfFallbackSource,
+        documentType: inferDocumentType(documentLikePdfFallbackSource),
+        classificationBasis: 'content',
+        role: 'primary',
+        parserSupported: true,
+        matchedRules: [
+          'text-pdf-document-fallback',
+          ...(bookingSignalSet.has('iban-hint') ? ['iban-hint-nonblocking'] : [])
+        ],
+        missingSignals: [],
+        detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+      }), invoiceListWorkbookDiagnostics)
+    }
+  }
+
   return {
     sourceSystem: 'unknown',
     documentType: 'other',
@@ -1248,6 +1284,30 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
       parserSupported: false
     }), invoiceListWorkbookDiagnostics)
   }
+}
+
+function inferDocumentLikePdfFallbackSource(input: {
+  capability: UploadedMonthlyFileCapabilityAssessment
+  ingestionBranch: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['decision']['ingestionBranch']
+  bookingSignalSet: Set<string>
+}): SourceDocument['sourceSystem'] {
+  if (input.ingestionBranch !== 'text-pdf-parser' || input.capability.profile !== 'pdf_text_layer') {
+    return 'unknown'
+  }
+
+  if (input.capability.documentHints.includes('invoice_like')) {
+    return 'invoice'
+  }
+
+  if (input.capability.documentHints.includes('receipt_like')) {
+    return 'receipt'
+  }
+
+  if (input.bookingSignalSet.has('iban-hint')) {
+    return 'invoice'
+  }
+
+  return 'unknown'
 }
 
 function withInvoiceListWorkbookSignatureDiagnostics(
