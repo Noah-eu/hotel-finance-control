@@ -3587,6 +3587,23 @@ describe('buildUploadWebFlow', () => {
     const extractedScan = result.extractedRecords.find((entry) => entry.fileName === 'ScanDMPDF')
     expect(extractedScan).toBeDefined()
     expect(extractedScan?.extractedCount).toBeGreaterThan(0)
+
+    const intakeDiagnostic = result.runtimeAudit.fileIntakeDiagnostics.find((entry) => entry.fileName === 'ScanDMPDF')
+    expect(intakeDiagnostic).toEqual(
+      expect.objectContaining({
+        textExtractionMode: 'pdf-text',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        invoiceScanFallbackApplied: true,
+        invoiceScanFallbackRecordCreated: true,
+        invoiceScanFallbackRecordDroppedReason: undefined,
+        documentExtractionSummary: expect.objectContaining({
+          invoiceScanFallbackApplied: true,
+          invoiceScanFallbackRecordCreated: true,
+          invoiceScanFallbackRecordDroppedReason: undefined
+        })
+      })
+    )
   })
 
   it('keeps the current Pohyby_5599955956 monthly CSV on the bank statement path even when content includes invoice-like counterparties', async () => {

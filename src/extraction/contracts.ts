@@ -51,6 +51,10 @@ export interface DeterministicDocumentExtractionSummary {
   finalStatus: DeterministicDocumentFinalStatus
   requiredFieldsCheck: 'passed' | 'failed'
   missingRequiredFields: string[]
+  invoiceScanFallbackApplied?: boolean
+  invoiceScanFallbackRejectedReason?: string
+  invoiceScanFallbackRecordCreated?: boolean
+  invoiceScanFallbackRecordDroppedReason?: string
   qrDetected?: boolean
   qrRawPayload?: string
   qrParsedFields?: DeterministicDocumentQrParsedFields

@@ -166,6 +166,10 @@ export interface UploadedMonthlyFileRoute {
     parsedAmountCurrency?: string
     parsedDateCandidate?: string
     parsedTargetBankAccountHint?: string
+    invoiceScanFallbackApplied?: boolean
+    invoiceScanFallbackRejectedReason?: string
+    invoiceScanFallbackRecordCreated?: boolean
+    invoiceScanFallbackRecordDroppedReason?: string
   }
   decision: UploadedMonthlyFileDecision
 }

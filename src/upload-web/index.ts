@@ -325,6 +325,10 @@ export interface BrowserRuntimeUploadState {
       parsedAmountCurrency?: string
       parsedDateCandidate?: string
       parsedTargetBankAccountHint?: string
+      invoiceScanFallbackApplied?: boolean
+      invoiceScanFallbackRejectedReason?: string
+      invoiceScanFallbackRecordCreated?: boolean
+      invoiceScanFallbackRecordDroppedReason?: string
       comgatePipelineDiagnostics?: {
         parserVariants: string[]
         extractedRecordCount: number

@@ -127,6 +127,8 @@ interface InvoiceDocumentExtractionDetails {
   fieldDebug: Record<InvoiceSummaryFieldKey, DeterministicDocumentFieldExtractionDebug>
   fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
   fieldConfidence: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldConfidence>>
+  scanFallbackApplied: boolean
+  scanFallbackRejectedReason?: string
   qrDetected: boolean
   qrRawPayload?: string
   qrParsedFields?: DeterministicDocumentQrParsedFields
@@ -153,6 +155,13 @@ interface InvoiceOcrExtractionResult {
   rawPayload?: string
   parsedFields?: DeterministicDocumentOcrParsedFields
   adapter?: 'ocr' | 'vision'
+}
+
+interface InvoiceScanFallbackTrace {
+  applied: boolean
+  rejectedReason?: string
+  recordCreated: boolean
+  recordDroppedReason?: string
 }
 
 const FIELD_ALIASES = {
@@ -242,10 +251,6 @@ export class InvoiceDocumentParser {
       ?? summary.localCurrency
       ?? looseScanAmountFallback?.currency
 
-    if (summary.finalStatus === 'failed') {
-      throw new Error(`Invoice document is missing required fields: ${summary.missingRequiredFields.join(', ')}`)
-    }
-
     const issueDate = summary.issueDate ?? summary.taxableDate
     const dueDate = summary.dueDate
     const taxableDate = summary.taxableDate
@@ -259,11 +264,47 @@ export class InvoiceDocumentParser {
           : undefined
       )
 
-    if (!occurredAt || typeof resolvedAmountMinor !== 'number' || !resolvedCurrency) {
-      return []
+    const recordId = buildInvoiceRecordId(input.sourceDocument.id)
+    const canCreateCompleteRecord = Boolean(
+      occurredAt
+      && typeof resolvedAmountMinor === 'number'
+      && resolvedCurrency
+    )
+    const canCreatePartialScanRecord = shouldCreatePartialInvoiceScanRecord({
+      scanFallbackDateAllowed,
+      extracted,
+      summary,
+      resolvedAmountMinor,
+      resolvedCurrency,
+      occurredAt
+    })
+    const annotateScanFallbackRecord = Boolean(
+      canCreatePartialScanRecord
+      || (
+        scanFallbackDateAllowed
+        && occurredAt
+        && !issueDate
+        && !dueDate
+        && !taxableDate
+      )
+    )
+    const scanFallbackTrace = buildInvoiceScanFallbackTrace({
+      applied: scanFallbackDateAllowed,
+      extracted,
+      summary,
+      resolvedAmountMinor,
+      resolvedCurrency,
+      occurredAt,
+      recordCreated: canCreateCompleteRecord || canCreatePartialScanRecord
+    })
+
+    if (summary.finalStatus === 'failed' && !canCreatePartialScanRecord) {
+      throw new Error(`Invoice document is missing required fields: ${summary.missingRequiredFields.join(', ')}`)
     }
 
-    const recordId = buildInvoiceRecordId(input.sourceDocument.id)
+    if (!canCreateCompleteRecord && !canCreatePartialScanRecord) {
+      return []
+    }
 
     const record: ExtractedRecord = {
       id: recordId,
@@ -271,9 +312,9 @@ export class InvoiceDocumentParser {
       recordType: 'invoice-document',
       extractedAt: input.extractedAt,
       ...(extracted.invoiceNumber ? { rawReference: extracted.invoiceNumber } : {}),
-      amountMinor: resolvedAmountMinor,
-      currency: resolvedCurrency,
-      occurredAt,
+      ...(typeof resolvedAmountMinor === 'number' ? { amountMinor: resolvedAmountMinor } : {}),
+      ...(resolvedCurrency ? { currency: resolvedCurrency } : {}),
+      ...(occurredAt ? { occurredAt } : {}),
       data: {
         sourceSystem: 'invoice',
         ...(extracted.settlementDirection ? { settlementDirection: extracted.settlementDirection } : {}),
@@ -308,7 +349,22 @@ export class InvoiceDocumentParser {
         ...(typeof summary.vatAmountMinor === 'number' && summary.vatCurrency
           ? { vatAmountMinor: summary.vatAmountMinor, vatCurrency: summary.vatCurrency }
           : {}),
-        ...(summary.ibanHint ? { ibanHint: summary.ibanHint } : {})
+        ...(summary.ibanHint ? { ibanHint: summary.ibanHint } : {}),
+        ...(annotateScanFallbackRecord
+          ? {
+            documentType: 'invoice',
+            debug: {
+              confidence: summary.confidence,
+              finalStatus: summary.finalStatus,
+              requiredFieldsCheck: summary.requiredFieldsCheck,
+              missingRequiredFields: summary.missingRequiredFields,
+              invoiceScanFallbackApplied: scanFallbackTrace.applied,
+              invoiceScanFallbackRejectedReason: scanFallbackTrace.rejectedReason,
+              invoiceScanFallbackRecordCreated: scanFallbackTrace.recordCreated,
+              invoiceScanFallbackRecordDroppedReason: scanFallbackTrace.recordDroppedReason
+            }
+          }
+          : {})
       }
     }
 
@@ -412,6 +468,10 @@ function buildInvoiceDocumentExtractionSummary(
     documentKind: 'invoice',
     sourceSystem: 'invoice',
     documentType: 'invoice',
+    invoiceScanFallbackApplied: extraction.scanFallbackApplied,
+    ...(extraction.scanFallbackRejectedReason
+      ? { invoiceScanFallbackRejectedReason: extraction.scanFallbackRejectedReason }
+      : {}),
     ...(extracted.settlementDirection ? { settlementDirection: extracted.settlementDirection } : {}),
     ...(extracted.supplier ? { issuerOrCounterparty: extracted.supplier } : {}),
     ...(extracted.customer ? { customer: extracted.customer } : {}),
@@ -458,6 +518,101 @@ function buildInvoiceDocumentExtractionSummary(
   }
 }
 
+function shouldCreatePartialInvoiceScanRecord(input: {
+  scanFallbackDateAllowed: boolean
+  extracted: InvoiceDocumentExtractionDetails['fields']
+  summary: DeterministicDocumentExtractionSummary
+  resolvedAmountMinor: number | undefined
+  resolvedCurrency: string | undefined
+  occurredAt: string | undefined
+}): boolean {
+  if (!input.scanFallbackDateAllowed) {
+    return false
+  }
+
+  if (input.occurredAt && typeof input.resolvedAmountMinor === 'number' && input.resolvedCurrency) {
+    return false
+  }
+
+  return Boolean(
+    input.extracted.invoiceNumber
+    || input.summary.referenceNumber
+    || input.extracted.supplier
+    || input.summary.issuerOrCounterparty
+    || typeof input.resolvedAmountMinor === 'number'
+    || input.resolvedCurrency
+    || input.summary.issueDate
+    || input.summary.taxableDate
+    || input.summary.dueDate
+  )
+}
+
+function buildInvoiceScanFallbackTrace(input: {
+  applied: boolean
+  extracted: InvoiceDocumentExtractionDetails['fields']
+  summary: DeterministicDocumentExtractionSummary
+  resolvedAmountMinor: number | undefined
+  resolvedCurrency: string | undefined
+  occurredAt: string | undefined
+  recordCreated: boolean
+}): InvoiceScanFallbackTrace {
+  if (!input.applied) {
+    return {
+      applied: false,
+      rejectedReason: 'scan-fallback-not-eligible',
+      recordCreated: false,
+      recordDroppedReason: input.recordCreated ? undefined : 'scan-fallback-not-eligible'
+    }
+  }
+
+  if (input.recordCreated) {
+    return {
+      applied: true,
+      recordCreated: true
+    }
+  }
+
+  if (typeof input.resolvedAmountMinor !== 'number') {
+    return {
+      applied: true,
+      rejectedReason: 'missing-amount-candidate',
+      recordCreated: false,
+      recordDroppedReason: 'missing-amount-candidate'
+    }
+  }
+
+  if (!input.resolvedCurrency) {
+    return {
+      applied: true,
+      rejectedReason: 'missing-currency-candidate',
+      recordCreated: false,
+      recordDroppedReason: 'missing-currency-candidate'
+    }
+  }
+
+  if (!input.occurredAt) {
+    const hasAnyInvoiceIdentity = Boolean(
+      input.extracted.invoiceNumber
+      || input.summary.referenceNumber
+      || input.extracted.supplier
+      || input.summary.issuerOrCounterparty
+    )
+
+    return {
+      applied: true,
+      rejectedReason: hasAnyInvoiceIdentity ? 'missing-date-candidate' : 'missing-date-and-identity-candidates',
+      recordCreated: false,
+      recordDroppedReason: hasAnyInvoiceIdentity ? 'missing-date-candidate' : 'missing-date-and-identity-candidates'
+    }
+  }
+
+  return {
+    applied: true,
+    recordCreated: false,
+    recordDroppedReason: 'parser-returned-no-records'
+  }
+}
+
 function extractInvoiceDocumentDetails(input: {
   content: string
   binaryContentBase64?: string
@@ -498,9 +653,13 @@ function extractInvoiceDocumentDetails(input: {
   }
   const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
   const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields, lines)
-  const scanFallbackFields = shouldApplyInvoiceScanFallback(content)
+  const scanFallbackApplied = shouldApplyInvoiceScanFallback(content)
+  const scanFallbackFields = scanFallbackApplied
     ? extractInvoiceScanFallbackFields(content)
     : {}
+  const scanFallbackRejectedReason = scanFallbackApplied
+    ? (Object.keys(scanFallbackFields).length === 0 ? 'no-scan-fallback-fields-recovered' : undefined)
+    : 'scan-fallback-not-eligible'
   const usableTextTotalRaw = safeParseDocumentMoney(textExtracted.totalRaw, 'Invoice text total candidate')
     ? textExtracted.totalRaw
     : undefined
@@ -573,6 +732,8 @@ function extractInvoiceDocumentDetails(input: {
     groupedHeaderBlockDebug: groupedHeaderSelection.debug,
     groupedTotalsBlockDebug: groupedTotalsSelection.debug,
     rawBlockDiscoveryDebug,
+    scanFallbackApplied,
+    scanFallbackRejectedReason,
     fieldProvenance: mergedFields.fieldProvenance,
     fieldConfidence: buildInvoiceFieldConfidenceMap(mergedFields.fields, mergedFields.fieldProvenance),
     qrDetected: qrExtraction.detected,

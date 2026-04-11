@@ -1256,7 +1256,13 @@ describe('parseInvoiceDocument', () => {
       occurredAt: '2026-03-29',
       data: expect.objectContaining({
         supplier: expect.stringMatching(/HP TRONIC|DATART/i),
-        invoiceNumber: '358260017610'
+        invoiceNumber: '358260017610',
+        documentType: 'invoice',
+        debug: expect.objectContaining({
+          invoiceScanFallbackApplied: true,
+          invoiceScanFallbackRecordCreated: true,
+          invoiceScanFallbackRecordDroppedReason: undefined
+        })
       })
     })
   })

@@ -1928,6 +1928,73 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(route?.decision.documentFallbackSkipReason).toBeUndefined()
   })
 
+  it('keeps the current ScanDMPDF invoice scan non-empty through monthly ingest and exposes scan fallback record trace', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'ScanDMPDF',
+          content: [
+            'Daňový doklad - FAKTURA 358260017610',
+            'Dodavatel: HP TRONIC Zlin, spol. s r.o.',
+            'IBAN CZ12080000000000004582802',
+            'Celkem k uhrade 349,00 K6'
+          ].join('\n'),
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-03-29T10:00:00.000Z',
+          sourceDescriptor: {
+            mimeType: '',
+            browserTextExtraction: {
+              mode: 'pdf-text',
+              status: 'extracted',
+              textPreview: 'Daňový doklad - FAKTURA 358260017610',
+              detectedSignatures: ['iban-hint']
+            },
+            capability: {
+              profile: 'unknown',
+              transportProfile: 'text_pdf',
+              documentHints: [],
+              confidence: 'hint',
+              evidence: ['pdf-upload', 'iban-hint']
+            }
+          }
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-scandmpdf-current-shape',
+        requestedAt: '2026-03-29T10:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-03-29T10:00:30.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'ScanDMPDF',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1,
+        parseDiagnostics: expect.objectContaining({
+          invoiceScanFallbackApplied: true,
+          invoiceScanFallbackRecordCreated: true,
+          invoiceScanFallbackRecordDroppedReason: undefined,
+          documentExtractionSummary: expect.objectContaining({
+            invoiceScanFallbackApplied: true,
+            invoiceScanFallbackRecordCreated: true,
+            invoiceScanFallbackRecordDroppedReason: undefined
+          })
+        })
+      })
+    ])
+    expect(result.batch.files).toEqual([
+      expect.objectContaining({
+        extractedCount: 1,
+        extractedRecordIds: [expect.stringContaining('invoice-record:uploaded:invoice:1:scandmpdf')]
+      })
+    ])
+  })
+
   it('exposes explicit document fallback skip reason when text PDF stays unclassified because of strong booking payout signals', () => {
     const prepared = prepareUploadedMonthlyBatchFiles([
       {

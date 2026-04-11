@@ -385,7 +385,11 @@ function inspectUploadedFileParseDiagnostics(
       parsedAmountMinor: summary.totalAmountMinor,
       parsedAmountCurrency: summary.totalCurrency,
       parsedDateCandidate: summary.issueDate ?? summary.taxableDate ?? summary.dueDate,
-      parsedTargetBankAccountHint: summary.targetBankAccountHint
+      parsedTargetBankAccountHint: summary.targetBankAccountHint,
+      invoiceScanFallbackApplied: summary.invoiceScanFallbackApplied,
+      invoiceScanFallbackRejectedReason: summary.invoiceScanFallbackRejectedReason,
+      invoiceScanFallbackRecordCreated: summary.invoiceScanFallbackRecordCreated,
+      invoiceScanFallbackRecordDroppedReason: summary.invoiceScanFallbackRecordDroppedReason
     }
   }
 
@@ -431,7 +435,31 @@ function mergeNoExtractParseDiagnostics(
   extractedRecords: ExtractedRecord[]
 ): PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['parseDiagnostics'] | undefined {
   if (extractedRecords.length > 0) {
-    return parseDiagnostics
+    if (file.sourceDocument.sourceSystem !== 'invoice') {
+      return parseDiagnostics
+    }
+
+    const summary = parseDiagnostics?.documentExtractionSummary
+    if (!summary) {
+      return parseDiagnostics
+    }
+
+    const invoiceScanFallbackApplied = parseDiagnostics?.invoiceScanFallbackApplied ?? summary.invoiceScanFallbackApplied
+
+    return {
+      ...parseDiagnostics,
+      documentExtractionSummary: {
+        ...summary,
+        invoiceScanFallbackApplied,
+        invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
+        invoiceScanFallbackRecordCreated: invoiceScanFallbackApplied ? true : false,
+        invoiceScanFallbackRecordDroppedReason: undefined
+      },
+      invoiceScanFallbackApplied,
+      invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
+      invoiceScanFallbackRecordCreated: invoiceScanFallbackApplied ? true : false,
+      invoiceScanFallbackRecordDroppedReason: undefined
+    }
   }
 
   if (file.sourceDocument.sourceSystem !== 'invoice' && file.sourceDocument.sourceSystem !== 'receipt') {
@@ -453,6 +481,7 @@ function mergeNoExtractParseDiagnostics(
     ?? summary.dueDate
   const parsedAmountMinor = parseDiagnostics?.parsedAmountMinor ?? summary.totalAmountMinor
   const parsedAmountCurrency = parseDiagnostics?.parsedAmountCurrency ?? summary.totalCurrency
+  const invoiceScanFallbackApplied = parseDiagnostics?.invoiceScanFallbackApplied ?? summary.invoiceScanFallbackApplied
   const noExtractReason = !parsedDateCandidate
     ? 'missing-usable-date'
     : typeof parsedAmountMinor !== 'number'
@@ -463,6 +492,15 @@ function mergeNoExtractParseDiagnostics(
 
   return {
     ...parseDiagnostics,
+    documentExtractionSummary: file.sourceDocument.sourceSystem === 'invoice'
+      ? {
+        ...summary,
+        invoiceScanFallbackApplied,
+        invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
+        invoiceScanFallbackRecordCreated: false,
+        invoiceScanFallbackRecordDroppedReason: invoiceScanFallbackApplied ? noExtractReason : undefined
+      }
+      : summary,
     presentFields: parseDiagnostics?.presentFields ?? collectPresentDocumentSummaryFields(summary),
     parsedSupplierOrCounterparty: parseDiagnostics?.parsedSupplierOrCounterparty ?? summary.issuerOrCounterparty,
     parsedReferenceNumber: parseDiagnostics?.parsedReferenceNumber ?? summary.referenceNumber,
@@ -471,7 +509,11 @@ function mergeNoExtractParseDiagnostics(
     parsedAmountCurrency,
     parsedDateCandidate,
     parsedTargetBankAccountHint: parseDiagnostics?.parsedTargetBankAccountHint ?? summary.targetBankAccountHint,
-    noExtractReason
+    noExtractReason,
+    invoiceScanFallbackApplied,
+    invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
+    invoiceScanFallbackRecordCreated: false,
+    invoiceScanFallbackRecordDroppedReason: invoiceScanFallbackApplied ? noExtractReason : undefined
   }
 }
 
