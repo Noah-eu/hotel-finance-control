@@ -603,11 +603,17 @@ function extractInvoiceDocumentDetails(input: {
 function shouldApplyInvoiceScanFallback(content: string): boolean {
   const normalized = content.replace(/\r/g, '\n')
   const compact = normalized.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const hasInvoiceLikeKeyword =
+    /\bfaktura\b/i.test(normalized)
+    || /\bda[nň]ov[ýy]\s+doklad\b/i.test(normalized)
+    || /\binvoice\b/i.test(normalized)
+  const hasIbanHint = /\biban\b/i.test(normalized)
 
   return normalized.includes('\u0000')
     || compact.includes('datart')
     || compact.includes('hptronic')
     || compact.includes('clk')
+    || (hasInvoiceLikeKeyword && hasIbanHint)
 }
 
 function extractInvoiceScanFallbackFields(content: string): {

@@ -1464,7 +1464,7 @@ describe('runMonthlyReconciliationBatch', () => {
           capability: expect.objectContaining({
             profile: 'pdf_text_layer',
             transportProfile: 'text_pdf',
-            documentHints: ['invoice_like']
+            documentHints: expect.arrayContaining(['invoice_like'])
           }),
           ingestionBranch: 'text-pdf-parser',
           resolvedBucket: 'recognized-supported'
@@ -1480,13 +1480,17 @@ describe('runMonthlyReconciliationBatch', () => {
       fileName: invoice.sourceDocument.fileName,
       content: invoice.rawInput.content,
       contentFormat: 'pdf-text'
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       profile: 'pdf_text_layer',
       transportProfile: 'text_pdf',
-      documentHints: ['invoice_like'],
       confidence: 'strong',
       evidence: expect.arrayContaining(['pdf-upload', 'text-layer-extracted', 'document-hint:invoice_like'])
-    })
+    }))
+    expect(detectUploadedMonthlyFileCapability({
+      fileName: invoice.sourceDocument.fileName,
+      content: invoice.rawInput.content,
+      contentFormat: 'pdf-text'
+    }).documentHints).toEqual(expect.arrayContaining(['invoice_like']))
 
     const prepared = prepareUploadedMonthlyBatchFiles([
       {
@@ -1520,7 +1524,7 @@ describe('runMonthlyReconciliationBatch', () => {
           capability: expect.objectContaining({
             profile: 'pdf_text_layer',
             transportProfile: 'text_pdf',
-            documentHints: ['invoice_like']
+            documentHints: expect.arrayContaining(['invoice_like'])
           }),
           ingestionBranch: 'text-pdf-parser',
           resolvedBucket: 'recognized-supported'

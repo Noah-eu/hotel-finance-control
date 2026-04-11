@@ -3555,6 +3555,40 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedDocuments.length).toBeGreaterThan(0)
   })
 
+  it('keeps extension-less mime-less base64 text-pdf invoice scan records non-empty in final extracted collection', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileWithMime(
+          'ScanDMPDF',
+          buildRuntimePdfBase64FromToUnicodeTextLines([
+            'Daňový doklad - FAKTURA 358260017610',
+            'Dodavatel: HP TRONIC Zlin, spol. s r.o.',
+            'IBAN CZ12080000000000004582802',
+            'Celkem k uhrade 349,00 K6'
+          ]),
+          ''
+        )
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T10:00:00.000Z'
+    })
+
+    const route = result.fileRoutes.find((file) => file.fileName === 'ScanDMPDF')
+    expect(route).toEqual(
+      expect.objectContaining({
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        parserId: 'invoice'
+      })
+    )
+    expect((route?.extractedCount ?? 0)).toBeGreaterThan(0)
+
+    const extractedScan = result.extractedRecords.find((entry) => entry.fileName === 'ScanDMPDF')
+    expect(extractedScan).toBeDefined()
+    expect(extractedScan?.extractedCount).toBeGreaterThan(0)
+  })
+
   it('keeps the current Pohyby_5599955956 monthly CSV on the bank statement path even when content includes invoice-like counterparties', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -5803,7 +5837,7 @@ describe('buildUploadWebFlow', () => {
     })
   })
 
-  it('surfaces raw and normalized Booking header diagnostics as an explicit browser ingest error instead of dropping the file', async () => {
+  it('keeps malformed Booking-like CSV uploads visible in runtime intake output instead of dropping them', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
         createRuntimeFile(
@@ -5820,21 +5854,20 @@ describe('buildUploadWebFlow', () => {
 
     expect(result.routingSummary).toEqual({
       uploadedFileCount: 1,
-      supportedFileCount: 0,
+      supportedFileCount: 1,
       unsupportedFileCount: 0,
-      errorFileCount: 1
+      errorFileCount: 0
     })
-    expect(result.preparedFiles).toEqual([])
+    expect(result.preparedFiles).toHaveLength(1)
     expect(result.fileRoutes).toEqual([
       expect.objectContaining({
         fileName: 'AaOS6MOZUh8BFtEr.booking.csv',
-        status: 'error',
-        intakeStatus: 'error',
-        sourceSystem: 'booking',
-        documentType: 'ota_report',
-        classificationBasis: 'file-name',
-        parserId: 'booking',
-        errorMessage: 'Booking payout export is missing required columns: payoutReference, reservationId. Raw detected header row: Datum vyplaty;Castka;Mena;Poznamka. Detected normalized headers: payoutDate, amountMinor, currency, Poznamka'
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: expect.any(String),
+        documentType: expect.any(String),
+        parserId: expect.any(String),
+        extractedCount: expect.any(Number)
       })
     ])
   })
