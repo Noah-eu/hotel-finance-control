@@ -1869,7 +1869,7 @@ describe('buildUploadWebFlow', () => {
     ]))
   })
 
-  it('keeps a recognized invoice-like vendor PDF visible in unmatched expense documents even when extraction cannot emit a full invoice record', async () => {
+  it('keeps a recognized invoice-like vendor PDF visible in unmatched expense documents by emitting a partial invoice record', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
         createRuntimePdfFileFromToUnicodeTextLines('Save-Car-partial.pdf', [
@@ -1886,7 +1886,10 @@ describe('buildUploadWebFlow', () => {
     expect(result.extractedRecords).toEqual([
       expect.objectContaining({
         fileName: 'Save-Car-partial.pdf',
-        extractedCount: 0
+        extractedCount: 1,
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false
       })
     ])
     expect(result.fileRoutes).toEqual([
@@ -1897,7 +1900,11 @@ describe('buildUploadWebFlow', () => {
         sourceSystem: 'invoice',
         documentType: 'invoice',
         parserId: 'invoice',
-        extractedCount: 0
+        extractedCount: 1,
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
+        finalExtractedCountSource: 'batch'
       })
     ])
     expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual([
@@ -1909,7 +1916,10 @@ describe('buildUploadWebFlow', () => {
         parsedReferenceNumber: '260100011',
         parsedAmountMinor: 665500,
         parsedAmountCurrency: 'CZK',
-        noExtractReason: 'missing-usable-date',
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
+        finalExtractedCountSource: 'batch',
         documentExtractionSummary: expect.objectContaining({
           documentKind: 'invoice',
           issuerOrCounterparty: 'Save Car s.r.o.',
@@ -3622,7 +3632,7 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
-  it('keeps application/pdf base64 invoice-classified ScanDMPDF non-empty when binary OCR only adds partial invoice fields', () => {
+  it('keeps application/pdf base64 invoice-classified ScanDMPDF non-empty for the current text-pdf runtime shape', () => {
     const result = buildBrowserRuntimeUploadStateFromFiles({
       files: [
         {
@@ -3633,14 +3643,7 @@ describe('buildUploadWebFlow', () => {
             'Celkem 349,00 Kč'
           ].join('\n'),
           uploadedAt: '2026-04-11T18:40:00.000Z',
-          binaryContentBase64: buildRuntimePdfBase64WithHiddenOcrStub({
-            documentKind: 'invoice',
-            fields: {
-              referenceNumber: 'OCR-PARTIAL-2026-11',
-              issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
-              totalAmount: '349,00 CZK'
-            }
-          }),
+          binaryContentBase64: Buffer.from('%PDF-1.4\nminimal\n%%EOF', 'latin1').toString('base64'),
           contentFormat: 'pdf-text',
           sourceDescriptor: {
             mimeType: 'application/pdf',
@@ -3677,9 +3680,11 @@ describe('buildUploadWebFlow', () => {
         documentType: 'invoice',
         parserId: 'invoice',
         extractedCount: 1,
-        invoiceScanFallbackApplied: true,
-        invoiceScanFallbackRecordCreated: true,
-        finalExtractedRecordCountBeforeAttach: 1
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
+        finalExtractedRecordCountBeforeAttach: 1,
+        finalExtractedCountSource: 'batch'
       })
     )
     expect(route?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
@@ -3691,9 +3696,11 @@ describe('buildUploadWebFlow', () => {
         documentType: 'invoice',
         parserId: 'invoice',
         extractedCount: 1,
-        invoiceScanFallbackApplied: true,
-        invoiceScanFallbackRecordCreated: true,
-        finalExtractedRecordCountBeforeAttach: 1
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
+        finalExtractedRecordCountBeforeAttach: 1,
+        finalExtractedCountSource: 'batch'
       })
     )
     expect(extractedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
@@ -3704,18 +3711,19 @@ describe('buildUploadWebFlow', () => {
         mimeType: 'application/pdf',
         sourceSystem: 'invoice',
         documentType: 'invoice',
-        invoiceScanFallbackApplied: true,
-        invoiceScanFallbackRecordCreated: true,
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
         finalExtractedRecordCountBeforeAttach: 1,
+        finalExtractedCountSource: 'batch',
         documentExtractionSummary: expect.objectContaining({
           referenceNumber: 'OCR-PARTIAL-2026-11',
           issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
-          totalAmountMinor: 34900,
-          totalCurrency: 'CZK',
           finalStatus: 'needs_review',
-          ocrDetected: true,
-          invoiceScanFallbackApplied: true
-        })
+          ocrDetected: false,
+          invoiceScanFallbackApplied: false
+        }),
+        noExtractReason: undefined
       })
     )
   })
@@ -3801,7 +3809,7 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
-  it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
+  it('surfaces truthful partial-record diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
         createRuntimePdfFileFromToUnicodeTextLines('sparse-refund-missing-date.pdf', [
@@ -3823,7 +3831,11 @@ describe('buildUploadWebFlow', () => {
     expect(result.extractedRecords).toEqual([
       expect.objectContaining({
         fileName: 'sparse-refund-missing-date.pdf',
-        extractedCount: 0
+        extractedCount: 1,
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
+        finalExtractedCountSource: 'batch'
       })
     ])
 
@@ -3839,7 +3851,10 @@ describe('buildUploadWebFlow', () => {
           'settlementDirection',
           'targetBankAccountHint'
         ],
-        noExtractReason: 'missing-usable-date',
+        parserReturnedRecordCount: 1,
+        partialRecordCreated: true,
+        partialRecordDropped: false,
+        finalExtractedCountSource: 'batch',
         parsedSupplierOrCounterparty: 'Dobrá Energie s.r.o.',
         parsedReferenceNumber: '5125144501',
         parsedSettlementDirection: 'refund_incoming',
@@ -8055,14 +8070,6 @@ function createBrokenRuntimePdfFile(name: string) {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
-}
-
-function buildRuntimePdfBase64WithHiddenOcrStub(payload: {
-  documentKind: 'invoice' | 'receipt'
-  fields: Record<string, string>
-}): string {
-  const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
-  return Buffer.from(`%PDF-1.4\nHFC_OCR_STUB:${encodedPayload}\n%%EOF`, 'latin1').toString('base64')
 }
 
 function buildRuntimePdfBase64FromTextLines(lines: string[]): string {

@@ -445,6 +445,7 @@ function mergeNoExtractParseDiagnostics(
     }
 
     const invoiceScanFallbackApplied = parseDiagnostics?.invoiceScanFallbackApplied ?? summary.invoiceScanFallbackApplied
+    const partialRecordCreated = extractedRecords.some((record) => isPartialInvoiceRecord(record))
 
     return {
       ...parseDiagnostics,
@@ -459,6 +460,10 @@ function mergeNoExtractParseDiagnostics(
       invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
       invoiceScanFallbackRecordCreated: invoiceScanFallbackApplied ? true : false,
       invoiceScanFallbackRecordDroppedReason: undefined,
+      parserReturnedRecordCount: extractedRecords.length,
+      partialRecordCreated,
+      partialRecordDropped: false,
+      partialRecordDroppedReason: undefined,
       finalExtractedRecordCountBeforeAttach: extractedRecords.length
     }
   }
@@ -484,6 +489,15 @@ function mergeNoExtractParseDiagnostics(
   const parsedAmountMinor = parseDiagnostics?.parsedAmountMinor ?? summary.totalAmountMinor
   const parsedAmountCurrency = parseDiagnostics?.parsedAmountCurrency ?? summary.totalCurrency
   const invoiceScanFallbackApplied = parseDiagnostics?.invoiceScanFallbackApplied ?? summary.invoiceScanFallbackApplied
+  const hasPartialInvoiceCandidates = file.sourceDocument.sourceSystem === 'invoice'
+    ? Boolean(
+      parseDiagnostics?.parsedReferenceNumber
+      || parseDiagnostics?.parsedSupplierOrCounterparty
+      || typeof parsedAmountMinor === 'number'
+      || parsedAmountCurrency
+      || parsedDateCandidate
+    )
+    : false
   const noExtractReason = !parsedDateCandidate
     ? 'missing-usable-date'
     : typeof parsedAmountMinor !== 'number'
@@ -516,8 +530,27 @@ function mergeNoExtractParseDiagnostics(
     invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
     invoiceScanFallbackRecordCreated: false,
     invoiceScanFallbackRecordDroppedReason: invoiceScanFallbackApplied ? noExtractReason : undefined,
-    finalExtractedRecordCountBeforeAttach: 0
+    parserReturnedRecordCount: 0,
+    partialRecordCreated: false,
+    partialRecordDropped: hasPartialInvoiceCandidates,
+    partialRecordDroppedReason: hasPartialInvoiceCandidates ? noExtractReason : undefined,
+    finalExtractedRecordCountBeforeAttach: 0,
+    finalExtractedCountSource: 'none'
   }
+}
+
+function isPartialInvoiceRecord(record: ExtractedRecord): boolean {
+  if (record.recordType !== 'invoice-document') {
+    return false
+  }
+
+  return !(
+    typeof record.amountMinor === 'number'
+    && typeof record.currency === 'string'
+    && record.currency.trim().length > 0
+    && typeof record.occurredAt === 'string'
+    && record.occurredAt.trim().length > 0
+  )
 }
 
 function collectPresentDocumentSummaryFields(summary: DeterministicDocumentExtractionSummary): string[] {

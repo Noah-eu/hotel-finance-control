@@ -170,6 +170,11 @@ function buildBrowserRuntimeUploadStateFromIngestion(
         ? findBatchFileExtractedIds(batch, file.sourceDocumentId)
         : []
       const finalExtractedRecordCountBeforeAttach = file.parseDiagnostics?.finalExtractedRecordCountBeforeAttach
+      const finalExtractedCountSource = resolveFinalExtractedCountSource({
+        routeExtractedCount: file.extractedCount ?? 0,
+        batchExtractedCount,
+        preAttachExtractedCount: finalExtractedRecordCountBeforeAttach ?? 0
+      })
 
       return {
         fileName: file.fileName,
@@ -187,7 +192,12 @@ function buildBrowserRuntimeUploadStateFromIngestion(
         invoiceScanFallbackRejectedReason: file.parseDiagnostics?.invoiceScanFallbackRejectedReason,
         invoiceScanFallbackRecordCreated: file.parseDiagnostics?.invoiceScanFallbackRecordCreated,
         invoiceScanFallbackRecordDroppedReason: file.parseDiagnostics?.invoiceScanFallbackRecordDroppedReason,
+        parserReturnedRecordCount: file.parseDiagnostics?.parserReturnedRecordCount,
+        partialRecordCreated: file.parseDiagnostics?.partialRecordCreated,
+        partialRecordDropped: file.parseDiagnostics?.partialRecordDropped,
+        partialRecordDroppedReason: file.parseDiagnostics?.partialRecordDroppedReason,
         finalExtractedRecordCountBeforeAttach,
+        finalExtractedCountSource,
         warnings: file.warnings,
         reason: file.reason,
         errorMessage: file.errorMessage,
@@ -199,6 +209,11 @@ function buildBrowserRuntimeUploadStateFromIngestion(
       const batchExtractedCount = findBatchFileExtractedCount(batch, file.sourceDocument.id)
       const batchExtractedRecordIds = findBatchFileExtractedIds(batch, file.sourceDocument.id)
       const finalExtractedRecordCountBeforeAttach = route?.parseDiagnostics?.finalExtractedRecordCountBeforeAttach
+      const finalExtractedCountSource = resolveFinalExtractedCountSource({
+        routeExtractedCount: route?.extractedCount ?? 0,
+        batchExtractedCount,
+        preAttachExtractedCount: finalExtractedRecordCountBeforeAttach ?? 0
+      })
 
       return {
         fileName: file.sourceDocument.fileName,
@@ -212,7 +227,12 @@ function buildBrowserRuntimeUploadStateFromIngestion(
         invoiceScanFallbackRejectedReason: route?.parseDiagnostics?.invoiceScanFallbackRejectedReason,
         invoiceScanFallbackRecordCreated: route?.parseDiagnostics?.invoiceScanFallbackRecordCreated,
         invoiceScanFallbackRecordDroppedReason: route?.parseDiagnostics?.invoiceScanFallbackRecordDroppedReason,
+        parserReturnedRecordCount: route?.parseDiagnostics?.parserReturnedRecordCount,
+        partialRecordCreated: route?.parseDiagnostics?.partialRecordCreated,
+        partialRecordDropped: route?.parseDiagnostics?.partialRecordDropped,
+        partialRecordDroppedReason: route?.parseDiagnostics?.partialRecordDroppedReason,
         finalExtractedRecordCountBeforeAttach,
+        finalExtractedCountSource,
         accountLabelCs: buildAccountLabel(
           file.sourceDocument.fileName,
           findBatchFileExtractedAccountId(batch, file.sourceDocument.id),
@@ -641,7 +661,17 @@ function buildRuntimeAudit(
         invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason,
         invoiceScanFallbackRecordCreated: parseDiagnostics?.invoiceScanFallbackRecordCreated,
         invoiceScanFallbackRecordDroppedReason: parseDiagnostics?.invoiceScanFallbackRecordDroppedReason,
+        parserReturnedRecordCount: parseDiagnostics?.parserReturnedRecordCount,
+        partialRecordCreated: parseDiagnostics?.partialRecordCreated,
+        partialRecordDropped: parseDiagnostics?.partialRecordDropped,
+        partialRecordDroppedReason: parseDiagnostics?.partialRecordDroppedReason,
         finalExtractedRecordCountBeforeAttach: parseDiagnostics?.finalExtractedRecordCountBeforeAttach,
+        finalExtractedCountSource: parseDiagnostics?.finalExtractedCountSource
+          ?? resolveFinalExtractedCountSource({
+            routeExtractedCount: route?.extractedCount ?? 0,
+            batchExtractedCount: route?.sourceDocumentId ? findBatchFileExtractedCount(batch, route.sourceDocumentId) : 0,
+            preAttachExtractedCount: parseDiagnostics?.finalExtractedRecordCountBeforeAttach ?? 0
+          }),
         comgatePipelineDiagnostics,
         classificationBasis: route?.classificationBasis ?? 'unknown',
         status: route?.status ?? 'unsupported',
@@ -650,6 +680,26 @@ function buildRuntimeAudit(
       }
     })
   }
+}
+
+function resolveFinalExtractedCountSource(input: {
+  routeExtractedCount: number
+  batchExtractedCount: number
+  preAttachExtractedCount: number
+}): BrowserRuntimeUploadState['fileRoutes'][number]['finalExtractedCountSource'] {
+  if (input.routeExtractedCount <= 0 && input.batchExtractedCount <= 0 && input.preAttachExtractedCount <= 0) {
+    return 'none'
+  }
+
+  if (input.batchExtractedCount >= input.routeExtractedCount && input.batchExtractedCount >= input.preAttachExtractedCount) {
+    return 'batch'
+  }
+
+  if (input.routeExtractedCount >= input.preAttachExtractedCount) {
+    return 'route'
+  }
+
+  return 'pre-attach'
 }
 
 const EXACT_INTERNAL_TRANSFER_OUTGOING_REFERENCE = '76526712'

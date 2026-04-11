@@ -333,7 +333,12 @@ export interface BrowserRuntimeUploadState {
       invoiceScanFallbackRejectedReason?: string
       invoiceScanFallbackRecordCreated?: boolean
       invoiceScanFallbackRecordDroppedReason?: string
+      parserReturnedRecordCount?: number
+      partialRecordCreated?: boolean
+      partialRecordDropped?: boolean
+      partialRecordDroppedReason?: string
       finalExtractedRecordCountBeforeAttach?: number
+      finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
       comgatePipelineDiagnostics?: {
         parserVariants: string[]
         extractedRecordCount: number
@@ -417,7 +422,12 @@ export interface BrowserRuntimeUploadState {
     invoiceScanFallbackRejectedReason?: string
     invoiceScanFallbackRecordCreated?: boolean
     invoiceScanFallbackRecordDroppedReason?: string
+    parserReturnedRecordCount?: number
+    partialRecordCreated?: boolean
+    partialRecordDropped?: boolean
+    partialRecordDroppedReason?: string
     finalExtractedRecordCountBeforeAttach?: number
+    finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
     warnings: string[]
     reason?: string
     errorMessage?: string
@@ -454,7 +464,12 @@ export interface BrowserRuntimeUploadState {
     invoiceScanFallbackRejectedReason?: string
     invoiceScanFallbackRecordCreated?: boolean
     invoiceScanFallbackRecordDroppedReason?: string
+    parserReturnedRecordCount?: number
+    partialRecordCreated?: boolean
+    partialRecordDropped?: boolean
+    partialRecordDroppedReason?: string
     finalExtractedRecordCountBeforeAttach?: number
+    finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
     accountLabelCs: string
     parserDebugLabel?: string
   }>

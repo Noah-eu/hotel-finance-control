@@ -1996,6 +1996,77 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('shows that the current ScanDMPDF text-pdf runtime shape now returns a partial record before attach instead of parser zero', () => {
+    const result = ingestUploadedMonthlyFiles({
+      files: [
+        {
+          name: 'ScanDMPDF',
+          content: [
+            'Faktura OCR-PARTIAL-2026-11',
+            'Dodavatel: Scan Partial Supply s.r.o.',
+            'Celkem 349,00 Kč'
+          ].join('\n'),
+          binaryContentBase64: Buffer.from('%PDF-1.4\nminimal\n%%EOF', 'latin1').toString('base64'),
+          contentFormat: 'pdf-text',
+          uploadedAt: '2026-04-11T19:00:00.000Z',
+          sourceDescriptor: {
+            mimeType: 'application/pdf',
+            browserTextExtraction: {
+              mode: 'pdf-text',
+              status: 'extracted',
+              textPreview: 'Faktura OCR-PARTIAL-2026-11',
+              detectedSignatures: []
+            },
+            capability: {
+              profile: 'pdf_text_layer',
+              transportProfile: 'text_pdf',
+              documentHints: ['invoice_like'],
+              confidence: 'strong',
+              evidence: ['pdf-upload', 'text-layer-extracted', 'document-hint:invoice_like']
+            }
+          }
+        }
+      ],
+      reconciliationContext: {
+        runId: 'monthly-run-scandmpdf-current-runtime-shape',
+        requestedAt: '2026-04-11T19:00:00.000Z'
+      },
+      reportGeneratedAt: '2026-04-11T19:00:30.000Z'
+    })
+
+    expect(result.fileRoutes).toEqual([
+      expect.objectContaining({
+        fileName: 'ScanDMPDF',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1,
+        extractedRecordIds: [expect.stringContaining('invoice-record:uploaded:invoice:1:scandmpdf')],
+        parseDiagnostics: expect.objectContaining({
+          parserReturnedRecordCount: 1,
+          partialRecordCreated: true,
+          partialRecordDropped: false,
+          partialRecordDroppedReason: undefined,
+          finalExtractedRecordCountBeforeAttach: 1,
+          documentExtractionSummary: expect.objectContaining({
+            referenceNumber: 'OCR-PARTIAL-2026-11',
+            issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
+            finalStatus: 'needs_review',
+            invoiceScanFallbackApplied: false
+          })
+        })
+      })
+    ])
+    expect(result.batch.files).toEqual([
+      expect.objectContaining({
+        extractedCount: 1,
+        extractedRecordIds: [expect.stringContaining('invoice-record:uploaded:invoice:1:scandmpdf')]
+      })
+    ])
+  })
+
   it('exposes explicit document fallback skip reason when text PDF stays unclassified because of strong booking payout signals', () => {
     const prepared = prepareUploadedMonthlyBatchFiles([
       {

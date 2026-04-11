@@ -61,7 +61,22 @@ describe('parseInvoiceDocument', () => {
       sourceDocument: fixture.sourceDocument,
       content: ['Invoice No: INV-2026-332', 'Supplier: Laundry Supply s.r.o.'].join('\n'),
       extractedAt: '2026-03-18T22:10:00.000Z'
-    })).toEqual([])
+    })).toEqual([
+      expect.objectContaining({
+        sourceDocumentId: fixture.sourceDocument.id,
+        rawReference: 'INV-2026-332',
+        data: expect.objectContaining({
+          sourceSystem: 'invoice',
+          invoiceNumber: 'INV-2026-332',
+          supplier: 'Laundry Supply s.r.o.',
+          debug: expect.objectContaining({
+            finalStatus: 'needs_review',
+            partialRecordCreated: true,
+            partialRecordDropped: false
+          })
+        })
+      })
+    ])
   })
 
   it('accepts realistic invoice field aliases and localized amount/date formatting', () => {
@@ -1335,6 +1350,61 @@ describe('parseInvoiceDocument', () => {
       ocrDetected: true,
       invoiceScanFallbackApplied: true,
       ocrRecoveredFields: expect.arrayContaining(['totalAmount'])
+    })
+  })
+
+  it('returns a partial invoice record for the current ScanDMPDF text-pdf runtime shape before monthly attach', () => {
+    const binaryContentBase64 = Buffer.from('%PDF-1.4\nminimal\n%%EOF', 'latin1').toString('base64')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: {
+        id: 'doc-scandmpdf-current-runtime-shape' as any,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        fileName: 'ScanDMPDF',
+        uploadedAt: '2026-04-11T19:00:00.000Z'
+      },
+      content: [
+        'Faktura OCR-PARTIAL-2026-11',
+        'Dodavatel: Scan Partial Supply s.r.o.',
+        'Celkem 349,00 Kč'
+      ].join('\n'),
+      binaryContentBase64,
+      extractedAt: '2026-04-11T19:00:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      sourceDocumentId: 'doc-scandmpdf-current-runtime-shape',
+      rawReference: 'OCR-PARTIAL-2026-11',
+      data: expect.objectContaining({
+        sourceSystem: 'invoice',
+        invoiceNumber: 'OCR-PARTIAL-2026-11',
+        supplier: 'Scan Partial Supply s.r.o.',
+        documentType: 'invoice',
+        debug: expect.objectContaining({
+          finalStatus: 'needs_review',
+          partialRecordCreated: true,
+          partialRecordDropped: false,
+          invoiceScanFallbackApplied: false
+        })
+      })
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary({
+      content: [
+        'Faktura OCR-PARTIAL-2026-11',
+        'Dodavatel: Scan Partial Supply s.r.o.',
+        'Celkem 349,00 Kč'
+      ].join('\n'),
+      binaryContentBase64
+    })).toMatchObject({
+      referenceNumber: 'OCR-PARTIAL-2026-11',
+      issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
+      finalStatus: 'needs_review',
+      requiredFieldsCheck: 'failed',
+      invoiceScanFallbackApplied: false,
+      ocrDetected: false
     })
   })
 

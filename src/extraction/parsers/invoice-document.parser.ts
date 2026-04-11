@@ -271,8 +271,14 @@ export class InvoiceDocumentParser {
       && typeof resolvedAmountMinor === 'number'
       && resolvedCurrency
     )
+    const partialRecordAllowed = scanFallbackRecordAllowed || shouldAllowInvoicePartialRecord({
+      extracted,
+      summary,
+      resolvedAmountMinor,
+      resolvedCurrency
+    })
     const canCreatePartialScanRecord = shouldCreatePartialInvoiceScanRecord({
-      scanFallbackRecordAllowed,
+      partialRecordAllowed,
       extracted,
       summary,
       resolvedAmountMinor,
@@ -362,7 +368,10 @@ export class InvoiceDocumentParser {
               invoiceScanFallbackApplied: scanFallbackTrace.applied,
               invoiceScanFallbackRejectedReason: scanFallbackTrace.rejectedReason,
               invoiceScanFallbackRecordCreated: scanFallbackTrace.recordCreated,
-              invoiceScanFallbackRecordDroppedReason: scanFallbackTrace.recordDroppedReason
+              invoiceScanFallbackRecordDroppedReason: scanFallbackTrace.recordDroppedReason,
+              partialRecordCreated: !canCreateCompleteRecord && canCreatePartialScanRecord,
+              partialRecordDropped: false,
+              partialRecordDroppedReason: undefined
             }
           }
           : {})
@@ -520,18 +529,41 @@ function buildInvoiceDocumentExtractionSummary(
 }
 
 function shouldCreatePartialInvoiceScanRecord(input: {
-  scanFallbackRecordAllowed: boolean
+  partialRecordAllowed: boolean
   extracted: InvoiceDocumentExtractionDetails['fields']
   summary: DeterministicDocumentExtractionSummary
   resolvedAmountMinor: number | undefined
   resolvedCurrency: string | undefined
   occurredAt: string | undefined
 }): boolean {
-  if (!input.scanFallbackRecordAllowed) {
+  if (!input.partialRecordAllowed) {
     return false
   }
 
   if (input.occurredAt && typeof input.resolvedAmountMinor === 'number' && input.resolvedCurrency) {
+    return false
+  }
+
+  return Boolean(
+    input.extracted.invoiceNumber
+    || input.summary.referenceNumber
+    || input.extracted.supplier
+    || input.summary.issuerOrCounterparty
+    || typeof input.resolvedAmountMinor === 'number'
+    || input.resolvedCurrency
+    || input.summary.issueDate
+    || input.summary.taxableDate
+    || input.summary.dueDate
+  )
+}
+
+function shouldAllowInvoicePartialRecord(input: {
+  extracted: InvoiceDocumentExtractionDetails['fields']
+  summary: DeterministicDocumentExtractionSummary
+  resolvedAmountMinor: number | undefined
+  resolvedCurrency: string | undefined
+}): boolean {
+  if (input.summary.finalStatus === 'failed') {
     return false
   }
 
