@@ -7578,8 +7578,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
       function isManualMatchParkingRelatedToReservation(reservationItem, parkingItem) {
         const reservationStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(reservationItem && reservationItem.detailEntries) ? reservationItem.detailEntries : [], 'Pobyt'));
         const parkingStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(parkingItem && parkingItem.detailEntries) ? parkingItem.detailEntries : [], 'Pobyt'));
+        const reservationHost = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(reservationItem && reservationItem.detailEntries) ? reservationItem.detailEntries : [], 'Host'));
+        const parkingHost = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(parkingItem && parkingItem.detailEntries) ? parkingItem.detailEntries : [], 'Host'));
 
         if (reservationStay && parkingStay && reservationStay === parkingStay) {
+          return true;
+        }
+
+        if (reservationHost && parkingHost && reservationHost === parkingHost) {
           return true;
         }
 
