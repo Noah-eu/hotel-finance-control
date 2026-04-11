@@ -235,6 +235,7 @@ export class InvoiceDocumentParser {
     const summary = buildInvoiceDocumentExtractionSummary(extraction, input.binaryContentBase64)
     const extracted = extraction.fields
     const scanFallbackDateAllowed = shouldApplyInvoiceScanFallback(input.content)
+    const scanFallbackRecordAllowed = summary.invoiceScanFallbackApplied ?? scanFallbackDateAllowed
     const looseScanAmountFallback = scanFallbackDateAllowed
       ? extractInvoiceScanLooseMoneyFallback(input.content)
       : undefined
@@ -271,7 +272,7 @@ export class InvoiceDocumentParser {
       && resolvedCurrency
     )
     const canCreatePartialScanRecord = shouldCreatePartialInvoiceScanRecord({
-      scanFallbackDateAllowed,
+      scanFallbackRecordAllowed,
       extracted,
       summary,
       resolvedAmountMinor,
@@ -289,7 +290,7 @@ export class InvoiceDocumentParser {
       )
     )
     const scanFallbackTrace = buildInvoiceScanFallbackTrace({
-      applied: scanFallbackDateAllowed,
+      applied: scanFallbackRecordAllowed,
       extracted,
       summary,
       resolvedAmountMinor,
@@ -519,14 +520,14 @@ function buildInvoiceDocumentExtractionSummary(
 }
 
 function shouldCreatePartialInvoiceScanRecord(input: {
-  scanFallbackDateAllowed: boolean
+  scanFallbackRecordAllowed: boolean
   extracted: InvoiceDocumentExtractionDetails['fields']
   summary: DeterministicDocumentExtractionSummary
   resolvedAmountMinor: number | undefined
   resolvedCurrency: string | undefined
   occurredAt: string | undefined
 }): boolean {
-  if (!input.scanFallbackDateAllowed) {
+  if (!input.scanFallbackRecordAllowed) {
     return false
   }
 
@@ -653,13 +654,10 @@ function extractInvoiceDocumentDetails(input: {
   }
   const bookingSupplementaryFields = extractBookingInvoiceSupplementaryFields(content, fields)
   const generalSupplementaryFields = extractGeneralInvoiceSupplementaryFields(content, fields, lines)
-  const scanFallbackApplied = shouldApplyInvoiceScanFallback(content)
-  const scanFallbackFields = scanFallbackApplied
+  const contentScanFallbackApplied = shouldApplyInvoiceScanFallback(content)
+  const scanFallbackFields = contentScanFallbackApplied
     ? extractInvoiceScanFallbackFields(content)
     : {}
-  const scanFallbackRejectedReason = scanFallbackApplied
-    ? (Object.keys(scanFallbackFields).length === 0 ? 'no-scan-fallback-fields-recovered' : undefined)
-    : 'scan-fallback-not-eligible'
   const usableTextTotalRaw = safeParseDocumentMoney(textExtracted.totalRaw, 'Invoice text total candidate')
     ? textExtracted.totalRaw
     : undefined
@@ -722,6 +720,16 @@ function extractInvoiceDocumentDetails(input: {
     ocrRecoveredFields: mergedFields.ocrRecoveredFields,
     ocrConfirmedFields: mergedFields.ocrConfirmedFields
   })
+  const scanFallbackApplied = shouldApplyInvoiceRecordFallback({
+    content,
+    binaryContentBase64: input.binaryContentBase64,
+    extracted: mergedFields.fields,
+    qrDetected: qrExtraction.detected,
+    ocrDetected: ocrExtraction.detected
+  })
+  const scanFallbackRejectedReason = scanFallbackApplied
+    ? (contentScanFallbackApplied && Object.keys(scanFallbackFields).length === 0 ? 'no-scan-fallback-fields-recovered' : undefined)
+    : 'scan-fallback-not-eligible'
 
   return {
     fields: mergedFields.fields,
@@ -775,6 +783,38 @@ function shouldApplyInvoiceScanFallback(content: string): boolean {
     || compact.includes('hptronic')
     || compact.includes('clk')
     || (hasInvoiceLikeKeyword && hasIbanHint)
+}
+
+function shouldApplyInvoiceRecordFallback(input: {
+  content: string
+  binaryContentBase64?: string
+  extracted: InvoiceExtractedFields
+  qrDetected: boolean
+  ocrDetected: boolean
+}): boolean {
+  if (shouldApplyInvoiceScanFallback(input.content)) {
+    return true
+  }
+
+  if (!input.binaryContentBase64?.trim()) {
+    return false
+  }
+
+  if (!input.qrDetected && !input.ocrDetected) {
+    return false
+  }
+
+  return Boolean(
+    input.extracted.invoiceNumber
+    || input.extracted.supplier
+    || input.extracted.issueDateRaw
+    || input.extracted.dueDateRaw
+    || input.extracted.taxableDateRaw
+    || input.extracted.totalRaw
+    || input.extracted.settlementAmountRaw
+    || input.extracted.summaryTotalRaw
+    || input.extracted.localTotalRaw
+  )
 }
 
 function extractInvoiceScanFallbackFields(content: string): {

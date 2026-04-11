@@ -1267,6 +1267,77 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('returns a partial invoice record when binary OCR yields amount and identity candidates without a date', () => {
+    const binaryContentBase64 = Buffer
+      .from(
+        `%PDF-1.4\nHFC_OCR_STUB:${Buffer.from(JSON.stringify({
+          documentKind: 'invoice',
+          fields: {
+            referenceNumber: 'OCR-PARTIAL-2026-11',
+            issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
+            totalAmount: '349,00 CZK'
+          }
+        }), 'utf8').toString('base64')}\n%%EOF`,
+        'latin1'
+      )
+      .toString('base64')
+
+    const records = parseInvoiceDocument({
+      sourceDocument: {
+        id: 'doc-scandmpdf-binary-partial' as any,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        fileName: 'ScanDMPDF',
+        uploadedAt: '2026-04-11T18:40:00.000Z'
+      },
+      content: [
+        'Faktura OCR-PARTIAL-2026-11',
+        'Dodavatel: Scan Partial Supply s.r.o.',
+        'Celkem 349,00 Kč'
+      ].join('\n'),
+      binaryContentBase64,
+      extractedAt: '2026-04-11T18:40:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      sourceDocumentId: 'doc-scandmpdf-binary-partial',
+      rawReference: 'OCR-PARTIAL-2026-11',
+      amountMinor: 34900,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        sourceSystem: 'invoice',
+        invoiceNumber: 'OCR-PARTIAL-2026-11',
+        supplier: 'Scan Partial Supply s.r.o.',
+        amountMinor: 34900,
+        currency: 'CZK',
+        debug: expect.objectContaining({
+          invoiceScanFallbackApplied: true,
+          invoiceScanFallbackRecordCreated: true,
+          invoiceScanFallbackRecordDroppedReason: undefined
+        })
+      })
+    })
+
+    expect(inspectInvoiceDocumentExtractionSummary({
+      content: [
+        'Faktura OCR-PARTIAL-2026-11',
+        'Dodavatel: Scan Partial Supply s.r.o.',
+        'Celkem 349,00 Kč'
+      ].join('\n'),
+      binaryContentBase64
+    })).toMatchObject({
+      referenceNumber: 'OCR-PARTIAL-2026-11',
+      issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
+      totalAmountMinor: 34900,
+      totalCurrency: 'CZK',
+      finalStatus: 'needs_review',
+      ocrDetected: true,
+      invoiceScanFallbackApplied: true,
+      ocrRecoveredFields: expect.arrayContaining(['totalAmount'])
+    })
+  })
+
   it('sends handwritten-like receipts with partial OCR data to needs_review instead of failing the ingest path', () => {
     const receipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
     const records = parseReceiptDocument({

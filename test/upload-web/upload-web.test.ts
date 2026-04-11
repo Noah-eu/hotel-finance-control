@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { runMonthlyReconciliationBatch } from '../../src/monthly-batch'
+import { buildBrowserRuntimeUploadStateFromFiles } from '../../src/upload-web/browser-runtime-state'
 import {
   buildBrowserRuntimeStateFromSelectedFiles,
   createBrowserRuntime,
@@ -3616,6 +3617,104 @@ describe('buildUploadWebFlow', () => {
           invoiceScanFallbackApplied: true,
           invoiceScanFallbackRecordCreated: true,
           invoiceScanFallbackRecordDroppedReason: undefined
+        })
+      })
+    )
+  })
+
+  it('keeps application/pdf base64 invoice-classified ScanDMPDF non-empty when binary OCR only adds partial invoice fields', () => {
+    const result = buildBrowserRuntimeUploadStateFromFiles({
+      files: [
+        {
+          name: 'ScanDMPDF',
+          content: [
+            'Faktura OCR-PARTIAL-2026-11',
+            'Dodavatel: Scan Partial Supply s.r.o.',
+            'Celkem 349,00 Kč'
+          ].join('\n'),
+          uploadedAt: '2026-04-11T18:40:00.000Z',
+          binaryContentBase64: buildRuntimePdfBase64WithHiddenOcrStub({
+            documentKind: 'invoice',
+            fields: {
+              referenceNumber: 'OCR-PARTIAL-2026-11',
+              issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
+              totalAmount: '349,00 CZK'
+            }
+          }),
+          contentFormat: 'pdf-text',
+          sourceDescriptor: {
+            mimeType: 'application/pdf',
+            browserTextExtraction: {
+              mode: 'pdf-text',
+              status: 'extracted',
+              textPreview: 'Faktura OCR-PARTIAL-2026-11',
+              detectedSignatures: []
+            },
+            capability: {
+              profile: 'pdf_text_layer',
+              transportProfile: 'text_pdf',
+              documentHints: ['invoice_like'],
+              confidence: 'strong',
+              evidence: ['pdf-upload', 'text-layer-extracted', 'document-hint:invoice_like']
+            }
+          }
+        }
+      ],
+      runId: 'browser-runtime-scandmpdf-binary-partial',
+      generatedAt: '2026-04-11T18:40:00.000Z'
+    })
+
+    const route = result.fileRoutes.find((file) => file.fileName === 'ScanDMPDF')
+    const extractedScan = result.extractedRecords.find((entry) => entry.fileName === 'ScanDMPDF')
+    const intakeDiagnostic = result.runtimeAudit.fileIntakeDiagnostics.find((entry) => entry.fileName === 'ScanDMPDF')
+
+    expect(route).toEqual(
+      expect.objectContaining({
+        fileName: 'ScanDMPDF',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1,
+        invoiceScanFallbackApplied: true,
+        invoiceScanFallbackRecordCreated: true,
+        finalExtractedRecordCountBeforeAttach: 1
+      })
+    )
+    expect(route?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+
+    expect(extractedScan).toEqual(
+      expect.objectContaining({
+        fileName: 'ScanDMPDF',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1,
+        invoiceScanFallbackApplied: true,
+        invoiceScanFallbackRecordCreated: true,
+        finalExtractedRecordCountBeforeAttach: 1
+      })
+    )
+    expect(extractedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+
+    expect(intakeDiagnostic).toEqual(
+      expect.objectContaining({
+        fileName: 'ScanDMPDF',
+        mimeType: 'application/pdf',
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        invoiceScanFallbackApplied: true,
+        invoiceScanFallbackRecordCreated: true,
+        finalExtractedRecordCountBeforeAttach: 1,
+        documentExtractionSummary: expect.objectContaining({
+          referenceNumber: 'OCR-PARTIAL-2026-11',
+          issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
+          totalAmountMinor: 34900,
+          totalCurrency: 'CZK',
+          finalStatus: 'needs_review',
+          ocrDetected: true,
+          invoiceScanFallbackApplied: true
         })
       })
     )
@@ -7956,6 +8055,14 @@ function createBrokenRuntimePdfFile(name: string) {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
+}
+
+function buildRuntimePdfBase64WithHiddenOcrStub(payload: {
+  documentKind: 'invoice' | 'receipt'
+  fields: Record<string, string>
+}): string {
+  const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+  return Buffer.from(`%PDF-1.4\nHFC_OCR_STUB:${encodedPayload}\n%%EOF`, 'latin1').toString('base64')
 }
 
 function buildRuntimePdfBase64FromTextLines(lines: string[]): string {
