@@ -1133,8 +1133,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
   }
 
   if (
-    ingestionBranch === 'structured-parser'
-    || ingestionBranch === 'text-document-parser'
+    ingestionBranch === 'text-document-parser'
     || ingestionBranch === 'text-pdf-parser'
   ) {
     const sourceFromDocumentSummary = inferDocumentSourceFromExtractionSummary({
@@ -1165,6 +1164,13 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         }), invoiceListWorkbookDiagnostics)
       }
     }
+  }
+
+  if (
+    ingestionBranch === 'structured-parser'
+    || ingestionBranch === 'text-document-parser'
+    || ingestionBranch === 'text-pdf-parser'
+  ) {
 
     const byContent = inferSourceSystemFromContent(input.content)
 
@@ -1423,87 +1429,85 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     return 'bank'
   }
 
+  if (normalizedHeaderSample) {
+    if (
+      hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
+      || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'název protiúčtu', 'protiúčet', 'typ'])
+      || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])
+      || matchesAnyHeaderSignature(normalizedHeaderSample, [
+        'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
+        'datum;částka;měna;účet;protistrana;poznámka;typ',
+        'date;amount;currency;account;counterparty;message;type'
+      ])
+    ) {
+      return 'bank'
+    }
+
+    if (inspectComgateHeaderDiagnostics(content).detectedFileKind !== 'unknown') {
+      return 'comgate'
+    }
+
+    if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+      'identifier;payoutdate;amountminor;currency;status;paymentmethod;merchant',
+      'transactionid,payoutdate,amountminor,currency,paymentreference,paymenttype',
+      'paidat,amountminor,currency,reference,paymentpurpose,reservationid'
+    ])) {
+      return 'comgate'
+    }
+
+    if (hasAllHeaderFields(headerFields, ['datum převodu', 'částka převodu', 'měna', 'transfer id', 'confirmation code', 'listing name'])
+      || hasAllHeaderFields(headerFields, ['datum prevodu', 'castka prevodu', 'mena', 'transfer id', 'confirmation code', 'listing name'])
+      || hasAllHeaderFields(headerFields, ['payout amount', 'currency', 'payout id', 'confirmation code', 'listing name'])
+      || hasAllHeaderFields(headerFields, ['datum', 'bude připsán do dne', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
+      || hasAllHeaderFields(headerFields, ['datum', 'bude pripsan do dne', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])
+      || hasAllHeaderFields(headerFields, ['datum', 'datum připsání na účet', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
+      || hasAllHeaderFields(headerFields, ['datum', 'datum pripsani na ucet', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])) {
+      return 'airbnb'
+    }
+
+    if (hasAllHeaderFields(headerFields, ['type', 'reference number', 'currency', 'amount', 'payout date', 'payout id'])
+      || hasAllHeaderFields(headerFields, ['type', 'reference number', 'check-in', 'checkout', 'amount', 'payout id'])) {
+      return 'booking'
+    }
+
+    if (hasAllHeaderFields(headerFields, ['datum zaplacení', 'uhrazená částka', 'měna', 'variabilní symbol', 'štítek', 'číslo objednávky'])
+      || hasAllHeaderFields(headerFields, ['datum zaplaceni', 'uhrazena castka', 'mena', 'variabilni symbol', 'stitek', 'cislo objednavky'])) {
+      return 'comgate'
+    }
+
+    if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+      'payoutdate,amountminor,currency,payoutreference,reservationid,propertyid',
+      'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid',
+      'datumvyplaty;netamount;měna;bookingreference;bookingnumber;ubytovani'
+    ]) && normalizedContent.includes('payout-book')) {
+      return 'booking'
+    }
+
+    if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+      'payoutdate,amountminor,currency,payoutreference,reservationid,listingid',
+      'datum převodu;částka převodu;měna;transfer id;confirmation code;listing name',
+      'datum prevodu;castka prevodu;mena;transfer id;confirmation code;listing name'
+    ])) {
+      return 'airbnb'
+    }
+
+    if (matchesAnyHeaderSignature(normalizedHeaderSample, [
+      'type;reference number;checkin;checkout;guest name;reservation status;currency;payment status;amount;payout date;payout id'
+    ])) {
+      return 'booking'
+    }
+  }
+
   if (isUsableInvoiceSummary(invoiceSummary) || looksLikeInvoiceDocumentText(content)) {
     return 'invoice'
   }
 
   if (isUsableReceiptSummary(receiptSummary) || looksLikeReceiptDocumentText(content)) {
     return 'receipt'
-  }
-
-  if (!normalizedHeaderSample) {
-    return 'unknown'
-  }
-
-  if (
-    hasAllHeaderFields(headerFields, ['datum provedení', 'datum zaúčtování', 'zaúčtovaná částka', 'měna účtu'])
-    || hasAllHeaderFields(headerFields, ['datum provedeni', 'datum zauctovani', 'zauctovana castka', 'mena uctu'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'číslo protiúčtu', 'název protiúčtu'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'cislo protiuctu', 'nazev protiuctu'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'protiúčet', 'typ'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'měna', 'název protiúčtu', 'protiúčet', 'typ'])
-    || hasAllHeaderFields(headerFields, ['datum', 'objem', 'mena', 'protiucet', 'typ'])
-    || matchesAnyHeaderSignature(normalizedHeaderSample, [
-      'bookedat,amountminor,currency,accountid,counterparty,reference,transactiontype',
-      'datum;částka;měna;účet;protistrana;poznámka;typ',
-      'date;amount;currency;account;counterparty;message;type'
-    ])
-  ) {
-    return 'bank'
-  }
-
-  if (inspectComgateHeaderDiagnostics(content).detectedFileKind !== 'unknown') {
-    return 'comgate'
-  }
-
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'identifier;payoutdate;amountminor;currency;status;paymentmethod;merchant',
-    'transactionid,payoutdate,amountminor,currency,paymentreference,paymenttype',
-    'paidat,amountminor,currency,reference,paymentpurpose,reservationid'
-  ])) {
-    return 'comgate'
-  }
-
-  if (hasAllHeaderFields(headerFields, ['datum převodu', 'částka převodu', 'měna', 'transfer id', 'confirmation code', 'listing name'])
-    || hasAllHeaderFields(headerFields, ['datum prevodu', 'castka prevodu', 'mena', 'transfer id', 'confirmation code', 'listing name'])
-    || hasAllHeaderFields(headerFields, ['payout amount', 'currency', 'payout id', 'confirmation code', 'listing name'])
-    || hasAllHeaderFields(headerFields, ['datum', 'bude připsán do dne', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
-    || hasAllHeaderFields(headerFields, ['datum', 'bude pripsan do dne', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])
-    || hasAllHeaderFields(headerFields, ['datum', 'datum připsání na účet', 'typ', 'podrobnosti', 'potvrzující kód', 'vyplaceno'])
-    || hasAllHeaderFields(headerFields, ['datum', 'datum pripsani na ucet', 'typ', 'podrobnosti', 'potvrzujici kod', 'vyplaceno'])) {
-    return 'airbnb'
-  }
-
-  if (hasAllHeaderFields(headerFields, ['type', 'reference number', 'currency', 'amount', 'payout date', 'payout id'])
-    || hasAllHeaderFields(headerFields, ['type', 'reference number', 'check-in', 'checkout', 'amount', 'payout id'])) {
-    return 'booking'
-  }
-
-  if (hasAllHeaderFields(headerFields, ['datum zaplacení', 'uhrazená částka', 'měna', 'variabilní symbol', 'štítek', 'číslo objednávky'])
-    || hasAllHeaderFields(headerFields, ['datum zaplaceni', 'uhrazena castka', 'mena', 'variabilni symbol', 'stitek', 'cislo objednavky'])) {
-    return 'comgate'
-  }
-
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'payoutdate,amountminor,currency,payoutreference,reservationid,propertyid',
-    'datumvyplaty;netamount;měna;paymentreference;bookingid;hotelid',
-    'datumvyplaty;netamount;měna;bookingreference;bookingnumber;ubytovani'
-  ]) && normalizedContent.includes('payout-book')) {
-    return 'booking'
-  }
-
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'payoutdate,amountminor,currency,payoutreference,reservationid,listingid',
-    'datum převodu;částka převodu;měna;transfer id;confirmation code;listing name',
-    'datum prevodu;castka prevodu;mena;transfer id;confirmation code;listing name'
-  ])) {
-    return 'airbnb'
-  }
-
-  if (matchesAnyHeaderSignature(normalizedHeaderSample, [
-    'type;reference number;checkin;checkout;guest name;reservation status;currency;payment status;amount;payout date;payout id'
-  ])) {
-    return 'booking'
   }
 
   return 'unknown'

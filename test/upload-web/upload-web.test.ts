@@ -3555,6 +3555,47 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedDocuments.length).toBeGreaterThan(0)
   })
 
+  it('keeps the current Pohyby_5599955956 monthly CSV on the bank statement path even when content includes invoice-like counterparties', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimeFile(
+          'Pohyby_5599955956_202604111402.csv',
+          [
+            '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+            '11.04.2026 13:58;11.04.2026 14:02;5599955956/5500;000000-2105944583/2700;Booking.com B.V.;2 000,00;CZK;WEB-RES-2000'
+          ].join('\n')
+        )
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-11T14:05:00.000Z'
+    })
+
+    expect(result.routingSummary.unsupportedFileCount).toBe(0)
+    const route = result.fileRoutes.find((file) => file.fileName === 'Pohyby_5599955956_202604111402.csv')
+    expect(route).toEqual(
+      expect.objectContaining({
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'bank',
+        documentType: 'bank_statement',
+        parserId: 'fio'
+      })
+    )
+    expect(route?.decision.ingestionBranch).toBe('structured-parser')
+    expect(route?.decision.matchedRules).toContain('content-signature')
+    expect(route?.decision.matchedRules).not.toContain('document-summary-fallback')
+    expect((route?.extractedCount ?? 0)).toBeGreaterThan(0)
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Pohyby_5599955956_202604111402.csv',
+          parserDebugLabel: 'fio',
+          extractedCount: 1
+        })
+      ])
+    )
+  })
+
   it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
