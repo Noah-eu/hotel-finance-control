@@ -63,3 +63,12 @@ To deploy from GitHub on Netlify:
 4. Use the publish directory `dist/demo`.
 
 The repository includes `netlify.toml`, so Netlify should pick these settings up automatically.
+
+## Productization / multi-hotel architecture
+
+For future multi-hotel productization direction, see:
+
+- `docs/productization/multi-hotel-architecture.md`
+- `docs/productization/source-connectors.md`
+- `docs/productization/hotel-configuration.md`
+- `docs/productization/onboarding-new-hotel.md`
