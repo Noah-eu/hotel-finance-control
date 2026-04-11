@@ -334,11 +334,15 @@ export interface BrowserRuntimeUploadState {
       invoiceScanFallbackRecordCreated?: boolean
       invoiceScanFallbackRecordDroppedReason?: string
       parserReturnedRecordCount?: number
+      parserReturnedPartialRecord?: boolean
+      parserDroppedRecord?: boolean
+      parserDroppedRecordReason?: string
       partialRecordCreated?: boolean
       partialRecordDropped?: boolean
       partialRecordDroppedReason?: string
       finalExtractedRecordCountBeforeAttach?: number
       finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
+      finalExtractedCountComputationSource?: 'route' | 'batch' | 'pre-attach' | 'none'
       comgatePipelineDiagnostics?: {
         parserVariants: string[]
         extractedRecordCount: number
@@ -423,11 +427,15 @@ export interface BrowserRuntimeUploadState {
     invoiceScanFallbackRecordCreated?: boolean
     invoiceScanFallbackRecordDroppedReason?: string
     parserReturnedRecordCount?: number
+    parserReturnedPartialRecord?: boolean
+    parserDroppedRecord?: boolean
+    parserDroppedRecordReason?: string
     partialRecordCreated?: boolean
     partialRecordDropped?: boolean
     partialRecordDroppedReason?: string
     finalExtractedRecordCountBeforeAttach?: number
     finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
+    finalExtractedCountComputationSource?: 'route' | 'batch' | 'pre-attach' | 'none'
     warnings: string[]
     reason?: string
     errorMessage?: string
@@ -465,11 +473,15 @@ export interface BrowserRuntimeUploadState {
     invoiceScanFallbackRecordCreated?: boolean
     invoiceScanFallbackRecordDroppedReason?: string
     parserReturnedRecordCount?: number
+    parserReturnedPartialRecord?: boolean
+    parserDroppedRecord?: boolean
+    parserDroppedRecordReason?: string
     partialRecordCreated?: boolean
     partialRecordDropped?: boolean
     partialRecordDroppedReason?: string
     finalExtractedRecordCountBeforeAttach?: number
     finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
+    finalExtractedCountComputationSource?: 'route' | 'batch' | 'pre-attach' | 'none'
     accountLabelCs: string
     parserDebugLabel?: string
   }>

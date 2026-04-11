@@ -171,11 +171,15 @@ export interface UploadedMonthlyFileRoute {
     invoiceScanFallbackRecordCreated?: boolean
     invoiceScanFallbackRecordDroppedReason?: string
     parserReturnedRecordCount?: number
+    parserReturnedPartialRecord?: boolean
+    parserDroppedRecord?: boolean
+    parserDroppedRecordReason?: string
     partialRecordCreated?: boolean
     partialRecordDropped?: boolean
     partialRecordDroppedReason?: string
     finalExtractedRecordCountBeforeAttach?: number
     finalExtractedCountSource?: 'route' | 'batch' | 'pre-attach' | 'none'
+    finalExtractedCountComputationSource?: 'route' | 'batch' | 'pre-attach' | 'none'
   }
   decision: UploadedMonthlyFileDecision
 }

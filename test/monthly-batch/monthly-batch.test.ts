@@ -2046,10 +2046,14 @@ describe('runMonthlyReconciliationBatch', () => {
         extractedRecordIds: [expect.stringContaining('invoice-record:uploaded:invoice:1:scandmpdf')],
         parseDiagnostics: expect.objectContaining({
           parserReturnedRecordCount: 1,
+          parserReturnedPartialRecord: true,
+          parserDroppedRecord: false,
+          parserDroppedRecordReason: undefined,
           partialRecordCreated: true,
           partialRecordDropped: false,
           partialRecordDroppedReason: undefined,
           finalExtractedRecordCountBeforeAttach: 1,
+          finalExtractedCountComputationSource: 'pre-attach',
           documentExtractionSummary: expect.objectContaining({
             referenceNumber: 'OCR-PARTIAL-2026-11',
             issuerOrCounterparty: 'Scan Partial Supply s.r.o.',

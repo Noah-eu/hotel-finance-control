@@ -5717,6 +5717,32 @@ describe('buildWebDemo', () => {
     expect(route?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
     expect(extractedScan?.extractedCount ?? 0).toBeGreaterThan(0)
     expect(extractedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+    rendered.downloadDebugWorkspaceTruthExport()
+    const initialArtifact = rendered.getLastDebugWorkspaceTruthExport() as { jsonContent: string }
+    const initialPayload = JSON.parse(initialArtifact.jsonContent) as {
+      uploadedFiles: Array<{
+        fileName: string
+        extractedCount: number
+        extractedRecordIds: string[]
+        parserReturnedRecordCount: number | null
+        parserReturnedPartialRecord: boolean
+        parserDroppedRecord: boolean
+        parserDroppedRecordReason: string
+        finalExtractedCountComputationSource: string
+      }>
+    }
+    const initialExportedScan = initialPayload.uploadedFiles.find((file) => file.fileName === 'ScanDMPDF')
+
+    expect(initialExportedScan).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      extractedCount: 1,
+      parserReturnedRecordCount: 1,
+      parserReturnedPartialRecord: false,
+      parserDroppedRecord: false,
+      parserDroppedRecordReason: '',
+      finalExtractedCountComputationSource: 'batch'
+    }))
+    expect(initialExportedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
     expect(rendered.preparedFilesContent.innerHTML).toContain(buildWorkspaceFilePreviewActionElementId(String(persistedScan?.id)))
 
     await rendered.openPreviewCurrentMonthWorkspaceFile(String(persistedScan?.id))
@@ -5768,6 +5794,32 @@ describe('buildWebDemo', () => {
     }))
     expect(reloadedRoute?.extractedCount ?? 0).toBeGreaterThan(0)
     expect(reloadedRoute?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
+    reloaded.downloadDebugWorkspaceTruthExport()
+    const reloadedArtifact = reloaded.getLastDebugWorkspaceTruthExport() as { jsonContent: string }
+    const reloadedPayload = JSON.parse(reloadedArtifact.jsonContent) as {
+      uploadedFiles: Array<{
+        fileName: string
+        extractedCount: number
+        extractedRecordIds: string[]
+        parserReturnedRecordCount: number | null
+        parserReturnedPartialRecord: boolean
+        parserDroppedRecord: boolean
+        parserDroppedRecordReason: string
+        finalExtractedCountComputationSource: string
+      }>
+    }
+    const reloadedExportedScan = reloadedPayload.uploadedFiles.find((file) => file.fileName === 'ScanDMPDF')
+
+    expect(reloadedExportedScan).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      extractedCount: 1,
+      parserReturnedRecordCount: 1,
+      parserReturnedPartialRecord: false,
+      parserDroppedRecord: false,
+      parserDroppedRecordReason: '',
+      finalExtractedCountComputationSource: 'batch'
+    }))
+    expect(reloadedExportedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
 
     await reloaded.openPreviewCurrentMonthWorkspaceFile(String(persistedScan?.id))
 

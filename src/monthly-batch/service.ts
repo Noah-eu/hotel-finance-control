@@ -461,10 +461,14 @@ function mergeNoExtractParseDiagnostics(
       invoiceScanFallbackRecordCreated: invoiceScanFallbackApplied ? true : false,
       invoiceScanFallbackRecordDroppedReason: undefined,
       parserReturnedRecordCount: extractedRecords.length,
+      parserReturnedPartialRecord: partialRecordCreated,
+      parserDroppedRecord: false,
+      parserDroppedRecordReason: undefined,
       partialRecordCreated,
       partialRecordDropped: false,
       partialRecordDroppedReason: undefined,
-      finalExtractedRecordCountBeforeAttach: extractedRecords.length
+      finalExtractedRecordCountBeforeAttach: extractedRecords.length,
+      finalExtractedCountComputationSource: extractedRecords.length > 0 ? 'pre-attach' : 'none'
     }
   }
 
@@ -531,11 +535,15 @@ function mergeNoExtractParseDiagnostics(
     invoiceScanFallbackRecordCreated: false,
     invoiceScanFallbackRecordDroppedReason: invoiceScanFallbackApplied ? noExtractReason : undefined,
     parserReturnedRecordCount: 0,
+    parserReturnedPartialRecord: false,
+    parserDroppedRecord: hasPartialInvoiceCandidates,
+    parserDroppedRecordReason: hasPartialInvoiceCandidates ? noExtractReason : undefined,
     partialRecordCreated: false,
     partialRecordDropped: hasPartialInvoiceCandidates,
     partialRecordDroppedReason: hasPartialInvoiceCandidates ? noExtractReason : undefined,
     finalExtractedRecordCountBeforeAttach: 0,
-    finalExtractedCountSource: 'none'
+    finalExtractedCountSource: 'none',
+    finalExtractedCountComputationSource: 'none'
   }
 }
 

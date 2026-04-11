@@ -2407,6 +2407,17 @@ ${showRuntimePayoutDiagnostics ? `
             intakeStatus: String(file && file.intakeStatus || ''),
             extractedCount: Number(file && file.extractedCount || 0),
             extractedRecordIds: Array.isArray(file && file.extractedRecordIds) ? file.extractedRecordIds.slice() : [],
+            parserReturnedRecordCount: typeof (file && file.parserReturnedRecordCount) === 'number' ? Number(file.parserReturnedRecordCount) : null,
+            parserReturnedPartialRecord: typeof (file && file.parserReturnedPartialRecord) === 'boolean'
+              ? file.parserReturnedPartialRecord
+              : Boolean(file && file.partialRecordCreated),
+            parserDroppedRecord: typeof (file && file.parserDroppedRecord) === 'boolean'
+              ? file.parserDroppedRecord
+              : Boolean(file && file.partialRecordDropped),
+            parserDroppedRecordReason: typeof (file && file.parserDroppedRecordReason) === 'string'
+              ? String(file.parserDroppedRecordReason)
+              : String(file && file.partialRecordDroppedReason || ''),
+            finalExtractedCountComputationSource: String(file && file.finalExtractedCountComputationSource || file && file.finalExtractedCountSource || ''),
             warnings: Array.isArray(file && file.warnings) ? file.warnings.slice() : [],
             reason: typeof (file && file.reason) === 'string' ? String(file.reason) : '',
             errorMessage: typeof (file && file.errorMessage) === 'string' ? String(file.errorMessage) : '',

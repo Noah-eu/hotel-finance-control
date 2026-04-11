@@ -3681,10 +3681,14 @@ describe('buildUploadWebFlow', () => {
         parserId: 'invoice',
         extractedCount: 1,
         parserReturnedRecordCount: 1,
+        parserReturnedPartialRecord: true,
+        parserDroppedRecord: false,
+        parserDroppedRecordReason: undefined,
         partialRecordCreated: true,
         partialRecordDropped: false,
         finalExtractedRecordCountBeforeAttach: 1,
-        finalExtractedCountSource: 'batch'
+        finalExtractedCountSource: 'batch',
+        finalExtractedCountComputationSource: 'batch'
       })
     )
     expect(route?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
@@ -3697,10 +3701,14 @@ describe('buildUploadWebFlow', () => {
         parserId: 'invoice',
         extractedCount: 1,
         parserReturnedRecordCount: 1,
+        parserReturnedPartialRecord: true,
+        parserDroppedRecord: false,
+        parserDroppedRecordReason: undefined,
         partialRecordCreated: true,
         partialRecordDropped: false,
         finalExtractedRecordCountBeforeAttach: 1,
-        finalExtractedCountSource: 'batch'
+        finalExtractedCountSource: 'batch',
+        finalExtractedCountComputationSource: 'batch'
       })
     )
     expect(extractedScan?.extractedRecordIds.length ?? 0).toBeGreaterThan(0)
@@ -3712,10 +3720,14 @@ describe('buildUploadWebFlow', () => {
         sourceSystem: 'invoice',
         documentType: 'invoice',
         parserReturnedRecordCount: 1,
+        parserReturnedPartialRecord: true,
+        parserDroppedRecord: false,
+        parserDroppedRecordReason: undefined,
         partialRecordCreated: true,
         partialRecordDropped: false,
         finalExtractedRecordCountBeforeAttach: 1,
         finalExtractedCountSource: 'batch',
+        finalExtractedCountComputationSource: 'batch',
         documentExtractionSummary: expect.objectContaining({
           referenceNumber: 'OCR-PARTIAL-2026-11',
           issuerOrCounterparty: 'Scan Partial Supply s.r.o.',
