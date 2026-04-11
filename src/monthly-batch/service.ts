@@ -1240,7 +1240,10 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     }
   }
 
-  const bookingSignalSet = new Set(bookingPdfDecision?.detectedSignals ?? [])
+  const bookingSignalSet = new Set([
+    ...(bookingPdfDecision?.detectedSignals ?? []),
+    ...(bookingPdfDecision?.matchedRules ?? [])
+  ])
   const hasStrongBookingPayoutSignals = bookingSignalSet.has('booking-branding')
     || bookingSignalSet.has('booking-payout-statement-wording')
     || bookingSignalSet.has('booking-payment-id')
@@ -1297,7 +1300,7 @@ function inferDocumentLikePdfFallbackSource(input: {
   ingestionBranch: PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['decision']['ingestionBranch']
   bookingSignalSet: Set<string>
 }): SourceDocument['sourceSystem'] {
-  if (input.ingestionBranch !== 'text-pdf-parser' || input.capability.profile !== 'pdf_text_layer') {
+  if (input.ingestionBranch !== 'text-pdf-parser') {
     return 'unknown'
   }
 
@@ -1528,6 +1531,10 @@ function inferDocumentSourceFromExtractionSummary(input: {
   }
 
   if (isUsableInvoiceSummary(input.invoiceSummary)) {
+    return 'invoice'
+  }
+
+  if (looksInvoiceDominantScanText(input.content)) {
     return 'invoice'
   }
 

@@ -1871,6 +1871,58 @@ describe('runMonthlyReconciliationBatch', () => {
     ])
   })
 
+  it('routes stale-signature PDF-like uploads with IBAN hint into document intake instead of leaving them unclassified', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'ScanDMPDF',
+        content: [
+          'Daňový doklad',
+          'Dodavatel: HP TRONIC Zlin, spol. s r.o.',
+          'IBAN CZ12080000000000004582802',
+          'Celkem 349,00 Kč'
+        ].join('\n'),
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-24T08:08:00.000Z',
+        sourceDescriptor: {
+          mimeType: '',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Daňový doklad ... IBAN ...',
+            detectedSignatures: ['iban-hint']
+          },
+          capability: {
+            profile: 'unknown',
+            transportProfile: 'text_pdf',
+            documentHints: [],
+            confidence: 'hint',
+            evidence: ['pdf-upload', 'iban-hint']
+          }
+        }
+      }
+    ])
+
+    const route = prepared.fileRoutes[0]
+
+    expect(route).toEqual(expect.objectContaining({
+      fileName: 'ScanDMPDF',
+      status: 'supported',
+      intakeStatus: 'parsed',
+      sourceSystem: expect.not.stringMatching(/^unknown$/),
+      documentType: expect.not.stringMatching(/^other$/),
+      parserId: expect.any(String),
+      classificationBasis: 'content',
+      extractedCount: expect.any(Number),
+      decision: expect.objectContaining({
+        ingestionBranch: 'text-pdf-parser',
+        resolvedBucket: 'recognized-supported'
+      })
+    }))
+    expect(route?.decision.matchedRules.some((rule) => (
+      rule === 'document-summary-fallback' || rule === 'text-pdf-document-fallback'
+    ))).toBe(true)
+  })
+
   it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {
     const booking = getRealInputFixture('booking-payout-export')
 
