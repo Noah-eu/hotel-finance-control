@@ -1230,6 +1230,37 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('returns a partial scan invoice record instead of zero records when only fallback amount basis is available', () => {
+    const records = parseInvoiceDocument({
+      sourceDocument: {
+        id: 'doc-scandmpdf-fallback' as any,
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        fileName: 'ScanDMPDF',
+        uploadedAt: '2026-03-29T12:00:00.000Z'
+      },
+      content: [
+        'Daňový doklad - FAKTURA 358260017610',
+        'Dodavatel: HP TRONIC Zlin, spol. s r.o.',
+        'IBAN CZ12080000000000004582802',
+        'Celkem k uhrade 349,00 K6'
+      ].join('\n'),
+      extractedAt: '2026-03-29T12:20:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      rawReference: '358260017610',
+      amountMinor: 34900,
+      currency: 'CZK',
+      occurredAt: '2026-03-29',
+      data: expect.objectContaining({
+        supplier: expect.stringMatching(/HP TRONIC|DATART/i),
+        invoiceNumber: '358260017610'
+      })
+    })
+  })
+
   it('sends handwritten-like receipts with partial OCR data to needs_review instead of failing the ingest path', () => {
     const receipt = getRealInputFixture('receipt-document-handwritten-pdf-with-ocr-stub')
     const records = parseReceiptDocument({

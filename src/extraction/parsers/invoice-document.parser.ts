@@ -225,6 +225,22 @@ export class InvoiceDocumentParser {
     })
     const summary = buildInvoiceDocumentExtractionSummary(extraction, input.binaryContentBase64)
     const extracted = extraction.fields
+    const scanFallbackDateAllowed = shouldApplyInvoiceScanFallback(input.content)
+    const looseScanAmountFallback = scanFallbackDateAllowed
+      ? extractInvoiceScanLooseMoneyFallback(input.content)
+      : undefined
+    const resolvedAmountMinor =
+      summary.totalAmountMinor
+      ?? summary.settlementAmountMinor
+      ?? summary.summaryTotalAmountMinor
+      ?? summary.localAmountMinor
+      ?? looseScanAmountFallback?.amountMinor
+    const resolvedCurrency =
+      summary.totalCurrency
+      ?? summary.settlementCurrency
+      ?? summary.summaryTotalCurrency
+      ?? summary.localCurrency
+      ?? looseScanAmountFallback?.currency
 
     if (summary.finalStatus === 'failed') {
       throw new Error(`Invoice document is missing required fields: ${summary.missingRequiredFields.join(', ')}`)
@@ -233,18 +249,17 @@ export class InvoiceDocumentParser {
     const issueDate = summary.issueDate ?? summary.taxableDate
     const dueDate = summary.dueDate
     const taxableDate = summary.taxableDate
-    const scanFallbackDateAllowed = shouldApplyInvoiceScanFallback(input.content)
     const occurredAt = issueDate
       ?? dueDate
       ?? (
-        typeof summary.totalAmountMinor === 'number'
-        && summary.totalCurrency
+        typeof resolvedAmountMinor === 'number'
+        && resolvedCurrency
         && scanFallbackDateAllowed
           ? input.extractedAt.slice(0, 10)
           : undefined
       )
 
-    if (!occurredAt || typeof summary.totalAmountMinor !== 'number' || !summary.totalCurrency) {
+    if (!occurredAt || typeof resolvedAmountMinor !== 'number' || !resolvedCurrency) {
       return []
     }
 
@@ -256,8 +271,8 @@ export class InvoiceDocumentParser {
       recordType: 'invoice-document',
       extractedAt: input.extractedAt,
       ...(extracted.invoiceNumber ? { rawReference: extracted.invoiceNumber } : {}),
-      amountMinor: summary.totalAmountMinor,
-      currency: summary.totalCurrency,
+      amountMinor: resolvedAmountMinor,
+      currency: resolvedCurrency,
       occurredAt,
       data: {
         sourceSystem: 'invoice',
@@ -269,8 +284,8 @@ export class InvoiceDocumentParser {
         ...(issueDate ? { issueDate } : {}),
         ...(dueDate ? { dueDate } : {}),
         ...(taxableDate ? { taxableDate } : {}),
-        amountMinor: summary.totalAmountMinor,
-        currency: summary.totalCurrency,
+        amountMinor: resolvedAmountMinor,
+        currency: resolvedCurrency,
         ...(typeof summary.settlementAmountMinor === 'number' && summary.settlementCurrency
           ? { settlementAmountMinor: summary.settlementAmountMinor, settlementCurrency: summary.settlementCurrency }
           : {}),
@@ -646,6 +661,37 @@ function extractInvoiceScanFallbackFields(content: string): {
     ...(issueDateRaw ? { issueDateRaw } : {}),
     ...(preferredTotal ? { totalRaw: preferredTotal } : {})
   }
+}
+
+function extractInvoiceScanLooseMoneyFallback(content: string): { amountMinor: number; currency: string } | undefined {
+  const normalized = content
+    .replace(/\u0000/g, ' ')
+    .replace(/\r/g, '\n')
+    .replace(/\s+/g, ' ')
+  const labeledCandidate = normalized.match(
+    /(?:celkem|k\s*uhrad[eě]|uhrad[eě])\D{0,40}(-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2})\s*(czk|kč|kc|ke|k6|clk|eur|€)?/i
+  )
+  const labeledAmount = labeledCandidate?.[1]
+  const labeledCurrencyHint = labeledCandidate?.[2]
+  const fallbackCurrency = /(eur|€)/i.test(labeledCurrencyHint ?? '') || /(eur|€)/i.test(normalized) ? 'EUR' : 'CZK'
+
+  if (labeledAmount) {
+    const parsed = safeParseDocumentMoney(`${labeledAmount} ${fallbackCurrency}`, 'Invoice scan loose amount fallback')
+    if (parsed && parsed.amountMinor > 0) {
+      return parsed
+    }
+  }
+
+  const candidateAmounts = Array.from(normalized.matchAll(/(-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2})\s*(czk|kč|kc|ke|k6|clk|eur|€)?/gi))
+    .map((match) => {
+      const value = match?.[1]
+      const currency = /(eur|€)/i.test(match?.[2] ?? '') || /(eur|€)/i.test(normalized) ? 'EUR' : 'CZK'
+      return value ? safeParseDocumentMoney(`${value} ${currency}`, 'Invoice scan loose amount candidate') : undefined
+    })
+    .filter((candidate): candidate is { amountMinor: number; currency: string } => Boolean(candidate && candidate.amountMinor > 0))
+    .sort((left, right) => right.amountMinor - left.amountMinor)
+
+  return candidateAmounts[0]
 }
 
 function pickDocumentField(
