@@ -1055,7 +1055,7 @@ describe('buildReconciliationWorkflowPlan', () => {
         ])
     })
 
-    it('builds one deterministic Expedia terminal batch match from three TER-backed reservations to one Fio inflow', () => {
+    it('builds one deterministic Expedia terminal batch match when reservation display amounts are EUR but TER settlement basis is CZK', () => {
         const plan = buildReconciliationWorkflowPlan({
             extractedRecords: [
                 {
@@ -1064,8 +1064,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                     recordType: 'payout-line',
                     extractedAt: '2026-04-11T10:00:00.000Z',
                     rawReference: 'EXP-TER-1',
-                    amountMinor: 40000,
-                    currency: 'CZK',
+                    amountMinor: 67530,
+                    currency: 'EUR',
                     occurredAt: '2026-04-08',
                     data: {
                         platform: 'previo',
@@ -1073,8 +1073,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         bookedAt: '2026-04-08',
                         stayStartAt: '2026-04-08',
                         stayEndAt: '2026-04-09',
-                        amountMinor: 40000,
-                        currency: 'CZK',
+                        amountMinor: 67530,
+                        currency: 'EUR',
                         reference: 'EXP-TER-1',
                         reservationId: 'EXP-TER-1',
                         guestName: 'Cheng Hiu Tung Tanya',
@@ -1087,8 +1087,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                     recordType: 'payout-line',
                     extractedAt: '2026-04-11T10:00:00.000Z',
                     rawReference: 'EXP-TER-2',
-                    amountMinor: 70000,
-                    currency: 'CZK',
+                    amountMinor: 42401,
+                    currency: 'EUR',
                     occurredAt: '2026-04-08',
                     data: {
                         platform: 'previo',
@@ -1096,8 +1096,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         bookedAt: '2026-04-08',
                         stayStartAt: '2026-04-08',
                         stayEndAt: '2026-04-10',
-                        amountMinor: 70000,
-                        currency: 'CZK',
+                        amountMinor: 42401,
+                        currency: 'EUR',
                         reference: 'EXP-TER-2',
                         reservationId: 'EXP-TER-2',
                         guestName: 'Radicanin Dalibor',
@@ -1110,8 +1110,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                     recordType: 'payout-line',
                     extractedAt: '2026-04-11T10:00:00.000Z',
                     rawReference: 'EXP-TER-3',
-                    amountMinor: 90000,
-                    currency: 'CZK',
+                    amountMinor: 86307,
+                    currency: 'EUR',
                     occurredAt: '2026-04-08',
                     data: {
                         platform: 'previo',
@@ -1119,8 +1119,8 @@ describe('buildReconciliationWorkflowPlan', () => {
                         bookedAt: '2026-04-08',
                         stayStartAt: '2026-04-09',
                         stayEndAt: '2026-04-10',
-                        amountMinor: 90000,
-                        currency: 'CZK',
+                        amountMinor: 86307,
+                        currency: 'EUR',
                         reference: 'EXP-TER-3',
                         reservationId: 'EXP-TER-3',
                         guestName: 'Ferreira Ina',
@@ -1133,7 +1133,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                     recordType: 'invoice-list-row',
                     extractedAt: '2026-04-11T10:00:00.000Z',
                     rawReference: 'EXP-TER-1',
-                    amountMinor: 40000,
+                    amountMinor: 1627149,
                     currency: 'CZK',
                     occurredAt: '2026-04-08',
                     data: {
@@ -1141,6 +1141,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                         rowKind: 'header',
                         voucher: 'EXP-TER-1',
                         paymentMethod: 'TER',
+                        grossAmountMinor: 1627149,
                         currency: 'CZK'
                     }
                 },
@@ -1150,7 +1151,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                     recordType: 'invoice-list-row',
                     extractedAt: '2026-04-11T10:00:00.000Z',
                     rawReference: 'EXP-TER-2',
-                    amountMinor: 70000,
+                    amountMinor: 1010189,
                     currency: 'CZK',
                     occurredAt: '2026-04-08',
                     data: {
@@ -1158,6 +1159,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                         rowKind: 'header',
                         voucher: 'EXP-TER-2',
                         paymentMethod: 'TER',
+                        grossAmountMinor: 1010189,
                         currency: 'CZK'
                     }
                 },
@@ -1167,7 +1169,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                     recordType: 'invoice-list-row',
                     extractedAt: '2026-04-11T10:00:00.000Z',
                     rawReference: 'EXP-TER-3',
-                    amountMinor: 90000,
+                    amountMinor: 2067667,
                     currency: 'CZK',
                     occurredAt: '2026-04-08',
                     data: {
@@ -1175,6 +1177,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                         rowKind: 'header',
                         voucher: 'EXP-TER-3',
                         paymentMethod: 'TER',
+                        grossAmountMinor: 2067667,
                         currency: 'CZK'
                     }
                 }
@@ -1184,7 +1187,7 @@ describe('buildReconciliationWorkflowPlan', () => {
                     id: 'txn:bank:fio-expedia-terminal-batch' as NormalizedTransaction['id'],
                     direction: 'in',
                     source: 'bank',
-                    amountMinor: 200000,
+                    amountMinor: 4705005,
                     currency: 'CZK',
                     bookedAt: '2026-04-11',
                     accountId: 'fio-main',
@@ -1202,19 +1205,25 @@ describe('buildReconciliationWorkflowPlan', () => {
                 reservationId: 'EXP-TER-1',
                 settlementKind: 'direct_bank_settlement',
                 matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
-                platform: 'expedia_direct_bank'
+                platform: 'expedia_direct_bank',
+                amountMinor: 67530,
+                currency: 'EUR'
             }),
             expect.objectContaining({
                 reservationId: 'EXP-TER-2',
                 settlementKind: 'direct_bank_settlement',
                 matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
-                platform: 'expedia_direct_bank'
+                platform: 'expedia_direct_bank',
+                amountMinor: 42401,
+                currency: 'EUR'
             }),
             expect.objectContaining({
                 reservationId: 'EXP-TER-3',
                 settlementKind: 'direct_bank_settlement',
                 matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
-                platform: 'expedia_direct_bank'
+                platform: 'expedia_direct_bank',
+                amountMinor: 86307,
+                currency: 'EUR'
             })
         ]))
         expect(plan.reservationSettlementNoMatches).toEqual([])

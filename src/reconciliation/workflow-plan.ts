@@ -1228,6 +1228,14 @@ function buildManualReservationBankTransferMatches(input: {
         && isEligibleExpediaTerminalReservation(reservation)
         && hasTerminalInvoiceEvidenceAnchorForReservation(reservation, input.invoiceListEnrichment)
     )
+    const expediaTerminalSettlementCandidates = expediaTerminalReservations.map((reservation) => {
+        const settlementAmount = resolveExpediaTerminalSettlementAmountBasis(reservation, input.invoiceListEnrichment)
+        return {
+            reservation,
+            settlementAmountMinor: settlementAmount?.amountMinor ?? reservation.grossRevenueMinor,
+            settlementCurrency: settlementAmount?.currency ?? reservation.currency
+        }
+    })
     const expediaTerminalCandidates = input.normalizedTransactions.filter((transaction) =>
         transaction.source === 'bank'
         && transaction.direction === 'in'
@@ -1235,9 +1243,14 @@ function buildManualReservationBankTransferMatches(input: {
         && transaction.amountMinor > 0
         && isLikelyExpediaTerminalSettlementBankTransaction(transaction)
     )
-    const reservationsByMonthCurrency = new Map<string, ReservationSourceRecord[]>()
+    const reservationsByMonthCurrency = new Map<string, Array<{
+        reservation: ReservationSourceRecord
+        settlementAmountMinor: number
+        settlementCurrency: string
+    }>>()
 
-    for (const reservation of expediaTerminalReservations) {
+    for (const candidate of expediaTerminalSettlementCandidates) {
+        const reservation = candidate.reservation
         const monthKey = resolveMonthKey(
             reservation.bookedAt,
             reservation.stayStartAt,
@@ -1248,9 +1261,9 @@ function buildManualReservationBankTransferMatches(input: {
             continue
         }
 
-        const groupingKey = `${monthKey}:${reservation.currency}`
+        const groupingKey = `${monthKey}:${candidate.settlementCurrency}`
         const items = reservationsByMonthCurrency.get(groupingKey) ?? []
-        items.push(reservation)
+        items.push(candidate)
         reservationsByMonthCurrency.set(groupingKey, items)
     }
 
@@ -1265,11 +1278,16 @@ function buildManualReservationBankTransferMatches(input: {
             .sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))
 
         for (const bankTransaction of candidateTransactions) {
-            const availableReservations = groupedReservations.filter((reservation) =>
-                !matchedReservationSourceKeys.has(buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId))
-                && isWithinReservationBankTransferDateWindow(reservation, bankTransaction.bookedAt)
+            const availableReservations = groupedReservations.filter((candidate) =>
+                !matchedReservationSourceKeys.has(
+                    buildReservationSourceKey(candidate.reservation.sourceDocumentId, candidate.reservation.reservationId)
+                )
+                && isWithinReservationBankTransferDateWindow(candidate.reservation, bankTransaction.bookedAt)
             )
-            const subset = selectUniqueReservationSubsetByExactAmount(availableReservations, bankTransaction.amountMinor)
+            const subset = selectUniqueReservationSubsetByExactAmount(
+                availableReservations,
+                bankTransaction.amountMinor
+            )
 
             if (!subset || subset.length === 0) {
                 continue
@@ -1277,7 +1295,8 @@ function buildManualReservationBankTransferMatches(input: {
 
             usedSettlementIds.add(bankTransaction.id)
 
-            for (const reservation of subset) {
+            for (const candidate of subset) {
+                const reservation = candidate.reservation
                 matches.push({
                     reservationId: reservation.reservationId,
                     reference: reservation.reference,
@@ -1297,6 +1316,8 @@ function buildManualReservationBankTransferMatches(input: {
                         { key: 'settlementChannel', value: 'expedia_direct_bank' },
                         { key: 'settlementBatchSize', value: subset.length },
                         { key: 'batchAmountMinor', value: bankTransaction.amountMinor },
+                        { key: 'settlementAmountMinor', value: candidate.settlementAmountMinor },
+                        { key: 'settlementCurrency', value: candidate.settlementCurrency },
                         { key: 'currency', value: bankTransaction.currency },
                         { key: 'bookedAt', value: bankTransaction.bookedAt }
                     ]
@@ -1401,6 +1422,51 @@ function hasTerminalInvoiceEvidenceAnchorForReservation(
     })
 }
 
+function resolveExpediaTerminalSettlementAmountBasis(
+    reservation: ReservationSourceRecord,
+    records: InvoiceListEnrichmentRecord[]
+): { amountMinor: number, currency: string } | undefined {
+    const reservationAnchors = new Set(
+        [reservation.reference, reservation.reservationId]
+            .map((value) => normalizeComparable(value))
+            .filter(Boolean)
+    )
+
+    if (reservationAnchors.size === 0) {
+        return undefined
+    }
+
+    const candidates = records
+        .filter((record) => isTerminalInvoicePaymentMethod(record.paymentMethod))
+        .filter((record) => record.recordKind === 'header')
+        .filter((record) => typeof record.grossAmountMinor === 'number' && record.grossAmountMinor > 0)
+        .filter((record) => {
+            const voucher = normalizeComparable(record.voucher)
+            const variableSymbol = normalizeComparable(record.variableSymbol)
+            const invoiceNumber = normalizeComparable(record.invoiceNumber)
+            const customerId = normalizeComparable(record.customerId)
+
+            return reservationAnchors.has(voucher)
+                || reservationAnchors.has(variableSymbol)
+                || reservationAnchors.has(invoiceNumber)
+                || reservationAnchors.has(customerId)
+        })
+        .map((record) => ({
+            amountMinor: record.grossAmountMinor!,
+            currency: record.currency
+        }))
+
+    if (candidates.length === 0) {
+        return undefined
+    }
+
+    const unique = Array.from(new Map(
+        candidates.map((candidate) => [`${candidate.currency}:${candidate.amountMinor}`, candidate] as const)
+    ).values())
+
+    return unique.length === 1 ? unique[0] : undefined
+}
+
 function isTerminalInvoicePaymentMethod(value: string | undefined): boolean {
     const normalized = normalizeComparable(value)
 
@@ -1488,23 +1554,39 @@ function calculateDateDistanceInDays(left: string, right: string): number {
 }
 
 function selectUniqueReservationSubsetByExactAmount(
-    reservations: ReservationSourceRecord[],
+    reservations: Array<{
+        reservation: ReservationSourceRecord
+        settlementAmountMinor: number
+        settlementCurrency: string
+    }>,
     targetAmountMinor: number
-): ReservationSourceRecord[] | undefined {
+): Array<{
+    reservation: ReservationSourceRecord
+    settlementAmountMinor: number
+    settlementCurrency: string
+}> | undefined {
     if (targetAmountMinor <= 0 || reservations.length === 0) {
         return undefined
     }
 
     const sorted = reservations
-        .filter((reservation) => reservation.grossRevenueMinor > 0)
+        .filter((candidate) => candidate.settlementAmountMinor > 0)
         .slice()
-        .sort((left, right) => right.grossRevenueMinor - left.grossRevenueMinor)
-    const solutions: ReservationSourceRecord[][] = []
+        .sort((left, right) => right.settlementAmountMinor - left.settlementAmountMinor)
+    const solutions: Array<Array<{
+        reservation: ReservationSourceRecord
+        settlementAmountMinor: number
+        settlementCurrency: string
+    }>> = []
 
     const dfs = (
         index: number,
         runningTotal: number,
-        selected: ReservationSourceRecord[]
+        selected: Array<{
+            reservation: ReservationSourceRecord
+            settlementAmountMinor: number
+            settlementCurrency: string
+        }>
     ) => {
         if (solutions.length > 1) {
             return
@@ -1521,7 +1603,7 @@ function selectUniqueReservationSubsetByExactAmount(
 
         const reservation = sorted[index]!
         selected.push(reservation)
-        dfs(index + 1, runningTotal + reservation.grossRevenueMinor, selected)
+        dfs(index + 1, runningTotal + reservation.settlementAmountMinor, selected)
         selected.pop()
         dfs(index + 1, runningTotal, selected)
     }
