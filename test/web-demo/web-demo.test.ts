@@ -2884,6 +2884,156 @@ describe('buildWebDemo', () => {
     expect(additive.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5')
   })
 
+  it('manually matches one unmatched incoming bank payment with one Reservation+ card (optionally with related parking) in control detail', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T09:40:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-control-cross-section',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('comgate-current-portal.csv', buildCurrentPortalComgateSameMonthLagContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('Pohyby_5599955956_202603191023.csv', buildRealUploadedRbContentWithGenericIncomingOnly(), 'text/csv')
+      ]
+    })
+
+    rendered.openControlDetailPage()
+
+    const beforeState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ id: string; operatorStatusLabelCs?: string; primaryReference?: string; secondaryReference?: string }>
+        }>
+      }
+      manualMatchGroups: Array<unknown>
+    }
+    const incomingId = beforeState.reviewSections.expenseUnmatchedInflows[0]?.id
+    const reservationPlusItem = beforeState.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]
+    const parkingItem = beforeState.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]
+    const reservationPlusId = reservationPlusItem?.id
+    const parkingLooksRelated = Boolean(
+      reservationPlusItem
+      && parkingItem
+      && (
+        (parkingItem.primaryReference && reservationPlusItem.primaryReference && parkingItem.primaryReference === reservationPlusItem.primaryReference)
+        || (parkingItem.secondaryReference && reservationPlusItem.secondaryReference && parkingItem.secondaryReference === reservationPlusItem.secondaryReference)
+      )
+    )
+    const parkingId = parkingLooksRelated ? parkingItem?.id : undefined
+
+    expect(incomingId).toBeTruthy()
+    expect(reservationPlusId).toBeTruthy()
+    expect(beforeState.manualMatchGroups).toEqual([])
+
+    rendered.selectManualMatchItem('control', 'expenseUnmatchedInflows', String(incomingId))
+    rendered.selectManualMatchItem('control', 'reservationOverviewReservationPlus', String(reservationPlusId))
+    if (parkingId) {
+      rendered.selectManualMatchItem('control', 'reservationOverviewParking', String(parkingId))
+    }
+    rendered.openManualMatchConfirm('control')
+    rendered.confirmManualMatchGroup('control', 'Cross-section bank + reservation')
+
+    const matchedState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<{ id: string; selectedReviewItemIds: string[] }>
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ id: string; operatorStatusLabelCs?: string }>
+        }>
+      }
+    }
+    const matchedReservationItem = matchedState.reservationPaymentOverview.blocks
+      .find((block) => block.key === 'reservation_plus')
+      ?.items.find((item) => item.id === reservationPlusId)
+    const matchedParkingItem = parkingId
+      ? matchedState.reservationPaymentOverview.blocks
+        .find((block) => block.key === 'parking')
+        ?.items.find((item) => item.id === parkingId)
+      : undefined
+
+    expect(matchedState.manualMatchGroups).toHaveLength(1)
+    expect(matchedState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === incomingId)).toBe(false)
+    expect(matchedReservationItem?.operatorStatusLabelCs).toBe('ručně spárováno')
+    if (parkingId) {
+      expect(matchedParkingItem?.operatorStatusLabelCs).toBe('ručně spárováno')
+    }
+
+    rendered.removeManualMatchGroup('control', matchedState.manualMatchGroups[0]!.id)
+
+    const restoredState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ id: string; operatorStatusLabelCs?: string }>
+        }>
+      }
+    }
+    const restoredReservationItem = restoredState.reservationPaymentOverview.blocks
+      .find((block) => block.key === 'reservation_plus')
+      ?.items.find((item) => item.id === reservationPlusId)
+
+    expect(restoredState.manualMatchGroups).toEqual([])
+    expect(restoredState.reviewSections.expenseUnmatchedInflows.some((item) => item.id === incomingId)).toBe(true)
+    expect(restoredReservationItem?.operatorStatusLabelCs).not.toBe('ručně spárováno')
+  })
+
+  it('keeps control cross-section manual match action blocked for invalid selection (2 incoming + 1 reservation)', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T10:05:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-control-cross-section-invalid',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('comgate-current-portal.csv', buildCurrentPortalComgateSameMonthLagContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('Pohyby_5599955956_202603191023.csv', buildRealUploadedRbContentWithTwoGenericIncomingOnly(), 'text/csv')
+      ]
+    })
+
+    rendered.openControlDetailPage()
+
+    const beforeState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ id: string }>
+        }>
+      }
+      manualMatchGroups: Array<unknown>
+    }
+    const incomingIds = beforeState.reviewSections.expenseUnmatchedInflows.slice(0, 2).map((item) => item.id)
+    const reservationPlusId = beforeState.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]?.id
+
+    expect(incomingIds).toHaveLength(2)
+    expect(reservationPlusId).toBeTruthy()
+
+    rendered.selectManualMatchItem('control', 'expenseUnmatchedInflows', incomingIds[0]!)
+    rendered.selectManualMatchItem('control', 'expenseUnmatchedInflows', incomingIds[1]!)
+    rendered.selectManualMatchItem('control', 'reservationOverviewReservationPlus', String(reservationPlusId))
+
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Výběr nelze potvrdit')
+    rendered.openManualMatchConfirm('control')
+    rendered.confirmManualMatchGroup('control', 'Toto se nesmí vytvořit')
+
+    const afterState = rendered.getLastVisibleRuntimeState() as {
+      manualMatchGroups: Array<unknown>
+    }
+
+    expect(afterState.manualMatchGroups).toEqual([])
+  })
+
   it('creates a manual group from an invoice and first payment, then extends it with a second payment in the same month', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-01T19:20:00.000Z',
@@ -8247,6 +8397,14 @@ async function executeWebDemoMainWorkflow(input: {
       if (bucketKey === 'unmatchedReservationSettlements') {
         return elements['unmatched-reservations-content']
       }
+
+      if (
+        bucketKey === 'expenseUnmatchedInflows'
+        || bucketKey === 'reservationOverviewReservationPlus'
+        || bucketKey === 'reservationOverviewParking'
+      ) {
+        return elements['reservation-settlement-overview-content']
+      }
     }
 
     if (bucketKey === 'expenseUnmatchedDocuments') {
@@ -9582,6 +9740,14 @@ function buildRealUploadedRbContentWithGenericIncomingOnly(): string {
   return [
     '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
     '29.03.2026 12:00;29.03.2026 12:02;5599955956/5500;000000-4444555566/0100;Neznámý příjemce;2200,00;CZK;Příchozí platba bez vazby'
+  ].join('\n')
+}
+
+function buildRealUploadedRbContentWithTwoGenericIncomingOnly(): string {
+  return [
+    '"Datum provedení";"Datum zaúčtování";"Číslo účtu";"Číslo protiúčtu";"Název protiúčtu";"Zaúčtovaná částka";"Měna účtu";"Zpráva pro příjemce"',
+    '29.03.2026 12:00;29.03.2026 12:02;5599955956/5500;000000-4444555566/0100;Neznámý příjemce;2200,00;CZK;Příchozí platba bez vazby',
+    '29.03.2026 15:00;29.03.2026 15:03;5599955956/5500;000000-3333444455/0300;Jiný příjemce;2400,00;CZK;Druhá příchozí platba bez vazby'
   ].join('\n')
 }
 

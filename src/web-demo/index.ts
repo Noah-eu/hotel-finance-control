@@ -545,6 +545,15 @@ function renderOperatorWebDemoHtml(input: {
         align-items: start;
         min-width: 0;
       }
+      .reservation-overview-bank-linking {
+        border: 1px solid #dce6f5;
+        border-radius: 14px;
+        background: #fbfdff;
+        padding: 14px 16px;
+        margin-bottom: 10px;
+        min-width: 0;
+        overflow: hidden;
+      }
       .reservation-overview-block {
         border: 1px solid #dce6f5;
         border-radius: 14px;
@@ -7350,7 +7359,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
           || bucketKey === 'unmatchedReservationSettlements'
           || bucketKey === 'expenseUnmatchedDocuments'
           || bucketKey === 'expenseUnmatchedOutflows'
-          || bucketKey === 'expenseUnmatchedInflows';
+          || bucketKey === 'expenseUnmatchedInflows'
+          || bucketKey === 'reservationOverviewReservationPlus'
+          || bucketKey === 'reservationOverviewParking';
       }
 
       function buildManualMatchSelectionElementId(pageKey, bucketKey, reviewItemId) {
@@ -7397,6 +7408,23 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function getManualMatchItemAmount(item) {
+        if (item && typeof item.currency === 'string') {
+          const paidMinor = typeof item.paidAmountMinor === 'number' ? item.paidAmountMinor : undefined;
+          const expectedMinor = typeof item.expectedAmountMinor === 'number' ? item.expectedAmountMinor : undefined;
+          const amountMinor = typeof paidMinor === 'number'
+            ? paidMinor
+            : typeof expectedMinor === 'number'
+              ? expectedMinor
+              : undefined;
+
+          if (typeof amountMinor === 'number') {
+            return {
+              amountMinor,
+              currency: String(item.currency || 'CZK')
+            };
+          }
+        }
+
         const evidence = Array.isArray(item && item.evidenceSummary) ? item.evidenceSummary : [];
         const amountEvidence = evidence.find((entry) => entry && entry.label === 'částka' && entry.value);
 
@@ -7455,7 +7483,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         };
       }
 
-      function buildManualMatchItemLookup(sections) {
+      function buildManualMatchItemLookup(sections, reservationPaymentOverview) {
         const lookup = new Map();
         const normalizedSections = sections || {};
 
@@ -7470,15 +7498,251 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
           items.forEach((item) => {
             if (item && item.id) {
-              lookup.set(String(item.id), item);
+              lookup.set(String(item.id), {
+                ...item,
+                __manualMatchMeta: {
+                  bucketKey,
+                  sourceKind: 'review'
+                }
+              });
             }
+          });
+        });
+
+        const overviewBlocks = Array.isArray(reservationPaymentOverview && reservationPaymentOverview.blocks)
+          ? reservationPaymentOverview.blocks
+          : [];
+
+        overviewBlocks.forEach((block) => {
+          const blockKey = String(block && block.key || '');
+          const manualBucketKey = blockKey === 'reservation_plus'
+            ? 'reservationOverviewReservationPlus'
+            : blockKey === 'parking'
+              ? 'reservationOverviewParking'
+              : '';
+
+          if (!manualBucketKey) {
+            return;
+          }
+
+          const items = Array.isArray(block && block.items) ? block.items : [];
+          items.forEach((item) => {
+            const itemId = String(item && item.id || '');
+
+            if (!itemId) {
+              return;
+            }
+
+            lookup.set(itemId, {
+              ...item,
+              detail: String(item && item.statusDetailCs || item && item.subtitle || ''),
+              __manualMatchMeta: {
+                bucketKey: manualBucketKey,
+                sourceKind: 'reservation'
+              }
+            });
           });
         });
 
         return lookup;
       }
 
-      function buildEffectiveManualMatchProjection(sections, groups, monthKey) {
+      function cloneReservationPaymentOverview(overview) {
+        const normalizedOverview = overview && Array.isArray(overview.blocks)
+          ? overview
+          : buildEmptyReservationPaymentOverview();
+
+        return {
+          ...normalizedOverview,
+          blocks: normalizedOverview.blocks.map((block) => ({
+            ...block,
+            items: (Array.isArray(block && block.items) ? block.items : []).map((item) => ({
+              ...item,
+              detailEntries: Array.isArray(item && item.detailEntries)
+                ? item.detailEntries.map((entry) => ({ ...entry }))
+                : []
+            }))
+          })),
+          summary: {
+            ...(normalizedOverview.summary || {}),
+            statusCounts: {
+              ...((normalizedOverview.summary && normalizedOverview.summary.statusCounts) || {})
+            }
+          }
+        };
+      }
+
+      function buildManualMatchReservationAnchors(item) {
+        const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
+        const normalizedTokens = [
+          item && item.primaryReference,
+          item && item.secondaryReference,
+          readReservationPaymentDetailValue(detailEntries, 'Reference'),
+          readReservationPaymentDetailValue(detailEntries, 'Rezervace'),
+          readReservationPaymentDetailValue(detailEntries, 'Pobyt'),
+          readReservationPaymentDetailValue(detailEntries, 'Host')
+        ]
+          .map((value) => normalizeExpenseSearchValue(String(value || '')))
+          .filter(Boolean);
+
+        return new Set(normalizedTokens);
+      }
+
+      function isManualMatchParkingRelatedToReservation(reservationItem, parkingItem) {
+        const reservationAnchors = buildManualMatchReservationAnchors(reservationItem);
+        const parkingAnchors = buildManualMatchReservationAnchors(parkingItem);
+
+        if (reservationAnchors.size === 0 || parkingAnchors.size === 0) {
+          return false;
+        }
+
+        for (const token of parkingAnchors) {
+          if (reservationAnchors.has(token)) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      function buildManualMatchSelectionValidation(pageKey, selectedItems) {
+        const normalizedItems = Array.isArray(selectedItems) ? selectedItems : [];
+
+        if (normalizedItems.length === 0) {
+          return {
+            valid: false,
+            reasonCs: 'Vyberte položky pro ruční spárování.'
+          };
+        }
+
+        if (pageKey !== 'control') {
+          return {
+            valid: true,
+            reasonCs: ''
+          };
+        }
+
+        const byBucket = normalizedItems.reduce((accumulator, item) => {
+          const bucketKey = String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '');
+          accumulator[bucketKey] = (accumulator[bucketKey] || 0) + 1;
+          return accumulator;
+        }, {});
+        const crossSectionSelected = Boolean(
+          byBucket.expenseUnmatchedInflows
+          || byBucket.reservationOverviewReservationPlus
+          || byBucket.reservationOverviewParking
+        );
+
+        if (!crossSectionSelected) {
+          return {
+            valid: true,
+            reasonCs: ''
+          };
+        }
+
+        const payoutSelected = Number(byBucket.payoutBatchUnmatched || 0);
+        const unmatchedSettlementSelected = Number(byBucket.unmatchedReservationSettlements || 0);
+        const otherExpenseSelected = Number(byBucket.expenseUnmatchedDocuments || 0) + Number(byBucket.expenseUnmatchedOutflows || 0);
+        const incomingSelected = Number(byBucket.expenseUnmatchedInflows || 0);
+        const reservationSelected = Number(byBucket.reservationOverviewReservationPlus || 0);
+        const parkingSelected = Number(byBucket.reservationOverviewParking || 0);
+
+        if (payoutSelected > 0 || unmatchedSettlementSelected > 0 || otherExpenseSelected > 0) {
+          return {
+            valid: false,
+            reasonCs: 'Cross-section ruční spárování podporuje jen: 1 příchozí bankovní platbu + 1 Reservation+ kartu (+ volitelně 1 související Parkování).'
+          };
+        }
+
+        if (incomingSelected !== 1 || reservationSelected !== 1 || parkingSelected > 1) {
+          return {
+            valid: false,
+            reasonCs: 'Vyberte přesně 1 nespárovanou příchozí bankovní platbu a 1 Reservation+ kartu; Parkování je volitelné (max 1).'
+          };
+        }
+
+        if (parkingSelected === 1) {
+          const reservationItem = normalizedItems.find((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'reservationOverviewReservationPlus');
+          const parkingItem = normalizedItems.find((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'reservationOverviewParking');
+
+          if (!isManualMatchParkingRelatedToReservation(reservationItem, parkingItem)) {
+            return {
+              valid: false,
+              reasonCs: 'Vybraná parking karta není deterministicky navázaná na vybranou Reservation+ kartu.'
+            };
+          }
+        }
+
+        return {
+          valid: true,
+          reasonCs: ''
+        };
+      }
+
+      function applyManualMatchReservationOverviewProjection(overview, projectedGroups) {
+        const clonedOverview = cloneReservationPaymentOverview(overview);
+        const manualGroupByReservationItemId = new Map();
+        const paidStatusCounts = {
+          ...(clonedOverview.summary && clonedOverview.summary.statusCounts || {})
+        };
+
+        (Array.isArray(projectedGroups) ? projectedGroups : []).forEach((group) => {
+          (Array.isArray(group && group.items) ? group.items : []).forEach((item) => {
+            const bucketKey = String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '');
+
+            if (bucketKey === 'reservationOverviewReservationPlus' || bucketKey === 'reservationOverviewParking') {
+              manualGroupByReservationItemId.set(String(item && item.id || ''), group);
+            }
+          });
+        });
+
+        if (manualGroupByReservationItemId.size === 0) {
+          return clonedOverview;
+        }
+
+        clonedOverview.blocks = clonedOverview.blocks.map((block) => ({
+          ...block,
+          items: (Array.isArray(block && block.items) ? block.items : []).map((item) => {
+            const group = manualGroupByReservationItemId.get(String(item && item.id || ''));
+
+            if (!group) {
+              return item;
+            }
+
+            const previousOperatorStatus = String(item && item.operatorStatusKey || item && item.statusKey || 'unverified');
+            const nextOperatorStatus = 'paid';
+
+            if (previousOperatorStatus && previousOperatorStatus !== nextOperatorStatus) {
+              paidStatusCounts[previousOperatorStatus] = Math.max(0, Number(paidStatusCounts[previousOperatorStatus] || 0) - 1);
+              paidStatusCounts[nextOperatorStatus] = Number(paidStatusCounts[nextOperatorStatus] || 0) + 1;
+            }
+
+            const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries.slice() : [];
+            detailEntries.push({
+              labelCs: 'Ruční vazba',
+              value: 'Ručně spárováno · skupina ' + String(group && group.id || '')
+            });
+
+            return {
+              ...item,
+              operatorStatusKey: nextOperatorStatus,
+              operatorStatusLabelCs: 'ručně spárováno',
+              statusDetailCs: 'Ruční vazba operátora v aktuálním měsíci.',
+              manualMatchedGroupId: String(group && group.id || ''),
+              detailEntries
+            };
+          })
+        }));
+
+        clonedOverview.summary = {
+          ...(clonedOverview.summary || {}),
+          statusCounts: paidStatusCounts
+        };
+
+        return clonedOverview;
+      }
+
+      function buildEffectiveManualMatchProjection(sections, reservationPaymentOverview, groups, monthKey) {
         const normalizedSections = {
           ...((sections && typeof sections === 'object') ? sections : {}),
           payoutBatchUnmatched: Array.isArray(sections && sections.payoutBatchUnmatched) ? sections.payoutBatchUnmatched.slice() : [],
@@ -7487,7 +7751,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           expenseUnmatchedOutflows: Array.isArray(sections && sections.expenseUnmatchedOutflows) ? sections.expenseUnmatchedOutflows.slice() : [],
           expenseUnmatchedInflows: Array.isArray(sections && sections.expenseUnmatchedInflows) ? sections.expenseUnmatchedInflows.slice() : []
         };
-        const itemLookup = buildManualMatchItemLookup(normalizedSections);
+        const itemLookup = buildManualMatchItemLookup(normalizedSections, reservationPaymentOverview);
         const assignedReviewItemIds = new Set();
         const projectedGroups = sanitizeManualMatchGroupsForStorage(groups)
           .filter((group) => String(group.monthKey || '') === String(monthKey || ''))
@@ -7518,7 +7782,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             };
           })
           .filter((group) => group.items.length > 0);
-        const hiddenReviewItemIds = new Set(projectedGroups.flatMap((group) => group.items.map((item) => String(item.id || ''))));
+        const hiddenReviewItemIds = new Set(projectedGroups.flatMap((group) =>
+          group.items
+            .filter((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.sourceKind || '') === 'review')
+            .map((item) => String(item.id || ''))
+        ));
+        const projectedReservationPaymentOverview = applyManualMatchReservationOverviewProjection(reservationPaymentOverview, projectedGroups);
 
         return {
           reviewSections: {
@@ -7529,12 +7798,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
             expenseUnmatchedOutflows: normalizedSections.expenseUnmatchedOutflows.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || ''))),
             expenseUnmatchedInflows: normalizedSections.expenseUnmatchedInflows.filter((item) => !hiddenReviewItemIds.has(String(item && item.id || '')))
           },
+          reservationPaymentOverview: projectedReservationPaymentOverview,
           groups: projectedGroups,
           hiddenReviewItemIds
         };
       }
 
-      function syncManualMatchGroupsForCurrentSections(groups, sections, monthKey) {
+      function syncManualMatchGroupsForCurrentSections(groups, sections, reservationPaymentOverview, monthKey) {
         const normalizedGroups = sanitizeManualMatchGroupsForStorage(groups);
         const normalizedMonthKey = String(monthKey || '');
 
@@ -7545,7 +7815,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           };
         }
 
-        const itemLookup = buildManualMatchItemLookup(sections);
+        const itemLookup = buildManualMatchItemLookup(sections, reservationPaymentOverview);
         const assignedReviewItemIds = new Set();
         let changed = normalizedGroups.length !== (Array.isArray(groups) ? groups.length : 0);
         const syncedGroups = normalizedGroups.flatMap((group) => {
@@ -7595,8 +7865,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         };
       }
 
-      function collectSelectedManualMatchItems(sections, options) {
-        const itemLookup = buildManualMatchItemLookup(sections);
+      function collectSelectedManualMatchItems(sections, reservationPaymentOverview, options) {
+        const itemLookup = buildManualMatchItemLookup(sections, reservationPaymentOverview);
         const nextSelectedIds = currentSelectedManualMatchItemIds.filter((itemId) => itemLookup.has(String(itemId || '')));
         const allowStateSync = !options || options.allowStateSync !== false;
 
@@ -7639,11 +7909,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
       }
 
-      function createManualMatchGroupFromSelection(monthKey, sections) {
+      function createManualMatchGroupFromSelection(monthKey, sections, reservationPaymentOverview, pageKey) {
         const normalizedMonthKey = String(monthKey || currentWorkspaceMonth || monthInput && monthInput.value || '');
-        const selectedItems = collectSelectedManualMatchItems(sections);
+        const selectedItems = collectSelectedManualMatchItems(sections, reservationPaymentOverview);
+        const selectionValidation = buildManualMatchSelectionValidation(String(pageKey || ''), selectedItems);
 
-        if (!normalizedMonthKey || selectedItems.length === 0) {
+        if (!normalizedMonthKey || selectedItems.length === 0 || !selectionValidation.valid) {
           return;
         }
 
@@ -7661,7 +7932,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
       }
 
-      function extendManualMatchGroupFromSelection(groupId, monthKey, sections) {
+      function extendManualMatchGroupFromSelection(groupId, monthKey, sections, reservationPaymentOverview, pageKey) {
         const normalizedGroupId = String(groupId || '');
         const normalizedMonthKey = String(monthKey || currentWorkspaceMonth || monthInput && monthInput.value || '');
         const sanitizedGroups = sanitizeManualMatchGroupsForStorage(currentManualMatchGroups);
@@ -7678,7 +7949,15 @@ ${showRuntimePayoutDiagnostics ? '' : `
           return;
         }
 
-        const selectedItems = collectSelectedManualMatchItems(sections);
+        const selectedItems = collectSelectedManualMatchItems(sections, reservationPaymentOverview);
+        const selectionValidation = buildManualMatchSelectionValidation(String(pageKey || ''), selectedItems);
+        if (!selectionValidation.valid) {
+          currentSelectedManualMatchItemIds = [];
+          currentManualMatchDraftNote = '';
+          currentManualMatchConfirmMode = false;
+          applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+          return;
+        }
         const targetGroup = sanitizedGroups[targetGroupIndex];
         const targetReviewItemIds = new Set((targetGroup && targetGroup.selectedReviewItemIds) || []);
         const reviewItemIdsAssignedElsewhere = new Set(
@@ -8597,7 +8876,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildManualMatchSummaryMarkup(pageKey, state) {
         const normalizedState = state || initialRuntimeState;
-        const selectedItems = collectSelectedManualMatchItems(normalizedState.reviewSections, { allowStateSync: false });
+        const selectedItems = collectSelectedManualMatchItems(
+          normalizedState.reviewSections,
+          normalizedState.reservationPaymentOverview,
+          { allowStateSync: false }
+        );
+        const selectionValidation = buildManualMatchSelectionValidation(pageKey, selectedItems);
 
         if (selectedItems.length === 0) {
           return '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
@@ -8614,9 +8898,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             '<div>',
             '<p><strong>Vybráno položek:</strong> ' + escapeHtml(String(selectionSummary.selectedCount)) + '</p>',
             totalMarkup,
+            (selectionValidation.valid
+              ? ''
+              : '<p class="hint"><strong>Výběr nelze potvrdit:</strong> ' + escapeHtml(selectionValidation.reasonCs) + '</p>'),
             '</div>',
             '<div class="manual-match-summary-actions">',
-            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'review', 'selection')) + '" type="button">Ručně spárovat</button>',
+            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'review', 'selection')) + '" type="button"' + (selectionValidation.valid ? '' : ' disabled') + '>Ručně spárovat</button>',
             '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')) + '" type="button" class="secondary-button">Zrušit výběr</button>',
             '</div>',
             '</div>'
@@ -8627,10 +8914,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<p><strong>Potvrzení ručního spárování</strong></p>',
           '<p><strong>Položek:</strong> ' + escapeHtml(String(selectionSummary.selectedCount)) + '</p>',
           totalMarkup,
+          (selectionValidation.valid
+            ? ''
+            : '<p class="hint"><strong>Výběr nelze potvrdit:</strong> ' + escapeHtml(selectionValidation.reasonCs) + '</p>'),
           '<label for="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'note', 'selection')) + '">Krátká poznámka</label>',
           '<input id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'note', 'selection')) + '" class="manual-match-note-input" type="text" maxlength="160" placeholder="Např. Jedna ruční vazba pro stejný celek" value="' + escapeHtml(currentManualMatchDraftNote || '') + '" />',
           '<div class="manual-match-summary-actions">',
-          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection')) + '" type="button">Potvrdit vytvoření group</button>',
+          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection')) + '" type="button"' + (selectionValidation.valid ? '' : ' disabled') + '>Potvrdit vytvoření group</button>',
           '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'back', 'selection')) + '" type="button" class="secondary-button">Zpět</button>',
           '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')) + '" type="button" class="danger-button">Zrušit výběr</button>',
           '</div>'
@@ -8639,7 +8929,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildManualMatchGroupMarkup(pageKey, groups, state) {
         const normalizedGroups = Array.isArray(groups) ? groups : [];
-        const selectionSummary = buildManualMatchSelectionSummary(collectSelectedManualMatchItems(state && state.reviewSections, { allowStateSync: false }));
+        const selectionSummary = buildManualMatchSelectionSummary(
+          collectSelectedManualMatchItems(
+            state && state.reviewSections,
+            state && state.reservationPaymentOverview,
+            { allowStateSync: false }
+          )
+        );
         const hasAppendSelection = selectionSummary.selectedCount > 0;
 
         if (normalizedGroups.length === 0) {
@@ -8753,7 +9049,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         if (confirmButton && typeof confirmButton.addEventListener === 'function') {
           confirmButton.addEventListener('click', () => {
-            createManualMatchGroupFromSelection(String(state && state.monthLabel || currentWorkspaceMonth || ''), state && state.reviewSections);
+            createManualMatchGroupFromSelection(
+              String(state && state.monthLabel || currentWorkspaceMonth || ''),
+              state && state.reviewSections,
+              state && state.reservationPaymentOverview,
+              pageKey
+            );
             showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
           });
         }
@@ -8767,7 +9068,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
               extendManualMatchGroupFromSelection(
                 group.id,
                 String(state && state.monthLabel || currentWorkspaceMonth || ''),
-                currentExpenseReviewState && currentExpenseReviewState.reviewSections
+                currentExpenseReviewState && currentExpenseReviewState.reviewSections,
+                currentExpenseReviewState && currentExpenseReviewState.reservationPaymentOverview,
+                pageKey
               );
               showOperatorView(pageKey === 'control' ? 'control-detail' : 'expense-detail');
             });
@@ -8972,7 +9275,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return '<details class="reservation-payment-detail"><summary>Detail</summary><ul>' + detailLines.join('') + '</ul></details>';
       }
 
-      function buildReservationPaymentItemMarkup(item) {
+      function buildReservationPaymentItemMarkup(item, pageKey, bucketKey) {
         const itemClassName = item.blockKey === 'parking'
           ? 'reservation-payment-item is-parking'
           : 'reservation-payment-item';
@@ -8996,6 +9299,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<span class="status-badge evidence">' + escapeHtml(String(item.evidenceLabelCs || 'bez důkazu')) + '</span>',
           '</div>',
           '</div>',
+          (item && item.manualMatchedGroupId
+            ? ''
+            : buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || '', item)),
           '<div class="reservation-payment-meta">' + buildReservationPaymentCompactMeta(item) + '</div>',
           buildReservationPaymentDetailMarkup(item),
           '</article>'
@@ -9059,11 +9365,11 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ? '<div class="payout-compact-reference">' + escapeHtml(buildPayoutCompactSupplementText(item)) + '</div>'
             : ''),
           '</div>',
+          buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item),
           '<details class="reservation-payment-detail"><summary>Detail</summary>'
             + '<ul>'
             + '<li>'
             + '<strong>' + escapeHtml(String(item && item.title || 'Bez názvu dávky')) + '</strong>'
-            + (pageKey === 'control' ? '' : buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || 'payoutBatchUnmatched', item))
             + buildReviewDetailMarkup(item)
             + buildReviewAuditMarkup(item)
             + '</li>'
@@ -9102,7 +9408,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         ].filter(Boolean).join(' '));
       }
 
-      function buildReservationPaymentOverviewMarkup(overview, payoutProjection) {
+      function buildReservationPaymentOverviewMarkup(overview, payoutProjection, reviewSections) {
         const normalizedOverview = overview && Array.isArray(overview.blocks)
           ? overview
           : buildEmptyReservationPaymentOverview();
@@ -9139,6 +9445,16 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
           return buildPayoutSearchIndex(item).includes(normalizedNeedle);
         });
+        const unmatchedIncomingBankItems = (Array.isArray(reviewSections && reviewSections.expenseUnmatchedInflows)
+          ? reviewSections.expenseUnmatchedInflows
+          : [])
+          .filter((item) => {
+            if (!normalizedNeedle) {
+              return true;
+            }
+
+            return buildPayoutSearchIndex(item).includes(normalizedNeedle);
+          });
         const columns = [
           {
             key: 'payout-matched',
@@ -9170,15 +9486,29 @@ ${showRuntimePayoutDiagnostics ? '' : `
           },
           {
             ...visibleReservationBlock('reservation_plus'),
-            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+            renderItem: (item) => buildReservationPaymentItemMarkup(item, 'control', 'reservationOverviewReservationPlus')
           },
           {
             ...visibleReservationBlock('parking'),
-            renderItem: (item) => buildReservationPaymentItemMarkup(item)
+            renderItem: (item) => buildReservationPaymentItemMarkup(item, 'control', 'reservationOverviewParking')
           }
         ];
-        const visibleCount = columns.reduce((sum, block) => sum + (Array.isArray(block.visibleItems) ? block.visibleItems.length : 0), 0);
-        const markup = '<div class="reservation-overview-grid">' + columns.map((block) => [
+        const visibleCount = columns.reduce((sum, block) => sum + (Array.isArray(block.visibleItems) ? block.visibleItems.length : 0), 0) + unmatchedIncomingBankItems.length;
+        const unmatchedIncomingMarkup = [
+          '<section class="reservation-overview-bank-linking">',
+          '<div class="reservation-overview-block-header">',
+          '<div>',
+          '<h4>Nespárované příchozí bankovní platby</h4>',
+          '<p class="reservation-overview-totals">Vyberte 1 položku pro ruční vazbu k Reservation+ kartě.</p>',
+          '</div>',
+          '<span class="reservation-overview-count">' + escapeHtml(String(unmatchedIncomingBankItems.length)) + '</span>',
+          '</div>',
+          (unmatchedIncomingBankItems.length === 0
+            ? '<p class="hint">Žádné nespárované příchozí platby.</p>'
+            : unmatchedIncomingBankItems.map((item) => buildPayoutCompactItemMarkup(item, 'control', 'expenseUnmatchedInflows')).join('')),
+          '</section>'
+        ].join('');
+        const markup = unmatchedIncomingMarkup + '<div class="reservation-overview-grid">' + columns.map((block) => [
           '<section class="reservation-overview-block">',
           '<div class="reservation-overview-block-header">',
           '<div>',
@@ -9405,6 +9735,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const syncedManualMatchGroups = syncManualMatchGroupsForCurrentSections(
           currentManualMatchGroups,
           payoutResolutionState.reviewSections,
+          payoutResolutionState.reservationPaymentOverview,
           currentWorkspaceMonth || payoutResolutionState.monthLabel || ''
         );
 
@@ -9412,9 +9743,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           currentManualMatchGroups = syncedManualMatchGroups.groups;
         }
 
-        collectSelectedManualMatchItems(payoutResolutionState.reviewSections);
+        collectSelectedManualMatchItems(payoutResolutionState.reviewSections, payoutResolutionState.reservationPaymentOverview);
         const manualMatchProjection = buildEffectiveManualMatchProjection(
           payoutResolutionState.reviewSections,
+          payoutResolutionState.reservationPaymentOverview,
           syncedManualMatchGroups.groups,
           currentWorkspaceMonth || payoutResolutionState.monthLabel || ''
         );
@@ -9440,7 +9772,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           },
           manualMatchGroups: manualMatchProjection.groups,
           finalPayoutProjection: adjustedPayoutProjection,
-          reservationPaymentOverview: getVisibleReservationPaymentOverview(payoutResolutionState)
+          reservationPaymentOverview: getVisibleReservationPaymentOverview({
+            ...payoutResolutionState,
+            reservationPaymentOverview: manualMatchProjection.reservationPaymentOverview
+          })
         };
         const payoutProjection = getVisiblePayoutProjection(visibleState);
         const expenseReviewBuckets = buildExpenseReviewBuckets(visibleState.reviewSections);
@@ -9494,12 +9829,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
         reviewSummaryContent.innerHTML = buildReviewSummaryMarkup(visibleState);
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(visibleState, phase);
-        controlManualMatchSummary.hidden = true;
+        controlManualMatchSummary.hidden = false;
+        controlManualMatchSummary.innerHTML = buildManualMatchSummaryMarkup('control', visibleState);
         reportPreviewBody.innerHTML = buildReportRowsMarkup(visibleState);
         matchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.matchedItems || [], 'control', 'matched');
         unmatchedPayoutBatchesContent.innerHTML = buildPayoutBatchDetailMarkup(payoutProjection.unmatchedItems || [], 'control', 'payoutBatchUnmatched');
-        const reservationOverviewRenderResult = buildReservationPaymentOverviewMarkup(visibleState.reservationPaymentOverview, payoutProjection);
+        const reservationOverviewRenderResult = buildReservationPaymentOverviewMarkup(
+          visibleState.reservationPaymentOverview,
+          payoutProjection,
+          visibleState.reviewSections
+        );
         reservationSettlementOverviewContent.innerHTML = reservationOverviewRenderResult.markup;
+        controlManualMatchedSection.hidden = false;
+        controlManualMatchedContent.innerHTML = buildManualMatchGroupMarkup('control', visibleState.manualMatchGroups || [], visibleState);
         if (reservationDetailVisibleCount) {
           reservationDetailVisibleCount.textContent = 'Zobrazeno položek: ' + String(reservationOverviewRenderResult.visibleCount);
         }
@@ -9529,6 +9871,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
           { key: 'expenseUnmatchedOutflows', items: (expenseBucketMap.expenseUnmatchedOutflows && expenseBucketMap.expenseUnmatchedOutflows.visibleItems) || [] },
           { key: 'expenseUnmatchedInflows', items: (expenseBucketMap.expenseUnmatchedInflows && expenseBucketMap.expenseUnmatchedInflows.visibleItems) || [] }
         ]);
+        wireManualMatchSelectionControls('control', [
+          { key: 'payoutBatchUnmatched', items: payoutProjection.unmatchedItems || [] },
+          { key: 'expenseUnmatchedInflows', items: (visibleState.reviewSections && visibleState.reviewSections.expenseUnmatchedInflows) || [] },
+          {
+            key: 'reservationOverviewReservationPlus',
+            items: (((visibleState.reservationPaymentOverview || {}).blocks || []).find((block) => String(block && block.key || '') === 'reservation_plus') || {}).items || []
+          },
+          {
+            key: 'reservationOverviewParking',
+            items: (((visibleState.reservationPaymentOverview || {}).blocks || []).find((block) => String(block && block.key || '') === 'parking') || {}).items || []
+          }
+        ]);
+        wireManualMatchSummaryControls('control', visibleState);
         wireManualMatchSummaryControls('expense', visibleState);
         unmatchedReservationsContent.innerHTML = buildUnmatchedReservationDetailsMarkup(visibleState, 'control', 'unmatchedReservationSettlements');
         exportHandoffContent.innerHTML = buildExportMarkup(visibleState);
@@ -9627,7 +9982,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
               extendManualMatchGroupFromSelection(
                 groupId,
                 String(currentWorkspaceMonth || baseVisibleState.monthLabel || ''),
-                currentExpenseReviewState && currentExpenseReviewState.reviewSections
+                currentExpenseReviewState && currentExpenseReviewState.reviewSections,
+                currentExpenseReviewState && currentExpenseReviewState.reservationPaymentOverview,
+                'expense'
               );
             }
           };
@@ -9678,6 +10035,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'running');
           controlManualMatchSummary.hidden = true;
+          controlManualMatchedSection.hidden = true;
+          controlManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups se načtou po dokončení běhu.</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Report preview se právě nahrazuje runtime výsledkem…</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky se právě načítají ze sdíleného runtime běhu…</p>';
@@ -9771,6 +10130,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'failed');
           controlManualMatchSummary.hidden = true;
+          controlManualMatchedSection.hidden = true;
+          controlManualMatchedContent.innerHTML = '<p class="hint">Ručně spárované groups nejsou k dispozici, protože runtime běh selhal.</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Runtime běh selhal: ' + message + '</span></td></tr>';
   matchedPayoutBatchesContent.innerHTML = '<p class="hint">Spárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
   unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Nespárované payout dávky nejsou k dispozici, protože runtime běh selhal.</p>';
@@ -9845,6 +10206,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         controlDetailLauncherSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
         controlDetailPageSummaryContent.innerHTML = buildControlDetailSummaryMarkup(undefined, 'placeholder');
         controlManualMatchSummary.hidden = true;
+        controlManualMatchedSection.hidden = false;
+        controlManualMatchedContent.innerHTML = '<p class="hint">Po spuštění se zde objeví ruční match groups vytvořené z nespárovaných položek.</p>';
         reportPreviewBody.innerHTML = '<tr><td colspan="4"><span class="hint">Zatím není k dispozici žádný uploadovaný runtime výsledek pro náhled reportu.</span></td></tr>';
         matchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro spárované payout dávky.</p>';
         unmatchedPayoutBatchesContent.innerHTML = '<p class="hint">Zatím nebyl spuštěn žádný uploadovaný runtime běh pro nespárované payout dávky.</p>';
