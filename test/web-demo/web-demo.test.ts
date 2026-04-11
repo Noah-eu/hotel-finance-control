@@ -2884,7 +2884,7 @@ describe('buildWebDemo', () => {
     expect(additive.preparedFilesContent.innerHTML).toContain('Rozpoznáno souborů: 5')
   })
 
-  it('manually matches one unmatched incoming bank payment with one Reservation+ card (optionally with related parking) in control detail', async () => {
+  it('keeps cross-section manual match valid in both control and expense detail for 1 incoming + 1 Reservation+ (+ optional related parking) and shows split balance summary', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-12T09:40:00.000Z',
       month: '2026-03',
@@ -2933,6 +2933,20 @@ describe('buildWebDemo', () => {
     if (parkingId) {
       rendered.selectManualMatchItem('control', 'reservationOverviewParking', String(parkingId))
     }
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Příchozí banka:')
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Rezervace:')
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Parking:')
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Rozdíl:')
+    expect(rendered.controlManualMatchSummary.innerHTML).not.toContain('Součet:')
+    expect(rendered.controlManualMatchSummary.innerHTML).not.toContain('disabled')
+    rendered.openExpenseReviewPage()
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Příchozí banka:')
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Rezervace:')
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Parking:')
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Rozdíl:')
+    expect(rendered.expenseManualMatchSummary.innerHTML).not.toContain('Součet:')
+    expect(rendered.expenseManualMatchSummary.innerHTML).not.toContain('disabled')
+    rendered.openControlDetailPage()
     rendered.openManualMatchConfirm('control')
     rendered.confirmManualMatchGroup('control', 'Cross-section bank + reservation')
 
@@ -2987,7 +3001,7 @@ describe('buildWebDemo', () => {
     expect(restoredReservationItem?.operatorStatusLabelCs).not.toBe('ručně spárováno')
   })
 
-  it('keeps control cross-section manual match action blocked for invalid selection (2 incoming + 1 reservation)', async () => {
+  it('keeps cross-section manual match blocked consistently in control and expense detail for invalid selection (2 incoming + 1 reservation)', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-12T10:05:00.000Z',
       month: '2026-03',
@@ -3024,6 +3038,9 @@ describe('buildWebDemo', () => {
     rendered.selectManualMatchItem('control', 'reservationOverviewReservationPlus', String(reservationPlusId))
 
     expect(rendered.controlManualMatchSummary.innerHTML).toContain('Výběr nelze potvrdit')
+    rendered.openExpenseReviewPage()
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Výběr nelze potvrdit')
+    rendered.openControlDetailPage()
     rendered.openManualMatchConfirm('control')
     rendered.confirmManualMatchGroup('control', 'Toto se nesmí vytvořit')
 
@@ -3032,6 +3049,48 @@ describe('buildWebDemo', () => {
     }
 
     expect(afterState.manualMatchGroups).toEqual([])
+  })
+
+  it('blocks unrelated parking card consistently in both control and expense detail', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T10:20:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-control-cross-section-unrelated-parking',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimeArrayBufferTextFile('comgate-current-portal.csv', buildCurrentPortalComgateSameMonthLagContent(), 'text/csv'),
+        createWebDemoRuntimeArrayBufferTextFile('Pohyby_5599955956_202603191023.csv', buildRealUploadedRbContentWithGenericIncomingOnly(), 'text/csv')
+      ]
+    })
+
+    rendered.openControlDetailPage()
+
+    const beforeState = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedInflows: Array<{ id: string }>
+      }
+      reservationPaymentOverview: {
+        blocks: Array<{
+          key: string
+          items: Array<{ id: string }>
+        }>
+      }
+    }
+    const incomingId = beforeState.reviewSections.expenseUnmatchedInflows[0]?.id
+    const reservationPlusId = beforeState.reservationPaymentOverview.blocks.find((block) => block.key === 'reservation_plus')?.items[0]?.id
+    const parkingId = beforeState.reservationPaymentOverview.blocks.find((block) => block.key === 'parking')?.items[0]?.id
+
+    expect(incomingId).toBeTruthy()
+    expect(reservationPlusId).toBeTruthy()
+    expect(parkingId).toBeTruthy()
+
+    rendered.selectManualMatchItem('control', 'expenseUnmatchedInflows', String(incomingId))
+    rendered.selectManualMatchItem('control', 'reservationOverviewReservationPlus', String(reservationPlusId))
+    rendered.selectManualMatchItem('control', 'reservationOverviewParking', String(parkingId))
+
+    expect(rendered.controlManualMatchSummary.innerHTML).toContain('Výběr nelze potvrdit')
+    rendered.openExpenseReviewPage()
+    expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Výběr nelze potvrdit')
   })
 
   it('creates a manual group from an invoice and first payment, then extends it with a second payment in the same month', async () => {

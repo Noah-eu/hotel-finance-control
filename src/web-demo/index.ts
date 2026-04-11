@@ -7446,41 +7446,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return parseManualMatchAmountEntry((item && item.detail) || '') || parseManualMatchAmountEntry((item && item.title) || '');
       }
 
-      function buildManualMatchSelectionSummary(items) {
-        const normalizedItems = Array.isArray(items) ? items : [];
-        const parsedAmounts = normalizedItems.map((item) => getManualMatchItemAmount(item)).filter(Boolean);
-
-        if (normalizedItems.length === 0) {
-          return {
-            selectedCount: 0,
-            totalLabel: '',
-            totalComputable: false
-          };
+      function formatManualMatchAmountMinorLabel(amountMinor, currency) {
+        if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor)) {
+          return 'neuvedeno';
         }
 
-        if (parsedAmounts.length !== normalizedItems.length) {
-          return {
-            selectedCount: normalizedItems.length,
-            totalLabel: '',
-            totalComputable: false
-          };
-        }
-
-        const currencies = Array.from(new Set(parsedAmounts.map((entry) => entry.currency)));
-
-        if (currencies.length !== 1) {
-          return {
-            selectedCount: normalizedItems.length,
-            totalLabel: '',
-            totalComputable: false
-          };
-        }
-
-        return {
-          selectedCount: normalizedItems.length,
-          totalLabel: formatAmountMinorCs(parsedAmounts.reduce((sum, entry) => sum + entry.amountMinor, 0), currencies[0]),
-          totalComputable: true
-        };
+        return formatAmountMinorCs(amountMinor, String(currency || 'CZK'));
       }
 
       function buildManualMatchItemLookup(sections, reservationPaymentOverview) {
@@ -7580,7 +7551,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
           readReservationPaymentDetailValue(detailEntries, 'Reference'),
           readReservationPaymentDetailValue(detailEntries, 'Rezervace'),
           readReservationPaymentDetailValue(detailEntries, 'Pobyt'),
-          readReservationPaymentDetailValue(detailEntries, 'Host')
+          readReservationPaymentDetailValue(detailEntries, 'Hlavní rezervace'),
+          readReservationPaymentDetailValue(detailEntries, 'Main reservation')
         ]
           .map((value) => normalizeExpenseSearchValue(String(value || '')))
           .filter(Boolean);
@@ -7588,7 +7560,29 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return new Set(normalizedTokens);
       }
 
+      function isManualMatchParkingIncludedInMainPrice(parkingItem) {
+        const expectedAmountMinor = Number(parkingItem && parkingItem.expectedAmountMinor);
+        const operatorStatusLabel = normalizeExpenseSearchValue(String(parkingItem && parkingItem.operatorStatusLabelCs || ''));
+        const statusDetail = normalizeExpenseSearchValue(String(parkingItem && parkingItem.statusDetailCs || ''));
+        const title = normalizeExpenseSearchValue(String(parkingItem && parkingItem.title || ''));
+        const subtitle = normalizeExpenseSearchValue(String(parkingItem && parkingItem.subtitle || ''));
+
+        return (Number.isFinite(expectedAmountMinor) && expectedAmountMinor === 0)
+          || operatorStatusLabel.includes('vceneubytovani')
+          || statusDetail.includes('zahrnutovhlavni')
+          || statusDetail.includes('vceneubytovani')
+          || title.includes('vceneubytovani')
+          || subtitle.includes('vceneubytovani');
+      }
+
       function isManualMatchParkingRelatedToReservation(reservationItem, parkingItem) {
+        const reservationStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(reservationItem && reservationItem.detailEntries) ? reservationItem.detailEntries : [], 'Pobyt'));
+        const parkingStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(parkingItem && parkingItem.detailEntries) ? parkingItem.detailEntries : [], 'Pobyt'));
+
+        if (reservationStay && parkingStay && reservationStay === parkingStay) {
+          return true;
+        }
+
         const reservationAnchors = buildManualMatchReservationAnchors(reservationItem);
         const parkingAnchors = buildManualMatchReservationAnchors(parkingItem);
 
@@ -7605,78 +7599,169 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return false;
       }
 
-      function buildManualMatchSelectionValidation(pageKey, selectedItems) {
+      function buildManualMatchSelectionInterpretation(selectedItems) {
         const normalizedItems = Array.isArray(selectedItems) ? selectedItems : [];
-
-        if (normalizedItems.length === 0) {
-          return {
-            valid: false,
-            reasonCs: 'Vyberte položky pro ruční spárování.'
-          };
-        }
-
-        if (pageKey !== 'control') {
-          return {
-            valid: true,
-            reasonCs: ''
-          };
-        }
-
         const byBucket = normalizedItems.reduce((accumulator, item) => {
           const bucketKey = String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '');
           accumulator[bucketKey] = (accumulator[bucketKey] || 0) + 1;
           return accumulator;
         }, {});
-        const crossSectionSelected = Boolean(
-          byBucket.expenseUnmatchedInflows
-          || byBucket.reservationOverviewReservationPlus
-          || byBucket.reservationOverviewParking
-        );
-
-        if (!crossSectionSelected) {
-          return {
-            valid: true,
-            reasonCs: ''
-          };
-        }
-
+        const incomingItems = normalizedItems.filter((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'expenseUnmatchedInflows');
+        const reservationItems = normalizedItems.filter((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'reservationOverviewReservationPlus');
+        const parkingItems = normalizedItems.filter((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'reservationOverviewParking');
         const payoutSelected = Number(byBucket.payoutBatchUnmatched || 0);
         const unmatchedSettlementSelected = Number(byBucket.unmatchedReservationSettlements || 0);
         const otherExpenseSelected = Number(byBucket.expenseUnmatchedDocuments || 0) + Number(byBucket.expenseUnmatchedOutflows || 0);
-        const incomingSelected = Number(byBucket.expenseUnmatchedInflows || 0);
-        const reservationSelected = Number(byBucket.reservationOverviewReservationPlus || 0);
-        const parkingSelected = Number(byBucket.reservationOverviewParking || 0);
+        const incomingSelected = incomingItems.length;
+        const reservationSelected = reservationItems.length;
+        const parkingSelected = parkingItems.length;
+        const crossSectionSelected = Boolean(incomingSelected || reservationSelected || parkingSelected);
+        const incomingAmount = incomingItems[0] ? getManualMatchItemAmount(incomingItems[0]) : undefined;
+        const reservationAmount = reservationItems[0] ? getManualMatchItemAmount(reservationItems[0]) : undefined;
+        const parkingAmountRaw = parkingItems[0] ? getManualMatchItemAmount(parkingItems[0]) : undefined;
+        const parkingIncluded = parkingItems[0] ? isManualMatchParkingIncludedInMainPrice(parkingItems[0]) : false;
+        const isParkingRelated = parkingSelected === 0
+          ? true
+          : isManualMatchParkingRelatedToReservation(reservationItems[0], parkingItems[0]);
+        const commonCurrency = Array.from(new Set(
+          [incomingAmount && incomingAmount.currency, reservationAmount && reservationAmount.currency, parkingAmountRaw && parkingAmountRaw.currency]
+            .filter(Boolean)
+            .map((currency) => String(currency))
+        ));
+        const summaryCurrency = commonCurrency.length === 1
+          ? commonCurrency[0]
+          : String((incomingAmount && incomingAmount.currency) || (reservationAmount && reservationAmount.currency) || (parkingAmountRaw && parkingAmountRaw.currency) || 'CZK');
+        const selectedIncomingAmountMinor = incomingAmount ? Number(incomingAmount.amountMinor || 0) : 0;
+        const selectedReservationAmountMinor = reservationAmount ? Number(reservationAmount.amountMinor || 0) : 0;
+        const selectedParkingAmountMinorRelevant = parkingAmountRaw && !parkingIncluded ? Number(parkingAmountRaw.amountMinor || 0) : 0;
+        const balanceDeltaMinor = selectedIncomingAmountMinor - selectedReservationAmountMinor - selectedParkingAmountMinorRelevant;
+
+        const baseResult = {
+          isValid: false,
+          reason: '',
+          selectedCount: normalizedItems.length,
+          crossSectionSelected,
+          selectedIncomingAmountMinor,
+          selectedReservationAmountMinor,
+          selectedParkingAmountMinorRelevant,
+          balanceDeltaMinor,
+          isParkingRelated,
+          isParkingIncluded: parkingIncluded,
+          summaryCurrency,
+          showSplitBalance: crossSectionSelected,
+          candidateCountBlockedReason: ''
+        };
+
+        if (normalizedItems.length === 0) {
+          return {
+            ...baseResult,
+            reason: 'Vyberte položky pro ruční spárování.'
+          };
+        }
+
+        if (!crossSectionSelected) {
+          const parsedAmounts = normalizedItems.map((item) => getManualMatchItemAmount(item)).filter(Boolean);
+          if (parsedAmounts.length !== normalizedItems.length) {
+            return {
+              ...baseResult,
+              isValid: true
+            };
+          }
+          const currencies = Array.from(new Set(parsedAmounts.map((entry) => String(entry && entry.currency || ''))));
+          if (currencies.length !== 1) {
+            return {
+              ...baseResult,
+              isValid: true
+            };
+          }
+          return {
+            ...baseResult,
+            isValid: true,
+            summaryCurrency: currencies[0],
+            selectedIncomingAmountMinor: parsedAmounts.reduce((sum, entry) => sum + Number(entry.amountMinor || 0), 0),
+            balanceDeltaMinor: 0
+          };
+        }
 
         if (payoutSelected > 0 || unmatchedSettlementSelected > 0 || otherExpenseSelected > 0) {
           return {
-            valid: false,
-            reasonCs: 'Cross-section ruční spárování podporuje jen: 1 příchozí bankovní platbu + 1 Reservation+ kartu (+ volitelně 1 související Parkování).'
+            ...baseResult,
+            reason: 'Cross-section ruční spárování podporuje jen: 1 příchozí bankovní platbu + 1 Reservation+ kartu (+ volitelně 1 související Parkování).'
           };
         }
 
         if (incomingSelected !== 1 || reservationSelected !== 1 || parkingSelected > 1) {
           return {
-            valid: false,
-            reasonCs: 'Vyberte přesně 1 nespárovanou příchozí bankovní platbu a 1 Reservation+ kartu; Parkování je volitelné (max 1).'
+            ...baseResult,
+            reason: 'Vyberte přesně 1 nespárovanou příchozí bankovní platbu a 1 Reservation+ kartu; Parkování je volitelné (max 1).'
           };
         }
 
-        if (parkingSelected === 1) {
-          const reservationItem = normalizedItems.find((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'reservationOverviewReservationPlus');
-          const parkingItem = normalizedItems.find((item) => String(item && item.__manualMatchMeta && item.__manualMatchMeta.bucketKey || '') === 'reservationOverviewParking');
+        if (parkingSelected === 1 && !isParkingRelated) {
+          return {
+            ...baseResult,
+            reason: 'Vybraná parking karta není deterministicky navázaná na vybranou Reservation+ kartu.'
+          };
+        }
 
-          if (!isManualMatchParkingRelatedToReservation(reservationItem, parkingItem)) {
-            return {
-              valid: false,
-              reasonCs: 'Vybraná parking karta není deterministicky navázaná na vybranou Reservation+ kartu.'
-            };
-          }
+        if ((incomingAmount && reservationAmount && String(incomingAmount.currency || '') !== String(reservationAmount.currency || ''))
+          || (parkingAmountRaw && !parkingIncluded && incomingAmount && String(parkingAmountRaw.currency || '') !== String(incomingAmount.currency || ''))) {
+          return {
+            ...baseResult,
+            reason: 'Vybrané položky mají rozdílné měny, ruční cross-section spárování nelze bezpečně potvrdit.'
+          };
         }
 
         return {
-          valid: true,
-          reasonCs: ''
+          ...baseResult,
+          isValid: true
         };
+      }
+
+      function buildManualMatchSelectionSummary(items) {
+        const interpretation = buildManualMatchSelectionInterpretation(items);
+        const totalComputable = interpretation.showSplitBalance
+          ? true
+          : interpretation.selectedCount > 0;
+        const totalLabel = interpretation.showSplitBalance
+          ? ''
+          : interpretation.selectedCount > 0
+            ? formatManualMatchAmountMinorLabel(interpretation.selectedIncomingAmountMinor, interpretation.summaryCurrency)
+            : '';
+
+        return {
+          selectedCount: interpretation.selectedCount,
+          totalLabel,
+          totalComputable,
+          showSplitBalance: interpretation.showSplitBalance,
+          splitLabels: interpretation.showSplitBalance
+            ? {
+              incomingLabel: formatManualMatchAmountMinorLabel(interpretation.selectedIncomingAmountMinor, interpretation.summaryCurrency),
+              reservationLabel: formatManualMatchAmountMinorLabel(interpretation.selectedReservationAmountMinor, interpretation.summaryCurrency),
+              parkingLabel: interpretation.isParkingIncluded
+                ? 'v ceně ubytování'
+                : formatManualMatchAmountMinorLabel(interpretation.selectedParkingAmountMinorRelevant, interpretation.summaryCurrency),
+              deltaLabel: formatManualMatchAmountMinorLabel(interpretation.balanceDeltaMinor, interpretation.summaryCurrency)
+            }
+            : undefined
+        };
+      }
+
+      function buildManualMatchSelectionTotalsMarkup(summary) {
+        if (summary && summary.showSplitBalance && summary.splitLabels) {
+          return [
+            '<p><strong>Příchozí banka:</strong> ' + escapeHtml(String(summary.splitLabels.incomingLabel || 'neuvedeno')) + '</p>',
+            '<p><strong>Rezervace:</strong> ' + escapeHtml(String(summary.splitLabels.reservationLabel || 'neuvedeno')) + '</p>',
+            '<p><strong>Parking:</strong> ' + escapeHtml(String(summary.splitLabels.parkingLabel || 'neuvedeno')) + '</p>',
+            '<p><strong>Rozdíl:</strong> ' + escapeHtml(String(summary.splitLabels.deltaLabel || 'neuvedeno')) + '</p>'
+          ].join('');
+        }
+
+        if (summary && summary.totalComputable) {
+          return '<p><strong>Součet:</strong> ' + escapeHtml(String(summary.totalLabel || '')) + '</p>';
+        }
+
+        return '<p class="hint">Součet vybraných položek nejde bezpečně spočítat z aktuálně viditelných dat.</p>';
       }
 
       function applyManualMatchReservationOverviewProjection(overview, projectedGroups) {
@@ -7912,9 +7997,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
       function createManualMatchGroupFromSelection(monthKey, sections, reservationPaymentOverview, pageKey) {
         const normalizedMonthKey = String(monthKey || currentWorkspaceMonth || monthInput && monthInput.value || '');
         const selectedItems = collectSelectedManualMatchItems(sections, reservationPaymentOverview);
-        const selectionValidation = buildManualMatchSelectionValidation(String(pageKey || ''), selectedItems);
+        const selectionValidation = buildManualMatchSelectionInterpretation(selectedItems);
 
-        if (!normalizedMonthKey || selectedItems.length === 0 || !selectionValidation.valid) {
+        if (!normalizedMonthKey || selectedItems.length === 0 || !selectionValidation.isValid) {
           return;
         }
 
@@ -7950,8 +8035,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         const selectedItems = collectSelectedManualMatchItems(sections, reservationPaymentOverview);
-        const selectionValidation = buildManualMatchSelectionValidation(String(pageKey || ''), selectedItems);
-        if (!selectionValidation.valid) {
+        const selectionValidation = buildManualMatchSelectionInterpretation(selectedItems);
+        if (!selectionValidation.isValid) {
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
           currentManualMatchConfirmMode = false;
@@ -8881,16 +8966,14 @@ ${showRuntimePayoutDiagnostics ? '' : `
           normalizedState.reservationPaymentOverview,
           { allowStateSync: false }
         );
-        const selectionValidation = buildManualMatchSelectionValidation(pageKey, selectedItems);
+        const selectionValidation = buildManualMatchSelectionInterpretation(selectedItems);
 
         if (selectedItems.length === 0) {
           return '<p class="hint">Vyberte checkboxem nespárované položky, které mají tvořit jednu ruční match group.</p>';
         }
 
         const selectionSummary = buildManualMatchSelectionSummary(selectedItems);
-        const totalMarkup = selectionSummary.totalComputable
-          ? '<p><strong>Součet:</strong> ' + escapeHtml(selectionSummary.totalLabel) + '</p>'
-          : '<p class="hint">Součet vybraných položek nejde bezpečně spočítat z aktuálně viditelných dat.</p>';
+        const totalMarkup = buildManualMatchSelectionTotalsMarkup(selectionSummary);
 
         if (!currentManualMatchConfirmMode) {
           return [
@@ -8898,12 +8981,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
             '<div>',
             '<p><strong>Vybráno položek:</strong> ' + escapeHtml(String(selectionSummary.selectedCount)) + '</p>',
             totalMarkup,
-            (selectionValidation.valid
+            (selectionValidation.isValid
               ? ''
-              : '<p class="hint"><strong>Výběr nelze potvrdit:</strong> ' + escapeHtml(selectionValidation.reasonCs) + '</p>'),
+              : '<p class="hint"><strong>Výběr nelze potvrdit:</strong> ' + escapeHtml(selectionValidation.reason) + '</p>'),
             '</div>',
             '<div class="manual-match-summary-actions">',
-            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'review', 'selection')) + '" type="button"' + (selectionValidation.valid ? '' : ' disabled') + '>Ručně spárovat</button>',
+            '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'review', 'selection')) + '" type="button"' + (selectionValidation.isValid ? '' : ' disabled') + '>Ručně spárovat</button>',
             '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')) + '" type="button" class="secondary-button">Zrušit výběr</button>',
             '</div>',
             '</div>'
@@ -8914,13 +8997,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
           '<p><strong>Potvrzení ručního spárování</strong></p>',
           '<p><strong>Položek:</strong> ' + escapeHtml(String(selectionSummary.selectedCount)) + '</p>',
           totalMarkup,
-          (selectionValidation.valid
+          (selectionValidation.isValid
             ? ''
-            : '<p class="hint"><strong>Výběr nelze potvrdit:</strong> ' + escapeHtml(selectionValidation.reasonCs) + '</p>'),
+            : '<p class="hint"><strong>Výběr nelze potvrdit:</strong> ' + escapeHtml(selectionValidation.reason) + '</p>'),
           '<label for="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'note', 'selection')) + '">Krátká poznámka</label>',
           '<input id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'note', 'selection')) + '" class="manual-match-note-input" type="text" maxlength="160" placeholder="Např. Jedna ruční vazba pro stejný celek" value="' + escapeHtml(currentManualMatchDraftNote || '') + '" />',
           '<div class="manual-match-summary-actions">',
-          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection')) + '" type="button"' + (selectionValidation.valid ? '' : ' disabled') + '>Potvrdit vytvoření group</button>',
+          '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'confirm-create', 'selection')) + '" type="button"' + (selectionValidation.isValid ? '' : ' disabled') + '>Potvrdit vytvoření group</button>',
           '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'back', 'selection')) + '" type="button" class="secondary-button">Zpět</button>',
           '<button id="' + escapeHtml(buildManualMatchActionElementId(pageKey, 'clear-selection', 'selection')) + '" type="button" class="danger-button">Zrušit výběr</button>',
           '</div>'
@@ -8944,7 +9027,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         return '<div class="manual-match-groups">' + normalizedGroups.map((group) => {
           const groupSummary = group.selectionSummary || buildManualMatchSelectionSummary(group.items || []);
-          const totalMarkup = groupSummary.totalComputable
+          const totalMarkup = groupSummary.totalComputable && !groupSummary.showSplitBalance
             ? '<span class="manual-match-group-meta"> · součet ' + escapeHtml(groupSummary.totalLabel) + '</span>'
             : '';
 
