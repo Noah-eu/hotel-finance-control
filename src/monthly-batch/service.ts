@@ -1247,13 +1247,20 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
   const hasStrongBookingPayoutSignals = bookingSignalSet.has('booking-branding')
     || bookingSignalSet.has('booking-payout-statement-wording')
     || bookingSignalSet.has('booking-payment-id')
-    || bookingSignalSet.has('booking-payout-date')
-    || bookingSignalSet.has('booking-payout-total')
   const documentLikePdfFallbackSource = inferDocumentLikePdfFallbackSource({
     capability,
     ingestionBranch,
     bookingSignalSet
   })
+  const documentFallbackSkipReason = ingestionBranch === 'text-pdf-parser'
+    ? (
+      documentLikePdfFallbackSource === 'unknown'
+        ? 'no-document-like-pdf-signals'
+        : hasStrongBookingPayoutSignals
+          ? 'strong-booking-payout-signals'
+          : undefined
+    )
+    : undefined
 
   if (documentLikePdfFallbackSource !== 'unknown' && !hasStrongBookingPayoutSignals) {
     return {
@@ -1284,14 +1291,27 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     documentType: 'other',
     classificationBasis: 'unknown',
     role: 'primary',
-    decision: withInvoiceListWorkbookSignatureDiagnostics(bookingPdfDecision ?? buildUnknownDecision({
-      capability,
-      ingestionBranch,
-      detectedSignals: [],
-      matchedRules: [],
-      missingSignals: [],
-      parserSupported: false
-    }), invoiceListWorkbookDiagnostics)
+    decision: withInvoiceListWorkbookSignatureDiagnostics({
+      ...(bookingPdfDecision ?? buildUnknownDecision({
+        capability,
+        ingestionBranch,
+        detectedSignals: [],
+        matchedRules: [],
+        missingSignals: [],
+        parserSupported: false
+      })),
+      ...(documentFallbackSkipReason
+        ? {
+          documentFallbackSkipReason,
+          matchedRules: [
+            ...new Set([
+              ...((bookingPdfDecision ?? { matchedRules: [] }).matchedRules ?? []),
+              `document-fallback-skipped:${documentFallbackSkipReason}`
+            ])
+          ]
+        }
+        : {})
+    }, invoiceListWorkbookDiagnostics)
   }
 }
 

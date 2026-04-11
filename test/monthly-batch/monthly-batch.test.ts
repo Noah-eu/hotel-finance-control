@@ -1921,6 +1921,43 @@ describe('runMonthlyReconciliationBatch', () => {
     expect(route?.decision.matchedRules.some((rule) => (
       rule === 'document-summary-fallback' || rule === 'text-pdf-document-fallback'
     ))).toBe(true)
+    expect(route?.decision.documentFallbackSkipReason).toBeUndefined()
+  })
+
+  it('exposes explicit document fallback skip reason when text PDF stays unclassified because of strong booking payout signals', () => {
+    const prepared = prepareUploadedMonthlyBatchFiles([
+      {
+        name: 'payout-payment-id-only',
+        content: [
+          'Payment ID: PAYOUT-BOOK-20260310',
+          'IBAN CZ12080000000000004582802'
+        ].join('\n'),
+        contentFormat: 'pdf-text',
+        uploadedAt: '2026-03-24T08:09:00.000Z',
+        sourceDescriptor: {
+          mimeType: '',
+          browserTextExtraction: {
+            mode: 'pdf-text',
+            status: 'extracted',
+            textPreview: 'Payment ID: PAYOUT-BOOK-20260310',
+            detectedSignatures: ['booking-payment-id', 'iban-hint']
+          }
+        }
+      }
+    ])
+
+    const route = prepared.fileRoutes[0]
+    expect(route).toEqual(expect.objectContaining({
+      status: 'unsupported',
+      intakeStatus: 'unclassified',
+      sourceSystem: 'unknown',
+      documentType: 'other',
+      decision: expect.objectContaining({
+        ingestionBranch: 'text-pdf-parser',
+        documentFallbackSkipReason: 'strong-booking-payout-signals'
+      })
+    }))
+    expect(route?.decision.matchedRules).toContain('document-fallback-skipped:strong-booking-payout-signals')
   })
 
   it('adds a visible warning when the same supported upload content appears twice in one monthly run', () => {

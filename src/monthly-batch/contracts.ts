@@ -83,6 +83,7 @@ export interface UploadedMonthlyFileDecision {
   resolvedDocumentType: SourceDocument['documentType']
   resolvedRole: 'primary' | 'supplemental'
   resolvedBucket: UploadedMonthlyFileDecisionBucket
+  documentFallbackSkipReason?: string
   runtimeWorkbookSignatureDiagnostics?: InvoiceListWorkbookSignatureRuntimeDiagnostics
 }
 
