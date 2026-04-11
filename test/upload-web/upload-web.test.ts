@@ -2126,7 +2126,7 @@ describe('buildUploadWebFlow', () => {
 
       const lennerNeedsReview = result.reviewSections.expenseNeedsReview.find((item) =>
         item.expenseComparison?.document.reference === '141260183'
-          && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+        && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
       )
 
       expect(result.extractedRecords[0]).toMatchObject({
@@ -2181,7 +2181,7 @@ describe('buildUploadWebFlow', () => {
 
     const lennerNeedsReview = result.reviewSections.expenseNeedsReview.find((item) =>
       item.expenseComparison?.document.reference === '141260183'
-        && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
+      && item.expenseComparison?.document.supplierOrCounterparty === 'Lenner Motors s.r.o.'
     )
 
     expect(result.extractedRecords[0]).toMatchObject({
@@ -3579,14 +3579,28 @@ describe('buildUploadWebFlow', () => {
         status: 'supported',
         intakeStatus: 'parsed',
         sourceSystem: 'invoice',
-        parserId: 'invoice'
+        parserId: 'invoice',
+        invoiceScanFallbackApplied: true,
+        invoiceScanFallbackRecordCreated: true,
+        invoiceScanFallbackRecordDroppedReason: undefined,
+        finalExtractedRecordCountBeforeAttach: 1
       })
     )
     expect((route?.extractedCount ?? 0)).toBeGreaterThan(0)
 
     const extractedScan = result.extractedRecords.find((entry) => entry.fileName === 'ScanDMPDF')
-    expect(extractedScan).toBeDefined()
-    expect(extractedScan?.extractedCount).toBeGreaterThan(0)
+    expect(extractedScan).toEqual(
+      expect.objectContaining({
+        sourceSystem: 'invoice',
+        documentType: 'invoice',
+        parserId: 'invoice',
+        extractedCount: 1,
+        invoiceScanFallbackApplied: true,
+        invoiceScanFallbackRecordCreated: true,
+        invoiceScanFallbackRecordDroppedReason: undefined,
+        finalExtractedRecordCountBeforeAttach: 1
+      })
+    )
 
     const intakeDiagnostic = result.runtimeAudit.fileIntakeDiagnostics.find((entry) => entry.fileName === 'ScanDMPDF')
     expect(intakeDiagnostic).toEqual(
@@ -3597,6 +3611,7 @@ describe('buildUploadWebFlow', () => {
         invoiceScanFallbackApplied: true,
         invoiceScanFallbackRecordCreated: true,
         invoiceScanFallbackRecordDroppedReason: undefined,
+        finalExtractedRecordCountBeforeAttach: 1,
         documentExtractionSummary: expect.objectContaining({
           invoiceScanFallbackApplied: true,
           invoiceScanFallbackRecordCreated: true,

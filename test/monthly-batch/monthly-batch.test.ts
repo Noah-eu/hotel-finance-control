@@ -1979,6 +1979,7 @@ describe('runMonthlyReconciliationBatch', () => {
           invoiceScanFallbackApplied: true,
           invoiceScanFallbackRecordCreated: true,
           invoiceScanFallbackRecordDroppedReason: undefined,
+          finalExtractedRecordCountBeforeAttach: 1,
           documentExtractionSummary: expect.objectContaining({
             invoiceScanFallbackApplied: true,
             invoiceScanFallbackRecordCreated: true,

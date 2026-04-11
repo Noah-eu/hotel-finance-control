@@ -287,6 +287,10 @@ export interface BrowserRuntimeUploadState {
       capabilityTransportProfile: 'structured_csv' | 'structured_workbook' | 'text_pdf' | 'image_pdf' | 'text_document' | 'image_document' | 'unsupported_binary' | 'unknown_document'
       capabilityDocumentHints: Array<'invoice_like' | 'receipt_like' | 'payout_statement_like'>
       capabilityConfidence: 'none' | 'hint' | 'strong'
+      sourceDocumentId?: string
+      sourceSystem: string
+      documentType: string
+      parserId?: string
       capabilityEvidence: string[]
       ingestionBranch: 'structured-parser' | 'text-document-parser' | 'text-pdf-parser' | 'ocr-required' | 'unsupported'
       ingestionReason?: string
@@ -329,6 +333,7 @@ export interface BrowserRuntimeUploadState {
       invoiceScanFallbackRejectedReason?: string
       invoiceScanFallbackRecordCreated?: boolean
       invoiceScanFallbackRecordDroppedReason?: string
+      finalExtractedRecordCountBeforeAttach?: number
       comgatePipelineDiagnostics?: {
         parserVariants: string[]
         extractedRecordCount: number
@@ -380,8 +385,6 @@ export interface BrowserRuntimeUploadState {
           noMatchReason?: string
         }>
       }
-      sourceSystem: string
-      documentType: string
       classificationBasis: string
       status: 'supported' | 'unsupported' | 'error'
       intakeStatus: 'parsed' | 'unsupported' | 'unclassified' | 'error'
@@ -410,6 +413,11 @@ export interface BrowserRuntimeUploadState {
     role: 'primary' | 'supplemental'
     extractedCount: number
     extractedRecordIds: string[]
+    invoiceScanFallbackApplied?: boolean
+    invoiceScanFallbackRejectedReason?: string
+    invoiceScanFallbackRecordCreated?: boolean
+    invoiceScanFallbackRecordDroppedReason?: string
+    finalExtractedRecordCountBeforeAttach?: number
     warnings: string[]
     reason?: string
     errorMessage?: string
@@ -436,8 +444,17 @@ export interface BrowserRuntimeUploadState {
   }>
   extractedRecords: Array<{
     fileName: string
+    sourceDocumentId: string
+    sourceSystem: string
+    documentType: string
+    parserId?: string
     extractedCount: number
     extractedRecordIds: string[]
+    invoiceScanFallbackApplied?: boolean
+    invoiceScanFallbackRejectedReason?: string
+    invoiceScanFallbackRecordCreated?: boolean
+    invoiceScanFallbackRecordDroppedReason?: string
+    finalExtractedRecordCountBeforeAttach?: number
     accountLabelCs: string
     parserDebugLabel?: string
   }>

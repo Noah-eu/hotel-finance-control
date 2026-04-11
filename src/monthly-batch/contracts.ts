@@ -170,6 +170,7 @@ export interface UploadedMonthlyFileRoute {
     invoiceScanFallbackRejectedReason?: string
     invoiceScanFallbackRecordCreated?: boolean
     invoiceScanFallbackRecordDroppedReason?: string
+    finalExtractedRecordCountBeforeAttach?: number
   }
   decision: UploadedMonthlyFileDecision
 }

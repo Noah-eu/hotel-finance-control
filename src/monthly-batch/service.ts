@@ -458,7 +458,8 @@ function mergeNoExtractParseDiagnostics(
       invoiceScanFallbackApplied,
       invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
       invoiceScanFallbackRecordCreated: invoiceScanFallbackApplied ? true : false,
-      invoiceScanFallbackRecordDroppedReason: undefined
+      invoiceScanFallbackRecordDroppedReason: undefined,
+      finalExtractedRecordCountBeforeAttach: extractedRecords.length
     }
   }
 
@@ -470,7 +471,8 @@ function mergeNoExtractParseDiagnostics(
   if (!summary) {
     return {
       ...parseDiagnostics,
-      noExtractReason: 'parser-returned-no-records'
+      noExtractReason: 'parser-returned-no-records',
+      finalExtractedRecordCountBeforeAttach: 0
     }
   }
 
@@ -513,7 +515,8 @@ function mergeNoExtractParseDiagnostics(
     invoiceScanFallbackApplied,
     invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason ?? summary.invoiceScanFallbackRejectedReason,
     invoiceScanFallbackRecordCreated: false,
-    invoiceScanFallbackRecordDroppedReason: invoiceScanFallbackApplied ? noExtractReason : undefined
+    invoiceScanFallbackRecordDroppedReason: invoiceScanFallbackApplied ? noExtractReason : undefined,
+    finalExtractedRecordCountBeforeAttach: 0
   }
 }
 
@@ -1222,7 +1225,7 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
         documentType: inferDocumentType(byContent),
         classificationBasis: 'content',
         role: 'primary',
-      decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
+        decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
           capability,
           ingestionBranch,
           sourceSystem: byContent,
@@ -1384,8 +1387,8 @@ function inferDocumentLikePdfFallbackSource(input: {
 function withInvoiceListWorkbookSignatureDiagnostics(
   decision: UploadedMonthlyFileDecision,
   diagnostics:
-  | ReturnType<typeof diagnoseInvoiceListWorkbookSignature>
-  | undefined
+    | ReturnType<typeof diagnoseInvoiceListWorkbookSignature>
+    | undefined
 ): UploadedMonthlyFileDecision {
   if (!diagnostics) {
     return decision

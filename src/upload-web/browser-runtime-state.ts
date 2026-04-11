@@ -162,35 +162,66 @@ function buildBrowserRuntimeUploadStateFromIngestion(
       role: file.routing?.role ?? 'primary',
       warnings: file.routing?.warnings ?? []
     })),
-    fileRoutes: ingestion.fileRoutes.map((file) => ({
-      fileName: file.fileName,
-      status: file.status,
-      intakeStatus: file.intakeStatus,
-      sourceSystem: file.sourceSystem,
-      documentType: file.documentType,
-      sourceDocumentId: file.sourceDocumentId,
-      parserId: file.parserId,
-      classificationBasis: file.classificationBasis,
-      role: file.role,
-      extractedCount: file.extractedCount ?? 0,
-      extractedRecordIds: file.extractedRecordIds ?? [],
-      warnings: file.warnings,
-      reason: file.reason,
-      errorMessage: file.errorMessage,
-      decision: file.decision
-    })),
-    extractedRecords: importedFiles.map((file) => ({
-      fileName: file.sourceDocument.fileName,
-      extractedCount: findBatchFileExtractedCount(batch, file.sourceDocument.id),
-      extractedRecordIds: findBatchFileExtractedIds(batch, file.sourceDocument.id),
-      accountLabelCs: buildAccountLabel(
-        file.sourceDocument.fileName,
-        findBatchFileExtractedAccountId(batch, file.sourceDocument.id),
-        file.sourceDocument.sourceSystem,
-        file.sourceDocument.documentType
-      ),
-      parserDebugLabel: findBatchFileParserVariant(batch, file.sourceDocument.id)
-    })),
+    fileRoutes: ingestion.fileRoutes.map((file) => {
+      const batchExtractedCount = file.sourceDocumentId
+        ? findBatchFileExtractedCount(batch, file.sourceDocumentId)
+        : 0
+      const batchExtractedRecordIds = file.sourceDocumentId
+        ? findBatchFileExtractedIds(batch, file.sourceDocumentId)
+        : []
+      const finalExtractedRecordCountBeforeAttach = file.parseDiagnostics?.finalExtractedRecordCountBeforeAttach
+
+      return {
+        fileName: file.fileName,
+        status: file.status,
+        intakeStatus: file.intakeStatus,
+        sourceSystem: file.sourceSystem,
+        documentType: file.documentType,
+        sourceDocumentId: file.sourceDocumentId,
+        parserId: file.parserId,
+        classificationBasis: file.classificationBasis,
+        role: file.role,
+        extractedCount: Math.max(file.extractedCount ?? 0, batchExtractedCount, finalExtractedRecordCountBeforeAttach ?? 0),
+        extractedRecordIds: (file.extractedRecordIds?.length ?? 0) > 0 ? (file.extractedRecordIds ?? []) : batchExtractedRecordIds,
+        invoiceScanFallbackApplied: file.parseDiagnostics?.invoiceScanFallbackApplied,
+        invoiceScanFallbackRejectedReason: file.parseDiagnostics?.invoiceScanFallbackRejectedReason,
+        invoiceScanFallbackRecordCreated: file.parseDiagnostics?.invoiceScanFallbackRecordCreated,
+        invoiceScanFallbackRecordDroppedReason: file.parseDiagnostics?.invoiceScanFallbackRecordDroppedReason,
+        finalExtractedRecordCountBeforeAttach,
+        warnings: file.warnings,
+        reason: file.reason,
+        errorMessage: file.errorMessage,
+        decision: file.decision
+      }
+    }),
+    extractedRecords: importedFiles.map((file) => {
+      const route = ingestion.fileRoutes.find((item) => item.sourceDocumentId === file.sourceDocument.id)
+      const batchExtractedCount = findBatchFileExtractedCount(batch, file.sourceDocument.id)
+      const batchExtractedRecordIds = findBatchFileExtractedIds(batch, file.sourceDocument.id)
+      const finalExtractedRecordCountBeforeAttach = route?.parseDiagnostics?.finalExtractedRecordCountBeforeAttach
+
+      return {
+        fileName: file.sourceDocument.fileName,
+        sourceDocumentId: file.sourceDocument.id,
+        sourceSystem: file.sourceDocument.sourceSystem,
+        documentType: file.sourceDocument.documentType,
+        parserId: file.routing?.parserId,
+        extractedCount: Math.max(batchExtractedCount, route?.extractedCount ?? 0, finalExtractedRecordCountBeforeAttach ?? 0),
+        extractedRecordIds: batchExtractedRecordIds.length > 0 ? batchExtractedRecordIds : (route?.extractedRecordIds ?? []),
+        invoiceScanFallbackApplied: route?.parseDiagnostics?.invoiceScanFallbackApplied,
+        invoiceScanFallbackRejectedReason: route?.parseDiagnostics?.invoiceScanFallbackRejectedReason,
+        invoiceScanFallbackRecordCreated: route?.parseDiagnostics?.invoiceScanFallbackRecordCreated,
+        invoiceScanFallbackRecordDroppedReason: route?.parseDiagnostics?.invoiceScanFallbackRecordDroppedReason,
+        finalExtractedRecordCountBeforeAttach,
+        accountLabelCs: buildAccountLabel(
+          file.sourceDocument.fileName,
+          findBatchFileExtractedAccountId(batch, file.sourceDocument.id),
+          file.sourceDocument.sourceSystem,
+          file.sourceDocument.documentType
+        ),
+        parserDebugLabel: findBatchFileParserVariant(batch, file.sourceDocument.id)
+      }
+    }),
     supportedExpenseLinks: batch.report.supportedExpenseLinks.map((link) => ({
       expenseTransactionId: link.expenseTransactionId,
       supportTransactionId: link.supportTransactionId,
@@ -552,6 +583,10 @@ function buildRuntimeAudit(
         capabilityTransportProfile: route?.decision.capability.transportProfile ?? file.sourceDescriptor?.capability?.transportProfile ?? 'unknown_document',
         capabilityDocumentHints: route?.decision.capability.documentHints ?? file.sourceDescriptor?.capability?.documentHints ?? [],
         capabilityConfidence: route?.decision.capability.confidence ?? file.sourceDescriptor?.capability?.confidence ?? 'none',
+        sourceDocumentId: route?.sourceDocumentId,
+        sourceSystem: route?.sourceSystem ?? 'unknown',
+        documentType: route?.documentType ?? 'other',
+        parserId: route?.parserId,
         capabilityEvidence: route?.decision.capability.evidence ?? file.sourceDescriptor?.capability?.evidence ?? [],
         ingestionBranch: route?.decision.ingestionBranch ?? 'unsupported',
         ingestionReason: route?.decision.ingestionReason ?? route?.reason ?? route?.errorMessage,
@@ -606,9 +641,8 @@ function buildRuntimeAudit(
         invoiceScanFallbackRejectedReason: parseDiagnostics?.invoiceScanFallbackRejectedReason,
         invoiceScanFallbackRecordCreated: parseDiagnostics?.invoiceScanFallbackRecordCreated,
         invoiceScanFallbackRecordDroppedReason: parseDiagnostics?.invoiceScanFallbackRecordDroppedReason,
+        finalExtractedRecordCountBeforeAttach: parseDiagnostics?.finalExtractedRecordCountBeforeAttach,
         comgatePipelineDiagnostics,
-        sourceSystem: route?.sourceSystem ?? 'unknown',
-        documentType: route?.documentType ?? 'other',
         classificationBasis: route?.classificationBasis ?? 'unknown',
         status: route?.status ?? 'unsupported',
         intakeStatus: route?.intakeStatus ?? 'unclassified',
@@ -730,12 +764,12 @@ function buildExactMovementTrace(input: {
     : counterMovementUsesSameAccountId
       ? 'rejected-by-same-account-id'
       : counterMovementMentionsAccount
-      ? primaryDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
-        ? 'matched-within-primary-date-gate'
-        : extendedDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
-          ? 'matched-within-extended-own-account-date-gate'
-          : 'rejected-by-date-gate'
-      : 'rejected-by-own-account-account-hint-filter'
+        ? primaryDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
+          ? 'matched-within-primary-date-gate'
+          : extendedDateGateCandidates.some((candidate) => candidate.id === input.counterMovement.id)
+            ? 'matched-within-extended-own-account-date-gate'
+            : 'rejected-by-date-gate'
+        : 'rejected-by-own-account-account-hint-filter'
 
   return {
     rawRowId: input.transaction.extractedRecordIds[0],

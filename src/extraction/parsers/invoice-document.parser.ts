@@ -258,8 +258,8 @@ export class InvoiceDocumentParser {
       ?? dueDate
       ?? (
         typeof resolvedAmountMinor === 'number'
-        && resolvedCurrency
-        && scanFallbackDateAllowed
+          && resolvedCurrency
+          && scanFallbackDateAllowed
           ? input.extractedAt.slice(0, 10)
           : undefined
       )
