@@ -3093,6 +3093,73 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseManualMatchSummary.innerHTML).toContain('Výběr nelze potvrdit')
   })
 
+  it('allows included parking as non-blocking attachment when reservation host and stay match via runtime card fields', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-13T09:00:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-manual-match-included-parking-runtime-shape',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    const interpretation = rendered.evaluateManualMatchSelectionItems([
+      {
+        id: 'incoming-2000',
+        currency: 'CZK',
+        paidAmountMinor: 200000,
+        __manualMatchMeta: { bucketKey: 'expenseUnmatchedInflows' }
+      },
+      {
+        id: 'reservation-honza',
+        blockKey: 'reservation_plus',
+        title: 'Honza Říha',
+        dateLabelCs: 'Pobyt',
+        dateValue: '2026-03-25 – 2026-03-27',
+        primaryReference: 'RES-WEB-2000',
+        currency: 'CZK',
+        expectedAmountMinor: 200000,
+        detailEntries: [
+          { labelCs: 'Rezervace', value: 'RES-WEB-2000' },
+          { labelCs: 'Reference', value: 'WEB-2000' }
+        ],
+        __manualMatchMeta: { bucketKey: 'reservationOverviewReservationPlus' }
+      },
+      {
+        id: 'parking-included',
+        blockKey: 'parking',
+        title: 'Parkování v ceně ubytování',
+        expectedAmountMinor: 0,
+        currency: 'CZK',
+        operatorStatusLabelCs: 'v ceně ubytování',
+        statusDetailCs: 'Parkování je zahrnuto v hlavní rezervaci.',
+        detailEntries: [
+          { labelCs: 'Host', value: 'Honza Říha' },
+          { labelCs: 'Pobyt', value: '2026-03-25 – 2026-03-27' },
+          { labelCs: 'Rezervace', value: 'RES-WEB-2000-PARK' }
+        ],
+        __manualMatchMeta: { bucketKey: 'reservationOverviewParking' }
+      }
+    ]) as {
+      isValid: boolean
+      reason: string
+      isParkingRelated: boolean
+      isParkingIncluded: boolean
+      selectedIncomingAmountMinor: number
+      selectedReservationAmountMinor: number
+      selectedParkingAmountMinorRelevant: number
+      balanceDeltaMinor: number
+    }
+
+    expect(interpretation.isParkingIncluded).toBe(true)
+    expect(interpretation.isParkingRelated).toBe(true)
+    expect(interpretation.isValid).toBe(true)
+    expect(interpretation.reason).toBe('')
+    expect(interpretation.selectedIncomingAmountMinor).toBe(200000)
+    expect(interpretation.selectedReservationAmountMinor).toBe(200000)
+    expect(interpretation.selectedParkingAmountMinorRelevant).toBe(0)
+    expect(interpretation.balanceDeltaMinor).toBe(0)
+  })
+
   it('creates a manual group from an invoice and first payment, then extends it with a second payment in the same month', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-01T19:20:00.000Z',
@@ -8153,6 +8220,7 @@ async function executeWebDemoMainWorkflow(input: {
   removeManualMatchGroup: (pageKey: 'control' | 'expense', groupId: string) => void
   forceManualMatchSelection: (reviewItemIds: string[]) => void
   debugExtendManualMatchGroup: (groupId: string) => void
+  evaluateManualMatchSelectionItems: (items: unknown[]) => unknown
   confirmExpenseReviewItem: (reviewItemId: string) => void
   rejectExpenseReviewItem: (reviewItemId: string) => void
   setExpenseDetailFilter: (
@@ -8283,6 +8351,7 @@ async function executeWebDemoMainWorkflow(input: {
     __hotelFinanceManualMatchDebug?: {
       setSelectedReviewItemIds: (ids: string[]) => void
       extendGroup: (groupId: string) => void
+      evaluateSelectionItems?: (items: unknown[]) => unknown
     }
   } = {
     location: {
@@ -8657,6 +8726,9 @@ async function executeWebDemoMainWorkflow(input: {
     },
     debugExtendManualMatchGroup(groupId: string) {
       windowObject.__hotelFinanceManualMatchDebug?.extendGroup(groupId)
+    },
+    evaluateManualMatchSelectionItems(items: unknown[]) {
+      return windowObject.__hotelFinanceManualMatchDebug?.evaluateSelectionItems?.(items)
     },
     confirmExpenseReviewItem(reviewItemId: string) {
       elements[buildExpenseReviewActionElementId('confirm', reviewItemId)].listeners.click()

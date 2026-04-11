@@ -7545,19 +7545,55 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
       function buildManualMatchReservationAnchors(item) {
         const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
+        const subtitle = normalizeExpenseSearchValue(String(item && item.subtitle || ''));
+        const subtitleReservationMatch = subtitle.match(/rezervace([a-z0-9_-]+)/);
         const normalizedTokens = [
           item && item.primaryReference,
           item && item.secondaryReference,
+          item && item.subtitle,
           readReservationPaymentDetailValue(detailEntries, 'Reference'),
           readReservationPaymentDetailValue(detailEntries, 'Rezervace'),
           readReservationPaymentDetailValue(detailEntries, 'Pobyt'),
           readReservationPaymentDetailValue(detailEntries, 'Hlavní rezervace'),
-          readReservationPaymentDetailValue(detailEntries, 'Main reservation')
+          readReservationPaymentDetailValue(detailEntries, 'Main reservation'),
+          subtitleReservationMatch ? subtitleReservationMatch[1] : ''
         ]
           .map((value) => normalizeExpenseSearchValue(String(value || '')))
           .filter(Boolean);
 
         return new Set(normalizedTokens);
+      }
+
+      function readManualMatchStayToken(item) {
+        const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
+        const detailStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(detailEntries, 'Pobyt'));
+
+        if (detailStay) {
+          return detailStay;
+        }
+
+        const dateLabel = normalizeExpenseSearchValue(String(item && item.dateLabelCs || ''));
+        const dateValue = normalizeExpenseSearchValue(String(item && item.dateValue || ''));
+        if (dateLabel.includes('pobyt') && dateValue) {
+          return dateValue;
+        }
+
+        return '';
+      }
+
+      function readManualMatchHostToken(item) {
+        const detailEntries = Array.isArray(item && item.detailEntries) ? item.detailEntries : [];
+        const detailHost = normalizeExpenseSearchValue(readReservationPaymentDetailValue(detailEntries, 'Host'));
+
+        if (detailHost) {
+          return detailHost;
+        }
+
+        if (String(item && item.blockKey || '') === 'reservation_plus') {
+          return normalizeExpenseSearchValue(String(item && item.title || ''));
+        }
+
+        return '';
       }
 
       function isManualMatchParkingIncludedInMainPrice(parkingItem) {
@@ -7576,10 +7612,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
       }
 
       function isManualMatchParkingRelatedToReservation(reservationItem, parkingItem) {
-        const reservationStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(reservationItem && reservationItem.detailEntries) ? reservationItem.detailEntries : [], 'Pobyt'));
-        const parkingStay = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(parkingItem && parkingItem.detailEntries) ? parkingItem.detailEntries : [], 'Pobyt'));
-        const reservationHost = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(reservationItem && reservationItem.detailEntries) ? reservationItem.detailEntries : [], 'Host'));
-        const parkingHost = normalizeExpenseSearchValue(readReservationPaymentDetailValue(Array.isArray(parkingItem && parkingItem.detailEntries) ? parkingItem.detailEntries : [], 'Host'));
+        const reservationStay = readManualMatchStayToken(reservationItem);
+        const parkingStay = readManualMatchStayToken(parkingItem);
+        const reservationHost = readManualMatchHostToken(reservationItem);
+        const parkingHost = readManualMatchHostToken(parkingItem);
 
         if (reservationStay && parkingStay && reservationStay === parkingStay) {
           return true;
@@ -10075,6 +10111,9 @@ ${showRuntimePayoutDiagnostics ? '' : `
                 currentExpenseReviewState && currentExpenseReviewState.reservationPaymentOverview,
                 'expense'
               );
+            },
+            evaluateSelectionItems(items) {
+              return buildManualMatchSelectionInterpretation(Array.isArray(items) ? items : []);
             }
           };
           window.__hotelFinanceMonthlyWorkspaceState = {
