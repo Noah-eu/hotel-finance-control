@@ -9407,14 +9407,49 @@ ${showRuntimePayoutDiagnostics ? '' : `
         return '<details class="reservation-payment-detail"><summary>Detail</summary><ul>' + detailLines.join('') + '</ul></details>';
       }
 
+      function resolveReservationPaymentDisplayState(item) {
+        const statusKey = String(item && item.statusKey || '');
+        const operatorStatusKey = String(item && item.operatorStatusKey || statusKey || 'unverified');
+        const operatorStatusLabel = String(item && item.operatorStatusLabelCs || item && item.statusLabelCs || 'neověřeno');
+        const paymentEvidenceStatus = String(item && item.paymentEvidenceStatus || '');
+        const bankReconciliationStatus = String(item && item.bankReconciliationStatus || '');
+        const evidenceKey = String(item && item.evidenceKey || '');
+        const blockKey = String(item && item.blockKey || '');
+        const hasExpediaTerminalSettlementEvidence = blockKey === 'expedia'
+          && evidenceKey === 'terminal'
+          && statusKey === 'paid';
+        const shouldForceBankConfirmedPaid = hasExpediaTerminalSettlementEvidence
+          && (operatorStatusKey !== 'paid' || paymentEvidenceStatus !== 'bank_confirmed' || bankReconciliationStatus !== 'matched');
+        const renderedStatusKey = shouldForceBankConfirmedPaid ? 'paid' : operatorStatusKey;
+        const renderedStatusLabel = shouldForceBankConfirmedPaid ? 'zaplaceno' : operatorStatusLabel;
+        const hasDocumentEvidenceWithoutBankMatch = !shouldForceBankConfirmedPaid
+          && paymentEvidenceStatus === 'document_confirmed'
+          && bankReconciliationStatus === 'unmatched';
+        const statusDetailText = String(item && item.statusDetailCs || '');
+        const renderedStatusDetail = shouldForceBankConfirmedPaid
+          && (statusDetailText.includes('bez spárování s bankou') || statusDetailText.includes('banka nespárována'))
+          ? 'Úhrada je potvrzená bankovním spárováním terminálového vyúčtování.'
+          : statusDetailText;
+
+        return {
+          renderedStatusKey,
+          renderedStatusLabel,
+          hasDocumentEvidenceWithoutBankMatch,
+          renderedStatusDetail
+        };
+      }
+
       function buildReservationPaymentItemMarkup(item, pageKey, bucketKey) {
         const itemClassName = item.blockKey === 'parking'
           ? 'reservation-payment-item is-parking'
           : 'reservation-payment-item';
-        const renderedStatusKey = String(item && item.operatorStatusKey || item && item.statusKey || 'unverified');
-        const renderedStatusLabel = String(item && item.operatorStatusLabelCs || item && item.statusLabelCs || 'neověřeno');
-        const hasDocumentEvidenceWithoutBankMatch = String(item && item.paymentEvidenceStatus || '') === 'document_confirmed'
-          && String(item && item.bankReconciliationStatus || '') === 'unmatched';
+        const displayState = resolveReservationPaymentDisplayState(item);
+        const renderedStatusKey = displayState.renderedStatusKey;
+        const renderedStatusLabel = displayState.renderedStatusLabel;
+        const hasDocumentEvidenceWithoutBankMatch = displayState.hasDocumentEvidenceWithoutBankMatch;
+        const renderedItem = displayState.renderedStatusDetail
+          ? { ...item, statusDetailCs: displayState.renderedStatusDetail }
+          : item;
 
         return [
           '<article class="' + escapeHtml(itemClassName) + '">',
@@ -9435,7 +9470,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
             ? ''
             : buildManualMatchSelectionControlMarkup(pageKey || 'control', bucketKey || '', item)),
           '<div class="reservation-payment-meta">' + buildReservationPaymentCompactMeta(item) + '</div>',
-          buildReservationPaymentDetailMarkup(item),
+          buildReservationPaymentDetailMarkup(renderedItem),
           '</article>'
         ].join('');
       }

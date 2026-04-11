@@ -8103,6 +8103,19 @@ describe('buildWebDemo', () => {
     expect(result.html).toContain("shortened.slice(0, 61).trimEnd() + '…'")
   })
 
+  it('keeps Expedia terminal-evidence cards rendered as paid in detail badges even if stale intermediate fields are present', async () => {
+    const result = await buildWebDemo({
+      generatedAt: '2026-04-11T10:15:00.000Z'
+    })
+
+    expect(result.html).toContain('function resolveReservationPaymentDisplayState(item)')
+    expect(result.html).toContain("const hasExpediaTerminalSettlementEvidence = blockKey === 'expedia'")
+    expect(result.html).toContain("&& evidenceKey === 'terminal'")
+    expect(result.html).toContain('shouldForceBankConfirmedPaid')
+    expect(result.html).toContain("const renderedStatusLabel = shouldForceBankConfirmedPaid ? 'zaplaceno' : operatorStatusLabel;")
+    expect(result.html).toContain('const hasDocumentEvidenceWithoutBankMatch = !shouldForceBankConfirmedPaid')
+  })
+
   it('keeps the exact Fio GPC upload out of ingest failure after the preview workspace roundtrip', async () => {
     const fioGpc = getRealInputFixture('fio-gpc-statement')
 
