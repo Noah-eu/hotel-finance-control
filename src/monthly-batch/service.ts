@@ -952,6 +952,10 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     content: input.content,
     binaryContentBase64: input.binaryContentBase64
   })
+  const receiptSummary = inspectReceiptDocumentExtractionSummary({
+    content: input.content,
+    binaryContentBase64: input.binaryContentBase64
+  })
   const bookingPdfDecision = buildBookingPayoutSupplementDecision(input)
   const fileNameSourceSystem = inferSourceSystemFromFileName(input.fileName)
   const fileNameRole = inferSupplementRole(input.fileName, input.contentFormat)
@@ -1133,6 +1137,33 @@ function inferUploadedFileClassification(input: UploadedMonthlyFileClassificatio
     || ingestionBranch === 'text-document-parser'
     || ingestionBranch === 'text-pdf-parser'
   ) {
+    const sourceFromDocumentSummary = inferDocumentSourceFromExtractionSummary({
+      invoiceSummary,
+      receiptSummary,
+      capabilityDocumentHints: capability.documentHints
+    })
+
+    if (sourceFromDocumentSummary !== 'unknown') {
+      return {
+        sourceSystem: sourceFromDocumentSummary,
+        documentType: inferDocumentType(sourceFromDocumentSummary),
+        classificationBasis: 'content',
+        role: 'primary',
+        decision: withInvoiceListWorkbookSignatureDiagnostics(buildResolvedDecision({
+          capability,
+          ingestionBranch,
+          sourceSystem: sourceFromDocumentSummary,
+          documentType: inferDocumentType(sourceFromDocumentSummary),
+          classificationBasis: 'content',
+          role: 'primary',
+          parserSupported: true,
+          matchedRules: ['document-summary-fallback'],
+          missingSignals: [],
+          detectedSignals: bookingPdfDecision?.detectedSignals ?? []
+        }), invoiceListWorkbookDiagnostics)
+      }
+    }
+
     const byContent = inferSourceSystemFromContent(input.content)
 
     if (byContent !== 'unknown') {
@@ -1322,20 +1353,11 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
     return 'bank'
   }
 
-  if (invoiceSummary.confidence === 'strong' || looksLikeInvoiceDocumentText(content)) {
+  if (isUsableInvoiceSummary(invoiceSummary) || looksLikeInvoiceDocumentText(content)) {
     return 'invoice'
   }
 
-  if (
-    receiptSummary.confidence === 'strong'
-    || (
-      receiptSummary.finalStatus !== 'failed'
-      && Boolean(receiptSummary.issuerOrCounterparty)
-      && Boolean(receiptSummary.paymentDate)
-      && typeof receiptSummary.totalAmountMinor === 'number'
-    )
-    || looksLikeReceiptDocumentText(content)
-  ) {
+  if (isUsableReceiptSummary(receiptSummary) || looksLikeReceiptDocumentText(content)) {
     return 'receipt'
   }
 
@@ -1415,6 +1437,61 @@ function inferSourceSystemFromContent(content: string): SourceDocument['sourceSy
   }
 
   return 'unknown'
+}
+
+function inferDocumentSourceFromExtractionSummary(input: {
+  invoiceSummary: ReturnType<typeof inspectInvoiceDocumentExtractionSummary>
+  receiptSummary: ReturnType<typeof inspectReceiptDocumentExtractionSummary>
+  capabilityDocumentHints: UploadedMonthlyFileCapabilityAssessment['documentHints']
+}): SourceDocument['sourceSystem'] {
+  if (isUsableInvoiceSummary(input.invoiceSummary)) {
+    return 'invoice'
+  }
+
+  if (isUsableReceiptSummary(input.receiptSummary)) {
+    return 'receipt'
+  }
+
+  if (input.capabilityDocumentHints.includes('invoice_like')) {
+    return 'invoice'
+  }
+
+  if (input.capabilityDocumentHints.includes('receipt_like')) {
+    return 'receipt'
+  }
+
+  return 'unknown'
+}
+
+function isUsableInvoiceSummary(
+  summary: ReturnType<typeof inspectInvoiceDocumentExtractionSummary>
+): boolean {
+  return summary.confidence === 'strong'
+    || (
+      summary.finalStatus !== 'failed'
+      && typeof summary.totalAmountMinor === 'number'
+      && (
+        Boolean(summary.referenceNumber)
+        || Boolean(summary.issuerOrCounterparty)
+        || Boolean(summary.issueDate)
+        || Boolean(summary.dueDate)
+      )
+    )
+}
+
+function isUsableReceiptSummary(
+  summary: ReturnType<typeof inspectReceiptDocumentExtractionSummary>
+): boolean {
+  return summary.confidence === 'strong'
+    || (
+      summary.finalStatus !== 'failed'
+      && typeof summary.totalAmountMinor === 'number'
+      && (
+        Boolean(summary.issuerOrCounterparty)
+        || Boolean(summary.paymentDate)
+        || Boolean(summary.referenceNumber)
+      )
+    )
 }
 
 function buildBookingPayoutSupplementDecision(

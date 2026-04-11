@@ -220,7 +220,7 @@ function detectUploadedMonthlyFileDocumentHints(input: {
   if (
     normalizedFileName.includes('invoice')
     || normalizedFileName.includes('faktura')
-    || invoiceSummary?.confidence === 'strong'
+    || isUsableInvoiceSummary(invoiceSummary)
     || invoiceKeywordHits.length >= 3
   ) {
     hints.add('invoice_like')
@@ -284,9 +284,32 @@ function isUsableReceiptSummary(
   return summary.confidence === 'strong'
     || (
       summary.finalStatus !== 'failed'
-      && Boolean(summary.issuerOrCounterparty)
-      && Boolean(summary.paymentDate)
       && typeof summary.totalAmountMinor === 'number'
+      && (
+        Boolean(summary.issuerOrCounterparty)
+        || Boolean(summary.paymentDate)
+        || Boolean(summary.referenceNumber)
+      )
+    )
+}
+
+function isUsableInvoiceSummary(
+  summary: ReturnType<typeof inspectInvoiceDocumentExtractionSummary> | undefined
+): boolean {
+  if (!summary) {
+    return false
+  }
+
+  return summary.confidence === 'strong'
+    || (
+      summary.finalStatus !== 'failed'
+      && typeof summary.totalAmountMinor === 'number'
+      && (
+        Boolean(summary.referenceNumber)
+        || Boolean(summary.issuerOrCounterparty)
+        || Boolean(summary.issueDate)
+        || Boolean(summary.dueDate)
+      )
     )
 }
 

@@ -3333,6 +3333,110 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('routes real scan-like PDFs into expense document review instead of unsupported files on the browser upload path', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('Scan 2 účtenky.PDF', [
+          'TESCO Praha Eden',
+          'Datum 29.03.2026 10:15',
+          'Celkem 3 254,30 CZK',
+          '',
+          'Potraviny U Nádraží',
+          'Datum 29.03.2026 11:05',
+          'Celkem 645,00 Kč'
+        ]),
+        createRuntimePdfFileFromToUnicodeTextLines('scanDatart349.PDF', [
+          'DATART',
+          'HP TRONIC Zlín, spol. s r.o.',
+          'Daňový doklad - FAKTURA 358260017610',
+          'Datum vystavení 30.03.2026',
+          'Celkem k úhradě 349,00 Kč'
+        ])
+      ],
+      month: '2026-03',
+      generatedAt: '2026-03-29T09:50:00.000Z'
+    })
+
+    expect(result.routingSummary.unsupportedFileCount).toBe(0)
+    expect(result.fileRoutes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Scan 2 účtenky.PDF',
+          status: 'supported',
+          intakeStatus: 'parsed',
+          sourceSystem: 'receipt',
+          documentType: 'receipt',
+          decision: expect.objectContaining({
+            ingestionBranch: 'text-pdf-parser',
+            resolvedBucket: 'recognized-supported'
+          })
+        }),
+        expect.objectContaining({
+          fileName: 'scanDatart349.PDF',
+          status: 'supported',
+          intakeStatus: 'parsed',
+          sourceSystem: 'invoice',
+          documentType: 'invoice',
+          decision: expect.objectContaining({
+            ingestionBranch: 'text-pdf-parser',
+            resolvedBucket: 'recognized-supported'
+          })
+        })
+      ])
+    )
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '3 254,30 Kč' }),
+            expect.objectContaining({ label: 'protistrana / dodavatel', value: 'TESCO Praha Eden' })
+          ])
+        }),
+        expect.objectContaining({
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '645,00 Kč' }),
+            expect.objectContaining({ label: 'protistrana / dodavatel', value: 'Potraviny U Nádraží' })
+          ])
+        }),
+        expect.objectContaining({
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '349,00 Kč' }),
+            expect.objectContaining({ label: 'reference', value: '358260017610' })
+          ])
+        })
+      ])
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'Scan 2 účtenky.PDF',
+          sourceSystem: 'receipt',
+          status: 'supported',
+          documentExtractionSummary: expect.objectContaining({
+            sourceSystem: 'receipt',
+            finalStatus: expect.stringMatching(/parsed|needs_review/),
+            extractionStages: expect.arrayContaining([
+              expect.objectContaining({
+                stage: 'validation_and_confidence',
+                notes: expect.arrayContaining(['scanClassified=true', 'segmentedDocuments=2'])
+              })
+            ])
+          })
+        }),
+        expect.objectContaining({
+          fileName: 'scanDatart349.PDF',
+          sourceSystem: 'invoice',
+          status: 'supported',
+          documentExtractionSummary: expect.objectContaining({
+            sourceSystem: 'invoice',
+            referenceNumber: '358260017610',
+            totalAmountMinor: 34900
+          })
+        })
+      ])
+    )
+  })
+
   it('surfaces truthful no-extract diagnostics when a recognized sparse refund invoice PDF is missing any usable date', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

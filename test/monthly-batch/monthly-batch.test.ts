@@ -1592,7 +1592,7 @@ describe('runMonthlyReconciliationBatch', () => {
         fileName: 'booking-invoice-march.pdf',
         sourceSystem: 'invoice',
         documentType: 'invoice',
-        classificationBasis: 'file-name',
+        classificationBasis: 'content',
         role: 'primary',
         parserId: 'invoice'
       })
