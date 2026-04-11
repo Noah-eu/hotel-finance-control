@@ -9413,13 +9413,12 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const operatorStatusLabel = String(item && item.operatorStatusLabelCs || item && item.statusLabelCs || 'neověřeno');
         const paymentEvidenceStatus = String(item && item.paymentEvidenceStatus || '');
         const bankReconciliationStatus = String(item && item.bankReconciliationStatus || '');
-        const evidenceKey = String(item && item.evidenceKey || '');
         const blockKey = String(item && item.blockKey || '');
-        const hasExpediaTerminalSettlementEvidence = blockKey === 'expedia'
-          && evidenceKey === 'terminal'
-          && statusKey === 'paid';
-        const shouldForceBankConfirmedPaid = hasExpediaTerminalSettlementEvidence
-          && (operatorStatusKey !== 'paid' || paymentEvidenceStatus !== 'bank_confirmed' || bankReconciliationStatus !== 'matched');
+        const hasExpediaFinalPaidState = blockKey === 'expedia' && statusKey === 'paid';
+        const shouldForceBankConfirmedPaid = hasExpediaFinalPaidState
+          && (operatorStatusKey !== 'paid'
+            || paymentEvidenceStatus === 'document_confirmed'
+            || bankReconciliationStatus === 'unmatched');
         const renderedStatusKey = shouldForceBankConfirmedPaid ? 'paid' : operatorStatusKey;
         const renderedStatusLabel = shouldForceBankConfirmedPaid ? 'zaplaceno' : operatorStatusLabel;
         const hasDocumentEvidenceWithoutBankMatch = !shouldForceBankConfirmedPaid

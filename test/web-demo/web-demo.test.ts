@@ -8109,8 +8109,7 @@ describe('buildWebDemo', () => {
     })
 
     expect(result.html).toContain('function resolveReservationPaymentDisplayState(item)')
-    expect(result.html).toContain("const hasExpediaTerminalSettlementEvidence = blockKey === 'expedia'")
-    expect(result.html).toContain("&& evidenceKey === 'terminal'")
+    expect(result.html).toContain("const hasExpediaFinalPaidState = blockKey === 'expedia' && statusKey === 'paid';")
     expect(result.html).toContain('shouldForceBankConfirmedPaid')
     expect(result.html).toContain("const renderedStatusLabel = shouldForceBankConfirmedPaid ? 'zaplaceno' : operatorStatusLabel;")
     expect(result.html).toContain('const hasDocumentEvidenceWithoutBankMatch = !shouldForceBankConfirmedPaid')
