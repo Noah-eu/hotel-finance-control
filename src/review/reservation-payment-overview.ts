@@ -2239,6 +2239,10 @@ function resolveMatchedPaidAmountMinor(
   }
 
   if (match.matchedSettlementId) {
+    if (match.platform === 'expedia_direct_bank' && match.settlementKind === 'direct_bank_settlement') {
+      return match.amountMinor
+    }
+
     return transactionsById.get(match.matchedSettlementId)?.amountMinor ?? match.amountMinor
   }
 

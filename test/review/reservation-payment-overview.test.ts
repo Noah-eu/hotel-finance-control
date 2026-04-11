@@ -510,6 +510,152 @@ describe('buildReservationPaymentOverview', () => {
     }))
   })
 
+  it('renders Expedia terminal batch-backed reservations as bank matched even when one Fio inflow confirms multiple reservation cards', () => {
+    const batch = {
+      extractedRecords: [],
+      reconciliation: {
+        normalizedTransactions: [
+          {
+            id: 'txn:bank:fio-expedia-terminal-batch',
+            source: 'bank',
+            subtype: 'inflow',
+            amountMinor: 200000,
+            currency: 'CZK',
+            bookedAt: '2026-04-11',
+            reference: 'Zúčtování POS terminálu 2026-04-11',
+            sourceDocumentIds: ['doc:bank'],
+            extractedRecordIds: []
+          }
+        ],
+        workflowPlan: {
+          reservationSources: [
+            {
+              sourceDocumentId: 'doc:previo-expedia',
+              reservationId: 'EXP-TER-1',
+              guestName: 'Cheng Hiu Tung Tanya',
+              roomName: 'A101',
+              reference: 'EXP-TER-1',
+              channel: 'expedia_direct_bank',
+              bookedAt: '2026-04-08',
+              stayStartAt: '2026-04-08',
+              stayEndAt: '2026-04-09',
+              grossRevenueMinor: 40000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['expedia_direct_bank']
+            },
+            {
+              sourceDocumentId: 'doc:previo-expedia',
+              reservationId: 'EXP-TER-2',
+              guestName: 'Radicanin Dalibor',
+              roomName: 'A102',
+              reference: 'EXP-TER-2',
+              channel: 'expedia_direct_bank',
+              bookedAt: '2026-04-08',
+              stayStartAt: '2026-04-08',
+              stayEndAt: '2026-04-10',
+              grossRevenueMinor: 70000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['expedia_direct_bank']
+            },
+            {
+              sourceDocumentId: 'doc:previo-expedia',
+              reservationId: 'EXP-TER-3',
+              guestName: 'Ferreira Ina',
+              roomName: 'A103',
+              reference: 'EXP-TER-3',
+              channel: 'expedia_direct_bank',
+              bookedAt: '2026-04-08',
+              stayStartAt: '2026-04-09',
+              stayEndAt: '2026-04-10',
+              grossRevenueMinor: 90000,
+              outstandingBalanceMinor: 0,
+              currency: 'CZK',
+              expectedSettlementChannels: ['expedia_direct_bank']
+            }
+          ],
+          previoReservationTruth: [],
+          ancillaryRevenueSources: [],
+          reservationSettlementMatches: [
+            {
+              sourceDocumentId: 'doc:previo-expedia',
+              reservationId: 'EXP-TER-1',
+              reference: 'EXP-TER-1',
+              settlementKind: 'direct_bank_settlement',
+              matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
+              platform: 'expedia_direct_bank',
+              amountMinor: 40000,
+              currency: 'CZK',
+              confidence: 1,
+              reasons: ['expediaTerminalBatchExactSum'],
+              evidence: [{ key: 'settlementBatchSize', value: 3 }]
+            },
+            {
+              sourceDocumentId: 'doc:previo-expedia',
+              reservationId: 'EXP-TER-2',
+              reference: 'EXP-TER-2',
+              settlementKind: 'direct_bank_settlement',
+              matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
+              platform: 'expedia_direct_bank',
+              amountMinor: 70000,
+              currency: 'CZK',
+              confidence: 1,
+              reasons: ['expediaTerminalBatchExactSum'],
+              evidence: [{ key: 'settlementBatchSize', value: 3 }]
+            },
+            {
+              sourceDocumentId: 'doc:previo-expedia',
+              reservationId: 'EXP-TER-3',
+              reference: 'EXP-TER-3',
+              settlementKind: 'direct_bank_settlement',
+              matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
+              platform: 'expedia_direct_bank',
+              amountMinor: 90000,
+              currency: 'CZK',
+              confidence: 1,
+              reasons: ['expediaTerminalBatchExactSum'],
+              evidence: [{ key: 'settlementBatchSize', value: 3 }]
+            }
+          ],
+          reservationSettlementNoMatches: [],
+          payoutRows: [],
+          payoutBatches: [],
+          directBankSettlements: [],
+          invoiceListEnrichment: []
+        }
+      }
+    } as unknown as MonthlyBatchResult
+
+    const overview = buildReservationPaymentOverview(batch)
+    const expediaItems = overview.blocks.find((block) => block.key === 'expedia')?.items ?? []
+
+    expect(expediaItems).toHaveLength(3)
+    expect(expediaItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        primaryReference: 'EXP-TER-1',
+        statusLabelCs: 'zaplaceno',
+        bankReconciliationStatus: 'matched',
+        paymentEvidenceStatus: 'bank_confirmed',
+        paidAmountMinor: 40000
+      }),
+      expect.objectContaining({
+        primaryReference: 'EXP-TER-2',
+        statusLabelCs: 'zaplaceno',
+        bankReconciliationStatus: 'matched',
+        paymentEvidenceStatus: 'bank_confirmed',
+        paidAmountMinor: 70000
+      }),
+      expect.objectContaining({
+        primaryReference: 'EXP-TER-3',
+        statusLabelCs: 'zaplaceno',
+        bankReconciliationStatus: 'matched',
+        paymentEvidenceStatus: 'bank_confirmed',
+        paidAmountMinor: 90000
+      })
+    ]))
+  })
+
   it('enriches native Reservation+ Comgate rows when a unique reservation anchor resolves by exact identity', () => {
     const batch = {
       extractedRecords: [

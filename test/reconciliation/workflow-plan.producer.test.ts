@@ -1055,6 +1055,171 @@ describe('buildReconciliationWorkflowPlan', () => {
         ])
     })
 
+    it('builds one deterministic Expedia terminal batch match from three TER-backed reservations to one Fio inflow', () => {
+        const plan = buildReconciliationWorkflowPlan({
+            extractedRecords: [
+                {
+                    id: 'previo-expedia-1',
+                    sourceDocumentId: 'doc-previo-expedia' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-04-11T10:00:00.000Z',
+                    rawReference: 'EXP-TER-1',
+                    amountMinor: 40000,
+                    currency: 'CZK',
+                    occurredAt: '2026-04-08',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-04-08',
+                        stayStartAt: '2026-04-08',
+                        stayEndAt: '2026-04-09',
+                        amountMinor: 40000,
+                        currency: 'CZK',
+                        reference: 'EXP-TER-1',
+                        reservationId: 'EXP-TER-1',
+                        guestName: 'Cheng Hiu Tung Tanya',
+                        channel: 'expedia_direct_bank'
+                    }
+                },
+                {
+                    id: 'previo-expedia-2',
+                    sourceDocumentId: 'doc-previo-expedia' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-04-11T10:00:00.000Z',
+                    rawReference: 'EXP-TER-2',
+                    amountMinor: 70000,
+                    currency: 'CZK',
+                    occurredAt: '2026-04-08',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-04-08',
+                        stayStartAt: '2026-04-08',
+                        stayEndAt: '2026-04-10',
+                        amountMinor: 70000,
+                        currency: 'CZK',
+                        reference: 'EXP-TER-2',
+                        reservationId: 'EXP-TER-2',
+                        guestName: 'Radicanin Dalibor',
+                        channel: 'expedia_direct_bank'
+                    }
+                },
+                {
+                    id: 'previo-expedia-3',
+                    sourceDocumentId: 'doc-previo-expedia' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'payout-line',
+                    extractedAt: '2026-04-11T10:00:00.000Z',
+                    rawReference: 'EXP-TER-3',
+                    amountMinor: 90000,
+                    currency: 'CZK',
+                    occurredAt: '2026-04-08',
+                    data: {
+                        platform: 'previo',
+                        rowKind: 'accommodation',
+                        bookedAt: '2026-04-08',
+                        stayStartAt: '2026-04-09',
+                        stayEndAt: '2026-04-10',
+                        amountMinor: 90000,
+                        currency: 'CZK',
+                        reference: 'EXP-TER-3',
+                        reservationId: 'EXP-TER-3',
+                        guestName: 'Ferreira Ina',
+                        channel: 'expedia_direct_bank'
+                    }
+                },
+                {
+                    id: 'invoice-list-expedia-1',
+                    sourceDocumentId: 'doc-invoice-list-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'invoice-list-row',
+                    extractedAt: '2026-04-11T10:00:00.000Z',
+                    rawReference: 'EXP-TER-1',
+                    amountMinor: 40000,
+                    currency: 'CZK',
+                    occurredAt: '2026-04-08',
+                    data: {
+                        platform: 'previo-invoice-list',
+                        rowKind: 'header',
+                        voucher: 'EXP-TER-1',
+                        paymentMethod: 'TER',
+                        currency: 'CZK'
+                    }
+                },
+                {
+                    id: 'invoice-list-expedia-2',
+                    sourceDocumentId: 'doc-invoice-list-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'invoice-list-row',
+                    extractedAt: '2026-04-11T10:00:00.000Z',
+                    rawReference: 'EXP-TER-2',
+                    amountMinor: 70000,
+                    currency: 'CZK',
+                    occurredAt: '2026-04-08',
+                    data: {
+                        platform: 'previo-invoice-list',
+                        rowKind: 'header',
+                        voucher: 'EXP-TER-2',
+                        paymentMethod: 'TER',
+                        currency: 'CZK'
+                    }
+                },
+                {
+                    id: 'invoice-list-expedia-3',
+                    sourceDocumentId: 'doc-invoice-list-1' as ExtractedRecord['sourceDocumentId'],
+                    recordType: 'invoice-list-row',
+                    extractedAt: '2026-04-11T10:00:00.000Z',
+                    rawReference: 'EXP-TER-3',
+                    amountMinor: 90000,
+                    currency: 'CZK',
+                    occurredAt: '2026-04-08',
+                    data: {
+                        platform: 'previo-invoice-list',
+                        rowKind: 'header',
+                        voucher: 'EXP-TER-3',
+                        paymentMethod: 'TER',
+                        currency: 'CZK'
+                    }
+                }
+            ],
+            normalizedTransactions: [
+                {
+                    id: 'txn:bank:fio-expedia-terminal-batch' as NormalizedTransaction['id'],
+                    direction: 'in',
+                    source: 'bank',
+                    amountMinor: 200000,
+                    currency: 'CZK',
+                    bookedAt: '2026-04-11',
+                    accountId: 'fio-main',
+                    counterparty: 'EXPEDIA TERMINAL',
+                    reference: 'Zúčtování POS terminálu 2026-04-11',
+                    extractedRecordIds: ['bank-1'],
+                    sourceDocumentIds: ['doc-bank-1' as NormalizedTransaction['sourceDocumentIds'][number]]
+                }
+            ],
+            requestedAt: '2026-04-11T10:05:00.000Z'
+        })
+
+        expect(plan.reservationSettlementMatches).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                reservationId: 'EXP-TER-1',
+                settlementKind: 'direct_bank_settlement',
+                matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
+                platform: 'expedia_direct_bank'
+            }),
+            expect.objectContaining({
+                reservationId: 'EXP-TER-2',
+                settlementKind: 'direct_bank_settlement',
+                matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
+                platform: 'expedia_direct_bank'
+            }),
+            expect.objectContaining({
+                reservationId: 'EXP-TER-3',
+                settlementKind: 'direct_bank_settlement',
+                matchedSettlementId: 'txn:bank:fio-expedia-terminal-batch',
+                platform: 'expedia_direct_bank'
+            })
+        ]))
+        expect(plan.reservationSettlementNoMatches).toEqual([])
+    })
+
     it('matches manual Reservation+ bank transfer via unique exact amount/currency/month when invoice evidence exists', () => {
         const plan = buildReconciliationWorkflowPlan({
             extractedRecords: [

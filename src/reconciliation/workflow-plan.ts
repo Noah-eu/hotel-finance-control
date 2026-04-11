@@ -1220,6 +1220,90 @@ function buildManualReservationBankTransferMatches(input: {
                 { key: 'bookedAt', value: winner.bookedAt }
             ]
         })
+        matchedReservationSourceKeys.add(buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId))
+    }
+
+    const expediaTerminalReservations = input.reservationSources.filter((reservation) =>
+        !matchedReservationSourceKeys.has(buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId))
+        && isEligibleExpediaTerminalReservation(reservation)
+        && hasTerminalInvoiceEvidenceAnchorForReservation(reservation, input.invoiceListEnrichment)
+    )
+    const expediaTerminalCandidates = input.normalizedTransactions.filter((transaction) =>
+        transaction.source === 'bank'
+        && transaction.direction === 'in'
+        && !usedSettlementIds.has(transaction.id)
+        && transaction.amountMinor > 0
+        && isLikelyExpediaTerminalSettlementBankTransaction(transaction)
+    )
+    const reservationsByMonthCurrency = new Map<string, ReservationSourceRecord[]>()
+
+    for (const reservation of expediaTerminalReservations) {
+        const monthKey = resolveMonthKey(
+            reservation.bookedAt,
+            reservation.stayStartAt,
+            reservation.createdAt
+        )
+
+        if (!monthKey) {
+            continue
+        }
+
+        const groupingKey = `${monthKey}:${reservation.currency}`
+        const items = reservationsByMonthCurrency.get(groupingKey) ?? []
+        items.push(reservation)
+        reservationsByMonthCurrency.set(groupingKey, items)
+    }
+
+    for (const [groupingKey, groupedReservations] of reservationsByMonthCurrency.entries()) {
+        const [monthKey, currency] = groupingKey.split(':')
+        const candidateTransactions = expediaTerminalCandidates
+            .filter((transaction) =>
+                !usedSettlementIds.has(transaction.id)
+                && transaction.currency === currency
+                && resolveMonthKey(transaction.bookedAt) === monthKey
+            )
+            .sort((left, right) => left.bookedAt.localeCompare(right.bookedAt))
+
+        for (const bankTransaction of candidateTransactions) {
+            const availableReservations = groupedReservations.filter((reservation) =>
+                !matchedReservationSourceKeys.has(buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId))
+                && isWithinReservationBankTransferDateWindow(reservation, bankTransaction.bookedAt)
+            )
+            const subset = selectUniqueReservationSubsetByExactAmount(availableReservations, bankTransaction.amountMinor)
+
+            if (!subset || subset.length === 0) {
+                continue
+            }
+
+            usedSettlementIds.add(bankTransaction.id)
+
+            for (const reservation of subset) {
+                matches.push({
+                    reservationId: reservation.reservationId,
+                    reference: reservation.reference,
+                    sourceDocumentId: reservation.sourceDocumentId,
+                    settlementKind: 'direct_bank_settlement',
+                    matchedSettlementId: bankTransaction.id,
+                    platform: 'expedia_direct_bank',
+                    amountMinor: reservation.grossRevenueMinor,
+                    currency: reservation.currency,
+                    confidence: 1,
+                    reasons: [
+                        'expediaTerminalBatchExactSum',
+                        'expediaTerminalSameMonth',
+                        'invoiceEvidenceTerminalAnchor'
+                    ],
+                    evidence: [
+                        { key: 'settlementChannel', value: 'expedia_direct_bank' },
+                        { key: 'settlementBatchSize', value: subset.length },
+                        { key: 'batchAmountMinor', value: bankTransaction.amountMinor },
+                        { key: 'currency', value: bankTransaction.currency },
+                        { key: 'bookedAt', value: bankTransaction.bookedAt }
+                    ]
+                })
+                matchedReservationSourceKeys.add(buildReservationSourceKey(reservation.sourceDocumentId, reservation.reservationId))
+            }
+        }
     }
 
     return matches
@@ -1269,6 +1353,66 @@ function isEligibleDirectReservationBankTransferReservation(reservation: Reserva
     return normalizedChannel === 'directweb' || normalizedChannel === 'direct'
 }
 
+function isEligibleExpediaTerminalReservation(reservation: ReservationSourceRecord): boolean {
+    if (!(reservation.grossRevenueMinor > 0)) {
+        return false
+    }
+
+    const channels = reservation.expectedSettlementChannels.length > 0
+        ? reservation.expectedSettlementChannels
+        : [normalizeReservationSettlementChannel(reservation.channel)].filter((value): value is ReservationSettlementChannel => Boolean(value))
+
+    if (channels.includes('expedia_direct_bank')) {
+        return true
+    }
+
+    const normalizedChannel = normalizeComparable(reservation.channel)
+    return normalizedChannel.includes('expedia')
+}
+
+function hasTerminalInvoiceEvidenceAnchorForReservation(
+    reservation: ReservationSourceRecord,
+    records: InvoiceListEnrichmentRecord[]
+): boolean {
+    const reservationAnchors = new Set(
+        [reservation.reference, reservation.reservationId]
+            .map((value) => normalizeComparable(value))
+            .filter(Boolean)
+    )
+
+    if (reservationAnchors.size === 0) {
+        return false
+    }
+
+    return records.some((record) => {
+        if (!isTerminalInvoicePaymentMethod(record.paymentMethod)) {
+            return false
+        }
+
+        const voucher = normalizeComparable(record.voucher)
+        const variableSymbol = normalizeComparable(record.variableSymbol)
+        const invoiceNumber = normalizeComparable(record.invoiceNumber)
+        const customerId = normalizeComparable(record.customerId)
+
+        return reservationAnchors.has(voucher)
+            || reservationAnchors.has(variableSymbol)
+            || reservationAnchors.has(invoiceNumber)
+            || reservationAnchors.has(customerId)
+    })
+}
+
+function isTerminalInvoicePaymentMethod(value: string | undefined): boolean {
+    const normalized = normalizeComparable(value)
+
+    if (!normalized) {
+        return false
+    }
+
+    return normalized === 'ter'
+        || normalized.includes('terminal')
+        || normalized.includes('term')
+}
+
 function isLikelyComgateOrOtaPayoutBankTransaction(
     transaction: NormalizedTransaction,
     payoutReferences: Set<string>
@@ -1294,6 +1438,33 @@ function isLikelyComgateOrOtaPayoutBankTransaction(
     return Boolean(comparableReference && payoutReferences.has(comparableReference))
 }
 
+function isLikelyExpediaTerminalSettlementBankTransaction(transaction: NormalizedTransaction): boolean {
+    const comparableAccount = normalizeComparable(transaction.accountId)
+    if (!comparableAccount.includes('fio') && !comparableAccount.includes('8888997777')) {
+        return false
+    }
+
+    const comparableReference = normalizeComparable(transaction.reference)
+    const comparableCounterparty = normalizeComparable(transaction.counterparty)
+    const comparableText = `${comparableReference} ${comparableCounterparty}`.trim()
+
+    if (!comparableText) {
+        return false
+    }
+
+    if (
+        comparableText.includes('comgate')
+        || comparableText.includes('booking')
+        || comparableText.includes('airbnb')
+    ) {
+        return false
+    }
+
+    return comparableText.includes('expedia')
+        || comparableText.includes('terminal')
+        || comparableText.includes('term')
+}
+
 function isWithinReservationBankTransferDateWindow(
     reservation: ReservationSourceRecord,
     bankBookedAt: string
@@ -1314,6 +1485,54 @@ function calculateDateDistanceInDays(left: string, right: string): number {
     }
 
     return Math.abs(Math.round((leftDate.getTime() - rightDate.getTime()) / 86400000))
+}
+
+function selectUniqueReservationSubsetByExactAmount(
+    reservations: ReservationSourceRecord[],
+    targetAmountMinor: number
+): ReservationSourceRecord[] | undefined {
+    if (targetAmountMinor <= 0 || reservations.length === 0) {
+        return undefined
+    }
+
+    const sorted = reservations
+        .filter((reservation) => reservation.grossRevenueMinor > 0)
+        .slice()
+        .sort((left, right) => right.grossRevenueMinor - left.grossRevenueMinor)
+    const solutions: ReservationSourceRecord[][] = []
+
+    const dfs = (
+        index: number,
+        runningTotal: number,
+        selected: ReservationSourceRecord[]
+    ) => {
+        if (solutions.length > 1) {
+            return
+        }
+
+        if (runningTotal === targetAmountMinor) {
+            solutions.push(selected.slice())
+            return
+        }
+
+        if (runningTotal > targetAmountMinor || index >= sorted.length) {
+            return
+        }
+
+        const reservation = sorted[index]!
+        selected.push(reservation)
+        dfs(index + 1, runningTotal + reservation.grossRevenueMinor, selected)
+        selected.pop()
+        dfs(index + 1, runningTotal, selected)
+    }
+
+    dfs(0, 0, [])
+
+    if (solutions.length !== 1) {
+        return undefined
+    }
+
+    return solutions[0]
 }
 
 function resolveMonthKey(...values: Array<string | undefined>): string | undefined {
