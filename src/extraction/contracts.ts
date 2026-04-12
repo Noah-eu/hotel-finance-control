@@ -76,6 +76,38 @@ export interface DeterministicDocumentExtractionSummary {
   groupedTotalsBlockDebug?: DeterministicDocumentGroupedBlockDebug[]
   rawBlockDiscoveryDebug?: DeterministicDocumentRawBlockDebug[]
   fieldExtractionDebug?: Record<string, DeterministicDocumentFieldExtractionDebug>
+  receiptParsingDebug?: ReceiptParsingDebug
+}
+
+export interface ReceiptParsingAmountCandidateDebug {
+  lineIndex: number
+  matchIndex: number
+  line: string
+  raw: string
+  currency: string
+  amountMinor: number
+  score?: number
+  source: string
+}
+
+export interface ReceiptParsingDebug {
+  normalizedLines: string[]
+  vendorProfileSelected: string
+  amountCandidates: ReceiptParsingAmountCandidateDebug[]
+  anchoredAmountCandidates: ReceiptParsingAmountCandidateDebug[]
+  genericInferredTotalRaw?: string
+  vendorSelectedTotalRaw?: string
+  finalTotalRaw?: string
+  genericInferredDateRaw?: string
+  vendorSelectedDateRaw?: string
+  finalDateRaw?: string
+  winningAmountSource: string
+  winningDateSource: string
+  anchoredFinalTotalMatched: boolean
+  anchoredFinalTotalHadCandidates: boolean
+  anchoredFinalTotalRejected: boolean
+  anchoredFinalTotalOverwritten: boolean
+  anchoredFinalTotalReason: string
 }
 
 export interface DeterministicDocumentFieldExtractionDebug {

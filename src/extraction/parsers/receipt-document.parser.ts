@@ -4,6 +4,7 @@ import type {
   DeterministicDocumentFieldConfidence,
   DeterministicDocumentFieldProvenance,
   DeterministicDocumentOcrParsedFields,
+  ReceiptParsingDebug,
   DeterministicDocumentSummaryFieldKey,
   DeterministicDocumentExtractionSummary,
   DeterministicDocumentParserInput
@@ -21,7 +22,9 @@ import {
 } from './document-layered-recovery'
 import {
   applyReceiptVendorProfile,
+  inspectReceiptVendorCandidates,
   type ReceiptVendorProfileKey,
+  type ReceiptVendorProfileResult,
   type ReceiptVendorProfileSupplementaryAmount
 } from './receipt-vendor-profiles'
 
@@ -72,6 +75,7 @@ interface ReceiptExtractionDetails {
   vendorProfileKey: ReceiptVendorProfileKey
   vendorDetectionSignals: string[]
   forcePartialRecord: boolean
+  receiptParsingDebug?: ReceiptParsingDebug
 }
 
 interface ReceiptSegmentationDebug {
@@ -307,7 +311,8 @@ function buildReceiptDocumentExtractionSummary(
     ...(Object.keys(extraction.fieldConfidence).length > 0 ? { fieldConfidence: extraction.fieldConfidence } : {}),
     ...(extraction.ocrRecoveredFields.length > 0 ? { ocrRecoveredFields: extraction.ocrRecoveredFields } : {}),
     ...(extraction.ocrConfirmedFields.length > 0 ? { ocrConfirmedFields: extraction.ocrConfirmedFields } : {}),
-    ...(extractionStages.length > 0 ? { extractionStages } : {})
+    ...(extractionStages.length > 0 ? { extractionStages } : {}),
+    ...(extraction.receiptParsingDebug ? { receiptParsingDebug: extraction.receiptParsingDebug } : {})
   }
 }
 
@@ -371,22 +376,7 @@ function extractReceiptDocumentFields(input: {
     currentFields: merged.fields,
     ocrParsedFields: ocrExtraction.parsedFields
   })
-  const vendorMergedFields: ReceiptExtractedFields = {
-    ...merged.fields,
-    ...(vendorProfile?.merchant ? { merchant: vendorProfile.merchant } : {}),
-    ...(vendorProfile?.purchaseDateRaw ? { purchaseDateRaw: vendorProfile.purchaseDateRaw } : {}),
-    ...(vendorProfile?.totalRaw ? { totalRaw: vendorProfile.totalRaw } : {}),
-    ...(vendorProfile?.paymentMethod ? { paymentMethod: vendorProfile.paymentMethod } : {}),
-    ...(vendorProfile?.receiptNumber ? { receiptNumber: vendorProfile.receiptNumber } : {}),
-    ...(vendorProfile?.category ? { category: vendorProfile.category } : {}),
-    ...(vendorProfile?.note ? { note: vendorProfile.note } : {}),
-    ...(vendorProfile?.merchantRegistrationId ? { merchantRegistrationId: vendorProfile.merchantRegistrationId } : {}),
-    ...(vendorProfile?.merchantTaxId ? { merchantTaxId: vendorProfile.merchantTaxId } : {}),
-    ...(vendorProfile?.vatBaseRaw ? { vatBaseRaw: vendorProfile.vatBaseRaw } : {}),
-    ...(vendorProfile?.vatRaw ? { vatRaw: vendorProfile.vatRaw } : {}),
-    ...(vendorProfile?.supplementaryAmounts ? { supplementaryAmounts: vendorProfile.supplementaryAmounts } : {}),
-    ...(vendorProfile ? { vendorProfileKey: vendorProfile.key } : {})
-  }
+  const vendorMergedFields = applyReceiptVendorOverrides(merged.fields, vendorProfile)
   const vendorFieldProvenance = { ...merged.fieldProvenance }
 
   if (vendorProfile?.merchant) {
@@ -430,8 +420,187 @@ function extractReceiptDocumentFields(input: {
     }),
     vendorProfileKey: vendorProfile?.key ?? 'generic',
     vendorDetectionSignals: vendorProfile?.detectionSignals ?? [],
-    forcePartialRecord: Boolean(vendorProfile?.forcePartialRecord)
+    forcePartialRecord: Boolean(vendorProfile?.forcePartialRecord),
+    receiptParsingDebug: buildReceiptParsingDebug({
+      content: input.content,
+      genericFields: merged.fields,
+      finalFields: vendorMergedFields,
+      vendorProfile,
+      vendorProfileKey: vendorProfile?.key ?? 'generic'
+    })
   }
+}
+
+function applyReceiptVendorOverrides(
+  fields: ReceiptExtractedFields,
+  vendorProfile: ReceiptVendorProfileResult | undefined
+): ReceiptExtractedFields {
+  return {
+    ...fields,
+    ...(vendorProfile?.merchant ? { merchant: vendorProfile.merchant } : {}),
+    ...(vendorProfile?.purchaseDateRaw ? { purchaseDateRaw: vendorProfile.purchaseDateRaw } : {}),
+    ...(vendorProfile?.totalRaw ? { totalRaw: vendorProfile.totalRaw } : {}),
+    ...(vendorProfile?.paymentMethod ? { paymentMethod: vendorProfile.paymentMethod } : {}),
+    ...(vendorProfile?.receiptNumber ? { receiptNumber: vendorProfile.receiptNumber } : {}),
+    ...(vendorProfile?.category ? { category: vendorProfile.category } : {}),
+    ...(vendorProfile?.note ? { note: vendorProfile.note } : {}),
+    ...(vendorProfile?.merchantRegistrationId ? { merchantRegistrationId: vendorProfile.merchantRegistrationId } : {}),
+    ...(vendorProfile?.merchantTaxId ? { merchantTaxId: vendorProfile.merchantTaxId } : {}),
+    ...(vendorProfile?.vatBaseRaw ? { vatBaseRaw: vendorProfile.vatBaseRaw } : {}),
+    ...(vendorProfile?.vatRaw ? { vatRaw: vendorProfile.vatRaw } : {}),
+    ...(vendorProfile?.supplementaryAmounts ? { supplementaryAmounts: vendorProfile.supplementaryAmounts } : {}),
+    ...(vendorProfile ? { vendorProfileKey: vendorProfile.key } : {})
+  }
+}
+
+function buildReceiptParsingDebug(input: {
+  content: string
+  genericFields: ReceiptExtractedFields
+  finalFields: ReceiptExtractedFields
+  vendorProfile: ReceiptVendorProfileResult | undefined
+  vendorProfileKey: ReceiptVendorProfileKey
+}): ReceiptParsingDebug {
+  const vendorInspection = inspectReceiptVendorCandidates({
+    content: input.content,
+    vendorProfileKey: input.vendorProfileKey
+  })
+  const anchoredFinalTotalCandidate = vendorInspection.anchoredAmountCandidates[0]
+  const genericAmountKey = normalizeComparableReceiptMoney(input.genericFields.totalRaw)
+  const vendorAmountKey = normalizeComparableReceiptMoney(input.vendorProfile?.totalRaw)
+  const finalAmountKey = normalizeComparableReceiptMoney(input.finalFields.totalRaw)
+  const anchoredAmountKey = normalizeComparableReceiptMoney(anchoredFinalTotalCandidate?.raw)
+  const genericDateKey = normalizeComparableReceiptDate(input.genericFields.purchaseDateRaw)
+  const vendorDateKey = normalizeComparableReceiptDate(input.vendorProfile?.purchaseDateRaw)
+  const finalDateKey = normalizeComparableReceiptDate(input.finalFields.purchaseDateRaw)
+  const anchoredDateKey = normalizeComparableReceiptDate(vendorInspection.anchoredTimestampDateRaw)
+  const anchoredFinalTotalMatched = Boolean(anchoredAmountKey && vendorAmountKey && anchoredAmountKey === vendorAmountKey)
+  const anchoredFinalTotalOverwritten = Boolean(anchoredAmountKey && finalAmountKey && anchoredAmountKey !== finalAmountKey)
+  const anchoredFinalTotalHadCandidates = vendorInspection.anchoredAmountCandidates.length > 0
+  const anchoredFinalTotalRejected = anchoredFinalTotalHadCandidates && !anchoredFinalTotalMatched
+
+  return {
+    normalizedLines: vendorInspection.normalizedLines,
+    vendorProfileSelected: input.vendorProfileKey,
+    amountCandidates: vendorInspection.amountCandidates,
+    anchoredAmountCandidates: vendorInspection.anchoredAmountCandidates,
+    ...(input.genericFields.totalRaw ? { genericInferredTotalRaw: input.genericFields.totalRaw } : {}),
+    ...(input.vendorProfile?.totalRaw ? { vendorSelectedTotalRaw: input.vendorProfile.totalRaw } : {}),
+    ...(input.finalFields.totalRaw ? { finalTotalRaw: input.finalFields.totalRaw } : {}),
+    ...(input.genericFields.purchaseDateRaw ? { genericInferredDateRaw: input.genericFields.purchaseDateRaw } : {}),
+    ...(input.vendorProfile?.purchaseDateRaw ? { vendorSelectedDateRaw: input.vendorProfile.purchaseDateRaw } : {}),
+    ...(input.finalFields.purchaseDateRaw ? { finalDateRaw: input.finalFields.purchaseDateRaw } : {}),
+    winningAmountSource: resolveReceiptWinningAmountSource({
+      vendorProfileKey: input.vendorProfileKey,
+      genericAmountKey,
+      vendorAmountKey,
+      finalAmountKey,
+      anchoredAmountKey
+    }),
+    winningDateSource: resolveReceiptWinningDateSource({
+      vendorProfileKey: input.vendorProfileKey,
+      genericDateKey,
+      vendorDateKey,
+      finalDateKey,
+      anchoredDateKey
+    }),
+    anchoredFinalTotalMatched,
+    anchoredFinalTotalHadCandidates,
+    anchoredFinalTotalRejected,
+    anchoredFinalTotalOverwritten,
+    anchoredFinalTotalReason: resolveAnchoredFinalTotalReason({
+      vendorProfileKey: input.vendorProfileKey,
+      hadAnchoredCandidates: anchoredFinalTotalHadCandidates,
+      vendorSelectedTotalRaw: input.vendorProfile?.totalRaw,
+      anchoredFinalTotalMatched,
+      anchoredFinalTotalOverwritten
+    })
+  }
+}
+
+function resolveReceiptWinningAmountSource(input: {
+  vendorProfileKey: ReceiptVendorProfileKey
+  genericAmountKey?: string
+  vendorAmountKey?: string
+  finalAmountKey?: string
+  anchoredAmountKey?: string
+}): string {
+  if (!input.finalAmountKey) {
+    return 'no-total-selected'
+  }
+
+  if (input.anchoredAmountKey && input.finalAmountKey === input.anchoredAmountKey) {
+    return 'vendor-profile-anchored-final-total'
+  }
+
+  if (input.vendorAmountKey && input.finalAmountKey === input.vendorAmountKey) {
+    return input.vendorProfileKey === 'generic'
+      ? 'generic-vendor-profile-total'
+      : 'vendor-profile-ranked-total'
+  }
+
+  if (input.genericAmountKey && input.finalAmountKey === input.genericAmountKey) {
+    return 'generic-text-ocr-total'
+  }
+
+  return 'unclassified-total-source'
+}
+
+function resolveReceiptWinningDateSource(input: {
+  vendorProfileKey: ReceiptVendorProfileKey
+  genericDateKey?: string
+  vendorDateKey?: string
+  finalDateKey?: string
+  anchoredDateKey?: string
+}): string {
+  if (!input.finalDateKey) {
+    return 'no-date-selected'
+  }
+
+  if (input.anchoredDateKey && input.finalDateKey === input.anchoredDateKey) {
+    return 'vendor-profile-anchored-timestamp-date'
+  }
+
+  if (input.vendorDateKey && input.finalDateKey === input.vendorDateKey) {
+    return input.vendorProfileKey === 'generic'
+      ? 'generic-vendor-profile-date'
+      : 'vendor-profile-date'
+  }
+
+  if (input.genericDateKey && input.finalDateKey === input.genericDateKey) {
+    return 'generic-text-ocr-date'
+  }
+
+  return 'unclassified-date-source'
+}
+
+function resolveAnchoredFinalTotalReason(input: {
+  vendorProfileKey: ReceiptVendorProfileKey
+  hadAnchoredCandidates: boolean
+  vendorSelectedTotalRaw?: string
+  anchoredFinalTotalMatched: boolean
+  anchoredFinalTotalOverwritten: boolean
+}): string {
+  if (input.vendorProfileKey === 'generic') {
+    return 'no-vendor-profile'
+  }
+
+  if (!input.hadAnchoredCandidates) {
+    return 'no-anchored-final-total-candidates'
+  }
+
+  if (!input.vendorSelectedTotalRaw) {
+    return 'vendor-profile-returned-no-total'
+  }
+
+  if (input.anchoredFinalTotalOverwritten) {
+    return 'anchored-final-total-overwritten-after-vendor-merge'
+  }
+
+  if (!input.anchoredFinalTotalMatched) {
+    return `vendor-profile-selected-different-total:${input.vendorSelectedTotalRaw}`
+  }
+
+  return 'anchored-final-total-selected'
 }
 
 function mergeReceiptTextAndOcrFields(

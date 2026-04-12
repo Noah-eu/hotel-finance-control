@@ -302,6 +302,15 @@ describe('parseInvoiceDocument', () => {
   })
 
   it('keeps Tesco final paid card total over small item-line amounts on single receipts', () => {
+    const content = [
+      'TESCO Praha Eden',
+      'Účtenka č. TESCO-20260410-03',
+      'Banány 44,00',
+      'Clubcard úspora 11,00',
+      'Datum prodeje 10.04.2026 19:12:45',
+      'CELKEM 3 782,50',
+      'Platební karta 3 782,50'
+    ].join('\n')
     const records = parseReceiptDocument({
       sourceDocument: {
         id: 'doc-receipt-tesco-single-final-payment' as any,
@@ -310,17 +319,10 @@ describe('parseInvoiceDocument', () => {
         fileName: 'tesco-single.pdf',
         uploadedAt: '2026-04-10T19:00:00.000Z'
       },
-      content: [
-        'TESCO Praha Eden',
-        'Účtenka č. TESCO-20260410-03',
-        'Banány 44,00',
-        'Clubcard úspora 11,00',
-        'Datum prodeje 10.04.2026 19:12:45',
-        'CELKEM 3 782,50',
-        'Platební karta 3 782,50'
-      ].join('\n'),
+      content,
       extractedAt: '2026-04-10T19:15:00.000Z'
     })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
 
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({
@@ -331,6 +333,27 @@ describe('parseInvoiceDocument', () => {
         vendorProfile: 'tesco',
         paymentMethod: 'Platba kartou'
       })
+    })
+    expect(summary.receiptParsingDebug).toMatchObject({
+      vendorProfileSelected: 'tesco',
+      vendorSelectedTotalRaw: '3 782,50 CZK',
+      finalTotalRaw: '3 782,50 CZK',
+      vendorSelectedDateRaw: '10.04.2026',
+      finalDateRaw: '10.04.2026',
+      winningAmountSource: 'vendor-profile-anchored-final-total',
+      winningDateSource: 'vendor-profile-anchored-timestamp-date',
+      anchoredFinalTotalMatched: true,
+      anchoredFinalTotalHadCandidates: true,
+      anchoredFinalTotalRejected: false,
+      anchoredFinalTotalOverwritten: false,
+      anchoredFinalTotalReason: 'anchored-final-total-selected',
+      anchoredAmountCandidates: expect.arrayContaining([
+        expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
+      ]),
+      amountCandidates: expect.arrayContaining([
+        expect.objectContaining({ raw: '44,00 CZK', amountMinor: 4400 }),
+        expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
+      ])
     })
   })
 

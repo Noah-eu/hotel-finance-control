@@ -3304,9 +3304,39 @@ describe('buildUploadWebFlow', () => {
           totalAmountMinor: 38870,
           totalCurrency: 'CZK',
           paymentMethod: expect.stringMatching(/VISA|karta/i),
-          finalStatus: expect.stringMatching(/parsed|needs_review/)
+          finalStatus: expect.stringMatching(/parsed|needs_review/),
+          receiptParsingDebug: expect.objectContaining({
+            vendorProfileSelected: 'dm',
+            winningAmountSource: 'vendor-profile-anchored-final-total',
+            winningDateSource: 'vendor-profile-anchored-timestamp-date',
+            anchoredFinalTotalMatched: true,
+            anchoredFinalTotalOverwritten: false,
+            anchoredAmountCandidates: expect.arrayContaining([
+              expect.objectContaining({ raw: '388,70 CZK', amountMinor: 38870 })
+            ])
+          })
         })
       })
+    )
+    expect(result.documentExtractions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'dm-thermal.pdf',
+          autoValues: expect.objectContaining({
+            issueDate: '2026-04-04',
+            totalAmountMinor: 38870,
+            currency: 'CZK'
+          }),
+          rawAutoData: expect.objectContaining({
+            documentExtractionSummary: expect.objectContaining({
+              receiptParsingDebug: expect.objectContaining({
+                vendorProfileSelected: 'dm',
+                anchoredFinalTotalReason: 'anchored-final-total-selected'
+              })
+            })
+          })
+        })
+      ])
     )
     expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
       expect.arrayContaining([

@@ -1,4 +1,7 @@
-import type { DeterministicDocumentOcrParsedFields } from '../contracts'
+import type {
+  DeterministicDocumentOcrParsedFields,
+  ReceiptParsingAmountCandidateDebug
+} from '../contracts'
 import { normalizeDocumentDate, parseDocumentMoney } from './document-utils'
 
 export type ReceiptVendorProfileKey = 'generic' | 'tesco' | 'potraviny' | 'dm' | 'handwritten_key'
@@ -62,6 +65,13 @@ interface ReceiptVendorProfileInput {
   ocrParsedFields?: DeterministicDocumentOcrParsedFields
 }
 
+export interface ReceiptVendorCandidateInspection {
+  normalizedLines: string[]
+  amountCandidates: ReceiptParsingAmountCandidateDebug[]
+  anchoredAmountCandidates: ReceiptParsingAmountCandidateDebug[]
+  anchoredTimestampDateRaw?: string
+}
+
 export function detectReceiptVendorSignals(input: string | { content: string; note?: string }): string[] {
   const content = typeof input === 'string' ? input : input.content
   const note = typeof input === 'string' ? '' : input.note ?? ''
@@ -109,6 +119,74 @@ export function applyReceiptVendorProfile(input: ReceiptVendorProfileInput): Rec
   }
 
   return undefined
+}
+
+export function inspectReceiptVendorCandidates(input: {
+  content: string
+  vendorProfileKey: ReceiptVendorProfileKey
+}): ReceiptVendorCandidateInspection {
+  const normalizedLines = splitReceiptLines(input.content)
+
+  if (input.vendorProfileKey === 'dm') {
+    const amountCandidates = collectReceiptDebugAmountCandidates(normalizedLines).map((candidate) => ({
+      ...toReceiptParsingAmountCandidateDebug(candidate, 'vendor-ranked-candidate'),
+      score: scoreDmAmountCandidate(normalizeReceiptVendorText(candidate.line), candidate)
+    }))
+    const anchoredAmountCandidates = collectAnchoredReceiptAmountCandidates(normalizedLines, {
+      paymentAnchorPattern: /\b(visa|mastercard|maestro|karta|card)\b/,
+      totalAnchorPattern: /\b(celkem|k platbe|zaplaceno|uhrazeno)\b/,
+      rejectPattern: /\b(body|points|dph|vat|zaklad|base|sleva|discount|mezisoucet|subtotal|bonus|ean|mnozstvi|cena|ks|kus)\b/,
+      preferredCurrency: 'CZK'
+    }).map((candidate) => toReceiptParsingAmountCandidateDebug(candidate, 'vendor-anchored-final-total'))
+
+    return {
+      normalizedLines,
+      amountCandidates,
+      anchoredAmountCandidates,
+      anchoredTimestampDateRaw: findAnchoredReceiptTimestampDate(normalizedLines)
+    }
+  }
+
+  if (input.vendorProfileKey === 'tesco') {
+    const amountCandidates = collectReceiptDebugAmountCandidates(normalizedLines)
+      .filter((candidate) => candidate.currency === 'CZK')
+      .map((candidate) => ({
+        ...toReceiptParsingAmountCandidateDebug(candidate, 'vendor-ranked-candidate'),
+        score: scoreNamedMerchantAmountCandidate(normalizeReceiptVendorText(candidate.line), candidate)
+      }))
+    const anchoredAmountCandidates = collectAnchoredReceiptAmountCandidates(normalizedLines, {
+      paymentAnchorPattern: /\b(platebni karta|platba karta|kartou|visa|mastercard|maestro|hotovost|cash)\b/,
+      totalAnchorPattern: /\b(celkem|k platbe|zaplaceno|uhrazeno)\b/,
+      rejectPattern: /\b(mezisoucet|subtotal|sleva|discount|clubcard|body|points|uspora|vernost|bonus)\b/,
+      preferredCurrency: 'CZK'
+    }).map((candidate) => toReceiptParsingAmountCandidateDebug(candidate, 'vendor-anchored-final-total'))
+
+    return {
+      normalizedLines,
+      amountCandidates,
+      anchoredAmountCandidates,
+      anchoredTimestampDateRaw: findAnchoredReceiptTimestampDate(normalizedLines)
+    }
+  }
+
+  if (input.vendorProfileKey === 'potraviny') {
+    return {
+      normalizedLines,
+      amountCandidates: collectReceiptDebugAmountCandidates(normalizedLines)
+        .filter((candidate) => candidate.currency === 'CZK')
+        .map((candidate) => ({
+          ...toReceiptParsingAmountCandidateDebug(candidate, 'vendor-ranked-candidate'),
+          score: scoreNamedMerchantAmountCandidate(normalizeReceiptVendorText(candidate.line), candidate)
+        })),
+      anchoredAmountCandidates: []
+    }
+  }
+
+  return {
+    normalizedLines,
+    amountCandidates: [],
+    anchoredAmountCandidates: []
+  }
 }
 
 function buildNamedMerchantProfile(
@@ -437,6 +515,20 @@ function findAnchoredReceiptAmount(
     preferredCurrency: string
   }
 ): ReceiptLineAmountCandidate | undefined {
+  return collectAnchoredReceiptAmountCandidates(lines, options)[0]
+}
+
+function collectAnchoredReceiptAmountCandidates(
+  lines: string[],
+  options: {
+    paymentAnchorPattern: RegExp
+    totalAnchorPattern: RegExp
+    rejectPattern: RegExp
+    preferredCurrency: string
+  }
+): ReceiptLineAmountCandidate[] {
+  const candidates: ReceiptLineAmountCandidate[] = []
+
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]!
     const normalizedLine = normalizeReceiptVendorText(line)
@@ -447,7 +539,7 @@ function findAnchoredReceiptAmount(
 
     const candidate = selectPreferredAnchoredLineAmount(line, index, options.preferredCurrency)
     if (candidate) {
-      return candidate
+      candidates.push(candidate)
     }
   }
 
@@ -461,11 +553,11 @@ function findAnchoredReceiptAmount(
 
     const candidate = selectPreferredAnchoredLineAmount(line, index, options.preferredCurrency)
     if (candidate) {
-      return candidate
+      candidates.push(candidate)
     }
   }
 
-  return undefined
+  return candidates
 }
 
 function selectPreferredAnchoredLineAmount(
@@ -689,6 +781,19 @@ function collectReceiptLineAmountCandidates(line: string, lineIndex: number): Re
   return [...explicitCandidates, ...bareCandidates]
 }
 
+function collectReceiptDebugAmountCandidates(lines: string[]): ReceiptMoneyCandidate[] {
+  return lines.flatMap((line, lineIndex) =>
+    collectReceiptLineAmountCandidates(line, lineIndex).map((candidate) => ({
+      raw: candidate.raw,
+      currency: candidate.currency,
+      amountMinor: candidate.amountMinor,
+      line: candidate.line,
+      lineIndex: candidate.lineIndex,
+      matchIndex: candidate.matchIndex
+    }))
+  )
+}
+
 function collectReceiptDateCandidates(lines: string[]): ReceiptDateCandidate[] {
   const candidates: ReceiptDateCandidate[] = []
 
@@ -751,6 +856,21 @@ function extractNormalizedReceiptDateFromLine(line: string): string | undefined 
   }
 
   return undefined
+}
+
+function toReceiptParsingAmountCandidateDebug(
+  candidate: ReceiptMoneyCandidate,
+  source: string
+): ReceiptParsingAmountCandidateDebug {
+  return {
+    lineIndex: candidate.lineIndex,
+    matchIndex: candidate.matchIndex,
+    line: candidate.line,
+    raw: candidate.raw,
+    currency: candidate.currency,
+    amountMinor: candidate.amountMinor,
+    source
+  }
 }
 
 function dedupeReceiptMoneyMatches(matches: Array<{ raw: string; currency: string; amountMinor: number }>) {
