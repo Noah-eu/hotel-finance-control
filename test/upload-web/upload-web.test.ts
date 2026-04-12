@@ -3350,6 +3350,105 @@ describe('buildUploadWebFlow', () => {
     )
   })
 
+  it('reconstructs fragmented Tesco and dm browser OCR receipt footers without regressing composite document identity', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('tesco-fragmented.pdf', [
+          'TESCO',
+          'Praha',
+          'Eden',
+          'Banány',
+          '44,00',
+          'Datum',
+          'prodeje',
+          '10.04.2026',
+          '19:12:45',
+          'CELKEM',
+          '3',
+          '782,50',
+          'Platební',
+          'karta',
+          '3',
+          '782,50'
+        ]),
+        createRuntimePdfFileFromToUnicodeTextLines('dm-fragmented.pdf', [
+          'dm',
+          'drogerie',
+          'markt',
+          's.r.o.',
+          'Sprchový',
+          'gel',
+          '46,00',
+          'Datum',
+          '04.04.2026',
+          '12:26:03',
+          'Celkem',
+          'EUR',
+          '15,52',
+          'CZK',
+          '388,70',
+          'VISA',
+          'CZK',
+          '388,70'
+        ])
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-12T08:30:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'tesco-fragmented.pdf',
+          documentExtractionSummary: expect.objectContaining({
+            totalAmountMinor: 378250,
+            paymentDate: '2026-04-10',
+            receiptParsingDebug: expect.objectContaining({
+              anchoredSearchInputSource: 'reconstructed-footer-lines',
+              anchoredCandidateCountBeforeReconstruction: 0,
+              reconstructedFooterLines: expect.arrayContaining([
+                'CELKEM 3 782,50',
+                'Platební karta 3 782,50'
+              ])
+            })
+          })
+        }),
+        expect.objectContaining({
+          fileName: 'dm-fragmented.pdf',
+          documentExtractionSummary: expect.objectContaining({
+            totalAmountMinor: 38870,
+            paymentDate: '2026-04-04',
+            receiptParsingDebug: expect.objectContaining({
+              anchoredSearchInputSource: 'reconstructed-footer-lines',
+              anchoredCandidateCountBeforeReconstruction: 0,
+              reconstructedFooterLines: expect.arrayContaining([
+                'Celkem EUR 15,52 CZK 388,70',
+                'VISA CZK 388,70'
+              ])
+            })
+          })
+        })
+      ])
+    )
+
+    const tescoDocumentExtraction = result.documentExtractions.find((entry) => entry.fileName === 'tesco-fragmented.pdf')
+    const dmDocumentExtraction = result.documentExtractions.find((entry) => entry.fileName === 'dm-fragmented.pdf')
+
+    expect(tescoDocumentExtraction?.autoValues).toMatchObject({
+      issueDate: '2026-04-10',
+      totalAmountMinor: 378250,
+      currency: 'CZK'
+    })
+    expect(dmDocumentExtraction?.autoValues).toMatchObject({
+      issueDate: '2026-04-04',
+      totalAmountMinor: 38870,
+      currency: 'CZK'
+    })
+    expect(tescoDocumentExtraction?.documentId).toBeTruthy()
+    expect(dmDocumentExtraction?.documentId).toBeTruthy()
+    expect(tescoDocumentExtraction?.documentId).not.toBe(dmDocumentExtraction?.documentId)
+  })
+
   it('keeps handwritten key-related receipt-like PDFs in the receipt path as partial records instead of unsupported files', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -3444,6 +3543,10 @@ describe('buildUploadWebFlow', () => {
         })
       ])
     )
+    const multiReceiptReviewIds = result.reviewSections.expenseUnmatchedDocuments
+      .filter((item) => item.sourceDocumentIds?.includes('uploaded:receipt:1:scan-receipts-tesco-potraviny-pdf' as never))
+      .map((item) => item.id)
+    expect(new Set(multiReceiptReviewIds).size).toBe(multiReceiptReviewIds.length)
     expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

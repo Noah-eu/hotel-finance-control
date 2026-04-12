@@ -399,6 +399,140 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('reconstructs fragmented Tesco OCR footer lines so anchored total extraction keeps 3 782,50 CZK', () => {
+    const content = [
+      'TESCO',
+      'Praha',
+      'Eden',
+      'Banány',
+      '44,00',
+      'Clubcard',
+      'úspora',
+      '11,00',
+      'Datum',
+      'prodeje',
+      '10.04.2026',
+      '19:12:45',
+      'CELKEM',
+      '3',
+      '782,50',
+      'Platební',
+      'karta',
+      '3',
+      '782,50'
+    ].join('\n')
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-tesco-fragmented-ocr' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'tesco-fragmented.pdf',
+        uploadedAt: '2026-04-12T08:10:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T08:15:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 378250,
+      currency: 'CZK',
+      occurredAt: '2026-04-10',
+      data: expect.objectContaining({
+        vendorProfile: 'tesco',
+        paymentMethod: 'Platba kartou'
+      })
+    })
+    expect(summary).toMatchObject({
+      totalAmountMinor: 378250,
+      totalCurrency: 'CZK',
+      paymentDate: '2026-04-10'
+    })
+    expect(summary.receiptParsingDebug).toMatchObject({
+      anchoredSearchInputSource: 'reconstructed-footer-lines',
+      anchoredCandidateCountBeforeReconstruction: 0,
+      winningAmountSource: 'vendor-profile-anchored-final-total',
+      anchoredFinalTotalMatched: true,
+      reconstructedReceiptLines: expect.arrayContaining([
+        'Datum prodeje 10.04.2026 19:12:45'
+      ]),
+      reconstructedFooterLines: expect.arrayContaining([
+        'CELKEM 3 782,50',
+        'Platební karta 3 782,50'
+      ])
+    })
+    expect(summary.receiptParsingDebug?.anchoredCandidateCountAfterReconstruction).toBeGreaterThan(0)
+  })
+
+  it('reconstructs fragmented dm OCR footer lines so anchored total extraction keeps 388,70 CZK', () => {
+    const content = [
+      'dm',
+      'drogerie',
+      'markt',
+      's.r.o.',
+      'Sprchový',
+      'gel',
+      '46,00',
+      'Datum',
+      '04.04.2026',
+      '12:26:03',
+      'Celkem',
+      'EUR',
+      '15,52',
+      'CZK',
+      '388,70',
+      'VISA',
+      'CZK',
+      '388,70'
+    ].join('\n')
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-dm-fragmented-ocr' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'dm-fragmented.pdf',
+        uploadedAt: '2026-04-12T08:20:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T08:25:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 38870,
+      currency: 'CZK',
+      occurredAt: '2026-04-04',
+      data: expect.objectContaining({
+        vendorProfile: 'dm',
+        paymentMethod: expect.stringMatching(/VISA/i),
+        supplementaryAmounts: expect.arrayContaining([
+          expect.objectContaining({ currency: 'EUR', amountMinor: 1552 })
+        ])
+      })
+    })
+    expect(summary).toMatchObject({
+      totalAmountMinor: 38870,
+      totalCurrency: 'CZK',
+      paymentDate: '2026-04-04'
+    })
+    expect(summary.receiptParsingDebug).toMatchObject({
+      anchoredSearchInputSource: 'reconstructed-footer-lines',
+      anchoredCandidateCountBeforeReconstruction: 0,
+      winningAmountSource: 'vendor-profile-anchored-final-total',
+      anchoredFinalTotalMatched: true,
+      reconstructedReceiptLines: expect.arrayContaining([
+        'Datum 04.04.2026 12:26:03'
+      ]),
+      reconstructedFooterLines: expect.arrayContaining([
+        'Celkem EUR 15,52 CZK 388,70',
+        'VISA CZK 388,70'
+      ])
+    })
+    expect(summary.receiptParsingDebug?.anchoredCandidateCountAfterReconstruction).toBeGreaterThan(0)
+  })
+
   it('does not select EUR as the primary accounting total for dm dual-currency lines when CZK total exists', () => {
     const records = parseReceiptDocument({
       sourceDocument: {

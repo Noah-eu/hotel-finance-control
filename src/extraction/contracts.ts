@@ -92,9 +92,14 @@ export interface ReceiptParsingAmountCandidateDebug {
 
 export interface ReceiptParsingDebug {
   normalizedLines: string[]
+  reconstructedReceiptLines: string[]
+  reconstructedFooterLines: string[]
   vendorProfileSelected: string
   amountCandidates: ReceiptParsingAmountCandidateDebug[]
   anchoredAmountCandidates: ReceiptParsingAmountCandidateDebug[]
+  anchoredSearchInputSource: 'raw-normalized-lines' | 'reconstructed-footer-lines'
+  anchoredCandidateCountBeforeReconstruction: number
+  anchoredCandidateCountAfterReconstruction: number
   genericInferredTotalRaw?: string
   vendorSelectedTotalRaw?: string
   finalTotalRaw?: string

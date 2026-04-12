@@ -480,9 +480,14 @@ function buildReceiptParsingDebug(input: {
 
   return {
     normalizedLines: vendorInspection.normalizedLines,
+    reconstructedReceiptLines: vendorInspection.reconstructedReceiptLines,
+    reconstructedFooterLines: vendorInspection.reconstructedFooterLines,
     vendorProfileSelected: input.vendorProfileKey,
     amountCandidates: vendorInspection.amountCandidates,
     anchoredAmountCandidates: vendorInspection.anchoredAmountCandidates,
+    anchoredSearchInputSource: vendorInspection.anchoredSearchInputSource,
+    anchoredCandidateCountBeforeReconstruction: vendorInspection.anchoredCandidateCountBeforeReconstruction,
+    anchoredCandidateCountAfterReconstruction: vendorInspection.anchoredCandidateCountAfterReconstruction,
     ...(input.genericFields.totalRaw ? { genericInferredTotalRaw: input.genericFields.totalRaw } : {}),
     ...(input.vendorProfile?.totalRaw ? { vendorSelectedTotalRaw: input.vendorProfile.totalRaw } : {}),
     ...(input.finalFields.totalRaw ? { finalTotalRaw: input.finalFields.totalRaw } : {}),
