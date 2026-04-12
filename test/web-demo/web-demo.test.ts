@@ -5887,6 +5887,80 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseDetailSortSelect.value).toBe('amount-asc')
   })
 
+  it('opens Tesco and dm receipt previews from expense review without cross-document collision', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T10:10:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-receipt-preview-collision',
+      locationSearch: '?debug=1',
+      files: createReceiptPreviewCollisionWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{
+          id: string
+          sourceDocumentIds: string[]
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              amount?: string
+            }
+          }
+        }>
+      }
+    }
+    const tescoItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.expenseComparison?.document?.supplierOrCounterparty === 'TESCO Praha Eden'
+    )
+    const dmItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.expenseComparison?.document?.supplierOrCounterparty === 'dm drogerie markt s.r.o.'
+    )
+
+    expect(tescoItem).toBeTruthy()
+    expect(dmItem).toBeTruthy()
+    expect(tescoItem?.id).not.toBe(dmItem?.id)
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('3 782,50 Kč')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('388,70 Kč')
+
+    await rendered.openExpenseReviewDocumentPreview(String(tescoItem?.id))
+
+    const tescoPreviewState = rendered.getLastDocumentPreviewState() as {
+      open: boolean
+      fileName: string
+      sourceDocumentId: string
+      renderMode: string
+    }
+
+    expect(tescoPreviewState).toMatchObject({
+      open: true,
+      fileName: 'scantesco-pdf.pdf',
+      sourceDocumentId: String(tescoItem?.sourceDocumentIds[0] || ''),
+      renderMode: 'pdf'
+    })
+
+    await rendered.closeDocumentPreview()
+    await rendered.openExpenseReviewDocumentPreview(String(dmItem?.id))
+
+    const dmPreviewState = rendered.getLastDocumentPreviewState() as {
+      open: boolean
+      fileName: string
+      sourceDocumentId: string
+      renderMode: string
+    }
+
+    expect(dmPreviewState).toMatchObject({
+      open: true,
+      fileName: 'scandmpdf.pdf',
+      sourceDocumentId: String(dmItem?.sourceDocumentIds[0] || ''),
+      renderMode: 'pdf'
+    })
+    expect(dmPreviewState.fileName).not.toBe(tescoPreviewState.fileName)
+    expect(dmPreviewState.sourceDocumentId).not.toBe(tescoPreviewState.sourceDocumentId)
+  })
+
   it('saves manual document overrides from the preview and reuses them in expense review, restore, and debug export', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-12T09:10:00.000Z',
@@ -9535,6 +9609,28 @@ function createManualMatchExpenseWorkflowFiles() {
     ),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines('Bookinng35k.pdf', buildCzechSingleGlyphBookingPayoutStatementPdfLines()),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines('Lenner.pdf', invoice.rawInput.content.split('\n'))
+  ]
+}
+
+function createReceiptPreviewCollisionWorkflowFiles() {
+  return [
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('scantesco-pdf.pdf', [
+      'TESCO Praha Eden',
+      'Účtenka č. TESCO-20260410-01',
+      'Datum prodeje 10.04.2026 18:41',
+      'Mezisoučet celkem 6 000,00 CZK',
+      'Celkem 3 782,50 CZK',
+      'Platba karta 3 782,50 CZK'
+    ]),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('scandmpdf.pdf', [
+      'dm drogerie markt s.r.o.',
+      'Datum 11.04.2026 09:18',
+      'Celkem body 39 581,00 CZK',
+      'Celkem EUR 15,52 CZK 388,70',
+      'VISA CZK 388,70',
+      'ICO 26969605',
+      'DIC CZ26969605'
+    ])
   ]
 }
 

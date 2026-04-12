@@ -253,6 +253,53 @@ describe('parseInvoiceDocument', () => {
     )
   })
 
+  it('keeps Tesco and Potraviny scan totals on the final paid amounts even when subtotal-like noise is larger', () => {
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-scan-tesco-potraviny-noisy' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'scan-receipts-noisy.pdf',
+        uploadedAt: '2026-04-10T19:00:00.000Z'
+      },
+      content: [
+        'TESCO Praha Eden',
+        'Účtenka č. TESCO-20260410-01',
+        'Datum prodeje 10.04.2026 18:41',
+        'Mezisoučet celkem 6 000,00 CZK',
+        'Celkem 3 782,50 CZK',
+        'Platba karta 3 782,50 CZK',
+        '',
+        'Potraviny U Nádraží',
+        'Doklad č. POTR-20260410-02',
+        'Datum 10.04.2026 18:55',
+        'Mezisoučet 640,00 CZK',
+        'Hotovost 645,00 CZK',
+        'Celkem 645,00 CZK'
+      ].join('\n'),
+      extractedAt: '2026-04-10T19:05:00.000Z'
+    })
+
+    expect(records).toHaveLength(2)
+    expect(records[0]).toMatchObject({
+      amountMinor: 378250,
+      occurredAt: '2026-04-10',
+      data: expect.objectContaining({
+        merchant: 'TESCO Praha Eden',
+        vendorProfile: 'tesco',
+        paymentMethod: 'Platba kartou'
+      })
+    })
+    expect(records[1]).toMatchObject({
+      amountMinor: 64500,
+      occurredAt: '2026-04-10',
+      data: expect.objectContaining({
+        merchant: 'Potraviny U Nádraží',
+        vendorProfile: 'potraviny'
+      })
+    })
+  })
+
   it('extracts dm thermal receipt fields with CZK total preference over EUR totals', () => {
     const records = parseReceiptDocument({
       sourceDocument: {
@@ -265,6 +312,7 @@ describe('parseInvoiceDocument', () => {
       content: [
         'dm drogerie markt s.r.o.',
         'Datum 04.04.2026 13:22',
+        'Celkem body 39 581,00 CZK',
         'Celkem EUR 15,52 CZK 388,70',
         'VISA CZK 388,70',
         'ICO 26969605',

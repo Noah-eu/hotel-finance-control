@@ -868,9 +868,9 @@ function extractReceiptDateFromLines(lines: string[]): string | undefined {
 }
 
 function extractReceiptTotalFromLines(lines: string[]): string | undefined {
-  const amountCandidates: Array<{ amountMinor: number; raw: string; score: number }> = []
+  const amountCandidates: Array<{ amountMinor: number; raw: string; score: number; lineIndex: number }> = []
 
-  for (const line of lines) {
+  for (const [lineIndex, line] of lines.entries()) {
     const lineScore = scoreReceiptTotalLine(line)
     const matches = Array.from(line.matchAll(/-?\d{1,6}(?:[ .]\d{3})*(?:[.,]\d{2})?/g))
 
@@ -906,7 +906,8 @@ function extractReceiptTotalFromLines(lines: string[]): string | undefined {
       amountCandidates.push({
         amountMinor: parsed.amountMinor,
         raw: moneyCandidate,
-        score: lineScore + Math.min(3, String(parsed.amountMinor).length)
+        score: lineScore + Math.min(3, String(parsed.amountMinor).length),
+        lineIndex
       })
     }
   }
@@ -918,6 +919,10 @@ function extractReceiptTotalFromLines(lines: string[]): string | undefined {
   amountCandidates.sort((left, right) => {
     if (right.score !== left.score) {
       return right.score - left.score
+    }
+
+    if (right.lineIndex !== left.lineIndex) {
+      return right.lineIndex - left.lineIndex
     }
 
     return right.amountMinor - left.amountMinor
@@ -955,8 +960,8 @@ function scoreReceiptTotalLine(line: string): number {
     score += 7
   }
 
-  if (/\b(dph|sazba|základ|zaklad|mezisoucet|mezisoučet|vraceno|sleva|discount)\b/i.test(line)) {
-    score -= 4
+  if (/\b(dph|sazba|základ|zaklad|mezisoucet|mezisoučet|subtotal|vraceno|sleva|discount|body|points|věrnost|vernost|bonus)\b/i.test(line)) {
+    score -= 10
   }
 
   return score
@@ -1018,7 +1023,7 @@ function extractTopScanReceiptTotals(content: string): Array<{ amountMinor: numb
     .split(/\r\n?|\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-  const candidates: Array<{ amountMinor: number; currency: string }> = []
+  const candidates: Array<{ amountMinor: number; currency: string; markerIndex: number; candidateLineIndex: number; score: number }> = []
   const totalMarkerPattern = /\b(celkem|celkel.?|karta|kartou|hotovost|platba|zaplaceno)\b/i
   const amountPattern = /-?\d{1,6}(?:[ .]\d{3})*[.,]\d{2}/g
 
@@ -1030,36 +1035,61 @@ function extractTopScanReceiptTotals(content: string): Array<{ amountMinor: numb
 
     const windowLines = lines.slice(index, index + 8)
     const windowAmounts = windowLines
-      .flatMap((windowLine) => Array.from(windowLine.matchAll(amountPattern)).map((match) => match[0]))
-      .filter((value): value is string => Boolean(value))
-      .map((value) => safeParseDocumentMoney(`${value} CZK`, 'Receipt scan top totals'))
-      .filter((parsed): parsed is NonNullable<typeof parsed> => Boolean(parsed && parsed.amountMinor >= 30_000))
+      .flatMap((windowLine, windowOffset) => Array.from(windowLine.matchAll(amountPattern)).map((match) => ({
+        raw: match[0],
+        line: windowLine,
+        candidateLineIndex: index + windowOffset,
+        distanceFromMarker: windowOffset
+      })))
+      .map((entry) => ({
+        ...entry,
+        parsed: entry.raw ? safeParseDocumentMoney(`${entry.raw} CZK`, 'Receipt scan top totals') : undefined
+      }))
+      .filter((entry): entry is typeof entry & { parsed: NonNullable<typeof entry.parsed> } => Boolean(entry.parsed && entry.parsed.amountMinor >= 30_000))
+      .map((entry) => ({
+        amountMinor: entry.parsed.amountMinor,
+        currency: entry.parsed.currency,
+        markerIndex: index,
+        candidateLineIndex: entry.candidateLineIndex,
+        score: scoreReceiptTotalLine(entry.line) - entry.distanceFromMarker * 2
+      }))
 
     if (windowAmounts.length === 0) {
       continue
     }
 
-    const topWindowAmount = windowAmounts.sort((left, right) => right.amountMinor - left.amountMinor)[0]!
-    candidates.push({
-      amountMinor: topWindowAmount.amountMinor,
-      currency: topWindowAmount.currency
-    })
+    const topWindowAmount = windowAmounts.sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+
+      if (left.candidateLineIndex !== right.candidateLineIndex) {
+        return left.candidateLineIndex - right.candidateLineIndex
+      }
+
+      return right.amountMinor - left.amountMinor
+    })[0]!
+    candidates.push(topWindowAmount)
   }
 
   if (candidates.length === 0) {
     return []
   }
 
-  const unique = new Map<string, { amountMinor: number; currency: string }>()
+  const unique = new Map<string, { amountMinor: number; currency: string; markerIndex: number }>()
   for (const candidate of candidates) {
     const key = `${candidate.amountMinor}:${candidate.currency}`
     if (!unique.has(key)) {
-      unique.set(key, candidate)
+      unique.set(key, {
+        amountMinor: candidate.amountMinor,
+        currency: candidate.currency,
+        markerIndex: candidate.markerIndex
+      })
     }
   }
 
   return Array.from(unique.values())
-    .sort((left, right) => right.amountMinor - left.amountMinor)
+    .sort((left, right) => left.markerIndex - right.markerIndex)
     .slice(0, 2)
     .map((candidate) => ({
       amountMinor: candidate.amountMinor,

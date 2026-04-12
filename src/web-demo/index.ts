@@ -5563,12 +5563,17 @@ ${showRuntimePayoutDiagnostics ? `
         return buildAnnotatedWorkspaceFileRoutes(state).find((file) => String(file && file.workspaceFileId || '') === normalizedWorkspaceFileId);
       }
 
+      function findAnnotatedWorkspaceFileBySourceDocumentId(state, sourceDocumentId) {
+        const normalizedSourceDocumentId = String(sourceDocumentId || '');
+
+        return buildAnnotatedWorkspaceFileRoutes(state).find((file) => String(file && file.sourceDocumentId || '') === normalizedSourceDocumentId);
+      }
+
       function resolveDocumentPreviewTargetForReviewItem(item, state) {
         const sourceDocumentIds = Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds : [];
         const candidates = sourceDocumentIds
           .map((sourceDocumentId) => {
-            const annotatedFile = buildAnnotatedWorkspaceFileRoutes(state)
-              .find((file) => String(file && file.sourceDocumentId || '') === String(sourceDocumentId || ''));
+            const annotatedFile = findAnnotatedWorkspaceFileBySourceDocumentId(state, sourceDocumentId);
 
             return resolveDocumentPreviewTargetFromAnnotatedFile(annotatedFile, 'expense-detail');
           })

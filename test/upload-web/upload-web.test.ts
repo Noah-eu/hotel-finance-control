@@ -3415,14 +3415,18 @@ describe('buildUploadWebFlow', () => {
     expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'expense-unmatched-document:receipt-record-1',
+          id: expect.stringMatching(
+            /^expense-unmatched-document:uploaded:receipt:\d+:scan-receipts-tesco-potraviny(?:-pdf)?:receipt-record-1$/
+          ),
           evidenceSummary: expect.arrayContaining([
             expect.objectContaining({ label: 'částka', value: '3 254,30 Kč' }),
             expect.objectContaining({ label: 'protistrana / dodavatel', value: 'TESCO Praha Eden' })
           ])
         }),
         expect.objectContaining({
-          id: 'expense-unmatched-document:receipt-record-2',
+          id: expect.stringMatching(
+            /^expense-unmatched-document:uploaded:receipt:\d+:scan-receipts-tesco-potraviny(?:-pdf)?:receipt-record-2$/
+          ),
           evidenceSummary: expect.arrayContaining([
             expect.objectContaining({ label: 'částka', value: '645,00 Kč' }),
             expect.objectContaining({ label: 'protistrana / dodavatel', value: 'Potraviny U Nádraží' })

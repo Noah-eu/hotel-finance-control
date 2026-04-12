@@ -28,6 +28,22 @@ export interface ReceiptVendorProfileResult {
   forcePartialRecord?: boolean
 }
 
+interface ReceiptMoneyCandidate {
+  raw: string
+  currency: string
+  amountMinor: number
+  line: string
+  lineIndex: number
+  matchIndex: number
+}
+
+interface ReceiptDateCandidate {
+  raw: string
+  normalizedDate: string
+  lineIndex: number
+  score: number
+}
+
 interface ReceiptVendorProfileInput {
   content: string
   currentFields: {
@@ -179,15 +195,10 @@ function findDmPrimaryAmount(lines: string[]): {
   raw: string
   supplementaryAmounts: ReceiptVendorProfileSupplementaryAmount[]
 } | undefined {
-  const candidates = lines.flatMap((line) => {
-    const matches = collectReceiptMoneyMatches(line)
-    const normalizedLine = normalizeReceiptVendorText(line)
-    return matches.map((match) => ({
-      ...match,
-      score: scoreDmAmountCandidate(normalizedLine, match.currency),
-      line
-    }))
-  })
+  const candidates = collectReceiptAmountCandidates(lines).map((candidate) => ({
+    ...candidate,
+    score: scoreDmAmountCandidate(normalizeReceiptVendorText(candidate.line), candidate)
+  }))
 
   if (candidates.length === 0) {
     return undefined
@@ -198,6 +209,14 @@ function findDmPrimaryAmount(lines: string[]): {
     .sort((left, right) => {
       if (right.score !== left.score) {
         return right.score - left.score
+      }
+
+      if (right.lineIndex !== left.lineIndex) {
+        return right.lineIndex - left.lineIndex
+      }
+
+      if (right.matchIndex !== left.matchIndex) {
+        return right.matchIndex - left.matchIndex
       }
 
       return right.amountMinor - left.amountMinor
@@ -223,48 +242,33 @@ function findDmPrimaryAmount(lines: string[]): {
   }
 }
 
-function scoreDmAmountCandidate(normalizedLine: string, currency: string): number {
-  let score = currency === 'CZK' ? 100 : 10
+function scoreDmAmountCandidate(normalizedLine: string, candidate: ReceiptMoneyCandidate): number {
+  let score = candidate.currency === 'CZK' ? 140 : 20
 
   if (/(celkem|kplatbe|zaplaceno|uhrazeno|visa|karta|card|mastercard)/.test(normalizedLine)) {
-    score += 40
+    score += 70
   }
 
-  if (/(dph|vat|zaklad|base|sleva|discount|mezisoucet)/.test(normalizedLine)) {
-    score -= 35
+  if (/(visa|karta|card|mastercard|maestro)/.test(normalizedLine)) {
+    score += 45
   }
 
-  if (currency === 'EUR') {
-    score -= 20
+  if (/(dph|vat|zaklad|base|sleva|discount|mezisoucet|mezisou[cč]et|subtotal|body|points|ean|mnozstvi|množství|cena|ks\b|kus)/.test(normalizedLine)) {
+    score -= 130
   }
+
+  if (candidate.currency === 'EUR' || /\beur\b/.test(normalizedLine)) {
+    score -= 90
+  }
+
+  score += Math.min(30, candidate.lineIndex * 5)
+  score += candidate.matchIndex * 3
 
   return score
 }
 
 function findReceiptDateCandidate(lines: string[]): string | undefined {
-  for (const line of lines) {
-    const match = line.match(/\b(\d{1,2}[./-]\d{1,2}[./-](?:\d{2}|\d{4}))(?:\s+\d{1,2}:\d{2})?\b/)
-    if (!match?.[1]) {
-      continue
-    }
-
-    const candidate = normalizeReceiptYear(match[1])
-    if (safeNormalizeReceiptDate(candidate)) {
-      return candidate
-    }
-  }
-
-  return undefined
-}
-
-function findPreferredCzkTotal(lines: string[]): string | undefined {
-  const candidates = lines.flatMap((line) => {
-    const normalizedLine = normalizeReceiptVendorText(line)
-    const score = /\b(celkem|zaplaceno|karta|visa|hotovost|platba)\b/.test(normalizedLine) ? 10 : 0
-    return collectReceiptMoneyMatches(line)
-      .filter((candidate) => candidate.currency === 'CZK')
-      .map((candidate) => ({ ...candidate, score }))
-  })
+  const candidates = collectReceiptDateCandidates(lines)
 
   if (candidates.length === 0) {
     return undefined
@@ -275,8 +279,64 @@ function findPreferredCzkTotal(lines: string[]): string | undefined {
       if (right.score !== left.score) {
         return right.score - left.score
       }
+
+      return left.lineIndex - right.lineIndex
+    })[0]?.raw
+}
+
+function findPreferredCzkTotal(lines: string[]): string | undefined {
+  const candidates = collectReceiptAmountCandidates(lines)
+    .filter((candidate) => candidate.currency === 'CZK')
+    .map((candidate) => ({
+      ...candidate,
+      score: scoreNamedMerchantAmountCandidate(normalizeReceiptVendorText(candidate.line), candidate)
+    }))
+
+  if (candidates.length === 0) {
+    return undefined
+  }
+
+  return candidates
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+
+      if (right.lineIndex !== left.lineIndex) {
+        return right.lineIndex - left.lineIndex
+      }
+
+      if (right.matchIndex !== left.matchIndex) {
+        return right.matchIndex - left.matchIndex
+      }
+
       return right.amountMinor - left.amountMinor
     })[0]?.raw
+}
+
+function scoreNamedMerchantAmountCandidate(normalizedLine: string, candidate: ReceiptMoneyCandidate): number {
+  let score = candidate.currency === 'CZK' ? 120 : 20
+
+  if (/(celkem|kplatbe|zaplaceno|uhrazeno|platba)/.test(normalizedLine)) {
+    score += 70
+  }
+
+  if (/(karta|kartou|visa|mastercard|maestro|hotovost|cash)/.test(normalizedLine)) {
+    score += 40
+  }
+
+  if (/(mezisoucet|mezisou[cč]et|subtotal|zaklad|z[aá]klad|bez dph|bezdph|dph|vat|sleva|discount|body|points|vernost|věrnost|bonus)/.test(normalizedLine)) {
+    score -= 110
+  }
+
+  if (candidate.currency === 'EUR' || /\beur\b/.test(normalizedLine)) {
+    score -= 60
+  }
+
+  score += Math.min(24, candidate.lineIndex * 4)
+  score += candidate.matchIndex * 2
+
+  return score
 }
 
 function findReceiptPaymentMethod(lines: string[]): string | undefined {
@@ -393,6 +453,63 @@ function collectReceiptMoneyMatches(line: string): Array<{ raw: string; currency
   return dedupeReceiptMoneyMatches(matches)
 }
 
+function collectReceiptAmountCandidates(lines: string[]): ReceiptMoneyCandidate[] {
+  return lines.flatMap((line, lineIndex) =>
+    collectReceiptMoneyMatches(line).map((candidate, matchIndex) => ({
+      ...candidate,
+      line,
+      lineIndex,
+      matchIndex
+    }))
+  )
+}
+
+function collectReceiptDateCandidates(lines: string[]): ReceiptDateCandidate[] {
+  const candidates: ReceiptDateCandidate[] = []
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const normalizedLine = normalizeReceiptVendorText(line)
+    const scoredDates = [
+      ...Array.from(line.matchAll(/\b(\d{1,2}[./-]\d{1,2}[./-](?:\d{2}|\d{4}))(?:\s+\d{1,2}:\d{2})?\b/g)).map((match) => match[1]),
+      ...Array.from(line.matchAll(/\b(\d{1,2})\s+(\d{1,2})\s+(\d{2}|\d{4})\b/g)).map((match) => `${match[1]}.${match[2]}.${match[3]}`)
+    ]
+
+    for (const rawCandidate of scoredDates) {
+      const normalizedRawCandidate = normalizeReceiptYear(rawCandidate)
+      const normalizedDate = safeNormalizeReceiptDate(normalizedRawCandidate)
+
+      if (!normalizedDate) {
+        continue
+      }
+
+      let score = 0
+
+      if (/(datum|date|nakup|n[aá]kup|purchase|prodej|transaction|transakce|uctenka|u[cč]tenka|doklad)/.test(normalizedLine)) {
+        score += 60
+      }
+
+      if (/\b\d{1,2}:\d{2}\b/.test(line)) {
+        score += 10
+      }
+
+      if (/(splatnost|due|vystaveni|issue|zdanitel|taxable|expirace|platnost|valid)/.test(normalizedLine)) {
+        score -= 80
+      }
+
+      score += Math.max(0, 16 - lineIndex * 2)
+
+      candidates.push({
+        raw: normalizedRawCandidate,
+        normalizedDate,
+        lineIndex,
+        score
+      })
+    }
+  }
+
+  return candidates
+}
+
 function dedupeReceiptMoneyMatches(matches: Array<{ raw: string; currency: string; amountMinor: number }>) {
   const byKey = new Map<string, { raw: string; currency: string; amountMinor: number }>()
 
@@ -422,8 +539,23 @@ function splitReceiptLines(content: string): string[] {
     .replace(/\u0000/g, ' ')
     .replace(/\r/g, '\n')
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => normalizeReceiptVendorLine(line))
     .filter(Boolean)
+}
+
+function normalizeReceiptVendorLine(line: string): string {
+  let normalized = line.replace(/[ \t]+/g, ' ').trim()
+  let previous = ''
+
+  while (normalized !== previous) {
+    previous = normalized
+    normalized = normalized
+      .replace(/\b(?:[\p{L}\p{N}]\s+){2,}[\p{L}\p{N}]\b/gu, (match) => match.replace(/\s+/g, ''))
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+
+  return normalized
 }
 
 function containsTescoSignal(normalized: string): boolean {

@@ -349,6 +349,21 @@ interface ExpenseCandidatePlan {
   evaluations: ExpenseBankCandidateEvaluation[]
 }
 
+function buildExpenseDocumentReviewItemId(
+  kind: 'expense-matched' | 'expense-review' | 'expense-unmatched-document',
+  documentEntry: ExpenseDocumentReviewEntry,
+  bankTransaction?: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number]
+): string {
+  const sourceDocumentId = String(documentEntry.extractedRecord.sourceDocumentId || 'missing-source-document')
+  const extractedRecordId = String(documentEntry.extractedRecord.id || 'missing-extracted-record')
+
+  if (bankTransaction) {
+    return `${kind}:${sourceDocumentId}:${extractedRecordId}:${bankTransaction.id}`
+  }
+
+  return `${kind}:${sourceDocumentId}:${extractedRecordId}`
+}
+
 function getExpenseDocumentExpectedBankDirection(documentEntry: ExpenseDocumentReviewEntry): 'in' | 'out' {
   const data = documentEntry.extractedRecord.data as Record<string, unknown>
   const settlementDirection = readString(data.settlementDirection) ?? documentEntry.normalizedTransaction?.settlementDirection
@@ -774,7 +789,7 @@ function toExpenseMatchedReviewItem(
   const bankRelationLabel = getExpenseDocumentBankRelationLabel(documentEntry)
 
   return {
-    id: `expense-matched:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
+    id: buildExpenseDocumentReviewItemId('expense-matched', documentEntry, bankTransaction),
     domain: 'expense',
     kind: 'expense-matched',
     title: documentReference
@@ -838,7 +853,7 @@ function toExpenseNeedsReviewItem(
   const bankCandidateLabel = getExpenseDocumentBankCandidateLabel(documentEntry)
 
   return {
-    id: `expense-review:${documentEntry.extractedRecord.id}:${bankTransaction.id}`,
+    id: buildExpenseDocumentReviewItemId('expense-review', documentEntry, bankTransaction),
     domain: 'expense',
     kind: 'expense-review',
     title: documentReference
@@ -881,7 +896,7 @@ function toExpenseUnmatchedDocumentReviewItem(
   const bankMovementLabel = getExpenseDocumentBankMovementLabel(documentEntry)
 
   return {
-    id: `expense-unmatched-document:${documentEntry.extractedRecord.id}`,
+    id: buildExpenseDocumentReviewItemId('expense-unmatched-document', documentEntry),
     domain: 'expense',
     kind: 'expense-unmatched-document',
     title: documentReference
