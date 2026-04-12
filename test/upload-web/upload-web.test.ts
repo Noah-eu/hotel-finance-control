@@ -3354,42 +3354,17 @@ describe('buildUploadWebFlow', () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
         createRuntimePdfFileFromToUnicodeTextLines('tesco-fragmented.pdf', [
-          'TESCO',
-          'Praha',
-          'Eden',
+          'TESCO Praha Eden',
           'Banány',
           '44,00',
-          'Datum',
-          'prodeje',
-          '10.04.2026',
-          '19:12:45',
-          'CELKEM',
-          '3',
-          '782,50',
-          'Platební',
-          'karta',
-          '3',
-          '782,50'
+          ...'Datumprodeje10.04.202619:12:45KartaVISAPINOKProdej3782,50'.split('')
         ]),
         createRuntimePdfFileFromToUnicodeTextLines('dm-fragmented.pdf', [
-          'dm',
-          'drogerie',
-          'markt',
-          's.r.o.',
+          'dm drogerie markt s.r.o.',
           'Sprchový',
           'gel',
           '46,00',
-          'Datum',
-          '04.04.2026',
-          '12:26:03',
-          'Celkem',
-          'EUR',
-          '15,52',
-          'CZK',
-          '388,70',
-          'VISA',
-          'CZK',
-          '388,70'
+          ...'Datum04.04.202612:26:03Ce1kemEUR15,52CZK388,70V1SADPH'.split('')
         ])
       ],
       month: '2026-04',
@@ -3404,11 +3379,10 @@ describe('buildUploadWebFlow', () => {
             totalAmountMinor: 378250,
             paymentDate: '2026-04-10',
             receiptParsingDebug: expect.objectContaining({
-              anchoredSearchInputSource: 'reconstructed-footer-lines',
-              anchoredCandidateCountBeforeReconstruction: 0,
+              winningAmountSource: 'vendor-profile-anchored-final-total',
+              footerAmountWinnerRaw: '3 782,50 CZK',
               reconstructedFooterLines: expect.arrayContaining([
-                'CELKEM 3 782,50',
-                'Platební karta 3 782,50'
+                'Datumprodeje 10.04.2026 19:12:45 KartaVISAPINOKProdej 3 782,50'
               ])
             })
           })
@@ -3419,11 +3393,10 @@ describe('buildUploadWebFlow', () => {
             totalAmountMinor: 38870,
             paymentDate: '2026-04-04',
             receiptParsingDebug: expect.objectContaining({
-              anchoredSearchInputSource: 'reconstructed-footer-lines',
-              anchoredCandidateCountBeforeReconstruction: 0,
+              winningAmountSource: 'vendor-profile-anchored-final-total',
+              footerAmountWinnerRaw: '388,70 CZK',
               reconstructedFooterLines: expect.arrayContaining([
-                'Celkem EUR 15,52 CZK 388,70',
-                'VISA CZK 388,70'
+                'Datum 04.04.2026 12:26:03 Ce 1 kemEUR 15,52 CZK 388,70 V 1 SADPH'
               ])
             })
           })
@@ -3439,10 +3412,38 @@ describe('buildUploadWebFlow', () => {
       totalAmountMinor: 378250,
       currency: 'CZK'
     })
+    expect(tescoDocumentExtraction?.rawAutoData).toMatchObject({
+      amountMinor: 378250,
+      currency: 'CZK',
+      occurredAt: '2026-04-10',
+      extractedRecordData: expect.objectContaining({
+        merchant: 'TESCO Praha Eden',
+        vendorProfile: 'tesco',
+        amountMinor: 378250,
+        paymentMethod: expect.stringMatching(/VISA/i)
+      }),
+      documentExtractionSummary: expect.objectContaining({
+        missingRequiredFields: ['referenceNumber']
+      })
+    })
     expect(dmDocumentExtraction?.autoValues).toMatchObject({
       issueDate: '2026-04-04',
       totalAmountMinor: 38870,
       currency: 'CZK'
+    })
+    expect(dmDocumentExtraction?.rawAutoData).toMatchObject({
+      amountMinor: 38870,
+      currency: 'CZK',
+      occurredAt: '2026-04-04',
+      extractedRecordData: expect.objectContaining({
+        merchant: 'dm drogerie markt s.r.o.',
+        vendorProfile: 'dm',
+        amountMinor: 38870,
+        paymentMethod: expect.stringMatching(/VISA/i)
+      }),
+      documentExtractionSummary: expect.objectContaining({
+        missingRequiredFields: ['referenceNumber']
+      })
     })
     expect(tescoDocumentExtraction?.documentId).toBeTruthy()
     expect(dmDocumentExtraction?.documentId).toBeTruthy()

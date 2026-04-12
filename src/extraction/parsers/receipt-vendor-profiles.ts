@@ -1153,7 +1153,7 @@ function collectReceiptDebugAmountCandidates(lines: string[]): ReceiptMoneyCandi
 }
 
 function preNormalizeReceiptOcrLines(content: string): ReceiptOcrPreNormalization {
-  const normalizedLines = splitReceiptLines(content)
+  const normalizedLines = collapseReceiptSingleGlyphRuns(splitReceiptLines(content))
   const reconstructedReceiptLines = mergeUniqueReceiptLines([
     ...normalizedLines,
     ...reconstructReceiptOcrLineClusters(normalizedLines)
@@ -1462,7 +1462,7 @@ function normalizeReceiptOcrAmountLine(line: string): string {
 
 function normalizeReceiptFooterAmountLine(line: string): string {
   return normalizeReceiptVendorLine(
-    normalizeReceiptOcrAmountLine(line)
+    normalizeReceiptJoinedGlyphRun(line)
       .replace(/\bcz\s*k\b/gi, 'CZK')
       .replace(/\beu\s*r\b/gi, 'EUR')
       .replace(/\bd\s*ph\b/gi, 'DPH')
@@ -1675,6 +1675,48 @@ function normalizeReceiptVendorLine(line: string): string {
   }
 
   return normalized
+}
+
+function collapseReceiptSingleGlyphRuns(lines: string[]): string[] {
+  const collapsed: string[] = []
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]!
+
+    if (!isSingleGlyphReceiptFragment(line)) {
+      collapsed.push(line)
+      index += 1
+      continue
+    }
+
+    let joined = line
+    let nextIndex = index + 1
+
+    while (nextIndex < lines.length && isSingleGlyphReceiptFragment(lines[nextIndex]!)) {
+      joined += lines[nextIndex]!
+      nextIndex += 1
+    }
+
+    collapsed.push(normalizeReceiptJoinedGlyphRun(joined))
+    index = nextIndex
+  }
+
+  return collapsed.filter(Boolean)
+}
+
+function isSingleGlyphReceiptFragment(line: string): boolean {
+  return /^[\p{L}\p{N}.,:/-]$/u.test(line)
+}
+
+function normalizeReceiptJoinedGlyphRun(line: string): string {
+  return normalizeReceiptVendorLine(
+    normalizeReceiptOcrAmountLine(line)
+      .replace(/([\p{L}])(?=\d)/gu, '$1 ')
+      .replace(/(\d)(?=[\p{L}])/gu, '$1 ')
+      .replace(/(\d{1,2}\.\d{1,2}\.\d{4})(?=\d{1,2}:\d{2}(?::\d{2})?)/g, '$1 ')
+      .replace(/\b(\d{1,3})(\d{3}[.,]\d{2})\b/g, '$1 $2')
+  )
 }
 
 function containsTescoSignal(normalized: string): boolean {

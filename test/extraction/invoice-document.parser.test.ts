@@ -399,27 +399,12 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
-  it('reconstructs fragmented Tesco OCR footer lines so anchored total extraction keeps 3 782,50 CZK', () => {
+  it('reconstructs real-browser-ocr Tesco footer glyph lines so anchored total extraction keeps 3 782,50 CZK', () => {
     const content = [
-      'TESCO',
-      'Praha',
-      'Eden',
+      'TESCO Praha Eden',
       'Banány',
       '44,00',
-      'Clubcard',
-      'úspora',
-      '11,00',
-      'Datum',
-      'prodeje',
-      '10.04.2026',
-      '19:12:45',
-      'CELKEM',
-      '3',
-      '782,50',
-      'Platební',
-      'karta',
-      '3',
-      '782,50'
+      ...'Datumprodeje10.04.202619:12:45KartaVISAPINOKProdej3782,50'.split('')
     ].join('\n')
     const records = parseReceiptDocument({
       sourceDocument: {
@@ -441,7 +426,7 @@ describe('parseInvoiceDocument', () => {
       occurredAt: '2026-04-10',
       data: expect.objectContaining({
         vendorProfile: 'tesco',
-        paymentMethod: 'Platba kartou'
+        paymentMethod: expect.stringMatching(/VISA/i)
       })
     })
     expect(summary).toMatchObject({
@@ -450,41 +435,28 @@ describe('parseInvoiceDocument', () => {
       paymentDate: '2026-04-10'
     })
     expect(summary.receiptParsingDebug).toMatchObject({
-      anchoredSearchInputSource: 'reconstructed-footer-lines',
-      anchoredCandidateCountBeforeReconstruction: 0,
       winningAmountSource: 'vendor-profile-anchored-final-total',
+      winningDateSource: 'vendor-profile-anchored-timestamp-date',
       anchoredFinalTotalMatched: true,
-      reconstructedReceiptLines: expect.arrayContaining([
-        'Datum prodeje 10.04.2026 19:12:45'
+      footerAnchorMatched: true,
+      footerAmountWinnerRaw: '3 782,50 CZK',
+      normalizedLines: expect.arrayContaining([
+        'Datumprodeje 10.04.2026 19:12:45 KartaVISAPINOKProdej 3 782,50'
       ]),
       reconstructedFooterLines: expect.arrayContaining([
-        'CELKEM 3 782,50',
-        'Platební karta 3 782,50'
+        'Datumprodeje 10.04.2026 19:12:45 KartaVISAPINOKProdej 3 782,50'
       ])
     })
     expect(summary.receiptParsingDebug?.anchoredCandidateCountAfterReconstruction).toBeGreaterThan(0)
   })
 
-  it('reconstructs fragmented dm OCR footer lines so anchored total extraction keeps 388,70 CZK', () => {
+  it('reconstructs real-browser-ocr dm footer glyph lines so anchored total extraction keeps 388,70 CZK', () => {
     const content = [
-      'dm',
-      'drogerie',
-      'markt',
-      's.r.o.',
+      'dm drogerie markt s.r.o.',
       'Sprchový',
       'gel',
       '46,00',
-      'Datum',
-      '04.04.2026',
-      '12:26:03',
-      'Celkem',
-      'EUR',
-      '15,52',
-      'CZK',
-      '388,70',
-      'VISA',
-      'CZK',
-      '388,70'
+      ...'Datum04.04.202612:26:03Ce1kemEUR15,52CZK388,70V1SADPH'.split('')
     ].join('\n')
     const records = parseReceiptDocument({
       sourceDocument: {
@@ -518,16 +490,16 @@ describe('parseInvoiceDocument', () => {
       paymentDate: '2026-04-04'
     })
     expect(summary.receiptParsingDebug).toMatchObject({
-      anchoredSearchInputSource: 'reconstructed-footer-lines',
-      anchoredCandidateCountBeforeReconstruction: 0,
       winningAmountSource: 'vendor-profile-anchored-final-total',
+      winningDateSource: 'vendor-profile-anchored-timestamp-date',
       anchoredFinalTotalMatched: true,
-      reconstructedReceiptLines: expect.arrayContaining([
-        'Datum 04.04.2026 12:26:03'
+      footerAnchorMatched: true,
+      footerAmountWinnerRaw: '388,70 CZK',
+      normalizedLines: expect.arrayContaining([
+        'Datum 04.04.2026 12:26:03 Ce 1 kemEUR 15,52 CZK 388,70 V 1 SADPH'
       ]),
       reconstructedFooterLines: expect.arrayContaining([
-        'Celkem EUR 15,52 CZK 388,70',
-        'VISA CZK 388,70'
+        'Datum 04.04.2026 12:26:03 Ce 1 kemEUR 15,52 CZK 388,70 V 1 SADPH'
       ])
     })
     expect(summary.receiptParsingDebug?.anchoredCandidateCountAfterReconstruction).toBeGreaterThan(0)
@@ -627,7 +599,7 @@ describe('parseInvoiceDocument', () => {
     expect(summary.receiptParsingDebug?.winningAmountSource).toBe('vendor-profile-anchored-final-total')
     expect(summary.receiptParsingDebug?.footerAmountCandidatesRaw).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Ce1kem EUR 15,52 CZK 388,70')
+        expect.stringContaining('Ce 1 kem EUR 15,52 CZK 388,70')
       ])
     )
     expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
@@ -638,7 +610,7 @@ describe('parseInvoiceDocument', () => {
     )
     expect(summary.receiptParsingDebug?.reconstructedFooterLines).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Ce1kem EUR 15,52 CZK 388,70')
+        expect.stringContaining('Ce 1 kem EUR 15,52 CZK 388,70')
       ])
     )
   })

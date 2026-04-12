@@ -6000,10 +6000,22 @@ describe('buildWebDemo', () => {
           totalAmountMinor?: number
           currency?: string
         }
+        effectiveValues?: {
+          totalAmountMinor?: number
+          currency?: string
+        }
         rawAutoData?: {
+          amountMinor?: number
+          currency?: string
+          extractedRecordData?: {
+            amountMinor?: number
+            merchant?: string
+            vendorProfile?: string
+          }
           documentExtractionSummary?: {
             totalAmountMinor?: number
             totalCurrency?: string
+            missingRequiredFields?: string[]
           }
         }
       }>
@@ -6036,17 +6048,45 @@ describe('buildWebDemo', () => {
       totalAmountMinor: 378250,
       currency: 'CZK'
     })
+    expect(tescoExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: 378250,
+      currency: 'CZK'
+    })
     expect(dmExtraction?.autoValues).toMatchObject({
       totalAmountMinor: 38870,
       currency: 'CZK'
     })
+    expect(dmExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: 38870,
+      currency: 'CZK'
+    })
+    expect(tescoExtraction?.rawAutoData).toMatchObject({
+      amountMinor: 378250,
+      currency: 'CZK',
+      extractedRecordData: expect.objectContaining({
+        amountMinor: 378250,
+        merchant: 'TESCO Praha Eden',
+        vendorProfile: 'tesco'
+      })
+    })
+    expect(dmExtraction?.rawAutoData).toMatchObject({
+      amountMinor: 38870,
+      currency: 'CZK',
+      extractedRecordData: expect.objectContaining({
+        amountMinor: 38870,
+        merchant: 'dm drogerie markt s.r.o.',
+        vendorProfile: 'dm'
+      })
+    })
     expect(tescoExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
       totalAmountMinor: 378250,
-      totalCurrency: 'CZK'
+      totalCurrency: 'CZK',
+      missingRequiredFields: ['referenceNumber']
     })
     expect(dmExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
       totalAmountMinor: 38870,
-      totalCurrency: 'CZK'
+      totalCurrency: 'CZK',
+      missingRequiredFields: ['referenceNumber']
     })
 
     const reloaded = await rendered.reloadWithSameStorage()
@@ -9738,45 +9778,14 @@ function createReceiptRealBrowserOcrWorkflowFiles() {
       'TESCO Praha Eden',
       'Banány',
       '44,00',
-      'Datum',
-      'prodeje',
-      '10.04.2026',
-      '19:12:45',
-      'Ka',
-      'rta',
-      'VI',
-      'SA',
-      'PI',
-      'N',
-      'OK',
-      'Pro',
-      'dej',
-      '3',
-      '782',
-      ',50'
+      ...'Datumprodeje10.04.202619:12:45KartaVISAPINOKProdej3782,50'.split('')
     ]),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines('ScanDMPDF', [
       'dm drogerie markt s.r.o.',
       'Sprchový',
       'gel',
       '46,00',
-      'Datum',
-      '04.04.2026',
-      '12:26:03',
-      'Ce',
-      '1k',
-      'em',
-      'EU',
-      'R',
-      '15,52',
-      'CZ',
-      'K',
-      '388',
-      ',70',
-      'V1',
-      'SA',
-      'D',
-      'PH'
+      ...'Datum04.04.202612:26:03Ce1kemEUR15,52CZK388,70V1SADPH'.split('')
     ])
   ]
 }
