@@ -135,7 +135,22 @@ describe('parseInvoiceDocument', () => {
       sourceDocument: fixture.sourceDocument,
       content: ['Merchant: Metro Cash & Carry', 'Total: 2 490 CZK'].join('\n'),
       extractedAt
-    })).toEqual([])
+    })).toEqual([
+      expect.objectContaining({
+        sourceDocumentId: fixture.sourceDocument.id,
+        amountMinor: 249000,
+        currency: 'CZK',
+        data: expect.objectContaining({
+          sourceSystem: 'receipt',
+          merchant: 'Metro Cash & Carry',
+          debug: expect.objectContaining({
+            finalStatus: 'needs_review',
+            partialRecordCreated: true,
+            partialRecordDropped: false
+          })
+        })
+      })
+    ])
   })
 
   it('accepts realistic receipt field aliases and decimal totals', () => {
@@ -197,6 +212,7 @@ describe('parseInvoiceDocument', () => {
       currency: 'CZK',
       data: expect.objectContaining({
         merchant: 'TESCO Praha Eden',
+        vendorProfile: 'tesco',
         paymentMethod: 'Platba kartou',
         scanClassified: true,
         scanSegmentIndex: 1,
@@ -209,7 +225,8 @@ describe('parseInvoiceDocument', () => {
       currency: 'CZK',
       data: expect.objectContaining({
         merchant: 'Potraviny U Nádraží',
-        paymentMethod: 'Platba hotově',
+        vendorProfile: 'potraviny',
+        paymentMethod: 'Platba hotove',
         scanClassified: true,
         scanSegmentIndex: 2,
         scanSegmentCount: 2
@@ -234,6 +251,76 @@ describe('parseInvoiceDocument', () => {
         'segmentedDocuments=2'
       ])
     )
+  })
+
+  it('extracts dm thermal receipt fields with CZK total preference over EUR totals', () => {
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-dm-2026-04-04' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'dm-scan.pdf',
+        uploadedAt: '2026-04-04T13:22:00.000Z'
+      },
+      content: [
+        'dm drogerie markt s.r.o.',
+        'Datum 04.04.2026 13:22',
+        'Celkem EUR 15,52 CZK 388,70',
+        'VISA CZK 388,70',
+        'ICO 26969605',
+        'DIC CZ26969605'
+      ].join('\n'),
+      extractedAt: '2026-04-04T13:30:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 38870,
+      currency: 'CZK',
+      occurredAt: '2026-04-04',
+      data: expect.objectContaining({
+        sourceSystem: 'receipt',
+        merchant: 'dm drogerie markt s.r.o.',
+        purchaseDate: '2026-04-04',
+        paymentMethod: expect.stringMatching(/VISA|karta/i),
+        vendorProfile: 'dm',
+        merchantRegistrationId: '26969605',
+        merchantTaxId: 'CZ26969605',
+        supplementaryAmounts: expect.arrayContaining([
+          expect.objectContaining({ currency: 'EUR', amountMinor: 1552 })
+        ])
+      })
+    })
+  })
+
+  it('does not select EUR as the primary accounting total for dm dual-currency lines when CZK total exists', () => {
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-dm-dual-currency' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'dm-dual-currency.pdf',
+        uploadedAt: '2026-04-04T13:22:00.000Z'
+      },
+      content: [
+        'dm drogerie markt',
+        '04.04.2026 13:22',
+        'TOTAL EUR 15,52 / CZK 388,70',
+        'VISA CZK 388,70'
+      ].join('\n'),
+      extractedAt: '2026-04-04T13:30:00.000Z'
+    })
+
+    expect(records[0]).toMatchObject({
+      amountMinor: 38870,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        vendorProfile: 'dm',
+        supplementaryAmounts: expect.arrayContaining([
+          expect.objectContaining({ currency: 'EUR', amountMinor: 1552 })
+        ])
+      })
+    })
   })
 
   it('converts human-readable whole-unit document totals into minor units in the shared path', () => {
@@ -1467,9 +1554,12 @@ describe('parseInvoiceDocument', () => {
       extractedAt: '2026-03-29T08:45:00.000Z'
     })
 
-    expect(records[0]).toEqual({
+    expect(records[0]).toMatchObject({
       ...receipt.expectedExtractedRecords[0],
-      extractedAt: '2026-03-29T08:45:00.000Z'
+      extractedAt: '2026-03-29T08:45:00.000Z',
+      data: expect.objectContaining({
+        vendorProfile: 'handwritten_key'
+      })
     })
 
     expect(inspectReceiptDocumentExtractionSummary({
@@ -1484,6 +1574,40 @@ describe('parseInvoiceDocument', () => {
       requiredFieldsCheck: 'failed',
       finalStatus: 'needs_review',
       missingRequiredFields: ['referenceNumber']
+    })
+  })
+
+  it('returns a partial record for handwritten key-related receipt-like documents instead of dropping them', () => {
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-handwritten-key-note' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'keys-note.pdf',
+        uploadedAt: '2026-04-04T19:10:00.000Z'
+      },
+      content: [
+        'Rucne psany doklad',
+        'Klice pokoj 12 a 14'
+      ].join('\n'),
+      binaryContentBase64: Buffer.from('%PDF-1.4\nminimal\n%%EOF', 'latin1').toString('base64'),
+      extractedAt: '2026-04-04T19:10:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      sourceDocumentId: 'doc-handwritten-key-note',
+      data: expect.objectContaining({
+        sourceSystem: 'receipt',
+        vendorProfile: 'handwritten_key',
+        category: 'key-related',
+        description: expect.stringMatching(/klice|Rucne psany/i),
+        debug: expect.objectContaining({
+          finalStatus: 'needs_review',
+          partialRecordCreated: true,
+          partialRecordDropped: false
+        })
+      })
     })
   })
 })

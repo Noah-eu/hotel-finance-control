@@ -12,6 +12,7 @@ import {
   inspectReceiptDocumentExtractionSummary,
   looksLikeRaiffeisenbankGpcStatement
 } from '../extraction'
+import { detectReceiptVendorSignals } from '../extraction/parsers/receipt-vendor-profiles'
 
 interface UploadedMonthlyFileCapabilityInput {
   fileName: string
@@ -215,6 +216,7 @@ function detectUploadedMonthlyFileDocumentHints(input: {
   const invoiceSummary = input.content.length > 0 ? inspectInvoiceDocumentExtractionSummary(input.content) : undefined
   const invoiceKeywordHits = input.content.length > 0 ? detectInvoiceDocumentKeywordHits(input.content) : []
   const receiptSummary = input.content.length > 0 ? inspectReceiptDocumentExtractionSummary(input.content) : undefined
+  const receiptVendorSignals = input.content.length > 0 ? detectReceiptVendorSignals(input.content) : []
   const bookingSignals = input.content.length > 0 ? detectBookingPayoutStatementSignals(input.content) : undefined
 
   if (
@@ -234,7 +236,11 @@ function detectUploadedMonthlyFileDocumentHints(input: {
     normalizedFileName.includes('receipt')
     || normalizedFileName.includes('uctenka')
     || normalizedFileName.includes('účtenka')
+    || normalizedFileName.includes('tesco')
+    || normalizedFileName.includes('potraviny')
+    || normalizedFileName === 'dm'
     || isUsableReceiptSummary(receiptSummary)
+    || receiptVendorSignals.length > 0
     || looksLikeReceiptDocumentText(input.content)
   ) {
     hints.add('receipt_like')
@@ -263,6 +269,8 @@ function looksLikeInvoiceDocumentText(content: string): boolean {
 }
 
 function looksLikeReceiptDocumentText(content: string): boolean {
+  const receiptVendorSignals = detectReceiptVendorSignals(content)
+
   return countMatchingPatterns(content, [
     /\breceipt\s*(?:no|number)\b/i,
     /\bčíslo\s+účtenky\b/i,
@@ -276,6 +284,12 @@ function looksLikeReceiptDocumentText(content: string): boolean {
     /\bnote\b/i,
     /\bpozn[aá]mka\b/i
   ]) >= 3
+    || (
+      receiptVendorSignals.length > 0
+      && countMatchingPatterns(content, [
+        /\b(celkem|total|zaplaceno|visa|karta|hotovost|datum|date|doklad|uctenka|účtenka)\b/i
+      ]) >= 1
+    )
 }
 
 function isUsableReceiptSummary(

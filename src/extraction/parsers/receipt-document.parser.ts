@@ -19,6 +19,11 @@ import {
   extractDocumentOcrOrVisionFallback,
   resolveDocumentFinalStatus
 } from './document-layered-recovery'
+import {
+  applyReceiptVendorProfile,
+  type ReceiptVendorProfileKey,
+  type ReceiptVendorProfileSupplementaryAmount
+} from './receipt-vendor-profiles'
 
 const FIELD_ALIASES = {
   receiptNumber: ['Receipt No', 'Receipt number', 'Číslo účtenky', 'Uctenka cislo'],
@@ -46,6 +51,12 @@ interface ReceiptExtractedFields {
   paymentMethod?: string
   category?: string
   note?: string
+  vendorProfileKey?: ReceiptVendorProfileKey
+  merchantRegistrationId?: string
+  merchantTaxId?: string
+  vatBaseRaw?: string
+  vatRaw?: string
+  supplementaryAmounts?: ReceiptVendorProfileSupplementaryAmount[]
 }
 
 interface ReceiptExtractionDetails {
@@ -58,6 +69,9 @@ interface ReceiptExtractionDetails {
   ocrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
   ocrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
   extractionStages: DeterministicDocumentExtractionStageDebug[]
+  vendorProfileKey: ReceiptVendorProfileKey
+  vendorDetectionSignals: string[]
+  forcePartialRecord: boolean
 }
 
 interface ReceiptSegmentationDebug {
@@ -74,13 +88,14 @@ export class ReceiptDocumentParser {
 
     for (let index = 0; index < segmentation.segments.length; index += 1) {
       const segment = segmentation.segments[index]!
+      const segmentBinaryContentBase64 = segmentation.segments.length === 1 ? input.binaryContentBase64 : undefined
       const extraction = extractReceiptDocumentFields({
         content: segment.content,
-        binaryContentBase64: segmentation.segments.length === 1 ? input.binaryContentBase64 : undefined
+        binaryContentBase64: segmentBinaryContentBase64
       })
       const summary = buildReceiptDocumentExtractionSummary(
         extraction,
-        segmentation.segments.length === 1 ? input.binaryContentBase64 : undefined,
+        segmentBinaryContentBase64,
         {
           scanClassified: segmentation.scanClassified,
           segmentCount: segmentation.segments.length,
@@ -88,17 +103,32 @@ export class ReceiptDocumentParser {
         }
       )
       const purchaseDate = summary.paymentDate ?? (segmentation.scanClassified ? fallbackPurchaseDate : undefined)
+      const canCreateCompleteRecord = Boolean(
+        purchaseDate
+        && typeof summary.totalAmountMinor === 'number'
+        && summary.totalCurrency
+      )
+      const canCreatePartialRecord = shouldCreatePartialReceiptRecord({
+        summary,
+        extraction,
+        segmentCount: segmentation.segments.length,
+        hasFallbackBinaryEvidence: Boolean(segmentBinaryContentBase64?.trim())
+      })
 
-      if (summary.finalStatus === 'failed') {
+      if (summary.finalStatus === 'failed' && !canCreatePartialRecord) {
         if (segmentation.segments.length === 1) {
           throw new Error(`Receipt document is missing required fields: ${summary.missingRequiredFields.join(', ')}`)
         }
         continue
       }
 
-      if (!purchaseDate || typeof summary.totalAmountMinor !== 'number' || !summary.totalCurrency) {
+      if (!canCreateCompleteRecord && !canCreatePartialRecord) {
         continue
       }
+
+      const vatBase = safeParseDocumentMoney(extraction.fields.vatBaseRaw, 'Receipt VAT base')
+      const vatAmount = safeParseDocumentMoney(extraction.fields.vatRaw, 'Receipt VAT amount')
+      const isPartialRecord = !canCreateCompleteRecord
 
       extractedRecords.push({
         id: `receipt-record-${index + 1}`,
@@ -106,19 +136,39 @@ export class ReceiptDocumentParser {
         recordType: 'receipt-document',
         extractedAt: input.extractedAt,
         ...(extraction.fields.receiptNumber ? { rawReference: extraction.fields.receiptNumber } : {}),
-        amountMinor: summary.totalAmountMinor,
-        currency: summary.totalCurrency,
-        occurredAt: purchaseDate,
+        ...(typeof summary.totalAmountMinor === 'number' ? { amountMinor: summary.totalAmountMinor } : {}),
+        ...(summary.totalCurrency ? { currency: summary.totalCurrency } : {}),
+        ...(purchaseDate ? { occurredAt: purchaseDate } : {}),
         data: {
           sourceSystem: 'receipt',
+          ...(extraction.fields.vendorProfileKey ? { vendorProfile: extraction.fields.vendorProfileKey } : {}),
           ...(extraction.fields.receiptNumber ? { receiptNumber: extraction.fields.receiptNumber } : {}),
           ...(extraction.fields.merchant ? { merchant: extraction.fields.merchant } : {}),
-          purchaseDate,
-          amountMinor: summary.totalAmountMinor,
-          currency: summary.totalCurrency,
+          ...(purchaseDate ? { purchaseDate } : {}),
+          ...(typeof summary.totalAmountMinor === 'number' ? { amountMinor: summary.totalAmountMinor } : {}),
+          ...(summary.totalCurrency ? { currency: summary.totalCurrency } : {}),
           ...(extraction.fields.paymentMethod ? { paymentMethod: extraction.fields.paymentMethod } : {}),
           ...(extraction.fields.category ? { category: extraction.fields.category } : {}),
           ...(extraction.fields.note ? { description: extraction.fields.note } : {}),
+          ...(extraction.fields.merchantRegistrationId ? { merchantRegistrationId: extraction.fields.merchantRegistrationId } : {}),
+          ...(extraction.fields.merchantTaxId ? { merchantTaxId: extraction.fields.merchantTaxId } : {}),
+          ...(vatBase ? { vatBaseAmountMinor: vatBase.amountMinor, vatBaseCurrency: vatBase.currency } : {}),
+          ...(vatAmount ? { vatAmountMinor: vatAmount.amountMinor, vatAmountCurrency: vatAmount.currency } : {}),
+          ...(extraction.fields.supplementaryAmounts && extraction.fields.supplementaryAmounts.length > 0
+            ? { supplementaryAmounts: extraction.fields.supplementaryAmounts }
+            : {}),
+          ...(isPartialRecord
+            ? {
+                debug: {
+                  finalStatus: summary.finalStatus,
+                  missingRequiredFields: summary.missingRequiredFields,
+                  partialRecordCreated: true,
+                  partialRecordDropped: false,
+                  vendorProfile: extraction.vendorProfileKey,
+                  vendorDetectionSignals: extraction.vendorDetectionSignals
+                }
+              }
+            : {}),
           ...(segmentation.scanClassified ? { scanClassified: true } : {}),
           ...(segmentation.segments.length > 1
             ? {
@@ -316,11 +366,49 @@ function extractReceiptDocumentFields(input: {
     documentKind: 'receipt'
   })
   const merged = mergeReceiptTextAndOcrFields(textFields, fieldProvenance, ocrExtraction)
+  const vendorProfile = applyReceiptVendorProfile({
+    content: input.content,
+    currentFields: merged.fields,
+    ocrParsedFields: ocrExtraction.parsedFields
+  })
+  const vendorMergedFields: ReceiptExtractedFields = {
+    ...merged.fields,
+    ...(vendorProfile?.merchant ? { merchant: vendorProfile.merchant } : {}),
+    ...(vendorProfile?.purchaseDateRaw ? { purchaseDateRaw: vendorProfile.purchaseDateRaw } : {}),
+    ...(vendorProfile?.totalRaw ? { totalRaw: vendorProfile.totalRaw } : {}),
+    ...(vendorProfile?.paymentMethod ? { paymentMethod: vendorProfile.paymentMethod } : {}),
+    ...(vendorProfile?.receiptNumber ? { receiptNumber: vendorProfile.receiptNumber } : {}),
+    ...(vendorProfile?.category ? { category: vendorProfile.category } : {}),
+    ...(vendorProfile?.note ? { note: vendorProfile.note } : {}),
+    ...(vendorProfile?.merchantRegistrationId ? { merchantRegistrationId: vendorProfile.merchantRegistrationId } : {}),
+    ...(vendorProfile?.merchantTaxId ? { merchantTaxId: vendorProfile.merchantTaxId } : {}),
+    ...(vendorProfile?.vatBaseRaw ? { vatBaseRaw: vendorProfile.vatBaseRaw } : {}),
+    ...(vendorProfile?.vatRaw ? { vatRaw: vendorProfile.vatRaw } : {}),
+    ...(vendorProfile?.supplementaryAmounts ? { supplementaryAmounts: vendorProfile.supplementaryAmounts } : {}),
+    ...(vendorProfile ? { vendorProfileKey: vendorProfile.key } : {})
+  }
+  const vendorFieldProvenance = { ...merged.fieldProvenance }
+
+  if (vendorProfile?.merchant) {
+    vendorFieldProvenance.issuerOrCounterparty = vendorFieldProvenance.issuerOrCounterparty ?? 'inferred'
+  }
+  if (vendorProfile?.purchaseDateRaw) {
+    vendorFieldProvenance.paymentDate = vendorFieldProvenance.paymentDate ?? 'inferred'
+  }
+  if (vendorProfile?.totalRaw) {
+    vendorFieldProvenance.totalAmount = vendorFieldProvenance.totalAmount ?? 'inferred'
+  }
+  if (vendorProfile?.paymentMethod) {
+    vendorFieldProvenance.paymentMethod = vendorFieldProvenance.paymentMethod ?? 'inferred'
+  }
+  if (vendorProfile?.receiptNumber) {
+    vendorFieldProvenance.referenceNumber = vendorFieldProvenance.referenceNumber ?? 'inferred'
+  }
 
   return {
-    fields: merged.fields,
-    fieldProvenance: merged.fieldProvenance,
-    fieldConfidence: buildReceiptFieldConfidenceMap(merged.fields, merged.fieldProvenance),
+    fields: vendorMergedFields,
+    fieldProvenance: vendorFieldProvenance,
+    fieldConfidence: buildReceiptFieldConfidenceMap(vendorMergedFields, vendorFieldProvenance),
     ocrDetected: ocrExtraction.detected,
     ocrRawPayload: ocrExtraction.rawPayload,
     ocrParsedFields: ocrExtraction.parsedFields,
@@ -336,8 +424,13 @@ function extractReceiptDocumentFields(input: {
         || scanHeuristicFields.merchant
         || scanHeuristicFields.purchaseDateRaw
         || scanHeuristicFields.totalRaw
-      )
-    })
+      ),
+      vendorProfileKey: vendorProfile?.key,
+      vendorDetectionSignals: vendorProfile?.detectionSignals
+    }),
+    vendorProfileKey: vendorProfile?.key ?? 'generic',
+    vendorDetectionSignals: vendorProfile?.detectionSignals ?? [],
+    forcePartialRecord: Boolean(vendorProfile?.forcePartialRecord)
   }
 }
 
@@ -491,6 +584,8 @@ function buildReceiptExtractionStages(input: {
   ocrRecoveredFields: DeterministicDocumentSummaryFieldKey[]
   ocrConfirmedFields: DeterministicDocumentSummaryFieldKey[]
   scanHeuristicApplied?: boolean
+  vendorProfileKey?: ReceiptVendorProfileKey
+  vendorDetectionSignals?: string[]
 }): DeterministicDocumentExtractionStageDebug[] {
   const textRecoveredFields: DeterministicDocumentSummaryFieldKey[] = []
 
@@ -517,7 +612,13 @@ function buildReceiptExtractionStages(input: {
       adapter: 'text',
       recoveredFields: textRecoveredFields,
       notes: textRecoveredFields.length > 0
-        ? (input.scanHeuristicApplied ? ['scan-heuristic-fields-applied'] : undefined)
+        ? [
+            ...(input.scanHeuristicApplied ? ['scan-heuristic-fields-applied'] : []),
+            ...(input.vendorProfileKey && input.vendorProfileKey !== 'generic' ? [`vendor-profile=${input.vendorProfileKey}`] : []),
+            ...(input.vendorDetectionSignals && input.vendorDetectionSignals.length > 0
+              ? [`vendor-signals=${input.vendorDetectionSignals.join('|')}`]
+              : [])
+          ]
         : ['no text-layer fields recovered']
     },
     {
@@ -559,6 +660,37 @@ function collectMissingReceiptSummaryFields(extracted: ReceiptExtractedFields): 
   }
 
   return missing
+}
+
+function shouldCreatePartialReceiptRecord(input: {
+  summary: DeterministicDocumentExtractionSummary
+  extraction: ReceiptExtractionDetails
+  segmentCount: number
+  hasFallbackBinaryEvidence: boolean
+}): boolean {
+  if (input.summary.finalStatus === 'failed') {
+    return false
+  }
+
+  if (input.extraction.forcePartialRecord) {
+    return true
+  }
+
+  if (input.segmentCount > 1) {
+    return false
+  }
+
+  return Boolean(
+    input.hasFallbackBinaryEvidence
+    || input.extraction.fields.receiptNumber
+    || input.extraction.fields.merchant
+    || input.extraction.fields.purchaseDateRaw
+    || input.extraction.fields.totalRaw
+    || input.extraction.fields.paymentMethod
+    || input.extraction.fields.category
+    || input.extraction.fields.note
+    || input.extraction.fields.vendorProfileKey && input.extraction.fields.vendorProfileKey !== 'generic'
+  )
 }
 
 function normalizeReceiptReferenceValue(value: string | undefined): string | undefined {

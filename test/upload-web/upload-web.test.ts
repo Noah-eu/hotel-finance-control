@@ -3268,6 +3268,94 @@ describe('buildUploadWebFlow', () => {
     expect(result.fileRoutes.some((file) => file.fileName === 'receipt-handwritten.pdf' && file.status === 'error')).toBe(false)
   })
 
+  it('routes dm thermal receipt scans through the receipt vendor profile and keeps CZK as the primary total', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('dm-thermal.pdf', [
+          'dm drogerie markt s.r.o.',
+          'Datum 04.04.2026 13:22',
+          'Celkem EUR 15,52 CZK 388,70',
+          'VISA CZK 388,70',
+          'ICO 26969605',
+          'DIC CZ26969605'
+        ])
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-04T13:40:00.000Z'
+    })
+
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'dm-thermal.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        extractedCount: 1
+      })
+    )
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toContainEqual(
+      expect.objectContaining({
+        fileName: 'dm-thermal.pdf',
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: 'dm drogerie markt s.r.o.',
+          paymentDate: '2026-04-04',
+          totalAmountMinor: 38870,
+          totalCurrency: 'CZK',
+          paymentMethod: expect.stringMatching(/VISA|karta/i),
+          finalStatus: expect.stringMatching(/parsed|needs_review/)
+        })
+      })
+    )
+    expect(result.reviewSections.expenseUnmatchedDocuments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceSummary: expect.arrayContaining([
+            expect.objectContaining({ label: 'částka', value: '388,70 Kč' }),
+            expect.objectContaining({ label: 'protistrana / dodavatel', value: 'dm drogerie markt s.r.o.' })
+          ])
+        })
+      ])
+    )
+  })
+
+  it('keeps handwritten key-related receipt-like PDFs in the receipt path as partial records instead of unsupported files', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('keys-note.pdf', [
+          'Rucne psany doklad',
+          'Klice pokoj 12 a 14'
+        ])
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-04T19:10:00.000Z'
+    })
+
+    expect(result.fileRoutes).toContainEqual(
+      expect.objectContaining({
+        fileName: 'keys-note.pdf',
+        status: 'supported',
+        intakeStatus: 'parsed',
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        extractedCount: 1,
+        parserReturnedRecordCount: 1,
+        parserReturnedPartialRecord: true
+      })
+    )
+    expect(result.fileRoutes.some((file) => file.fileName === 'keys-note.pdf' && file.status === 'unsupported')).toBe(false)
+    expect(result.extractedRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'keys-note.pdf',
+          extractedCount: 1,
+          parserReturnedRecordCount: 1,
+          parserReturnedPartialRecord: true
+        })
+      ])
+    )
+  })
+
   it('keeps browser-first multi-receipt scan PDFs as two standalone receipt documents with extracted Tesco and Potraviny totals', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

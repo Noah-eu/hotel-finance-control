@@ -435,8 +435,25 @@ function mergeNoExtractParseDiagnostics(
   extractedRecords: ExtractedRecord[]
 ): PreparedUploadedMonthlyFilesResult['fileRoutes'][number]['parseDiagnostics'] | undefined {
   if (extractedRecords.length > 0) {
-    if (file.sourceDocument.sourceSystem !== 'invoice') {
+    if (file.sourceDocument.sourceSystem !== 'invoice' && file.sourceDocument.sourceSystem !== 'receipt') {
       return parseDiagnostics
+    }
+
+    const partialRecordCreated = extractedRecords.some((record) => isPartialDocumentRecord(record))
+
+    if (file.sourceDocument.sourceSystem === 'receipt') {
+      return {
+        ...parseDiagnostics,
+        parserReturnedRecordCount: extractedRecords.length,
+        parserReturnedPartialRecord: partialRecordCreated,
+        parserDroppedRecord: false,
+        parserDroppedRecordReason: undefined,
+        partialRecordCreated,
+        partialRecordDropped: false,
+        partialRecordDroppedReason: undefined,
+        finalExtractedRecordCountBeforeAttach: extractedRecords.length,
+        finalExtractedCountComputationSource: extractedRecords.length > 0 ? 'pre-attach' : 'none'
+      }
     }
 
     const summary = parseDiagnostics?.documentExtractionSummary
@@ -445,7 +462,6 @@ function mergeNoExtractParseDiagnostics(
     }
 
     const invoiceScanFallbackApplied = parseDiagnostics?.invoiceScanFallbackApplied ?? summary.invoiceScanFallbackApplied
-    const partialRecordCreated = extractedRecords.some((record) => isPartialInvoiceRecord(record))
 
     return {
       ...parseDiagnostics,
@@ -547,8 +563,8 @@ function mergeNoExtractParseDiagnostics(
   }
 }
 
-function isPartialInvoiceRecord(record: ExtractedRecord): boolean {
-  if (record.recordType !== 'invoice-document') {
+function isPartialDocumentRecord(record: ExtractedRecord): boolean {
+  if (record.recordType !== 'invoice-document' && record.recordType !== 'receipt-document') {
     return false
   }
 
