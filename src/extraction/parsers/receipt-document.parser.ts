@@ -435,7 +435,7 @@ function applyReceiptVendorOverrides(
   fields: ReceiptExtractedFields,
   vendorProfile: ReceiptVendorProfileResult | undefined
 ): ReceiptExtractedFields {
-  return {
+  const mergedFields: ReceiptExtractedFields = {
     ...fields,
     ...(vendorProfile?.merchant ? { merchant: vendorProfile.merchant } : {}),
     ...(vendorProfile?.purchaseDateRaw ? { purchaseDateRaw: vendorProfile.purchaseDateRaw } : {}),
@@ -451,6 +451,12 @@ function applyReceiptVendorOverrides(
     ...(vendorProfile?.supplementaryAmounts ? { supplementaryAmounts: vendorProfile.supplementaryAmounts } : {}),
     ...(vendorProfile ? { vendorProfileKey: vendorProfile.key } : {})
   }
+
+  if (vendorProfile?.suppressGenericTotalRaw && !vendorProfile.totalRaw) {
+    delete mergedFields.totalRaw
+  }
+
+  return mergedFields
 }
 
 function buildReceiptParsingDebug(input: {
@@ -482,12 +488,17 @@ function buildReceiptParsingDebug(input: {
     normalizedLines: vendorInspection.normalizedLines,
     reconstructedReceiptLines: vendorInspection.reconstructedReceiptLines,
     reconstructedFooterLines: vendorInspection.reconstructedFooterLines,
+    footerWindowLines: vendorInspection.footerWindowLines,
     vendorProfileSelected: input.vendorProfileKey,
     amountCandidates: vendorInspection.amountCandidates,
     anchoredAmountCandidates: vendorInspection.anchoredAmountCandidates,
     anchoredSearchInputSource: vendorInspection.anchoredSearchInputSource,
     anchoredCandidateCountBeforeReconstruction: vendorInspection.anchoredCandidateCountBeforeReconstruction,
     anchoredCandidateCountAfterReconstruction: vendorInspection.anchoredCandidateCountAfterReconstruction,
+    footerAnchorMatched: vendorInspection.footerAnchorMatched,
+    finalTotalCandidateScope: vendorInspection.finalTotalCandidateScope,
+    rejectedHighScoreBodyCandidates: vendorInspection.rejectedHighScoreBodyCandidates,
+    reconstructedAmountTokens: vendorInspection.reconstructedAmountTokens,
     ...(input.genericFields.totalRaw ? { genericInferredTotalRaw: input.genericFields.totalRaw } : {}),
     ...(input.vendorProfile?.totalRaw ? { vendorSelectedTotalRaw: input.vendorProfile.totalRaw } : {}),
     ...(input.finalFields.totalRaw ? { finalTotalRaw: input.finalFields.totalRaw } : {}),

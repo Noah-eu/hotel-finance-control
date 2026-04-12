@@ -533,6 +533,81 @@ describe('parseInvoiceDocument', () => {
     expect(summary.receiptParsingDebug?.anchoredCandidateCountAfterReconstruction).toBeGreaterThan(0)
   })
 
+  it('does not let Tesco item-line 117,80 become the final total when no footer window total exists', () => {
+    const content = [
+      'TESCO Praha Eden',
+      'Persil gel 117,80',
+      'Clubcard úspora 20,00',
+      'Datum nákupu 10.04.2026 11:04'
+    ].join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-tesco-no-footer-total' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'tesco-no-footer.pdf',
+        uploadedAt: '2026-04-12T11:10:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T11:15:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.amountMinor).toBeUndefined()
+    expect(summary.totalAmountMinor).toBeUndefined()
+    expect(summary.receiptParsingDebug).toMatchObject({
+      vendorProfileSelected: 'tesco',
+      finalTotalCandidateScope: 'generic-fallback',
+      winningAmountSource: 'no-total-selected',
+      footerAnchorMatched: false,
+      anchoredAmountCandidates: []
+    })
+    expect(summary.receiptParsingDebug?.rejectedHighScoreBodyCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: '117,80 CZK', amountMinor: 11780 })
+      ])
+    )
+  })
+
+  it('does not let dm item-line or generic 46,00 become the final total when footer totals are missing', () => {
+    const content = [
+      'dm drogerie markt s.r.o.',
+      'Sprchový gel 46,00',
+      'Datum 04.04.2026 12:26:03'
+    ].join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-dm-no-footer-total' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'dm-no-footer.pdf',
+        uploadedAt: '2026-04-12T11:20:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T11:25:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.amountMinor).toBeUndefined()
+    expect(summary.totalAmountMinor).toBeUndefined()
+    expect(summary.receiptParsingDebug).toMatchObject({
+      vendorProfileSelected: 'dm',
+      finalTotalCandidateScope: 'generic-fallback',
+      winningAmountSource: 'no-total-selected',
+      footerAnchorMatched: false,
+      anchoredAmountCandidates: []
+    })
+    expect(summary.receiptParsingDebug?.rejectedHighScoreBodyCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: '46,00 CZK', amountMinor: 4600 })
+      ])
+    )
+  })
+
   it('does not select EUR as the primary accounting total for dm dual-currency lines when CZK total exists', () => {
     const records = parseReceiptDocument({
       sourceDocument: {
