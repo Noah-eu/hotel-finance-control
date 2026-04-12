@@ -3449,6 +3449,91 @@ describe('buildUploadWebFlow', () => {
     expect(tescoDocumentExtraction?.documentId).not.toBe(dmDocumentExtraction?.documentId)
   })
 
+  it('exports real-like dirty Tesco and dm footer totals into browser runtime truth', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('scantesco-real-like.pdf', [
+          'TESCO Praha Eden',
+          'Banány 44,00',
+          'Datum',
+          'prodeje',
+          '10.04.2026',
+          '19:12:45',
+          'Karta VISA PIN OK Prodej',
+          '3',
+          '782',
+          ',50'
+        ]),
+        createRuntimePdfFileFromToUnicodeTextLines('scandmpdf-real-like.pdf', [
+          'dm drogerie markt s.r.o.',
+          'Sprchový gel 46,00',
+          'Datum',
+          '04.04.2026',
+          '12:26:03',
+          'Ce1kem',
+          'EUR',
+          '15,52',
+          'CZ',
+          'K',
+          '388',
+          ',70',
+          'D',
+          'PH',
+          'V1SA'
+        ])
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-12T12:30:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'scantesco-real-like.pdf',
+          documentExtractionSummary: expect.objectContaining({
+            totalAmountMinor: 378250,
+            paymentDate: '2026-04-10',
+            receiptParsingDebug: expect.objectContaining({
+              footerAmountWinnerRaw: '3 782,50 CZK',
+              footerAmountWinnerReason: 'selected-reconstructed-footer-candidate',
+              footerAmountCandidatesNormalized: expect.arrayContaining([
+                expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
+              ])
+            })
+          })
+        }),
+        expect.objectContaining({
+          fileName: 'scandmpdf-real-like.pdf',
+          documentExtractionSummary: expect.objectContaining({
+            totalAmountMinor: 38870,
+            paymentDate: '2026-04-04',
+            receiptParsingDebug: expect.objectContaining({
+              footerAmountWinnerRaw: '388,70 CZK',
+              footerAmountWinnerReason: 'selected-reconstructed-footer-candidate',
+              footerAmountCandidatesNormalized: expect.arrayContaining([
+                expect.objectContaining({ raw: '388,70 CZK', amountMinor: 38870 })
+              ])
+            })
+          })
+        })
+      ])
+    )
+
+    const tescoDocumentExtraction = result.documentExtractions.find((entry) => entry.fileName === 'scantesco-real-like.pdf')
+    const dmDocumentExtraction = result.documentExtractions.find((entry) => entry.fileName === 'scandmpdf-real-like.pdf')
+
+    expect(tescoDocumentExtraction?.autoValues).toMatchObject({
+      issueDate: '2026-04-10',
+      totalAmountMinor: 378250,
+      currency: 'CZK'
+    })
+    expect(dmDocumentExtraction?.autoValues).toMatchObject({
+      issueDate: '2026-04-04',
+      totalAmountMinor: 38870,
+      currency: 'CZK'
+    })
+  })
+
   it('keeps handwritten key-related receipt-like PDFs in the receipt path as partial records instead of unsupported files', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [

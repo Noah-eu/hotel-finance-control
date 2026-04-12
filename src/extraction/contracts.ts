@@ -98,11 +98,17 @@ export interface ReceiptParsingDebug {
   vendorProfileSelected: string
   amountCandidates: ReceiptParsingAmountCandidateDebug[]
   anchoredAmountCandidates: ReceiptParsingAmountCandidateDebug[]
-  anchoredSearchInputSource: 'raw-normalized-lines' | 'reconstructed-footer-lines'
+  anchoredSearchInputSource: 'raw-normalized-lines' | 'footer-window-lines' | 'reconstructed-footer-lines'
   anchoredCandidateCountBeforeReconstruction: number
   anchoredCandidateCountAfterReconstruction: number
   footerAnchorMatched: boolean
   finalTotalCandidateScope: 'footer-window' | 'reconstructed-lines' | 'generic-fallback'
+  footerAmountCandidatesRaw: string[]
+  footerAmountCandidatesNormalized: ReceiptParsingAmountCandidateDebug[]
+  footerAmountWinnerRaw?: string
+  footerAmountWinnerReason: string
+  footerAnchorRejectedLines: string[]
+  footerNormalizationSteps: string[]
   rejectedHighScoreBodyCandidates: ReceiptParsingAmountCandidateDebug[]
   reconstructedAmountTokens: string[]
   genericInferredTotalRaw?: string

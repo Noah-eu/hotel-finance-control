@@ -497,6 +497,12 @@ function buildReceiptParsingDebug(input: {
     anchoredCandidateCountAfterReconstruction: vendorInspection.anchoredCandidateCountAfterReconstruction,
     footerAnchorMatched: vendorInspection.footerAnchorMatched,
     finalTotalCandidateScope: vendorInspection.finalTotalCandidateScope,
+    footerAmountCandidatesRaw: vendorInspection.footerAmountCandidatesRaw,
+    footerAmountCandidatesNormalized: vendorInspection.footerAmountCandidatesNormalized,
+    ...(vendorInspection.footerAmountWinnerRaw ? { footerAmountWinnerRaw: vendorInspection.footerAmountWinnerRaw } : {}),
+    footerAmountWinnerReason: vendorInspection.footerAmountWinnerReason,
+    footerAnchorRejectedLines: vendorInspection.footerAnchorRejectedLines,
+    footerNormalizationSteps: vendorInspection.footerNormalizationSteps,
     rejectedHighScoreBodyCandidates: vendorInspection.rejectedHighScoreBodyCandidates,
     reconstructedAmountTokens: vendorInspection.reconstructedAmountTokens,
     ...(input.genericFields.totalRaw ? { genericInferredTotalRaw: input.genericFields.totalRaw } : {}),
@@ -988,7 +994,7 @@ function isLikelyReceiptMerchantHeader(line: string): boolean {
     return false
   }
 
-  if (/\b(total|celkem|zaplaceno|dph|vat|hotovost|karta|datum|date|id\s*dokladu)\b/i.test(normalized)) {
+  if (/\b(total|celkem|zaplaceno|dph|vat|hotovost|karta|datum|date|id\s*dokladu|visa|mastercard|maestro|pin\s*ok|prodej|payment|card)\b/i.test(normalized)) {
     return false
   }
 

@@ -73,11 +73,17 @@ export interface ReceiptVendorCandidateInspection {
   footerWindowLines: string[]
   amountCandidates: ReceiptParsingAmountCandidateDebug[]
   anchoredAmountCandidates: ReceiptParsingAmountCandidateDebug[]
-  anchoredSearchInputSource: 'raw-normalized-lines' | 'reconstructed-footer-lines'
+  anchoredSearchInputSource: 'raw-normalized-lines' | 'footer-window-lines' | 'reconstructed-footer-lines'
   anchoredCandidateCountBeforeReconstruction: number
   anchoredCandidateCountAfterReconstruction: number
   footerAnchorMatched: boolean
   finalTotalCandidateScope: 'footer-window' | 'reconstructed-lines' | 'generic-fallback'
+  footerAmountCandidatesRaw: string[]
+  footerAmountCandidatesNormalized: ReceiptParsingAmountCandidateDebug[]
+  footerAmountWinnerRaw?: string
+  footerAmountWinnerReason: string
+  footerAnchorRejectedLines: string[]
+  footerNormalizationSteps: string[]
   rejectedHighScoreBodyCandidates: ReceiptParsingAmountCandidateDebug[]
   reconstructedAmountTokens: string[]
   anchoredTimestampDateRaw?: string
@@ -90,13 +96,20 @@ interface ReceiptOcrPreNormalization {
   footerWindowLines: string[]
   footerAnchorMatched: boolean
   reconstructedAmountTokens: string[]
+  footerAmountCandidateLinesRaw: string[]
+  footerAnchorRejectedLines: string[]
+  footerNormalizationSteps: string[]
 }
 
 interface ReceiptAnchoredCandidateSearchResult {
   candidates: ReceiptLineAmountCandidate[]
-  searchInputSource: 'raw-normalized-lines' | 'reconstructed-footer-lines'
+  searchInputSource: 'raw-normalized-lines' | 'footer-window-lines' | 'reconstructed-footer-lines'
   rawCandidateCount: number
   reconstructedCandidateCount: number
+  footerAmountCandidatesRaw: string[]
+  footerAmountCandidatesNormalized: ReceiptLineAmountCandidate[]
+  footerAmountWinnerRaw?: string
+  footerAmountWinnerReason: string
 }
 
 export function detectReceiptVendorSignals(input: string | { content: string; note?: string }): string[] {
@@ -187,6 +200,13 @@ export function inspectReceiptVendorCandidates(input: {
       anchoredCandidateCountAfterReconstruction: anchoredSearch.reconstructedCandidateCount,
       footerAnchorMatched: preNormalized.footerAnchorMatched,
       finalTotalCandidateScope: anchoredAmountCandidates.length > 0 ? 'footer-window' : 'generic-fallback',
+      footerAmountCandidatesRaw: anchoredSearch.footerAmountCandidatesRaw,
+      footerAmountCandidatesNormalized: anchoredSearch.footerAmountCandidatesNormalized
+        .map((candidate) => toReceiptParsingAmountCandidateDebug(candidate, 'footer-normalized-candidate')),
+      ...(anchoredSearch.footerAmountWinnerRaw ? { footerAmountWinnerRaw: anchoredSearch.footerAmountWinnerRaw } : {}),
+      footerAmountWinnerReason: anchoredSearch.footerAmountWinnerReason,
+      footerAnchorRejectedLines: preNormalized.footerAnchorRejectedLines,
+      footerNormalizationSteps: preNormalized.footerNormalizationSteps,
       rejectedHighScoreBodyCandidates,
       reconstructedAmountTokens: preNormalized.reconstructedAmountTokens,
       anchoredTimestampDateRaw: findAnchoredReceiptTimestampDate(preNormalized.reconstructedReceiptLines)
@@ -227,6 +247,13 @@ export function inspectReceiptVendorCandidates(input: {
       anchoredCandidateCountAfterReconstruction: anchoredSearch.reconstructedCandidateCount,
       footerAnchorMatched: preNormalized.footerAnchorMatched,
       finalTotalCandidateScope: anchoredAmountCandidates.length > 0 ? 'footer-window' : 'generic-fallback',
+      footerAmountCandidatesRaw: anchoredSearch.footerAmountCandidatesRaw,
+      footerAmountCandidatesNormalized: anchoredSearch.footerAmountCandidatesNormalized
+        .map((candidate) => toReceiptParsingAmountCandidateDebug(candidate, 'footer-normalized-candidate')),
+      ...(anchoredSearch.footerAmountWinnerRaw ? { footerAmountWinnerRaw: anchoredSearch.footerAmountWinnerRaw } : {}),
+      footerAmountWinnerReason: anchoredSearch.footerAmountWinnerReason,
+      footerAnchorRejectedLines: preNormalized.footerAnchorRejectedLines,
+      footerNormalizationSteps: preNormalized.footerNormalizationSteps,
       rejectedHighScoreBodyCandidates,
       reconstructedAmountTokens: preNormalized.reconstructedAmountTokens,
       anchoredTimestampDateRaw: findAnchoredReceiptTimestampDate(preNormalized.reconstructedReceiptLines)
@@ -252,6 +279,13 @@ export function inspectReceiptVendorCandidates(input: {
       anchoredCandidateCountAfterReconstruction: 0,
       footerAnchorMatched: preNormalized.footerAnchorMatched,
       finalTotalCandidateScope: 'reconstructed-lines',
+      footerAmountCandidatesRaw: preNormalized.footerAmountCandidateLinesRaw,
+      footerAmountCandidatesNormalized: [],
+      footerAmountWinnerReason: preNormalized.footerAnchorMatched
+        ? 'footer-anchor-without-amount-candidate'
+        : 'no-footer-anchor',
+      footerAnchorRejectedLines: preNormalized.footerAnchorRejectedLines,
+      footerNormalizationSteps: preNormalized.footerNormalizationSteps,
       rejectedHighScoreBodyCandidates: [],
       reconstructedAmountTokens: preNormalized.reconstructedAmountTokens
     }
@@ -269,6 +303,13 @@ export function inspectReceiptVendorCandidates(input: {
     anchoredCandidateCountAfterReconstruction: 0,
     footerAnchorMatched: preNormalized.footerAnchorMatched,
     finalTotalCandidateScope: 'generic-fallback',
+    footerAmountCandidatesRaw: preNormalized.footerAmountCandidateLinesRaw,
+    footerAmountCandidatesNormalized: [],
+    footerAmountWinnerReason: preNormalized.footerAnchorMatched
+      ? 'footer-anchor-without-amount-candidate'
+      : 'no-footer-anchor',
+    footerAnchorRejectedLines: preNormalized.footerAnchorRejectedLines,
+    footerNormalizationSteps: preNormalized.footerNormalizationSteps,
     rejectedHighScoreBodyCandidates: [],
     reconstructedAmountTokens: preNormalized.reconstructedAmountTokens
   }
@@ -405,6 +446,18 @@ function findDmPrimaryAmount(preNormalized: ReceiptOcrPreNormalization): {
 
   if (anchoredCandidate) {
     const anchoredResult = buildPrimaryAmountResultFromAnchoredCandidate(anchoredCandidate)
+    const footerSupplementaryAmounts = collectDmSupplementaryAmounts(
+      preNormalized,
+      anchoredResult.raw,
+      anchoredCandidate.currency
+    )
+
+    if (footerSupplementaryAmounts.length > 0) {
+      return {
+        raw: anchoredResult.raw,
+        supplementaryAmounts: footerSupplementaryAmounts
+      }
+    }
 
     if (anchoredResult.supplementaryAmounts.length > 0) {
       return anchoredResult
@@ -434,6 +487,41 @@ function findDmPrimaryAmount(preNormalized: ReceiptOcrPreNormalization): {
   }))
 
   return undefined
+}
+
+function collectDmSupplementaryAmounts(
+  preNormalized: ReceiptOcrPreNormalization,
+  primaryRaw: string,
+  primaryCurrency: string
+): ReceiptVendorProfileSupplementaryAmount[] {
+  const footerLines = mergeUniqueReceiptLines([
+    ...preNormalized.reconstructedFooterLines,
+    ...preNormalized.footerWindowLines
+  ])
+
+  for (const [lineIndex, line] of footerLines.entries()) {
+    const lineCandidates = collectReceiptFooterLineAmountCandidates(line, lineIndex)
+    const hasPrimaryAmount = lineCandidates.some((candidate) => candidate.raw === primaryRaw && candidate.currency === primaryCurrency)
+
+    if (!hasPrimaryAmount) {
+      continue
+    }
+
+    const supplementaryAmounts = buildSupplementaryAmountsFromLine(line, lineIndex, primaryRaw, primaryCurrency)
+      .filter((candidate, candidateIndex, allCandidates) =>
+        allCandidates.findIndex((otherCandidate) =>
+          otherCandidate.raw === candidate.raw
+          && otherCandidate.currency === candidate.currency
+          && otherCandidate.amountMinor === candidate.amountMinor
+        ) === candidateIndex
+      )
+
+    if (supplementaryAmounts.length > 0) {
+      return supplementaryAmounts
+    }
+  }
+
+  return []
 }
 
 function scoreDmAmountCandidate(normalizedLine: string, candidate: ReceiptMoneyCandidate): number {
@@ -607,24 +695,70 @@ function collectAnchoredReceiptAmountCandidatesWithReconstruction(
     preferredCurrency: string
   }
 ): ReceiptAnchoredCandidateSearchResult {
-  const rawCandidates = collectAnchoredReceiptAmountCandidates(preNormalized.normalizedLines, options)
-  const reconstructedCandidates = collectAnchoredReceiptAmountCandidates(preNormalized.reconstructedFooterLines, options)
+  const normalizedFooterCandidates = collectFooterAmountCandidates(preNormalized)
+
+  if (preNormalized.footerWindowLines.length === 0) {
+    return {
+      candidates: [],
+      searchInputSource: 'footer-window-lines',
+      rawCandidateCount: 0,
+      reconstructedCandidateCount: 0,
+      footerAmountCandidatesRaw: [],
+      footerAmountCandidatesNormalized: normalizedFooterCandidates,
+      footerAmountWinnerReason: 'no-footer-anchor'
+    }
+  }
+
+  const rawCandidates = collectAnchoredReceiptAmountCandidates(preNormalized.footerWindowLines, options, collectReceiptFooterLineAmountCandidates)
+  const reconstructedCandidates = collectAnchoredReceiptAmountCandidates(preNormalized.reconstructedFooterLines, options, collectReceiptFooterLineAmountCandidates)
 
   if (reconstructedCandidates.length > 0) {
     return {
       candidates: reconstructedCandidates,
       searchInputSource: 'reconstructed-footer-lines',
       rawCandidateCount: rawCandidates.length,
-      reconstructedCandidateCount: reconstructedCandidates.length
+      reconstructedCandidateCount: reconstructedCandidates.length,
+      footerAmountCandidatesRaw: preNormalized.footerAmountCandidateLinesRaw,
+      footerAmountCandidatesNormalized: normalizedFooterCandidates,
+      footerAmountWinnerRaw: reconstructedCandidates[0]?.raw,
+      footerAmountWinnerReason: 'selected-reconstructed-footer-candidate'
+    }
+  }
+
+  if (rawCandidates.length > 0) {
+    return {
+      candidates: rawCandidates,
+      searchInputSource: 'footer-window-lines',
+      rawCandidateCount: rawCandidates.length,
+      reconstructedCandidateCount: reconstructedCandidates.length,
+      footerAmountCandidatesRaw: preNormalized.footerAmountCandidateLinesRaw,
+      footerAmountCandidatesNormalized: normalizedFooterCandidates,
+      footerAmountWinnerRaw: rawCandidates[0]?.raw,
+      footerAmountWinnerReason: 'selected-footer-window-candidate'
     }
   }
 
   return {
-    candidates: rawCandidates,
-    searchInputSource: 'raw-normalized-lines',
+    candidates: [],
+    searchInputSource: 'footer-window-lines',
     rawCandidateCount: rawCandidates.length,
-    reconstructedCandidateCount: reconstructedCandidates.length
+    reconstructedCandidateCount: reconstructedCandidates.length,
+    footerAmountCandidatesRaw: preNormalized.footerAmountCandidateLinesRaw,
+    footerAmountCandidatesNormalized: normalizedFooterCandidates,
+    footerAmountWinnerReason: 'footer-anchor-without-amount-candidate'
   }
+}
+
+function collectFooterAmountCandidates(preNormalized: ReceiptOcrPreNormalization): ReceiptLineAmountCandidate[] {
+  const candidateLines = mergeUniqueReceiptLines([
+    ...preNormalized.footerAmountCandidateLinesRaw,
+    ...preNormalized.reconstructedFooterLines,
+    ...preNormalized.footerWindowLines
+  ])
+
+  return dedupeReceiptLineAmountCandidates(
+    candidateLines.flatMap((line, lineIndex) => collectReceiptFooterLineAmountCandidates(line, lineIndex))
+  )
 }
 
 function collectAnchoredReceiptAmountCandidates(
@@ -634,19 +768,21 @@ function collectAnchoredReceiptAmountCandidates(
     totalAnchorPattern: RegExp
     rejectPattern: RegExp
     preferredCurrency: string
-  }
+  },
+  candidateCollector: (line: string, lineIndex: number) => ReceiptLineAmountCandidate[] = collectReceiptLineAmountCandidates
 ): ReceiptLineAmountCandidate[] {
   const candidates: ReceiptLineAmountCandidate[] = []
 
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]!
     const normalizedLine = normalizeReceiptVendorText(line)
+    const footerSignalText = normalizeReceiptFooterSignalText(line)
 
-    if (!options.paymentAnchorPattern.test(normalizedLine)) {
+    if (!options.paymentAnchorPattern.test(normalizedLine) && !containsReceiptPaymentAnchorSignal(footerSignalText)) {
       continue
     }
 
-    const candidate = selectPreferredAnchoredLineAmount(line, index, options.preferredCurrency)
+    const candidate = selectPreferredAnchoredLineAmount(line, index, options.preferredCurrency, candidateCollector)
     if (candidate) {
       candidates.push(candidate)
     }
@@ -655,12 +791,13 @@ function collectAnchoredReceiptAmountCandidates(
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]!
     const normalizedLine = normalizeReceiptVendorText(line)
+    const footerSignalText = normalizeReceiptFooterSignalText(line)
 
-    if (!options.totalAnchorPattern.test(normalizedLine) || options.rejectPattern.test(normalizedLine)) {
+    if ((!options.totalAnchorPattern.test(normalizedLine) && !containsReceiptTotalAnchorSignal(footerSignalText)) || options.rejectPattern.test(normalizedLine)) {
       continue
     }
 
-    const candidate = selectPreferredAnchoredLineAmount(line, index, options.preferredCurrency)
+    const candidate = selectPreferredAnchoredLineAmount(line, index, options.preferredCurrency, candidateCollector)
     if (candidate) {
       candidates.push(candidate)
     }
@@ -672,9 +809,10 @@ function collectAnchoredReceiptAmountCandidates(
 function selectPreferredAnchoredLineAmount(
   line: string,
   lineIndex: number,
-  preferredCurrency: string
+  preferredCurrency: string,
+  candidateCollector: (line: string, lineIndex: number) => ReceiptLineAmountCandidate[] = collectReceiptLineAmountCandidates
 ): ReceiptLineAmountCandidate | undefined {
-  const candidates = collectReceiptLineAmountCandidates(line, lineIndex)
+  const candidates = candidateCollector(line, lineIndex)
   if (candidates.length === 0) {
     return undefined
   }
@@ -715,7 +853,11 @@ function buildSupplementaryAmountsFromLine(
   primaryRaw: string,
   primaryCurrency: string
 ): ReceiptVendorProfileSupplementaryAmount[] {
-  return collectReceiptLineAmountCandidates(line, lineIndex)
+  const lineCandidates = hasAnyReceiptFooterSignal(line)
+    ? collectReceiptFooterLineAmountCandidates(line, lineIndex)
+    : collectReceiptLineAmountCandidates(line, lineIndex)
+
+  return lineCandidates
     .filter((lineCandidate) => lineCandidate.raw !== primaryRaw || lineCandidate.currency !== primaryCurrency)
     .map((lineCandidate) => ({
       raw: lineCandidate.raw,
@@ -727,16 +869,18 @@ function buildSupplementaryAmountsFromLine(
 
 function findReceiptPaymentMethod(lines: string[]): string | undefined {
   for (const line of lines) {
-    if (/\b(visa\s*czk)\b/i.test(line)) {
+    const signalText = normalizeReceiptFooterSignalText(line)
+
+    if (containsReceiptVisaSignal(signalText) && containsReceiptCurrencySignal(signalText)) {
       return 'VISA CZK'
     }
-    if (/\bvisa\b/i.test(line)) {
+    if (containsReceiptVisaSignal(signalText)) {
       return 'VISA'
     }
     if (/\b(hotovost|cash)\b/i.test(line)) {
       return 'Platba hotove'
     }
-    if (/\b(karta|kartou|card|mastercard)\b/i.test(line)) {
+    if (containsReceiptCardSignal(signalText)) {
       return 'Platba kartou'
     }
   }
@@ -746,10 +890,12 @@ function findReceiptPaymentMethod(lines: string[]): string | undefined {
 
 function findDmPaymentMethod(lines: string[]): string | undefined {
   for (const line of lines) {
-    if (/\bvisa\s*czk\b/i.test(line)) {
+    const signalText = normalizeReceiptFooterSignalText(line)
+
+    if (containsReceiptVisaSignal(signalText) && containsReceiptCurrencySignal(signalText)) {
       return 'VISA CZK'
     }
-    if (/\bvisa\b/i.test(line)) {
+    if (containsReceiptVisaSignal(signalText)) {
       return 'VISA'
     }
   }
@@ -903,6 +1049,96 @@ function collectReceiptLineAmountCandidates(line: string, lineIndex: number): Re
   return [...explicitCandidates, ...bareCandidates]
 }
 
+function collectReceiptFooterLineAmountCandidates(line: string, lineIndex: number): ReceiptLineAmountCandidate[] {
+  return collectReceiptLineAmountCandidatesFromCandidateLines(
+    mergeUniqueReceiptLines([
+      line,
+      normalizeReceiptOcrAmountLine(line),
+      normalizeReceiptFooterAmountLine(line),
+      normalizeReceiptFooterAmountLine(normalizeReceiptOcrAmountLine(line))
+    ]),
+    lineIndex
+  )
+}
+
+function collectReceiptLineAmountCandidatesFromCandidateLines(
+  candidateLines: string[],
+  lineIndex: number
+): ReceiptLineAmountCandidate[] {
+  const explicitCandidates: ReceiptLineAmountCandidate[] = []
+  const bareCandidates: ReceiptLineAmountCandidate[] = []
+  const bareAmountPattern = /-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2}\b/g
+
+  for (const [variantIndex, candidateLine] of candidateLines.entries()) {
+    for (const [matchIndex, candidate] of collectReceiptMoneyMatches(candidateLine).entries()) {
+      explicitCandidates.push({
+        ...candidate,
+        line: candidateLine,
+        lineIndex,
+        matchIndex: variantIndex * 10 + matchIndex,
+        hasExplicitCurrency: true
+      })
+    }
+
+    for (const [matchIndex, match] of Array.from(candidateLine.matchAll(bareAmountPattern)).entries()) {
+      const rawAmount = match[0]?.trim()
+      if (!rawAmount) {
+        continue
+      }
+
+      const parsed = safeParseReceiptMoney(`${rawAmount} CZK`)
+      if (!parsed) {
+        continue
+      }
+
+      if (shouldRejectReceiptMoneyMatch(`${rawAmount} CZK`, candidateLine)) {
+        continue
+      }
+
+      if (explicitCandidates.some((candidate) =>
+        candidate.line === candidateLine
+        && candidate.amountMinor === parsed.amountMinor
+        && candidate.currency === parsed.currency
+      )) {
+        continue
+      }
+
+      bareCandidates.push({
+        raw: `${rawAmount} CZK`,
+        currency: parsed.currency,
+        amountMinor: parsed.amountMinor,
+        line: candidateLine,
+        lineIndex,
+        matchIndex: variantIndex * 10 + explicitCandidates.length + matchIndex,
+        hasExplicitCurrency: false
+      })
+    }
+  }
+
+  return dedupeReceiptLineAmountCandidates([...explicitCandidates, ...bareCandidates])
+}
+
+function dedupeReceiptLineAmountCandidates(candidates: ReceiptLineAmountCandidate[]): ReceiptLineAmountCandidate[] {
+  const byKey = new Map<string, ReceiptLineAmountCandidate>()
+
+  for (const candidate of candidates) {
+    const key = `${candidate.line}:${candidate.raw}:${candidate.amountMinor}:${candidate.currency}`
+    const existing = byKey.get(key)
+
+    if (!existing || candidate.matchIndex < existing.matchIndex) {
+      byKey.set(key, candidate)
+    }
+  }
+
+  return Array.from(byKey.values()).sort((left, right) => {
+    if (left.lineIndex !== right.lineIndex) {
+      return left.lineIndex - right.lineIndex
+    }
+
+    return left.matchIndex - right.matchIndex
+  })
+}
+
 function collectReceiptDebugAmountCandidates(lines: string[]): ReceiptMoneyCandidate[] {
   return lines.flatMap((line, lineIndex) =>
     collectReceiptLineAmountCandidates(line, lineIndex).map((candidate) => ({
@@ -931,7 +1167,10 @@ function preNormalizeReceiptOcrLines(content: string): ReceiptOcrPreNormalizatio
     reconstructedFooterLines,
     footerWindowLines: footerWindow.footerWindowLines,
     footerAnchorMatched: footerWindow.footerAnchorMatched,
-    reconstructedAmountTokens: footerWindow.reconstructedAmountTokens
+    reconstructedAmountTokens: footerWindow.reconstructedAmountTokens,
+    footerAmountCandidateLinesRaw: footerWindow.footerAmountCandidateLinesRaw,
+    footerAnchorRejectedLines: footerWindow.footerAnchorRejectedLines,
+    footerNormalizationSteps: footerWindow.footerNormalizationSteps
   }
 }
 
@@ -940,32 +1179,46 @@ function buildReceiptFooterWindow(lines: string[]): {
   reconstructedFooterLines: string[]
   footerAnchorMatched: boolean
   reconstructedAmountTokens: string[]
+  footerAmountCandidateLinesRaw: string[]
+  footerAnchorRejectedLines: string[]
+  footerNormalizationSteps: string[]
 } {
-  const strongAnchorIndices = collectReceiptFooterAnchorIndices(lines, 'strong')
-  const weakAnchorIndices = collectReceiptFooterAnchorIndices(lines, 'weak')
-  const anchorIndices = strongAnchorIndices.length > 0
-    ? strongAnchorIndices
-    : weakAnchorIndices
+  const anchorDiagnostics = collectReceiptFooterAnchorDiagnostics(lines)
+  const anchorIndices = anchorDiagnostics.anchorIndices
 
   if (anchorIndices.length === 0) {
     return {
       footerWindowLines: [],
       reconstructedFooterLines: [],
       footerAnchorMatched: false,
-      reconstructedAmountTokens: []
+      reconstructedAmountTokens: [],
+      footerAmountCandidateLinesRaw: [],
+      footerAnchorRejectedLines: anchorDiagnostics.rejectedLines,
+      footerNormalizationSteps: anchorDiagnostics.normalizationSteps
     }
   }
 
   const firstAnchorIndex = Math.min(...anchorIndices)
   const footerWindowLines = lines.slice(Math.max(0, firstAnchorIndex - 1))
-  const reconstructedFooterLines = reconstructReceiptFooterPaymentArea(footerWindowLines)
+  const footerAmountCandidateLinesRaw = collectReceiptFooterCandidateLines(footerWindowLines)
+  const reconstructedFooterLines = reconstructReceiptFooterPaymentArea(footerAmountCandidateLinesRaw)
   const reconstructedAmountTokens = collectReconstructedAmountTokens(reconstructedFooterLines)
 
   return {
     footerWindowLines,
     reconstructedFooterLines,
     footerAnchorMatched: true,
-    reconstructedAmountTokens
+    reconstructedAmountTokens,
+    footerAmountCandidateLinesRaw,
+    footerAnchorRejectedLines: anchorDiagnostics.rejectedLines,
+    footerNormalizationSteps: [
+      ...anchorDiagnostics.normalizationSteps,
+      `footer-window-start:${firstAnchorIndex}`,
+      `footer-window-size:${footerWindowLines.length}`,
+      `footer-raw-candidate-lines:${footerAmountCandidateLinesRaw.length}`,
+      `footer-reconstructed-lines:${reconstructedFooterLines.length}`,
+      `footer-reconstructed-amount-tokens:${reconstructedAmountTokens.length}`
+    ]
   }
 }
 
@@ -983,23 +1236,71 @@ function reconstructReceiptOcrLineClusters(lines: string[]): string[] {
   })
 }
 
-function reconstructReceiptFooterPaymentArea(lines: string[]): string[] {
-  const footerWindows = collectReceiptReconstructedWindows(lines, {
-    maxWindowSize: 5,
-    accept(window, joinedLine) {
-      return window.every((line) => isMergeableReceiptClusterLine(line))
-        && containsReceiptFooterAnchor(joinedLine)
-        && containsReceiptNumericAmount(joinedLine)
-    }
-  })
-  const rawFooterLines = lines.filter((line) =>
-    containsReceiptFooterAnchor(line) && containsReceiptNumericAmount(line)
-  )
+  function collectReceiptFooterCandidateLines(lines: string[]): string[] {
+    return mergeUniqueReceiptLines([
+      ...lines.filter((line) => hasAnyReceiptFooterSignal(line)),
+      ...collectReceiptFooterRawJoinedWindows(lines)
+    ])
+  }
 
-  return mergeUniqueReceiptLines([
-    ...rawFooterLines,
-    ...footerWindows
-  ])
+  function collectReceiptFooterRawJoinedWindows(lines: string[]): string[] {
+    const windows: string[] = []
+
+    for (let startIndex = 0; startIndex < lines.length; startIndex += 1) {
+      for (let windowSize = 2; windowSize <= 8; windowSize += 1) {
+        const window = lines.slice(startIndex, startIndex + windowSize)
+
+        if (window.length !== windowSize || !window.every((line) => isMergeableReceiptClusterLine(line))) {
+          continue
+        }
+
+        const joinedLine = normalizeReceiptVendorLine(window.join(' '))
+        if (!joinedLine || joinedLine.length > 144) {
+          continue
+        }
+
+        if ((hasAnyReceiptFooterSignal(joinedLine) && containsReceiptAmountFragment(joinedLine)) || scoreReceiptFooterAnchorCandidate(joinedLine) >= 2) {
+          windows.push(joinedLine)
+        }
+      }
+    }
+
+    return mergeUniqueReceiptLines(windows)
+  }
+
+  function scoreReceiptFooterAnchorCandidate(line: string): number {
+    const signalText = normalizeReceiptFooterSignalText(line)
+    let score = 0
+
+    if (containsReceiptTotalAnchorSignal(signalText)) {
+      score += 3
+    }
+
+    if (containsReceiptPaymentAnchorSignal(signalText)) {
+      score += 2
+    }
+
+    if (containsReceiptCurrencySignal(signalText)) {
+      score += 1
+    }
+
+    if (containsReceiptVatSignal(signalText)) {
+      score += 1
+    }
+
+    if (containsReceiptAmountFragment(line)) {
+      score += 1
+    }
+
+    return score
+  }
+
+function reconstructReceiptFooterPaymentArea(lines: string[]): string[] {
+  return mergeUniqueReceiptLines(
+    lines
+      .map((line) => normalizeReceiptFooterAmountLine(line))
+      .filter((line) => hasAnyReceiptFooterSignal(line) && containsReceiptNumericAmount(line))
+  )
 }
 
 function collectReceiptReconstructedWindows(
@@ -1042,20 +1343,61 @@ function mergeUniqueReceiptLines(lines: string[]): string[] {
   return Array.from(new Set(lines.map((line) => normalizeReceiptVendorLine(line)).filter(Boolean)))
 }
 
-function collectReceiptFooterAnchorIndices(lines: string[], strength: 'strong' | 'weak'): number[] {
-  return lines
-    .map((line, index) => ({ line, index }))
-    .filter(({ line, index }) => {
-      const normalizedLine = normalizeReceiptVendorText(line)
-      if (strength === 'strong') {
-        return /\b(celkem|k celkem|platebni|platba|kartou|karta|visa|mastercard|hotovost|pin ok|czk)\b/.test(normalizedLine)
-          && index >= Math.max(0, Math.floor(lines.length / 3))
+function collectReceiptFooterAnchorDiagnostics(lines: string[]): {
+  anchorIndices: number[]
+  rejectedLines: string[]
+  normalizationSteps: string[]
+} {
+  const evaluationStartIndex = Math.max(0, lines.length - 14)
+  const accepted = new Set<number>()
+  const rejected = new Set<string>()
+  let strongMatches = 0
+  let weakMatches = 0
+
+  for (let startIndex = evaluationStartIndex; startIndex < lines.length; startIndex += 1) {
+    for (let windowSize = 1; windowSize <= 4; windowSize += 1) {
+      const window = lines.slice(startIndex, startIndex + windowSize)
+
+      if (window.length !== windowSize) {
+        continue
       }
 
-      return /\b(prodej)\b/.test(normalizedLine)
-        && index >= Math.max(0, lines.length - 8)
-    })
-    .map(({ index }) => index)
+      const joinedLine = normalizeReceiptVendorLine(window.join(' '))
+      if (!joinedLine) {
+        continue
+      }
+
+      const anchorScore = scoreReceiptFooterAnchorCandidate(joinedLine)
+      const nearBottom = startIndex >= Math.max(0, lines.length - 10)
+
+      if (anchorScore >= 4 || (anchorScore >= 3 && nearBottom)) {
+        accepted.add(startIndex)
+        strongMatches += 1
+        continue
+      }
+
+      if (anchorScore >= 2 && nearBottom) {
+        accepted.add(startIndex)
+        weakMatches += 1
+        continue
+      }
+
+      if (anchorScore > 0 && nearBottom) {
+        rejected.add(joinedLine)
+      }
+    }
+  }
+
+  return {
+    anchorIndices: Array.from(accepted.values()).sort((left, right) => left - right),
+    rejectedLines: Array.from(rejected.values()).slice(0, 8),
+    normalizationSteps: [
+      `footer-anchor-evaluation-start:${evaluationStartIndex}`,
+      `footer-anchor-strong-matches:${strongMatches}`,
+      `footer-anchor-weak-matches:${weakMatches}`,
+      `footer-anchor-rejected:${rejected.size}`
+    ]
+  }
 }
 
 function isMergeableReceiptClusterLine(line: string): boolean {
@@ -1067,7 +1409,7 @@ function isMergeableReceiptClusterLine(line: string): boolean {
 }
 
 function containsReceiptFooterAnchor(line: string): boolean {
-  return /\b(celkem|k celkem|platebni|platba|kartou|karta|visa|mastercard|maestro|czk|kč|kc|hotovost|cash|card|payment|pin ok|prodej|zaplaceno|uhrazeno)\b/i.test(normalizeReceiptVendorText(line))
+  return hasAnyReceiptFooterSignal(line)
 }
 
 function containsReceiptDateOrTime(line: string): boolean {
@@ -1076,17 +1418,30 @@ function containsReceiptDateOrTime(line: string): boolean {
 }
 
 function containsReceiptAmountOrCurrency(line: string): boolean {
-  return /\b(CZK|KČ|KC|EUR|€)\b/i.test(line)
-    || /\b-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2}\b/.test(line)
+  return containsReceiptCurrencySignal(normalizeReceiptFooterSignalText(line))
+    || containsReceiptAmountFragment(line)
 }
 
 function containsReceiptNumericAmount(line: string): boolean {
   return /\b-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2}\b/.test(line)
 }
 
+function containsReceiptAmountFragment(line: string): boolean {
+  if (containsReceiptDateOrTime(line) && !hasAnyReceiptFooterSignal(line)) {
+    return false
+  }
+
+  const normalizedLine = normalizeReceiptFooterAmountLine(line)
+
+  return containsReceiptNumericAmount(normalizedLine)
+    || /\b\d{1,3}\s+\d{3}\b/.test(line)
+    || /\b\d{2,4}\s+\d{2}\b/.test(line)
+    || /\b[.,]\s*\d{2}\b/.test(line)
+}
+
 function collectReconstructedAmountTokens(lines: string[]): string[] {
   const tokens = lines.flatMap((line) => {
-    const normalizedLine = normalizeReceiptOcrAmountLine(line)
+    const normalizedLine = normalizeReceiptFooterAmountLine(line)
     return Array.from(normalizedLine.matchAll(/\b-?\d{1,3}(?:[ .]\d{3})*[.,]\d{2}\b/g)).map((match) => match[0] ?? '')
   }).filter(Boolean)
 
@@ -1102,6 +1457,23 @@ function normalizeReceiptOcrAmountLine(line: string): string {
     .replace(/([0-9])[oO](?=[0-9.,])/g, '$10')
     .replace(/([,.]\s*7)[iIlL](?=\b)/g, '$10')
     .replace(/(?<=\d)[bB](?=[\d,.])/g, '8')
+}
+
+function normalizeReceiptFooterAmountLine(line: string): string {
+  return normalizeReceiptVendorLine(
+    normalizeReceiptOcrAmountLine(line)
+      .replace(/\bcz\s*k\b/gi, 'CZK')
+      .replace(/\beu\s*r\b/gi, 'EUR')
+      .replace(/\bd\s*ph\b/gi, 'DPH')
+      .replace(/\bv\s*1\s*s\s*a\b/gi, 'VISA')
+      .replace(/\bv1sa\b/gi, 'VISA')
+      .replace(/\bpin\s*0k\b/gi, 'PIN OK')
+      .replace(/\b([0-9])\s+([0-9]{3})\s*[,.]\s*([0-9]{2})\b/g, '$1 $2,$3')
+      .replace(/\b([0-9])\s+([0-9]{3})\s+([0-9]{2})\b/g, '$1 $2,$3')
+      .replace(/\b([0-9]{2,4})\s*[,.]\s*([0-9]{2})\b(?![./-]\d{2,4})/g, '$1,$2')
+      .replace(/\b([0-9]{2,4})\s+([0-9]{2})\b(?=\s*(CZK|KČ|KC|EUR|€)\b)/gi, '$1,$2')
+      .replace(/\b([0-9]+)\s*,\s*([0-9]{2})\b(?![./-]\d{2,4})/g, '$1,$2')
+  )
 }
 
 function isLikelyReceiptBodyItemLine(normalizedLine: string): boolean {
@@ -1327,6 +1699,53 @@ function normalizeReceiptVendorText(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
+}
+
+function normalizeReceiptFooterSignalText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[|!]/g, '1')
+    .replace(/0/g, 'o')
+    .replace(/1/g, 'i')
+    .replace(/5/g, 's')
+    .replace(/[^a-z]+/g, '')
+}
+
+function containsReceiptTotalAnchorSignal(signalText: string): boolean {
+  return /(celkem|ceikem|ceikern|celkern|celkcm|total|kplatbe|zaplaceno|uhrazeno)/.test(signalText)
+}
+
+function containsReceiptVisaSignal(signalText: string): boolean {
+  return /visa/.test(signalText)
+}
+
+function containsReceiptCardSignal(signalText: string): boolean {
+  const sanitizedSignalText = signalText.replace(/clubcard/g, '')
+
+  return /(visa|mastercard|maestro|karta|kartou|card|payment|pinok|prodej|hotovost|cash)/.test(sanitizedSignalText)
+}
+
+function containsReceiptPaymentAnchorSignal(signalText: string): boolean {
+  return containsReceiptCardSignal(signalText)
+}
+
+function containsReceiptCurrencySignal(signalText: string): boolean {
+  return /(czk|eur|euro)/.test(signalText)
+}
+
+function containsReceiptVatSignal(signalText: string): boolean {
+  return /(dph|vat)/.test(signalText)
+}
+
+function hasAnyReceiptFooterSignal(value: string): boolean {
+  const signalText = normalizeReceiptFooterSignalText(value)
+
+  return containsReceiptTotalAnchorSignal(signalText)
+    || containsReceiptPaymentAnchorSignal(signalText)
+    || containsReceiptCurrencySignal(signalText)
+    || containsReceiptVatSignal(signalText)
 }
 
 function normalizeReceiptYear(value: string): string {

@@ -533,6 +533,138 @@ describe('parseInvoiceDocument', () => {
     expect(summary.receiptParsingDebug?.anchoredCandidateCountAfterReconstruction).toBeGreaterThan(0)
   })
 
+  it('reconstructs a real-like Tesco payment footer from Karta/VISA/PIN OK/Prodej fragments into 3 782,50 CZK', () => {
+    const content = [
+      'TESCO Praha Eden',
+      'Banány 44,00',
+      'Datum',
+      'prodeje',
+      '10.04.2026',
+      '19:12:45',
+      'Karta VISA PIN OK Prodej',
+      '3',
+      '782',
+      ',50'
+    ].join('\n')
+
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(summary).toMatchObject({
+      totalAmountMinor: 378250,
+      totalCurrency: 'CZK',
+      paymentDate: '2026-04-10'
+    })
+    expect(summary.receiptParsingDebug).toMatchObject({
+      footerAnchorMatched: true,
+      footerAmountWinnerRaw: '3 782,50 CZK',
+      footerAmountWinnerReason: 'selected-reconstructed-footer-candidate',
+      winningAmountSource: 'vendor-profile-anchored-final-total',
+      footerAmountCandidatesRaw: expect.arrayContaining([
+        expect.stringContaining('Karta VISA PIN OK Prodej 3 782 ,50')
+      ]),
+      footerAmountCandidatesNormalized: expect.arrayContaining([
+        expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
+      ]),
+      reconstructedFooterLines: expect.arrayContaining([
+        'Karta VISA PIN OK Prodej 3 782,50'
+      ])
+    })
+  })
+
+  it('reconstructs a real-like dm dual-currency footer with dirty OCR into 388,70 CZK', () => {
+    const content = [
+      'dm drogerie markt s.r.o.',
+      'Sprchový gel 46,00',
+      'Datum',
+      '04.04.2026',
+      '12:26:03',
+      'Ce1kem',
+      'EUR',
+      '15,52',
+      'CZ',
+      'K',
+      '388',
+      ',70',
+      'D',
+      'PH',
+      'V1SA'
+    ].join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-dm-real-like-footer' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'dm-real-like.pdf',
+        uploadedAt: '2026-04-12T12:10:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T12:15:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 38870,
+      currency: 'CZK',
+      occurredAt: '2026-04-04',
+      data: expect.objectContaining({
+        vendorProfile: 'dm',
+        paymentMethod: expect.stringMatching(/VISA/i),
+        supplementaryAmounts: expect.arrayContaining([
+          expect.objectContaining({ currency: 'EUR', amountMinor: 1552 })
+        ])
+      })
+    })
+    expect(summary).toMatchObject({
+      totalAmountMinor: 38870,
+      totalCurrency: 'CZK',
+      paymentDate: '2026-04-04'
+    })
+    expect(summary.receiptParsingDebug?.footerAnchorMatched).toBe(true)
+    expect(summary.receiptParsingDebug?.footerAmountWinnerRaw).toBe('388,70 CZK')
+    expect(summary.receiptParsingDebug?.footerAmountWinnerReason).toBe('selected-reconstructed-footer-candidate')
+    expect(summary.receiptParsingDebug?.winningAmountSource).toBe('vendor-profile-anchored-final-total')
+    expect(summary.receiptParsingDebug?.footerAmountCandidatesRaw).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Ce1kem EUR 15,52 CZ K 388 ,70')
+      ])
+    )
+    expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: '388,70 CZK', amountMinor: 38870 }),
+        expect.objectContaining({ raw: '15,52 EUR', amountMinor: 1552 })
+      ])
+    )
+    expect(summary.receiptParsingDebug?.reconstructedFooterLines).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Ce1kem EUR 15,52 CZK 388,70')
+      ])
+    )
+  })
+
+  it('reconstructs a split footer amount token once a payment footer anchor exists', () => {
+    const content = [
+      'TESCO Praha Eden',
+      'VISA PIN OK Prodej',
+      '3',
+      '782',
+      ',50'
+    ].join('\n')
+
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(summary.totalAmountMinor).toBe(378250)
+    expect(summary.receiptParsingDebug).toMatchObject({
+      footerAnchorMatched: true,
+      footerAmountWinnerRaw: '3 782,50 CZK',
+      footerAmountWinnerReason: 'selected-reconstructed-footer-candidate',
+      footerAmountCandidatesNormalized: expect.arrayContaining([
+        expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
+      ])
+    })
+  })
+
   it('does not let Tesco item-line 117,80 become the final total when no footer window total exists', () => {
     const content = [
       'TESCO Praha Eden',
@@ -562,7 +694,10 @@ describe('parseInvoiceDocument', () => {
       finalTotalCandidateScope: 'generic-fallback',
       winningAmountSource: 'no-total-selected',
       footerAnchorMatched: false,
-      anchoredAmountCandidates: []
+      anchoredAmountCandidates: [],
+      footerAmountCandidatesRaw: [],
+      footerAmountCandidatesNormalized: [],
+      footerAmountWinnerReason: 'no-footer-anchor'
     })
     expect(summary.receiptParsingDebug?.rejectedHighScoreBodyCandidates).toEqual(
       expect.arrayContaining([
@@ -599,7 +734,10 @@ describe('parseInvoiceDocument', () => {
       finalTotalCandidateScope: 'generic-fallback',
       winningAmountSource: 'no-total-selected',
       footerAnchorMatched: false,
-      anchoredAmountCandidates: []
+      anchoredAmountCandidates: [],
+      footerAmountCandidatesRaw: [],
+      footerAmountCandidatesNormalized: [],
+      footerAmountWinnerReason: 'no-footer-anchor'
     })
     expect(summary.receiptParsingDebug?.rejectedHighScoreBodyCandidates).toEqual(
       expect.arrayContaining([
