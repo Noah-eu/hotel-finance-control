@@ -2,7 +2,8 @@ import { buildExportArtifactsFiles } from '../export/shared'
 import {
   detectBookingPayoutStatementKeywordHits,
   detectInvoiceDocumentKeywordHits,
-  inspectComgateHeaderDiagnostics
+  inspectComgateHeaderDiagnostics,
+  type DeterministicDocumentExtractionSummary
 } from '../extraction'
 import {
   ingestUploadedMonthlyFiles,
@@ -250,6 +251,8 @@ function buildBrowserRuntimeUploadStateFromIngestion(
         parserDebugLabel: findBatchFileParserVariant(batch, file.sourceDocument.id)
       }
     }),
+    documentExtractions: buildDocumentExtractionEntries(importedFiles, ingestion.fileRoutes, batch),
+    manualDocumentOverrides: [],
     supportedExpenseLinks: batch.report.supportedExpenseLinks.map((link) => ({
       expenseTransactionId: link.expenseTransactionId,
       supportTransactionId: link.supportTransactionId,
@@ -297,6 +300,125 @@ function buildBrowserRuntimeUploadStateFromIngestion(
       fileName: file.fileName
     }))
   }
+}
+
+function buildDocumentExtractionEntries(
+  importedFiles: ReturnType<typeof ingestUploadedMonthlyFiles>['importedFiles'],
+  fileRoutes: ReturnType<typeof ingestUploadedMonthlyFiles>['fileRoutes'],
+  batch: ReturnType<typeof ingestUploadedMonthlyFiles>['batch']
+): BrowserRuntimeUploadState['documentExtractions'] {
+  return importedFiles
+    .filter((file) => file.sourceDocument.documentType === 'invoice' || file.sourceDocument.documentType === 'receipt')
+    .map((file) => {
+      const route = fileRoutes.find((item) => item.sourceDocumentId === file.sourceDocument.id)
+      const extractedRecord = batch.extractedRecords.find((record) =>
+        record.sourceDocumentId === file.sourceDocument.id
+        && (record.recordType === 'invoice-document' || record.recordType === 'receipt-document')
+      )
+      const data = extractedRecord?.data as Record<string, unknown> | undefined
+      const summary = route?.parseDiagnostics?.documentExtractionSummary
+      const autoValues = buildAutoDocumentValues(extractedRecord, summary)
+
+      return {
+        sourceDocumentId: file.sourceDocument.id,
+        ...(extractedRecord?.id ? { documentId: extractedRecord.id } : {}),
+        fileName: file.sourceDocument.fileName,
+        sourceSystem: file.sourceDocument.sourceSystem,
+        documentType: file.sourceDocument.documentType,
+        autoValues,
+        rawAutoData: {
+          ...(extractedRecord?.id ? { extractedRecordId: extractedRecord.id } : {}),
+          ...(typeof extractedRecord?.rawReference === 'string' ? { rawReference: extractedRecord.rawReference } : {}),
+          ...(typeof extractedRecord?.occurredAt === 'string' ? { occurredAt: extractedRecord.occurredAt } : {}),
+          ...(typeof extractedRecord?.amountMinor === 'number' ? { amountMinor: extractedRecord.amountMinor } : {}),
+          ...(typeof extractedRecord?.currency === 'string' ? { currency: extractedRecord.currency } : {}),
+          ...(data ? { extractedRecordData: data } : {}),
+          ...(summary ? { documentExtractionSummary: summary } : {})
+        }
+      }
+    })
+}
+
+function buildAutoDocumentValues(
+  extractedRecord: IngestionBatch['extractedRecords'][number] | undefined,
+  summary: DeterministicDocumentExtractionSummary | undefined
+): BrowserRuntimeUploadState['documentExtractions'][number]['autoValues'] {
+  const data = extractedRecord?.data as Record<string, unknown> | undefined
+  const supplierName = optionalString(data?.supplier)
+    ?? optionalString(data?.merchant)
+    ?? optionalString(summary?.issuerOrCounterparty)
+  const supplierIco = optionalString(data?.supplierRegistrationId)
+    ?? optionalString(data?.merchantRegistrationId)
+  const supplierDic = optionalString(data?.supplierTaxId)
+    ?? optionalString(data?.merchantTaxId)
+  const documentNumber = optionalString(data?.invoiceNumber)
+    ?? optionalString(data?.receiptNumber)
+    ?? optionalString(data?.referenceNumber)
+    ?? optionalString(extractedRecord?.rawReference)
+    ?? optionalString(summary?.referenceNumber)
+  const issueDate = optionalString(data?.issueDate)
+    ?? optionalString(extractedRecord?.occurredAt)
+    ?? optionalString(summary?.issueDate)
+  const taxableDate = optionalString(data?.taxableDate)
+    ?? optionalString(summary?.taxableDate)
+  const currency = optionalString(extractedRecord?.currency)
+    ?? optionalString(data?.currency)
+    ?? optionalString(summary?.totalCurrency)
+  const totalAmountMinor = typeof extractedRecord?.amountMinor === 'number'
+    ? extractedRecord.amountMinor
+    : typeof data?.amountMinor === 'number'
+      ? Number(data.amountMinor)
+      : typeof summary?.totalAmountMinor === 'number'
+        ? summary.totalAmountMinor
+        : undefined
+  const vatBaseAmountMinor = typeof data?.vatBaseAmountMinor === 'number'
+    ? Number(data.vatBaseAmountMinor)
+    : typeof summary?.vatBaseAmountMinor === 'number'
+      ? summary.vatBaseAmountMinor
+      : undefined
+  const vatAmountMinor = typeof data?.vatAmountMinor === 'number'
+    ? Number(data.vatAmountMinor)
+    : typeof summary?.vatAmountMinor === 'number'
+      ? summary.vatAmountMinor
+      : undefined
+  const vatRate = inferVatRate(vatBaseAmountMinor, vatAmountMinor)
+  const paymentMethod = optionalString(data?.paymentMethod)
+    ?? optionalString(summary?.paymentMethod)
+  const operatorNote = optionalString(data?.description)
+
+  return {
+    ...(supplierName ? { supplierName } : {}),
+    ...(supplierIco ? { supplierIco } : {}),
+    ...(supplierDic ? { supplierDic } : {}),
+    ...(documentNumber ? { documentNumber } : {}),
+    ...(issueDate ? { issueDate } : {}),
+    ...(taxableDate ? { taxableDate } : {}),
+    ...(currency ? { currency } : {}),
+    ...(typeof totalAmountMinor === 'number' ? { totalAmountMinor } : {}),
+    ...(typeof vatBaseAmountMinor === 'number' ? { vatBaseAmountMinor } : {}),
+    ...(typeof vatAmountMinor === 'number' ? { vatAmountMinor } : {}),
+    ...(vatRate ? { vatRate } : {}),
+    ...(paymentMethod ? { paymentMethod } : {}),
+    ...(operatorNote ? { operatorNote } : {})
+  }
+}
+
+function inferVatRate(vatBaseAmountMinor: number | undefined, vatAmountMinor: number | undefined): string | undefined {
+  if (
+    typeof vatBaseAmountMinor !== 'number'
+    || typeof vatAmountMinor !== 'number'
+    || vatBaseAmountMinor <= 0
+  ) {
+    return undefined
+  }
+
+  return `${Math.round((vatAmountMinor / vatBaseAmountMinor) * 100)} %`
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : undefined
 }
 
 function buildCarryoverSourceSnapshot(
@@ -1138,10 +1260,6 @@ function buildKindBreakdown(values: string[]): Array<{ kind: string, count: numb
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))))
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined
 }
 
 function buildFileIntakeTextPreview(textPreview: string | undefined, fallbackContent: string): string | undefined {

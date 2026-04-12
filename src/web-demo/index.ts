@@ -943,6 +943,84 @@ function renderOperatorWebDemoHtml(input: {
         white-space: pre-wrap;
         word-break: break-word;
       }
+      .document-override-panel {
+        margin-top: 18px;
+        border-top: 1px solid #dce6f5;
+        padding-top: 18px;
+      }
+      .document-override-panel h3 {
+        margin: 0 0 8px;
+      }
+      .document-override-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .document-override-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .document-override-field.full-width {
+        grid-column: 1 / -1;
+      }
+      .document-override-label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .document-override-field label {
+        font-weight: 600;
+        color: #0f172a;
+      }
+      .document-override-field input,
+      .document-override-field select,
+      .document-override-field textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        font: inherit;
+      }
+      .document-override-field textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+      .document-override-status {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .document-override-status.automatic {
+        background: #e5eefc;
+        color: #174ea6;
+      }
+      .document-override-status.manual-added {
+        background: #e8f7ef;
+        color: #166534;
+      }
+      .document-override-status.manual-edited {
+        background: #fff4db;
+        color: #b54708;
+      }
+      .document-override-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+      .document-override-actions button {
+        padding: 10px 14px;
+      }
+      .document-override-meta {
+        margin: 6px 0 0;
+      }
       @media (max-width: 1080px) {
         .document-preview-overlay {
           grid-template-columns: minmax(220px, 0.46fr) minmax(220px, 0.46fr) minmax(720px, 2.08fr);
@@ -950,6 +1028,9 @@ function renderOperatorWebDemoHtml(input: {
         .document-preview-shell {
           max-height: calc(100vh - 24px);
           padding: 16px;
+        }
+        .document-override-grid {
+          grid-template-columns: 1fr;
         }
         .document-preview-frame,
         .document-preview-image {
@@ -1617,6 +1698,7 @@ ${showRuntimePayoutDiagnostics ? `
       const runtimePayoutProjectionDebugMode = runtimeOperatorDebugMode;
       let currentExpenseReviewState = initialRuntimeState;
       let currentExpenseReviewOverrides = [];
+      let currentManualDocumentOverrides = [];
       let currentManualMatchGroups = [];
       let currentSelectedManualMatchItemIds = [];
       let currentManualMatchDraftNote = '';
@@ -3414,6 +3496,275 @@ ${showRuntimePayoutDiagnostics ? `
         };
       }
 
+      const manualDocumentFieldDefinitions = [
+        { key: 'supplierName', label: 'Dodavatel', inputType: 'text' },
+        { key: 'supplierIco', label: 'IČO', inputType: 'text' },
+        { key: 'supplierDic', label: 'DIČ', inputType: 'text' },
+        { key: 'documentNumber', label: 'Reference / číslo dokladu', inputType: 'text' },
+        { key: 'issueDate', label: 'Datum vystavení', inputType: 'date' },
+        { key: 'taxableDate', label: 'Datum uskutečnění', inputType: 'date' },
+        { key: 'currency', label: 'Měna', inputType: 'select' },
+        { key: 'totalAmountMinor', label: 'Celková částka', inputType: 'amount' },
+        { key: 'vatBaseAmountMinor', label: 'Základ DPH', inputType: 'amount' },
+        { key: 'vatAmountMinor', label: 'DPH', inputType: 'amount' },
+        { key: 'vatRate', label: 'Sazba DPH', inputType: 'text' },
+        { key: 'paymentMethod', label: 'Způsob úhrady', inputType: 'text' },
+        { key: 'operatorNote', label: 'Poznámka operátora', inputType: 'textarea', fullWidth: true }
+      ];
+
+      function buildManualDocumentOverrideFieldElementId(fieldKey) {
+        return 'document-override-field-' + String(fieldKey || 'field');
+      }
+
+      function buildManualDocumentOverrideActionElementId(action) {
+        return 'document-override-action-' + String(action || 'action');
+      }
+
+      function sanitizeManualDocumentOverrideValue(fieldKey, value) {
+        if (fieldKey === 'totalAmountMinor' || fieldKey === 'vatBaseAmountMinor' || fieldKey === 'vatAmountMinor') {
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            return Math.round(value);
+          }
+
+          const normalized = String(value || '').trim();
+
+          if (!normalized) {
+            return undefined;
+          }
+
+          const cleaned = normalized.replace(/\s+/g, '').replace(/,/g, '.');
+          const parsed = Number(cleaned);
+
+          return Number.isFinite(parsed) ? Math.round(parsed * 100) : undefined;
+        }
+
+        const normalized = String(value || '').trim();
+        return normalized ? normalized : undefined;
+      }
+
+      function sanitizeManualDocumentOverrideValues(values) {
+        return manualDocumentFieldDefinitions.reduce((accumulator, field) => {
+          const nextValue = sanitizeManualDocumentOverrideValue(field.key, values && values[field.key]);
+
+          if (typeof nextValue !== 'undefined') {
+            accumulator[field.key] = nextValue;
+          }
+
+          return accumulator;
+        }, {});
+      }
+
+      function sanitizeManualDocumentOverridesForStorage(overrides) {
+        return (Array.isArray(overrides) ? overrides : [])
+          .filter((override) => override && typeof override.sourceDocumentId === 'string' && override.sourceDocumentId)
+          .map((override) => ({
+            sourceDocumentId: String(override.sourceDocumentId),
+            ...(override.documentId ? { documentId: String(override.documentId) } : {}),
+            updatedAt: override.updatedAt ? String(override.updatedAt) : new Date().toISOString(),
+            values: sanitizeManualDocumentOverrideValues(override.values)
+          }))
+          .filter((override) => Object.keys(override.values).length > 0);
+      }
+
+      function hasManualDocumentOverrideValue(values, fieldKey) {
+        return Boolean(values) && Object.prototype.hasOwnProperty.call(values, fieldKey);
+      }
+
+      function compareManualDocumentValues(left, right) {
+        if (typeof left === 'number' || typeof right === 'number') {
+          return Number(left) === Number(right);
+        }
+
+        return String(left || '').trim() === String(right || '').trim();
+      }
+
+      function buildDocumentExtractionLookup(entries) {
+        const lookup = new Map();
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+          const sourceDocumentId = String(entry && entry.sourceDocumentId || '');
+
+          if (sourceDocumentId) {
+            lookup.set(sourceDocumentId, entry);
+          }
+        });
+        return lookup;
+      }
+
+      function buildEffectiveDocumentExtractionEntries(entries, overrides) {
+        const overrideBySourceDocumentId = new Map(
+          sanitizeManualDocumentOverridesForStorage(overrides).map((override) => [String(override.sourceDocumentId), override])
+        );
+
+        return (Array.isArray(entries) ? entries : []).map((entry) => {
+          const normalizedEntry = entry || {};
+          const sourceDocumentId = String(normalizedEntry.sourceDocumentId || '');
+          const autoValues = normalizedEntry.autoValues && typeof normalizedEntry.autoValues === 'object'
+            ? { ...normalizedEntry.autoValues }
+            : {};
+          const override = overrideBySourceDocumentId.get(sourceDocumentId);
+          const manualOverrideValues = override && override.values && typeof override.values === 'object'
+            ? { ...override.values }
+            : {};
+          const effectiveValues = { ...autoValues, ...manualOverrideValues };
+          const fieldStates = manualDocumentFieldDefinitions.reduce((accumulator, field) => {
+            const hasManualValue = hasManualDocumentOverrideValue(manualOverrideValues, field.key);
+
+            if (!hasManualValue) {
+              accumulator[field.key] = 'automatic';
+              return accumulator;
+            }
+
+            accumulator[field.key] = typeof autoValues[field.key] === 'undefined'
+              ? 'manual-added'
+              : compareManualDocumentValues(autoValues[field.key], manualOverrideValues[field.key])
+                ? 'automatic'
+                : 'manual-edited';
+            return accumulator;
+          }, {});
+
+          return {
+            ...normalizedEntry,
+            autoValues,
+            manualOverrideValues,
+            effectiveValues,
+            fieldStates,
+            overrideUpdatedAt: override && override.updatedAt ? String(override.updatedAt) : undefined
+          };
+        });
+      }
+
+      function getDocumentExtractionForSourceDocument(state, sourceDocumentId) {
+        const lookup = buildDocumentExtractionLookup(state && state.documentExtractions);
+        return lookup.get(String(sourceDocumentId || ''));
+      }
+
+      function buildDocumentOverrideAmountDisplay(amountMinor, currency, fallbackValue) {
+        if (typeof amountMinor === 'number' && currency) {
+          return buildAmountDisplay(amountMinor, currency);
+        }
+
+        return typeof fallbackValue === 'string' ? fallbackValue : '';
+      }
+
+      function buildDocumentOverrideComparisonDocument(documentSide, extraction) {
+        const base = documentSide && typeof documentSide === 'object' ? { ...documentSide } : {};
+
+        if (!extraction || !extraction.effectiveValues) {
+          return base;
+        }
+
+        const effectiveValues = extraction.effectiveValues;
+        const effectiveCurrency = effectiveValues.currency || base.currency;
+
+        return {
+          ...base,
+          supplierOrCounterparty: effectiveValues.supplierName || base.supplierOrCounterparty,
+          supplierIco: effectiveValues.supplierIco,
+          supplierDic: effectiveValues.supplierDic,
+          reference: effectiveValues.documentNumber || base.reference,
+          issueDate: effectiveValues.issueDate || base.issueDate,
+          taxableDate: effectiveValues.taxableDate,
+          amount: buildDocumentOverrideAmountDisplay(effectiveValues.totalAmountMinor, effectiveCurrency, base.amount),
+          currency: effectiveCurrency,
+          vatBaseAmount: buildDocumentOverrideAmountDisplay(effectiveValues.vatBaseAmountMinor, effectiveCurrency, ''),
+          vatAmount: buildDocumentOverrideAmountDisplay(effectiveValues.vatAmountMinor, effectiveCurrency, ''),
+          vatRate: effectiveValues.vatRate,
+          paymentMethod: effectiveValues.paymentMethod,
+          operatorNote: effectiveValues.operatorNote,
+          autoValues: extraction.autoValues,
+          manualOverrideValues: extraction.manualOverrideValues,
+          effectiveValues,
+          fieldStates: extraction.fieldStates,
+          overrideUpdatedAt: extraction.overrideUpdatedAt
+        };
+      }
+
+      function buildDocumentOverrideEvidenceSummary(evidenceSummary, extraction) {
+        const nextEvidence = Array.isArray(evidenceSummary)
+          ? evidenceSummary.map((entry) => ({ ...entry }))
+          : [];
+
+        if (!extraction || !extraction.fieldStates) {
+          return nextEvidence;
+        }
+
+        const overriddenFields = manualDocumentFieldDefinitions
+          .filter((field) => extraction.fieldStates[field.key] === 'manual-added' || extraction.fieldStates[field.key] === 'manual-edited')
+          .map((field) => field.label + ' (' + (extraction.fieldStates[field.key] === 'manual-added' ? 'ručně doplněno' : 'ručně upraveno') + ')');
+
+        if (overriddenFields.length === 0) {
+          return nextEvidence;
+        }
+
+        const provenanceIndex = nextEvidence.findIndex((entry) => String(entry && entry.label || '') === 'provenience');
+        const manualSummary = 'manual override: ' + overriddenFields.join(' · ');
+
+        if (provenanceIndex === -1) {
+          nextEvidence.push({ label: 'provenience', value: manualSummary });
+          return nextEvidence;
+        }
+
+        nextEvidence[provenanceIndex] = {
+          ...nextEvidence[provenanceIndex],
+          value: String(nextEvidence[provenanceIndex] && nextEvidence[provenanceIndex].value || '')
+            + (nextEvidence[provenanceIndex] && nextEvidence[provenanceIndex].value ? ' · ' : '')
+            + manualSummary
+        };
+        return nextEvidence;
+      }
+
+      function applyDocumentOverridesToExpenseItem(item, extraction) {
+        if (!item || !item.expenseComparison || !item.expenseComparison.document) {
+          return item;
+        }
+
+        return {
+          ...item,
+          evidenceSummary: buildDocumentOverrideEvidenceSummary(item.evidenceSummary, extraction),
+          expenseComparison: {
+            ...item.expenseComparison,
+            document: buildDocumentOverrideComparisonDocument(item.expenseComparison.document, extraction)
+          },
+          documentOverrideAudit: extraction
+            ? {
+                sourceDocumentId: extraction.sourceDocumentId,
+                autoValues: extraction.autoValues,
+                manualOverrideValues: extraction.manualOverrideValues,
+                effectiveValues: extraction.effectiveValues,
+                fieldStates: extraction.fieldStates,
+                rawAutoData: extraction.rawAutoData,
+                overrideUpdatedAt: extraction.overrideUpdatedAt
+              }
+            : undefined
+        };
+      }
+
+      function buildEffectiveDocumentProjection(state, overrides) {
+        const documentExtractions = buildEffectiveDocumentExtractionEntries(
+          state && state.documentExtractions,
+          overrides
+        );
+        const lookup = buildDocumentExtractionLookup(documentExtractions);
+        const normalizedSections = state && state.reviewSections ? state.reviewSections : {};
+        const expenseSectionKeys = ['expenseMatched', 'expenseNeedsReview', 'expenseUnmatchedDocuments'];
+        const reviewSections = {
+          ...normalizedSections
+        };
+
+        expenseSectionKeys.forEach((sectionKey) => {
+          reviewSections[sectionKey] = (Array.isArray(normalizedSections[sectionKey]) ? normalizedSections[sectionKey] : []).map((item) => {
+            const sourceDocumentId = Array.isArray(item && item.sourceDocumentIds) ? item.sourceDocumentIds[0] : '';
+            const extraction = lookup.get(String(sourceDocumentId || ''));
+            return applyDocumentOverridesToExpenseItem(item, extraction);
+          });
+        });
+
+        return {
+          reviewSections,
+          documentExtractions
+        };
+      }
+
       function sanitizeManualMatchGroupsForStorage(groups) {
         return (Array.isArray(groups) ? groups : [])
           .filter((group) =>
@@ -3492,6 +3843,7 @@ ${showRuntimePayoutDiagnostics ? `
           files: Array.isArray(currentWorkspaceFiles) ? currentWorkspaceFiles.slice() : [],
           runtimeState: cloneWorkspaceRuntimeState(currentExpenseReviewState),
           expenseReviewOverrides: sanitizeExpenseReviewOverridesForStorage(currentExpenseReviewOverrides),
+          manualDocumentOverrides: sanitizeManualDocumentOverridesForStorage(currentManualDocumentOverrides),
           manualMatchGroups: sanitizeManualMatchGroupsForStorage(currentManualMatchGroups)
         };
 
@@ -3947,6 +4299,7 @@ ${showRuntimePayoutDiagnostics ? `
           currentWorkspaceMonth = normalizedMonth;
           currentWorkspaceFiles = [];
           currentExpenseReviewOverrides = [];
+          currentManualDocumentOverrides = [];
           currentManualMatchGroups = [];
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
@@ -4028,6 +4381,7 @@ ${showRuntimePayoutDiagnostics ? `
           currentWorkspaceMonth = normalizedMonth;
           currentWorkspaceFiles = remainingFiles;
           currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+          currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage(workspace.manualDocumentOverrides || workspace.runtimeState && workspace.runtimeState.manualDocumentOverrides);
           currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
@@ -4129,6 +4483,7 @@ ${showRuntimePayoutDiagnostics ? `
           });
           currentWorkspaceFiles = [];
           currentExpenseReviewOverrides = [];
+          currentManualDocumentOverrides = [];
           currentManualMatchGroups = [];
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
@@ -4167,6 +4522,7 @@ ${showRuntimePayoutDiagnostics ? `
             restoredAncillaryLinkTraces: collectAncillaryLinkTracesForReferenceFromRuntimeState(workspace.runtimeState, '20250650')
           });
           currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+          currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage(workspace.manualDocumentOverrides || workspace.runtimeState && workspace.runtimeState.manualDocumentOverrides);
           currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
@@ -4333,6 +4689,7 @@ ${showRuntimePayoutDiagnostics ? `
 
         currentWorkspaceFiles = Array.isArray(workspace.files) ? workspace.files.slice() : [];
         currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(workspace.expenseReviewOverrides);
+        currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage(workspace.manualDocumentOverrides || workspace.runtimeState && workspace.runtimeState.manualDocumentOverrides);
         currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(workspace.manualMatchGroups);
         currentSelectedManualMatchItemIds = [];
         currentManualMatchDraftNote = '';
@@ -5266,9 +5623,199 @@ ${showRuntimePayoutDiagnostics ? `
         });
       }
 
+      function formatManualDocumentAmountInputValue(amountMinor) {
+        return typeof amountMinor === 'number' && Number.isFinite(amountMinor)
+          ? (amountMinor / 100).toFixed(2)
+          : '';
+      }
+
+      function formatManualDocumentFieldInputValue(fieldKey, value) {
+        if (fieldKey === 'totalAmountMinor' || fieldKey === 'vatBaseAmountMinor' || fieldKey === 'vatAmountMinor') {
+          return formatManualDocumentAmountInputValue(value);
+        }
+
+        return typeof value === 'string' ? value : '';
+      }
+
+      function getCurrentDocumentPreviewExtraction() {
+        const previewState = currentDocumentPreviewState || buildEmptyDocumentPreviewState();
+        const sourceDocumentId = String(previewState && previewState.sourceDocumentId || '');
+
+        if (!sourceDocumentId) {
+          return undefined;
+        }
+
+        return getDocumentExtractionForSourceDocument(currentExportVisibleState || currentExpenseReviewState || initialRuntimeState, sourceDocumentId);
+      }
+
+      function buildManualDocumentStatusLabel(status) {
+        if (status === 'manual-added') {
+          return 'ručně doplněno';
+        }
+
+        if (status === 'manual-edited') {
+          return 'ručně upraveno';
+        }
+
+        return 'automaticky';
+      }
+
+      function buildDocumentOverrideFieldControlMarkup(field, value) {
+        const fieldId = buildManualDocumentOverrideFieldElementId(field.key);
+        const normalizedValue = formatManualDocumentFieldInputValue(field.key, value);
+
+        if (field.inputType === 'textarea') {
+          return '<textarea id="' + escapeHtml(fieldId) + '" spellcheck="false">' + escapeHtml(normalizedValue) + '</textarea>';
+        }
+
+        if (field.inputType === 'select') {
+          return '<select id="' + escapeHtml(fieldId) + '">'
+            + '<option value="">Nezvoleno</option>'
+            + '<option value="CZK"' + (normalizedValue === 'CZK' ? ' selected' : '') + '>CZK</option>'
+            + '<option value="EUR"' + (normalizedValue === 'EUR' ? ' selected' : '') + '>EUR</option>'
+            + '</select>';
+        }
+
+        const inputType = field.inputType === 'date' ? 'date' : 'text';
+        const placeholder = field.inputType === 'amount' ? 'např. 12629.52' : '';
+
+        return '<input id="' + escapeHtml(fieldId) + '" type="' + escapeHtml(inputType) + '"'
+          + (placeholder ? ' placeholder="' + escapeHtml(placeholder) + '"' : '')
+          + ' value="' + escapeHtml(normalizedValue) + '" />';
+      }
+
+      function buildDocumentOverridePanelMarkup(previewState) {
+        const extraction = getCurrentDocumentPreviewExtraction();
+
+        if (!previewState || !previewState.open || !previewState.sourceDocumentId) {
+          return '';
+        }
+
+        if (!extraction) {
+          return '<section class="document-override-panel"><h3>Upravit údaje dokladu</h3><p class="hint">Pro tento doklad zatím není k dispozici žádný extraction snapshot. Přesto zůstává zachovaný původní náhled.</p></section>';
+        }
+
+        const rows = manualDocumentFieldDefinitions.map((field) => {
+          const fieldStatus = extraction.fieldStates && extraction.fieldStates[field.key] ? extraction.fieldStates[field.key] : 'automatic';
+          const hasManualValue = hasManualDocumentOverrideValue(extraction.manualOverrideValues, field.key);
+          const currentValue = hasManualValue
+            ? extraction.manualOverrideValues[field.key]
+            : extraction.autoValues[field.key];
+
+          return '<div class="document-override-field' + (field.fullWidth ? ' full-width' : '') + '">'
+            + '<div class="document-override-label-row">'
+            + '<label for="' + escapeHtml(buildManualDocumentOverrideFieldElementId(field.key)) + '">' + escapeHtml(field.label) + '</label>'
+            + '<span class="document-override-status ' + escapeHtml(fieldStatus) + '">' + escapeHtml(buildManualDocumentStatusLabel(fieldStatus)) + '</span>'
+            + '</div>'
+            + buildDocumentOverrideFieldControlMarkup(field, currentValue)
+            + '</div>';
+        }).join('');
+        const manualFieldCount = manualDocumentFieldDefinitions.filter((field) => hasManualDocumentOverrideValue(extraction.manualOverrideValues, field.key)).length;
+
+        return '<section class="document-override-panel">'
+          + '<h3>Upravit údaje dokladu</h3>'
+          + '<p class="hint">Ruční override se ukládá jen pro tento měsíc a původní raw extraction zůstává zachovaná pro audit i debug.</p>'
+          + '<div class="document-override-grid">' + rows + '</div>'
+          + '<div class="document-override-actions"><button id="' + escapeHtml(buildManualDocumentOverrideActionElementId('save')) + '" type="button">Uložit ruční override</button></div>'
+          + '<p class="hint document-override-meta">Ručních polí: <strong>' + escapeHtml(String(manualFieldCount)) + '</strong>'
+          + (extraction.overrideUpdatedAt ? ' · Poslední úprava: ' + escapeHtml(String(extraction.overrideUpdatedAt)) : '')
+          + '</p>'
+          + '</section>';
+      }
+
+      function collectCurrentDocumentPreviewOverrideValues() {
+        return manualDocumentFieldDefinitions.reduce((accumulator, field) => {
+          const element = document.getElementById(buildManualDocumentOverrideFieldElementId(field.key));
+          const rawValue = element && typeof element.value !== 'undefined' ? element.value : '';
+          const nextValue = sanitizeManualDocumentOverrideValue(field.key, rawValue);
+
+          if (typeof nextValue !== 'undefined') {
+            accumulator[field.key] = nextValue;
+          }
+
+          return accumulator;
+        }, {});
+      }
+
+      function saveCurrentDocumentPreviewOverride() {
+        const extraction = getCurrentDocumentPreviewExtraction();
+        const previewState = currentDocumentPreviewState || buildEmptyDocumentPreviewState();
+
+        if (!extraction || !previewState.sourceDocumentId) {
+          return;
+        }
+
+        const nextValues = collectCurrentDocumentPreviewOverrideValues();
+        const nextOverride = {
+          sourceDocumentId: String(previewState.sourceDocumentId || extraction.sourceDocumentId || ''),
+          ...(extraction.documentId ? { documentId: extraction.documentId } : {}),
+          updatedAt: new Date().toISOString(),
+          values: nextValues
+        };
+        const existingIndex = currentManualDocumentOverrides.findIndex((override) =>
+          String(override && override.sourceDocumentId || '') === String(nextOverride.sourceDocumentId)
+        );
+        const sanitizedValues = sanitizeManualDocumentOverrideValues(nextOverride.values);
+
+        if (Object.keys(sanitizedValues).length === 0) {
+          currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage(currentManualDocumentOverrides).filter((override) =>
+            String(override && override.sourceDocumentId || '') !== String(nextOverride.sourceDocumentId)
+          );
+        } else if (existingIndex >= 0) {
+          currentManualDocumentOverrides.splice(existingIndex, 1, {
+            ...nextOverride,
+            values: sanitizedValues
+          });
+          currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage(currentManualDocumentOverrides);
+        } else {
+          currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage([
+            ...currentManualDocumentOverrides,
+            {
+              ...nextOverride,
+              values: sanitizedValues
+            }
+          ]);
+        }
+
+        applyVisibleRuntimeState(currentExpenseReviewState, currentVisibleRuntimePhase);
+        renderDocumentPreviewState();
+      }
+
+      function wireDocumentPreviewOverridePanel() {
+        const extraction = getCurrentDocumentPreviewExtraction();
+        const saveButton = document.getElementById(buildManualDocumentOverrideActionElementId('save'));
+
+        manualDocumentFieldDefinitions.forEach((field) => {
+          const fieldElement = document.getElementById(buildManualDocumentOverrideFieldElementId(field.key));
+
+          if (!fieldElement || typeof fieldElement.value === 'undefined') {
+            return;
+          }
+
+          const hasManualValue = extraction && hasManualDocumentOverrideValue(extraction.manualOverrideValues, field.key);
+          const currentValue = hasManualValue
+            ? extraction.manualOverrideValues[field.key]
+            : extraction && extraction.autoValues
+              ? extraction.autoValues[field.key]
+              : undefined;
+
+          fieldElement.value = formatManualDocumentFieldInputValue(field.key, currentValue);
+        });
+
+        if (saveButton && typeof saveButton.addEventListener === 'function') {
+          saveButton.addEventListener('click', () => {
+            saveCurrentDocumentPreviewOverride();
+          });
+        }
+      }
+
       function renderDocumentPreviewState() {
         const previewState = currentDocumentPreviewState || buildEmptyDocumentPreviewState();
         const previewOpen = Boolean(previewState.open);
+        const extraction = getCurrentDocumentPreviewExtraction();
+        const manualOverrideCount = extraction && extraction.manualOverrideValues
+          ? manualDocumentFieldDefinitions.filter((field) => hasManualDocumentOverrideValue(extraction.manualOverrideValues, field.key)).length
+          : 0;
 
         if (documentPreviewOverlay) {
           documentPreviewOverlay.hidden = !previewOpen;
@@ -5281,15 +5828,20 @@ ${showRuntimePayoutDiagnostics ? `
             ? (previewState.printAvailable
               ? 'Doklad je otevřený přímo z aktuálního browser workspace. Tisk používá nativní browser print flow bez opuštění měsíčního workflow.'
               : 'Doklad je dostupný v browser workspace, ale jen jako nerenderovatelný nebo textový payload. Zobrazuje se pravdivý fallback bez fake preview.')
+                + (manualOverrideCount > 0 ? ' Ruční override aktivní pro ' + String(manualOverrideCount) + ' polí.' : '')
             : 'Náhled se zobrazí po zvolení konkrétního dokladu.';
         }
         if (documentPreviewContent) {
           documentPreviewContent.innerHTML = previewOpen && previewState.previewMarkup
-            ? previewState.previewMarkup
+            ? previewState.previewMarkup + buildDocumentOverridePanelMarkup(previewState)
             : '<p class="hint">Náhled se zobrazí po zvolení konkrétního dokladu.</p>';
         }
         if (documentPreviewPrintButton) {
           documentPreviewPrintButton.hidden = !previewOpen || !previewState.printAvailable;
+        }
+
+        if (previewOpen) {
+          wireDocumentPreviewOverridePanel();
         }
 
         syncAppShellPresentationState();
@@ -6350,6 +6902,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
           };
         }
 
+        function buildDocumentExtractionDebugPayload(entry) {
+          return {
+            sourceDocumentId: String(entry && entry.sourceDocumentId || ''),
+            documentId: String(entry && entry.documentId || ''),
+            extractionSummary: entry && entry.extractionSummary ? { ...entry.extractionSummary } : null,
+            autoValues: entry && entry.autoValues ? { ...entry.autoValues } : {},
+            manualOverrideValues: entry && entry.manualOverrideValues ? { ...entry.manualOverrideValues } : {},
+            effectiveValues: entry && entry.effectiveValues ? { ...entry.effectiveValues } : {},
+            fieldStates: entry && entry.fieldStates ? { ...entry.fieldStates } : {},
+            rawAutoData: entry && entry.rawAutoData ? { ...entry.rawAutoData } : null,
+            overrideUpdatedAt: String(entry && entry.overrideUpdatedAt || '')
+          };
+        }
+
         function buildAncillaryLinkCandidateDebugPayload(candidate) {
           return {
             sourceDocumentId: String(candidate && candidate.sourceDocumentId || ''),
@@ -6817,6 +7383,10 @@ ${showRuntimePayoutDiagnostics ? '' : `
           },
           uploadedFiles,
           sourceDocumentIds: collectUniqueTruthyStrings(uploadedFiles.map((file) => file.sourceDocumentId)),
+          documentExtractions: (Array.isArray(visibleState.documentExtractions) ? visibleState.documentExtractions : []).map((entry) => buildDocumentExtractionDebugPayload(entry)),
+          manualDocumentOverrides: sanitizeManualDocumentOverridesForStorage(
+            Array.isArray(visibleState.manualDocumentOverrides) ? visibleState.manualDocumentOverrides : []
+          ),
           payoutRelatedFiles,
           payoutRelatedFileIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.workspaceFileId)),
           payoutRelatedSourceDocumentIds: collectUniqueTruthyStrings(payoutRelatedFiles.map((file) => file.sourceDocumentId)),
@@ -8293,6 +8863,23 @@ ${showRuntimePayoutDiagnostics ? '' : `
           + '</div>';
       }
 
+      function buildDocumentSideFieldLabel(label, side, fieldKey) {
+        const fieldStates = side && side.fieldStates && typeof side.fieldStates === 'object'
+          ? side.fieldStates
+          : undefined;
+        const fieldStatus = fieldStates ? fieldStates[fieldKey] : undefined;
+
+        if (fieldStatus === 'manual-added') {
+          return label + ' (ručně doplněno)';
+        }
+
+        if (fieldStatus === 'manual-edited') {
+          return label + ' (ručně upraveno)';
+        }
+
+        return label;
+      }
+
       function collectExpenseSideAmountEntries(side, sideMode) {
         const isDocument = sideMode === 'document';
         const amountEntries = [];
@@ -8300,7 +8887,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
         if (primaryAmount) {
           amountEntries.push({
-            label: isDocument ? 'Částka k párování' : 'Částka',
+            label: isDocument ? buildDocumentSideFieldLabel('Částka k párování', side, 'totalAmountMinor') : 'Částka',
             value: primaryAmount
           });
         }
@@ -8310,8 +8897,26 @@ ${showRuntimePayoutDiagnostics ? '' : `
 
           if (summaryTotal) {
             amountEntries.push({
-              label: 'Celkem na faktuře',
+              label: buildDocumentSideFieldLabel('Celkem na faktuře', side, 'totalAmountMinor'),
               value: summaryTotal
+            });
+          }
+
+          const vatBaseAmount = formatExpenseSideAmountValue(side && side.vatBaseAmount, side && side.currency);
+
+          if (vatBaseAmount) {
+            amountEntries.push({
+              label: buildDocumentSideFieldLabel('Základ DPH', side, 'vatBaseAmountMinor'),
+              value: vatBaseAmount
+            });
+          }
+
+          const vatAmount = formatExpenseSideAmountValue(side && side.vatAmount, side && side.currency);
+
+          if (vatAmount) {
+            amountEntries.push({
+              label: buildDocumentSideFieldLabel('DPH', side, 'vatAmountMinor'),
+              value: vatAmount
             });
           }
         }
@@ -8323,11 +8928,17 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const isDocument = sideMode === 'document';
         const fields = isDocument
           ? [
-              ['Dodavatel', side && side.supplierOrCounterparty],
-              ['Číslo faktury / reference', side && side.reference],
-              ['Datum vystavení', side && side.issueDate],
+              [buildDocumentSideFieldLabel('Dodavatel', side, 'supplierName'), side && side.supplierOrCounterparty],
+              [buildDocumentSideFieldLabel('IČO', side, 'supplierIco'), side && side.supplierIco],
+              [buildDocumentSideFieldLabel('DIČ', side, 'supplierDic'), side && side.supplierDic],
+              [buildDocumentSideFieldLabel('Číslo faktury / reference', side, 'documentNumber'), side && side.reference],
+              [buildDocumentSideFieldLabel('Datum vystavení', side, 'issueDate'), side && side.issueDate],
+              [buildDocumentSideFieldLabel('Datum uskutečnění', side, 'taxableDate'), side && side.taxableDate],
               ['Datum splatnosti', side && side.dueDate],
-              ['Měna', side && side.currency],
+              [buildDocumentSideFieldLabel('Měna', side, 'currency'), side && side.currency],
+              [buildDocumentSideFieldLabel('Sazba DPH', side, 'vatRate'), side && side.vatRate],
+              [buildDocumentSideFieldLabel('Způsob úhrady', side, 'paymentMethod'), side && side.paymentMethod],
+              [buildDocumentSideFieldLabel('Poznámka operátora', side, 'operatorNote'), side && side.operatorNote],
               ['IBAN hint', side && side.ibanHint]
             ]
           : [
@@ -8475,12 +9086,20 @@ ${showRuntimePayoutDiagnostics ? '' : `
           item && item.title,
           item && item.detail,
           documentSide.supplierOrCounterparty,
+          documentSide.supplierIco,
+          documentSide.supplierDic,
           documentSide.reference,
           documentSide.amount,
           documentSide.currency,
           documentSide.ibanHint,
           documentSide.issueDate,
           documentSide.dueDate,
+          documentSide.taxableDate,
+          documentSide.vatBaseAmount,
+          documentSide.vatAmount,
+          documentSide.vatRate,
+          documentSide.paymentMethod,
+          documentSide.operatorNote,
           bankSide.supplierOrCounterparty,
           bankSide.reference,
           bankSide.amount,
@@ -9874,6 +10493,8 @@ ${showRuntimePayoutDiagnostics ? '' : `
           fileRoutes,
           preparedFiles: Array.isArray(state.preparedFiles) ? state.preparedFiles : [],
           extractedRecords: Array.isArray(state.extractedRecords) ? state.extractedRecords : [],
+          documentExtractions: Array.isArray(state.documentExtractions) ? state.documentExtractions : [],
+          manualDocumentOverrides: Array.isArray(state.manualDocumentOverrides) ? state.manualDocumentOverrides : [],
           supportedExpenseLinks: Array.isArray(state.supportedExpenseLinks) ? state.supportedExpenseLinks : [],
           reportSummary: {
             ...(state.reportSummary || {}),
@@ -9934,9 +10555,19 @@ ${showRuntimePayoutDiagnostics ? '' : `
             runtimeBuildInfo: (state && state.runtimeBuildInfo) || initialRuntimeState.runtimeBuildInfo,
             finalPayoutProjection: collectVisiblePayoutProjection(state)
           };
+        const documentProjection = buildEffectiveDocumentProjection(baseVisibleState, currentManualDocumentOverrides);
+        const documentResolvedState = {
+          ...baseVisibleState,
+          documentExtractions: documentProjection.documentExtractions,
+          manualDocumentOverrides: sanitizeManualDocumentOverridesForStorage(currentManualDocumentOverrides),
+          reviewSections: {
+            ...((baseVisibleState && baseVisibleState.reviewSections) || {}),
+            ...documentProjection.reviewSections
+          }
+        };
         const syncedExpenseReviewOverrides = syncExpenseReviewOverridesForCurrentSections(
           currentExpenseReviewOverrides,
-          baseVisibleState && baseVisibleState.reviewSections
+          documentResolvedState && documentResolvedState.reviewSections
         );
 
         if (syncedExpenseReviewOverrides.changed) {
@@ -9944,13 +10575,13 @@ ${showRuntimePayoutDiagnostics ? '' : `
         }
 
         const effectiveExpenseSections = buildEffectiveExpenseReviewSections(
-          baseVisibleState && baseVisibleState.reviewSections,
+          documentResolvedState && documentResolvedState.reviewSections,
           syncedExpenseReviewOverrides.overrides
         );
         const expenseResolvedState = {
-          ...baseVisibleState,
+          ...documentResolvedState,
           reviewSections: {
-            ...((baseVisibleState && baseVisibleState.reviewSections) || {}),
+            ...((documentResolvedState && documentResolvedState.reviewSections) || {}),
             ...effectiveExpenseSections
           }
         };
@@ -10480,6 +11111,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         currentExpenseReviewState = initialRuntimeState;
         currentExportVisibleState = initialRuntimeState;
         currentExpenseReviewOverrides = [];
+        currentManualDocumentOverrides = [];
         currentManualMatchGroups = [];
         currentSelectedManualMatchItemIds = [];
         currentManualMatchDraftNote = '';
@@ -10700,6 +11332,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
           currentWorkspaceMonth = normalizedMonth;
           currentWorkspaceFiles = mergedWorkspaceFiles;
           currentExpenseReviewOverrides = sanitizeExpenseReviewOverridesForStorage(existingWorkspace && existingWorkspace.expenseReviewOverrides);
+          currentManualDocumentOverrides = sanitizeManualDocumentOverridesForStorage(existingWorkspace && (existingWorkspace.manualDocumentOverrides || existingWorkspace.runtimeState && existingWorkspace.runtimeState.manualDocumentOverrides));
           currentManualMatchGroups = sanitizeManualMatchGroupsForStorage(existingWorkspace && existingWorkspace.manualMatchGroups);
           currentSelectedManualMatchItemIds = [];
           currentManualMatchDraftNote = '';
@@ -10805,6 +11438,7 @@ ${showRuntimePayoutDiagnostics ? '' : `
         const previousPendingSelectedFileCount = previousPendingSelectedFileNames.length;
         clearSelectedFileInput('explicit-clear', normalizedMonth);
         currentExpenseReviewOverrides = [];
+        currentManualDocumentOverrides = [];
         currentManualMatchGroups = [];
         currentSelectedManualMatchItemIds = [];
         currentManualMatchDraftNote = '';

@@ -5887,6 +5887,205 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseDetailSortSelect.value).toBe('amount-asc')
   })
 
+  it('saves manual document overrides from the preview and reuses them in expense review, restore, and debug export', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T09:10:00.000Z',
+      month: '2026-03',
+      outputDirName: 'test-web-demo-document-preview-manual-overrides',
+      locationSearch: '?debug=1',
+      files: createManualMatchExpenseWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const stateBefore = rendered.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{
+          id: string
+          sourceDocumentIds?: string[]
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+            }
+          }
+        }>
+      }
+      documentExtractions?: Array<{
+        sourceDocumentId: string
+        autoValues?: { supplierName?: string }
+      }>
+    }
+    const reviewItem = stateBefore.reviewSections.expenseNeedsReview[0]
+    const sourceDocumentId = String(reviewItem?.sourceDocumentIds?.[0] || '')
+    const sourceExtractionBefore = stateBefore.documentExtractions?.find((entry) => entry.sourceDocumentId === sourceDocumentId)
+
+    expect(reviewItem?.id).toBeTruthy()
+    expect(sourceDocumentId).toBeTruthy()
+
+    await rendered.openExpenseReviewDocumentPreview(String(reviewItem.id))
+
+    expect(rendered.documentPreviewContent.innerHTML).toContain('Upravit údaje dokladu')
+    expect(rendered.documentPreviewContent.innerHTML).toContain('automaticky')
+    expect(rendered.getDocumentPreviewOverrideFieldValue('supplierName')).toBe(
+      String(sourceExtractionBefore?.autoValues?.supplierName || '')
+    )
+
+    rendered.setDocumentPreviewOverrideField('supplierName', 'Manual Supplier s.r.o.')
+    rendered.setDocumentPreviewOverrideField('supplierIco', '12345678')
+    rendered.setDocumentPreviewOverrideField('taxableDate', '2026-03-18')
+    rendered.setDocumentPreviewOverrideField('vatRate', '21 %')
+    rendered.setDocumentPreviewOverrideField('operatorNote', 'Doplněno ručně z náhledu dokladu.')
+    await rendered.saveDocumentPreviewOverride()
+
+    const stateAfter = rendered.getLastVisibleRuntimeState() as {
+      manualDocumentOverrides?: Array<{
+        sourceDocumentId: string
+        values: {
+          supplierName?: string
+          supplierIco?: string
+          taxableDate?: string
+          vatRate?: string
+          operatorNote?: string
+        }
+      }>
+      documentExtractions?: Array<{
+        sourceDocumentId: string
+        manualOverrideValues?: { supplierName?: string }
+        effectiveValues?: {
+          supplierName?: string
+          supplierIco?: string
+          taxableDate?: string
+          vatRate?: string
+          operatorNote?: string
+        }
+        fieldStates?: Record<string, string>
+        rawAutoData?: unknown
+      }>
+      reviewSections: {
+        expenseNeedsReview: Array<{
+          id: string
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              supplierIco?: string
+              taxableDate?: string
+              vatRate?: string
+              operatorNote?: string
+            }
+          }
+        }>
+      }
+    }
+    const updatedReviewItem = stateAfter.reviewSections.expenseNeedsReview.find((item) => item.id === reviewItem.id)
+    const extractionAfter = stateAfter.documentExtractions?.find((entry) => entry.sourceDocumentId === sourceDocumentId)
+
+    expect(updatedReviewItem?.expenseComparison?.document).toMatchObject({
+      supplierOrCounterparty: 'Manual Supplier s.r.o.',
+      supplierIco: '12345678',
+      taxableDate: '2026-03-18',
+      vatRate: '21 %',
+      operatorNote: 'Doplněno ručně z náhledu dokladu.'
+    })
+    expect(stateAfter.manualDocumentOverrides).toEqual([
+      expect.objectContaining({
+        sourceDocumentId,
+        values: expect.objectContaining({
+          supplierName: 'Manual Supplier s.r.o.',
+          supplierIco: '12345678',
+          taxableDate: '2026-03-18',
+          vatRate: '21 %',
+          operatorNote: 'Doplněno ručně z náhledu dokladu.'
+        })
+      })
+    ])
+    expect(extractionAfter).toMatchObject({
+      manualOverrideValues: expect.objectContaining({
+        supplierName: 'Manual Supplier s.r.o.'
+      }),
+      effectiveValues: expect.objectContaining({
+        supplierName: 'Manual Supplier s.r.o.',
+        supplierIco: '12345678',
+        taxableDate: '2026-03-18',
+        vatRate: '21 %',
+        operatorNote: 'Doplněno ručně z náhledu dokladu.'
+      }),
+      fieldStates: expect.objectContaining({
+        supplierName: 'manual-edited',
+        supplierIco: 'manual-added'
+      })
+    })
+    expect(extractionAfter?.rawAutoData).toBeTruthy()
+    expect(rendered.documentPreviewContent.innerHTML).toContain('ručně upraveno')
+    expect(rendered.documentPreviewContent.innerHTML).toContain('ručně doplněno')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Manual Supplier s.r.o.')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('Dodavatel (ručně upraveno)')
+    expect(rendered.expenseReviewContent.innerHTML).toContain('IČO (ručně doplněno)')
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const debugArtifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      payload?: {
+        manualDocumentOverrides?: Array<{
+          sourceDocumentId: string
+          values: { supplierName?: string }
+        }>
+        documentExtractions?: Array<{
+          sourceDocumentId: string
+          rawAutoData?: unknown
+          effectiveValues?: { supplierName?: string }
+        }>
+      }
+    }
+
+    expect(debugArtifact.payload?.manualDocumentOverrides).toEqual([
+      expect.objectContaining({
+        sourceDocumentId,
+        values: expect.objectContaining({ supplierName: 'Manual Supplier s.r.o.' })
+      })
+    ])
+    expect(debugArtifact.payload?.documentExtractions).toContainEqual(expect.objectContaining({
+      sourceDocumentId,
+      rawAutoData: expect.anything(),
+      effectiveValues: expect.objectContaining({ supplierName: 'Manual Supplier s.r.o.' })
+    }))
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    reloaded.openExpenseReviewPage()
+
+    const restoredState = reloaded.getLastVisibleRuntimeState() as {
+      reviewSections: {
+        expenseNeedsReview: Array<{
+          id: string
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              supplierIco?: string
+              taxableDate?: string
+              vatRate?: string
+              operatorNote?: string
+            }
+          }
+        }>
+      }
+    }
+    const restoredItem = restoredState.reviewSections.expenseNeedsReview.find((item) => item.id === reviewItem.id)
+
+    expect(restoredItem?.expenseComparison?.document).toMatchObject({
+      supplierOrCounterparty: 'Manual Supplier s.r.o.',
+      supplierIco: '12345678',
+      taxableDate: '2026-03-18',
+      vatRate: '21 %',
+      operatorNote: 'Doplněno ručně z náhledu dokladu.'
+    })
+
+    await reloaded.openExpenseReviewDocumentPreview(String(reviewItem.id))
+
+    expect(reloaded.getDocumentPreviewOverrideFieldValue('supplierName')).toBe('Manual Supplier s.r.o.')
+    expect(reloaded.getDocumentPreviewOverrideFieldValue('supplierIco')).toBe('12345678')
+    expect(reloaded.getDocumentPreviewOverrideFieldValue('taxableDate')).toBe('2026-03-18')
+    expect(reloaded.getDocumentPreviewOverrideFieldValue('vatRate')).toBe('21 %')
+    expect(reloaded.getDocumentPreviewOverrideFieldValue('operatorNote')).toBe('Doplněno ručně z náhledu dokladu.')
+  })
+
   it('offers print only for previewable expense documents and uses the browser print flow', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-03T20:30:00.000Z',
@@ -8438,6 +8637,9 @@ async function executeWebDemoMainWorkflow(input: {
   openExpenseReviewDocumentPreview: (reviewItemId: string) => Promise<void>
   printExpenseReviewDocument: (reviewItemId: string) => Promise<void>
   printCurrentDocumentPreview: () => Promise<void>
+  setDocumentPreviewOverrideField: (fieldKey: string, value: string) => void
+  getDocumentPreviewOverrideFieldValue: (fieldKey: string) => string
+  saveDocumentPreviewOverride: () => Promise<void>
   selectManualMatchItem: (pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) => void
   openManualMatchConfirm: (pageKey: 'control' | 'expense') => void
   confirmManualMatchGroup: (pageKey: 'control' | 'expense', note?: string) => void
@@ -8922,6 +9124,17 @@ async function executeWebDemoMainWorkflow(input: {
       elements['document-preview-print-button'].listeners.click()
       await new Promise((resolve) => setTimeout(resolve, 0))
     },
+    setDocumentPreviewOverrideField(fieldKey: string, value: string) {
+      elements[buildManualDocumentOverrideFieldElementId(fieldKey)].value = value
+    },
+    getDocumentPreviewOverrideFieldValue(fieldKey: string) {
+      return String(elements[buildManualDocumentOverrideFieldElementId(fieldKey)]?.value || '')
+    },
+    async saveDocumentPreviewOverride() {
+      elements[buildManualDocumentOverrideActionElementId('save')].listeners.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await awaitLastWorkspacePersistence()
+    },
     selectManualMatchItem(pageKey: 'control' | 'expense', bucketKey: string, reviewItemId: string) {
       const element = getRenderedManualMatchSelectionControl(pageKey, bucketKey, reviewItemId)
 
@@ -9286,6 +9499,14 @@ function buildWorkspaceFilePreviewActionElementId(workspaceFileId: string): stri
 
 function buildExpenseDocumentActionElementId(action: 'preview' | 'print', reviewItemId: string): string {
   return `expense-document-${action}-${encodeURIComponent(reviewItemId).replace(/%/g, '_')}`
+}
+
+function buildManualDocumentOverrideFieldElementId(fieldKey: string): string {
+  return `document-override-field-${encodeURIComponent(fieldKey).replace(/%/g, '_')}`
+}
+
+function buildManualDocumentOverrideActionElementId(action: string): string {
+  return `document-override-action-${encodeURIComponent(action).replace(/%/g, '_')}`
 }
 
 function createManualMatchPayoutWorkflowFiles() {

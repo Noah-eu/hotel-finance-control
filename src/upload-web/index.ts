@@ -72,6 +72,62 @@ export interface UploadWebFlowResult {
   outputPath?: string
 }
 
+export type ManualDocumentOverrideFieldKey =
+  | 'supplierName'
+  | 'supplierIco'
+  | 'supplierDic'
+  | 'documentNumber'
+  | 'issueDate'
+  | 'taxableDate'
+  | 'currency'
+  | 'totalAmountMinor'
+  | 'vatBaseAmountMinor'
+  | 'vatAmountMinor'
+  | 'vatRate'
+  | 'paymentMethod'
+  | 'operatorNote'
+
+export interface ManualDocumentOverrideValues {
+  supplierName?: string
+  supplierIco?: string
+  supplierDic?: string
+  documentNumber?: string
+  issueDate?: string
+  taxableDate?: string
+  currency?: string
+  totalAmountMinor?: number
+  vatBaseAmountMinor?: number
+  vatAmountMinor?: number
+  vatRate?: string
+  paymentMethod?: string
+  operatorNote?: string
+}
+
+export interface ManualDocumentOverride {
+  sourceDocumentId: string
+  documentId?: string
+  updatedAt: string
+  values: ManualDocumentOverrideValues
+}
+
+export interface BrowserDocumentExtractionEntry {
+  sourceDocumentId: string
+  documentId?: string
+  fileName: string
+  sourceSystem: string
+  documentType: string
+  autoValues: ManualDocumentOverrideValues
+  rawAutoData: {
+    extractedRecordId?: string
+    rawReference?: string
+    occurredAt?: string
+    amountMinor?: number
+    currency?: string
+    extractedRecordData?: Record<string, unknown>
+    documentExtractionSummary?: DeterministicDocumentExtractionSummary
+  }
+}
+
 export interface BrowserRuntimeUploadState {
   generatedAt: string
   runId: string
@@ -485,6 +541,8 @@ export interface BrowserRuntimeUploadState {
     accountLabelCs: string
     parserDebugLabel?: string
   }>
+  documentExtractions: BrowserDocumentExtractionEntry[]
+  manualDocumentOverrides: ManualDocumentOverride[]
   supportedExpenseLinks: Array<{
     expenseTransactionId: string
     supportTransactionId: string
