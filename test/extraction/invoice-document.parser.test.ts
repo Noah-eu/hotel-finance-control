@@ -560,7 +560,7 @@ describe('parseInvoiceDocument', () => {
       footerAmountWinnerReason: 'selected-reconstructed-footer-candidate',
       winningAmountSource: 'vendor-profile-anchored-final-total',
       footerAmountCandidatesRaw: expect.arrayContaining([
-        expect.stringContaining('Karta VISA PIN OK Prodej 3 782 ,50')
+        expect.stringContaining('Karta VISA PIN OK Prodej 3 782,50')
       ]),
       footerAmountCandidatesNormalized: expect.arrayContaining([
         expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
@@ -627,7 +627,7 @@ describe('parseInvoiceDocument', () => {
     expect(summary.receiptParsingDebug?.winningAmountSource).toBe('vendor-profile-anchored-final-total')
     expect(summary.receiptParsingDebug?.footerAmountCandidatesRaw).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Ce1kem EUR 15,52 CZ K 388 ,70')
+        expect.stringContaining('Ce1kem EUR 15,52 CZK 388,70')
       ])
     )
     expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
@@ -663,6 +663,106 @@ describe('parseInvoiceDocument', () => {
         expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
       ])
     })
+  })
+
+  it('real-browser-ocr tesco footer extracts 3 782,50 CZK from heavily fragmented browser lines', () => {
+    const content = [
+      'TESCO Praha Eden',
+      'Banány',
+      '44,00',
+      'Datum',
+      'prodeje',
+      '10.04.2026',
+      '19:12:45',
+      'Ka',
+      'rta',
+      'VI',
+      'SA',
+      'PI',
+      'N',
+      'OK',
+      'Pro',
+      'dej',
+      '3',
+      '782',
+      ',50'
+    ].join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-real-browser-ocr-tesco' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'ScanTesco.PDF',
+        uploadedAt: '2026-04-12T13:10:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T13:15:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.amountMinor).toBe(378250)
+    expect(records[0]?.currency).toBe('CZK')
+    expect(summary.totalAmountMinor).toBe(378250)
+    expect(summary.totalCurrency).toBe('CZK')
+    expect(summary.receiptParsingDebug?.winningAmountSource).toBe('vendor-profile-anchored-final-total')
+    expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: '3 782,50 CZK', amountMinor: 378250 })
+      ])
+    )
+  })
+
+  it('real-browser-ocr dm footer extracts 388,70 CZK from heavily fragmented browser lines', () => {
+    const content = [
+      'dm drogerie markt s.r.o.',
+      'Sprchový',
+      'gel',
+      '46,00',
+      'Datum',
+      '04.04.2026',
+      '12:26:03',
+      'Ce',
+      '1k',
+      'em',
+      'EU',
+      'R',
+      '15,52',
+      'CZ',
+      'K',
+      '388',
+      ',70',
+      'V1',
+      'SA',
+      'D',
+      'PH'
+    ].join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-real-browser-ocr-dm' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'ScanDMPDF',
+        uploadedAt: '2026-04-12T13:20:00.000Z'
+      },
+      content,
+      extractedAt: '2026-04-12T13:25:00.000Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]?.amountMinor).toBe(38870)
+    expect(records[0]?.currency).toBe('CZK')
+    expect(summary.totalAmountMinor).toBe(38870)
+    expect(summary.totalCurrency).toBe('CZK')
+    expect(summary.receiptParsingDebug?.winningAmountSource).toBe('vendor-profile-anchored-final-total')
+    expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: '388,70 CZK', amountMinor: 38870 })
+      ])
+    )
   })
 
   it('does not let Tesco item-line 117,80 become the final total when no footer window total exists', () => {

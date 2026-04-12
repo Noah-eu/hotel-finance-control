@@ -5977,6 +5977,86 @@ describe('buildWebDemo', () => {
     expect(dmPreviewState.sourceDocumentId).not.toBe(tescoPreviewState.sourceDocumentId)
   })
 
+  it('real-browser-ocr keeps Tesco and dm totals visible in browser expense review and after workspace reload', async () => {
+    const storageState = new Map<string, string>()
+    const workspacePersistenceState = new Map<string, string>()
+
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T14:20:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-real-browser-ocr-receipts',
+      locationSearch: '?debug=1',
+      storageState,
+      workspacePersistenceState,
+      files: createReceiptRealBrowserOcrWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        fileName: string
+        autoValues?: {
+          totalAmountMinor?: number
+          currency?: string
+        }
+        rawAutoData?: {
+          documentExtractionSummary?: {
+            totalAmountMinor?: number
+            totalCurrency?: string
+          }
+        }
+      }>
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              amount?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const tescoItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.expenseComparison?.document?.supplierOrCounterparty === 'TESCO Praha Eden'
+    )
+    const dmItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.expenseComparison?.document?.supplierOrCounterparty === 'dm drogerie markt s.r.o.'
+    )
+    const tescoExtraction = state.documentExtractions.find((entry) => entry.fileName === 'ScanTesco.PDF')
+    const dmExtraction = state.documentExtractions.find((entry) => entry.fileName === 'ScanDMPDF')
+
+    expect(String(tescoItem?.expenseComparison?.document?.amount || '').replace(/\u00a0/g, ' ')).toBe('3 782,50 CZK')
+    expect(String(dmItem?.expenseComparison?.document?.amount || '').replace(/\u00a0/g, ' ')).toBe('388,70 CZK')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('3 782,50 CZK')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
+    expect(tescoExtraction?.autoValues).toMatchObject({
+      totalAmountMinor: 378250,
+      currency: 'CZK'
+    })
+    expect(dmExtraction?.autoValues).toMatchObject({
+      totalAmountMinor: 38870,
+      currency: 'CZK'
+    })
+    expect(tescoExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
+      totalAmountMinor: 378250,
+      totalCurrency: 'CZK'
+    })
+    expect(dmExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
+      totalAmountMinor: 38870,
+      totalCurrency: 'CZK'
+    })
+
+    const reloaded = await rendered.reloadWithSameStorage()
+    await reloaded.waitForInitialRestore()
+    reloaded.openExpenseReviewPage()
+
+    expect(reloaded.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('3 782,50 CZK')
+    expect(reloaded.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
+  })
+
   it('saves manual document overrides from the preview and reuses them in expense review, restore, and debug export', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-12T09:10:00.000Z',
@@ -9648,6 +9728,55 @@ function createReceiptPreviewCollisionWorkflowFiles() {
       'VISA CZK 388,70',
       'ICO 26969605',
       'DIC CZ26969605'
+    ])
+  ]
+}
+
+function createReceiptRealBrowserOcrWorkflowFiles() {
+  return [
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('ScanTesco.PDF', [
+      'TESCO Praha Eden',
+      'Banány',
+      '44,00',
+      'Datum',
+      'prodeje',
+      '10.04.2026',
+      '19:12:45',
+      'Ka',
+      'rta',
+      'VI',
+      'SA',
+      'PI',
+      'N',
+      'OK',
+      'Pro',
+      'dej',
+      '3',
+      '782',
+      ',50'
+    ]),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('ScanDMPDF', [
+      'dm drogerie markt s.r.o.',
+      'Sprchový',
+      'gel',
+      '46,00',
+      'Datum',
+      '04.04.2026',
+      '12:26:03',
+      'Ce',
+      '1k',
+      'em',
+      'EU',
+      'R',
+      '15,52',
+      'CZ',
+      'K',
+      '388',
+      ',70',
+      'V1',
+      'SA',
+      'D',
+      'PH'
     ])
   ]
 }

@@ -1224,7 +1224,7 @@ function buildReceiptFooterWindow(lines: string[]): {
 
 function reconstructReceiptOcrLineClusters(lines: string[]): string[] {
   return collectReceiptReconstructedWindows(lines, {
-    maxWindowSize: 5,
+    maxWindowSize: 8,
     accept(window, joinedLine) {
       return window.every((line) => isMergeableReceiptClusterLine(line))
         && (
@@ -1247,15 +1247,15 @@ function reconstructReceiptOcrLineClusters(lines: string[]): string[] {
     const windows: string[] = []
 
     for (let startIndex = 0; startIndex < lines.length; startIndex += 1) {
-      for (let windowSize = 2; windowSize <= 8; windowSize += 1) {
+      for (let windowSize = 2; windowSize <= 12; windowSize += 1) {
         const window = lines.slice(startIndex, startIndex + windowSize)
 
         if (window.length !== windowSize || !window.every((line) => isMergeableReceiptClusterLine(line))) {
           continue
         }
 
-        const joinedLine = normalizeReceiptVendorLine(window.join(' '))
-        if (!joinedLine || joinedLine.length > 144) {
+        const joinedLine = normalizeReceiptFooterAmountLine(window.join(' '))
+        if (!joinedLine || joinedLine.length > 180) {
           continue
         }
 
@@ -1348,27 +1348,28 @@ function collectReceiptFooterAnchorDiagnostics(lines: string[]): {
   rejectedLines: string[]
   normalizationSteps: string[]
 } {
-  const evaluationStartIndex = Math.max(0, lines.length - 14)
+  const evaluationStartIndex = Math.max(0, lines.length - 24)
   const accepted = new Set<number>()
   const rejected = new Set<string>()
   let strongMatches = 0
   let weakMatches = 0
 
   for (let startIndex = evaluationStartIndex; startIndex < lines.length; startIndex += 1) {
-    for (let windowSize = 1; windowSize <= 4; windowSize += 1) {
+    for (let windowSize = 1; windowSize <= 12; windowSize += 1) {
       const window = lines.slice(startIndex, startIndex + windowSize)
 
       if (window.length !== windowSize) {
         continue
       }
 
-      const joinedLine = normalizeReceiptVendorLine(window.join(' '))
+      const joinedLine = normalizeReceiptFooterAmountLine(window.join(' '))
       if (!joinedLine) {
         continue
       }
 
       const anchorScore = scoreReceiptFooterAnchorCandidate(joinedLine)
       const nearBottom = startIndex >= Math.max(0, lines.length - 10)
+      const hasNormalizedAmount = containsReceiptNumericAmount(joinedLine)
 
       if (anchorScore >= 4 || (anchorScore >= 3 && nearBottom)) {
         accepted.add(startIndex)
@@ -1376,7 +1377,7 @@ function collectReceiptFooterAnchorDiagnostics(lines: string[]): {
         continue
       }
 
-      if (anchorScore >= 2 && nearBottom) {
+      if ((anchorScore >= 2 && nearBottom) || (anchorScore >= 1 && nearBottom && hasNormalizedAmount && hasAnyReceiptFooterSignal(joinedLine))) {
         accepted.add(startIndex)
         weakMatches += 1
         continue

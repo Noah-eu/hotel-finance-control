@@ -3534,6 +3534,84 @@ describe('buildUploadWebFlow', () => {
     })
   })
 
+  it('real-browser-ocr tesco and dm footer totals stay correct on the browser upload path', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines('ScanTesco.PDF', [
+          'TESCO Praha Eden',
+          'Banány',
+          '44,00',
+          'Datum',
+          'prodeje',
+          '10.04.2026',
+          '19:12:45',
+          'Ka',
+          'rta',
+          'VI',
+          'SA',
+          'PI',
+          'N',
+          'OK',
+          'Pro',
+          'dej',
+          '3',
+          '782',
+          ',50'
+        ]),
+        createRuntimePdfFileFromToUnicodeTextLines('ScanDMPDF', [
+          'dm drogerie markt s.r.o.',
+          'Sprchový',
+          'gel',
+          '46,00',
+          'Datum',
+          '04.04.2026',
+          '12:26:03',
+          'Ce',
+          '1k',
+          'em',
+          'EU',
+          'R',
+          '15,52',
+          'CZ',
+          'K',
+          '388',
+          ',70',
+          'V1',
+          'SA',
+          'D',
+          'PH'
+        ])
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-12T13:30:00.000Z'
+    })
+
+    expect(result.runtimeAudit.fileIntakeDiagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: 'ScanTesco.PDF',
+          documentExtractionSummary: expect.objectContaining({
+            totalAmountMinor: 378250,
+            totalCurrency: 'CZK',
+            receiptParsingDebug: expect.objectContaining({
+              winningAmountSource: 'vendor-profile-anchored-final-total'
+            })
+          })
+        }),
+        expect.objectContaining({
+          fileName: 'ScanDMPDF',
+          documentExtractionSummary: expect.objectContaining({
+            totalAmountMinor: 38870,
+            totalCurrency: 'CZK',
+            receiptParsingDebug: expect.objectContaining({
+              winningAmountSource: 'vendor-profile-anchored-final-total'
+            })
+          })
+        })
+      ])
+    )
+  })
+
   it('keeps handwritten key-related receipt-like PDFs in the receipt path as partial records instead of unsupported files', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
