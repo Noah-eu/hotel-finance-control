@@ -315,13 +315,16 @@ function buildDocumentExtractionEntries(
         record.sourceDocumentId === file.sourceDocument.id
         && (record.recordType === 'invoice-document' || record.recordType === 'receipt-document')
       )
+      const extractedDocumentId = extractedRecord?.id
+        ? buildBrowserDocumentIdentity(file.sourceDocument.id, extractedRecord.id)
+        : undefined
       const data = extractedRecord?.data as Record<string, unknown> | undefined
       const summary = route?.parseDiagnostics?.documentExtractionSummary
       const autoValues = buildAutoDocumentValues(extractedRecord, summary)
 
       return {
         sourceDocumentId: file.sourceDocument.id,
-        ...(extractedRecord?.id ? { documentId: extractedRecord.id } : {}),
+        ...(extractedDocumentId ? { documentId: extractedDocumentId } : {}),
         fileName: file.sourceDocument.fileName,
         sourceSystem: file.sourceDocument.sourceSystem,
         documentType: file.sourceDocument.documentType,
@@ -337,6 +340,10 @@ function buildDocumentExtractionEntries(
         }
       }
     })
+
+  function buildBrowserDocumentIdentity(sourceDocumentId: string, extractedRecordId: string): string {
+    return `${sourceDocumentId}:${extractedRecordId}`
+  }
 }
 
 function buildAutoDocumentValues(

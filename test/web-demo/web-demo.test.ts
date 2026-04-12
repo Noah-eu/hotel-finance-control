@@ -5899,6 +5899,13 @@ describe('buildWebDemo', () => {
     rendered.openExpenseReviewPage()
 
     const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        sourceDocumentId: string
+        documentId?: string
+        rawAutoData?: {
+          extractedRecordId?: string
+        }
+      }>
       reviewSections: {
         expenseUnmatchedDocuments: Array<{
           id: string
@@ -5924,6 +5931,15 @@ describe('buildWebDemo', () => {
     expect(tescoItem?.id).not.toBe(dmItem?.id)
     expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('3 782,50 Kč')
     expect(rendered.expenseUnmatchedDocumentsContent.innerHTML).toContain('388,70 Kč')
+
+    const tescoDocumentExtraction = state.documentExtractions.find((entry) => entry.sourceDocumentId === String(tescoItem?.sourceDocumentIds[0] || ''))
+    const dmDocumentExtraction = state.documentExtractions.find((entry) => entry.sourceDocumentId === String(dmItem?.sourceDocumentIds[0] || ''))
+
+    expect(tescoDocumentExtraction?.documentId).toBeTruthy()
+    expect(dmDocumentExtraction?.documentId).toBeTruthy()
+    expect(tescoDocumentExtraction?.documentId).not.toBe(dmDocumentExtraction?.documentId)
+    expect(tescoDocumentExtraction?.rawAutoData?.extractedRecordId).toBe('receipt-record-1')
+    expect(dmDocumentExtraction?.rawAutoData?.extractedRecordId).toBe('receipt-record-1')
 
     await rendered.openExpenseReviewDocumentPreview(String(tescoItem?.id))
 
@@ -9617,14 +9633,16 @@ function createReceiptPreviewCollisionWorkflowFiles() {
     createWebDemoRuntimePdfFileFromToUnicodeTextLines('scantesco-pdf.pdf', [
       'TESCO Praha Eden',
       'Účtenka č. TESCO-20260410-01',
-      'Datum prodeje 10.04.2026 18:41',
+      'Banány 44,00',
+      'Datum prodeje 10.04.2026 18:41:22',
       'Mezisoučet celkem 6 000,00 CZK',
-      'Celkem 3 782,50 CZK',
-      'Platba karta 3 782,50 CZK'
+      'Celkem 3 782,50',
+      'Platební karta 3 782,50'
     ]),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines('scandmpdf.pdf', [
       'dm drogerie markt s.r.o.',
-      'Datum 11.04.2026 09:18',
+      'Sprchový gel 46,00',
+      'Datum 04.04.2026 12:26:03',
       'Celkem body 39 581,00 CZK',
       'Celkem EUR 15,52 CZK 388,70',
       'VISA CZK 388,70',

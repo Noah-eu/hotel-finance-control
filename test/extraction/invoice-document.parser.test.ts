@@ -266,9 +266,10 @@ describe('parseInvoiceDocument', () => {
         'TESCO Praha Eden',
         'Účtenka č. TESCO-20260410-01',
         'Datum prodeje 10.04.2026 18:41',
+        'Jablka clubcard 44,00',
         'Mezisoučet celkem 6 000,00 CZK',
         'Celkem 3 782,50 CZK',
-        'Platba karta 3 782,50 CZK',
+        'Platební karta 3 782,50',
         '',
         'Potraviny U Nádraží',
         'Doklad č. POTR-20260410-02',
@@ -300,6 +301,39 @@ describe('parseInvoiceDocument', () => {
     })
   })
 
+  it('keeps Tesco final paid card total over small item-line amounts on single receipts', () => {
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: 'doc-receipt-tesco-single-final-payment' as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: 'tesco-single.pdf',
+        uploadedAt: '2026-04-10T19:00:00.000Z'
+      },
+      content: [
+        'TESCO Praha Eden',
+        'Účtenka č. TESCO-20260410-03',
+        'Banány 44,00',
+        'Clubcard úspora 11,00',
+        'Datum prodeje 10.04.2026 19:12:45',
+        'CELKEM 3 782,50',
+        'Platební karta 3 782,50'
+      ].join('\n'),
+      extractedAt: '2026-04-10T19:15:00.000Z'
+    })
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: 378250,
+      occurredAt: '2026-04-10',
+      data: expect.objectContaining({
+        merchant: 'TESCO Praha Eden',
+        vendorProfile: 'tesco',
+        paymentMethod: 'Platba kartou'
+      })
+    })
+  })
+
   it('extracts dm thermal receipt fields with CZK total preference over EUR totals', () => {
     const records = parseReceiptDocument({
       sourceDocument: {
@@ -311,7 +345,8 @@ describe('parseInvoiceDocument', () => {
       },
       content: [
         'dm drogerie markt s.r.o.',
-        'Datum 04.04.2026 13:22',
+        'Sprchový gel 46,00',
+        'Datum 04.04.2026 12:26:03',
         'Celkem body 39 581,00 CZK',
         'Celkem EUR 15,52 CZK 388,70',
         'VISA CZK 388,70',

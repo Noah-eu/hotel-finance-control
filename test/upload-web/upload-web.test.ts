@@ -3273,7 +3273,8 @@ describe('buildUploadWebFlow', () => {
       files: [
         createRuntimePdfFileFromToUnicodeTextLines('dm-thermal.pdf', [
           'dm drogerie markt s.r.o.',
-          'Datum 04.04.2026 13:22',
+          'Sprchový gel 46,00',
+          'Datum 04.04.2026 12:26:03',
           'Celkem EUR 15,52 CZK 388,70',
           'VISA CZK 388,70',
           'ICO 26969605',
@@ -3363,8 +3364,9 @@ describe('buildUploadWebFlow', () => {
           'TESCO Praha Eden',
           'Účtenka č. TESCO-20260329-01',
           'Datum 29.03.2026 10:15',
+          'Rajčata 44,00',
           'Celkem 3 254,30 CZK',
-          'Platba karta',
+          'Platební karta 3 254,30',
           '',
           'Potraviny U Nádraží',
           'Doklad č. POTR-20260329-77',
