@@ -41,6 +41,7 @@ export type InspectInvoiceDocumentExtractionSummaryInput =
   | {
     content: string
     binaryContentBase64?: string
+    ocrOrVisionFallback?: ParseInvoiceDocumentInput['ocrOrVisionFallback']
   }
 
 type InvoiceSummaryFieldKey =
@@ -398,10 +399,11 @@ export function parseInvoiceDocument(input: ParseInvoiceDocumentInput): Extracte
 export function inspectInvoiceDocumentExtractionSummary(
   input: InspectInvoiceDocumentExtractionSummaryInput
 ): DeterministicDocumentExtractionSummary {
-  const extraction = extractInvoiceDocumentDetails(normalizeInvoiceInspectionInput(input))
+  const normalizedInput = normalizeInvoiceInspectionInput(input)
+  const extraction = extractInvoiceDocumentDetails(normalizedInput)
   return buildInvoiceDocumentExtractionSummary(
     extraction,
-    normalizeInvoiceInspectionInput(input).binaryContentBase64
+    normalizedInput.binaryContentBase64
   )
 }
 
@@ -413,7 +415,7 @@ export function detectInvoiceDocumentKeywordHits(content: string): string[] {
 
 function normalizeInvoiceInspectionInput(
   input: InspectInvoiceDocumentExtractionSummaryInput
-): { content: string; binaryContentBase64?: string } {
+): { content: string; binaryContentBase64?: string; ocrOrVisionFallback?: ParseInvoiceDocumentInput['ocrOrVisionFallback'] } {
   return typeof input === 'string'
     ? { content: input }
     : input
@@ -676,6 +678,7 @@ function buildInvoiceScanFallbackTrace(input: {
 function extractInvoiceDocumentDetails(input: {
   content: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: ParseInvoiceDocumentInput['ocrOrVisionFallback']
 }): InvoiceDocumentExtractionDetails {
   const content = input.content
   const fields = parseLabeledDocumentText(content)
@@ -764,7 +767,7 @@ function extractInvoiceDocumentDetails(input: {
   }
   const qrExtraction = extractInvoiceQrExtraction(content, input.binaryContentBase64)
   const qrMergedFields = mergeInvoiceTextAndQrFields(bookingEnrichedTextFields, qrExtraction)
-  const ocrExtraction = extractInvoiceOcrExtraction(content, input.binaryContentBase64)
+  const ocrExtraction = extractInvoiceOcrExtraction(content, input.binaryContentBase64, input.ocrOrVisionFallback)
   const mergedFields = mergeInvoiceFieldsAndOcr(
     qrMergedFields.fields,
     qrMergedFields.fieldProvenance,
@@ -1779,11 +1782,16 @@ function extractInvoiceQrExtraction(content: string, binaryContentBase64?: strin
   }
 }
 
-function extractInvoiceOcrExtraction(content: string, binaryContentBase64?: string): InvoiceOcrExtractionResult {
+function extractInvoiceOcrExtraction(
+  content: string,
+  binaryContentBase64?: string,
+  prefetchedFallback?: ParseInvoiceDocumentInput['ocrOrVisionFallback']
+): InvoiceOcrExtractionResult {
   const extraction = extractDocumentOcrOrVisionFallback({
     content,
     binaryContentBase64,
-    documentKind: 'invoice'
+    documentKind: 'invoice',
+    prefetchedFallback
   })
 
   return {

@@ -2,6 +2,7 @@ import type {
   DeterministicDocumentFieldConfidence,
   DeterministicDocumentFieldProvenance,
   DeterministicDocumentFinalStatus,
+  DeterministicDocumentOcrOrVisionFallbackPayload,
   DeterministicDocumentOcrParsedFields
 } from '../contracts'
 
@@ -69,7 +70,17 @@ export function extractDocumentOcrOrVisionFallback(input: {
   content: string
   binaryContentBase64?: string
   documentKind: 'invoice' | 'receipt'
+  prefetchedFallback?: DeterministicDocumentOcrOrVisionFallbackPayload
 }): DocumentOcrOrVisionFallbackResult {
+  if (input.prefetchedFallback?.parsedFields) {
+    return {
+      detected: true,
+      adapter: input.prefetchedFallback.adapter,
+      rawPayload: input.prefetchedFallback.rawPayload,
+      parsedFields: input.prefetchedFallback.parsedFields
+    }
+  }
+
   const sources = [
     input.content,
     input.binaryContentBase64 ? decodeBase64ToLatin1(input.binaryContentBase64) : undefined

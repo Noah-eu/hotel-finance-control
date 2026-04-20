@@ -44,6 +44,7 @@ export type InspectReceiptDocumentExtractionSummaryInput =
   | {
     content: string
     binaryContentBase64?: string
+    ocrOrVisionFallback?: ParseReceiptDocumentInput['ocrOrVisionFallback']
   }
 
 interface ReceiptExtractedFields {
@@ -95,7 +96,8 @@ export class ReceiptDocumentParser {
       const segmentBinaryContentBase64 = segmentation.segments.length === 1 ? input.binaryContentBase64 : undefined
       const extraction = extractReceiptDocumentFields({
         content: segment.content,
-        binaryContentBase64: segmentBinaryContentBase64
+        binaryContentBase64: segmentBinaryContentBase64,
+        ocrOrVisionFallback: segmentation.segments.length === 1 ? input.ocrOrVisionFallback : undefined
       })
       const summary = buildReceiptDocumentExtractionSummary(
         extraction,
@@ -223,7 +225,8 @@ export function inspectReceiptDocumentExtractionSummary(
   const segmentation = splitReceiptContentIntoCandidateSegments(normalizedInput.content)
   const extraction = extractReceiptDocumentFields({
     content: segmentation.segments[0]?.content ?? normalizedInput.content,
-    binaryContentBase64: segmentation.segments.length === 1 ? normalizedInput.binaryContentBase64 : undefined
+    binaryContentBase64: segmentation.segments.length === 1 ? normalizedInput.binaryContentBase64 : undefined,
+    ocrOrVisionFallback: segmentation.segments.length === 1 ? normalizedInput.ocrOrVisionFallback : undefined
   })
 
   return buildReceiptDocumentExtractionSummary(
@@ -239,7 +242,7 @@ export function inspectReceiptDocumentExtractionSummary(
 
 function normalizeReceiptInspectionInput(
   input: InspectReceiptDocumentExtractionSummaryInput
-): { content: string; binaryContentBase64?: string } {
+): { content: string; binaryContentBase64?: string; ocrOrVisionFallback?: ParseReceiptDocumentInput['ocrOrVisionFallback'] } {
   return typeof input === 'string'
     ? { content: input }
     : input
@@ -319,6 +322,7 @@ function buildReceiptDocumentExtractionSummary(
 function extractReceiptDocumentFields(input: {
   content: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: ParseReceiptDocumentInput['ocrOrVisionFallback']
 }): ReceiptExtractionDetails {
   const fields = parseLabeledDocumentText(input.content)
   const labeledTextFields: ReceiptExtractedFields = {
@@ -368,7 +372,8 @@ function extractReceiptDocumentFields(input: {
   const ocrExtraction = extractDocumentOcrOrVisionFallback({
     content: input.content,
     binaryContentBase64: input.binaryContentBase64,
-    documentKind: 'receipt'
+    documentKind: 'receipt',
+    prefetchedFallback: input.ocrOrVisionFallback
   })
   const ocrRawTextHeuristicFields = extractReceiptOcrRawTextFallbackFields(ocrExtraction.parsedFields?.rawText)
   const merged = mergeReceiptTextAndOcrFields(textFields, fieldProvenance, ocrExtraction, ocrRawTextHeuristicFields)

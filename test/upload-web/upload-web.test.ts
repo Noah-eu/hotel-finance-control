@@ -3273,6 +3273,108 @@ describe('buildUploadWebFlow', () => {
     expect(result.fileRoutes.some((file) => file.fileName === 'receipt-handwritten.pdf' && file.status === 'error')).toBe(false)
   })
 
+  it('keeps the exact single-upload Potraviny640 browser path on ocr-required and carries browser fallback payload into extraction', async () => {
+    const files = [
+      createRuntimePdfFile(
+        potraviny640ImageOnlyReceiptFixture.fileName,
+        buildPotraviny640ImageOnlyReceiptPdfBase64()
+      )
+    ]
+
+    const uploadedFiles = await prepareBrowserRuntimeUploadedFilesFromSelectedFiles({
+      files,
+      generatedAt: '2026-04-20T16:00:00.000Z'
+    })
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files,
+      month: '2026-04',
+      generatedAt: '2026-04-20T16:00:00.000Z'
+    })
+
+    const uploadedFile = uploadedFiles[0]
+    const potravinyRoute = result.fileRoutes.find((file) =>
+      file.sourceDocumentId === potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId
+    )
+    const potravinyIntake = result.runtimeAudit.fileIntakeDiagnostics.find((entry) =>
+      entry.sourceDocumentId === potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId
+    )
+    const ocrStage = potravinyIntake?.documentExtractionSummary?.extractionStages?.find((stage) =>
+      stage.stage === 'ocr_or_vision_fallback'
+    )
+    const potravinyExtraction = result.documentExtractions.find((entry) =>
+      entry.sourceDocumentId === potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId
+    )
+
+    expect(uploadedFiles).toHaveLength(1)
+    expect(uploadedFile).toEqual(expect.objectContaining({
+      name: potraviny640ImageOnlyReceiptFixture.fileName,
+      content: '',
+      contentFormat: 'pdf-text',
+      ocrOrVisionFallback: expect.objectContaining({
+        adapter: 'ocr',
+        parsedFields: expect.objectContaining({
+          rawText: potraviny640ImageOnlyReceiptFixture.ocrRawText
+        })
+      }),
+      sourceDescriptor: expect.objectContaining({
+        browserTextExtraction: expect.objectContaining({
+          mode: 'pdf-text',
+          status: 'failed',
+          failureReason: 'text-layer-missing'
+        }),
+        capability: expect.objectContaining({
+          profile: 'pdf_image_only',
+          transportProfile: 'image_pdf',
+          documentHints: expect.arrayContaining(['receipt_like'])
+        })
+      })
+    }))
+    expect(potravinyRoute).toEqual(expect.objectContaining({
+      fileName: potraviny640ImageOnlyReceiptFixture.fileName,
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId,
+      status: 'supported',
+      intakeStatus: 'parsed',
+      sourceSystem: 'receipt',
+      documentType: 'receipt',
+      decision: expect.objectContaining({
+        ingestionBranch: 'ocr-required',
+        resolvedBucket: 'recognized-supported'
+      })
+    }))
+    expect(potravinyIntake).toEqual(expect.objectContaining({
+      fileName: potraviny640ImageOnlyReceiptFixture.fileName,
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId,
+      ingestionBranch: 'ocr-required',
+      parserSupported: true,
+      documentExtractionSummary: expect.objectContaining({
+        issuerOrCounterparty: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        totalCurrency: potraviny640ImageOnlyReceiptFixture.expectedCurrency,
+        ocrDetected: true
+      })
+    }))
+    expect(ocrStage).toEqual(expect.objectContaining({
+      stage: 'ocr_or_vision_fallback',
+      outcome: 'applied',
+      adapter: 'ocr',
+      recoveredFields: expect.arrayContaining(['referenceNumber', 'issuerOrCounterparty', 'paymentDate', 'totalAmount'])
+    }))
+    expect(ocrStage?.notes).not.toContain('no ocr/vision fallback payload detected')
+    expect(potravinyExtraction).toEqual(expect.objectContaining({
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId,
+      autoValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      }),
+      effectiveValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+  })
+
   it('keeps exact image-only Potraviny640 receipt extraction non-empty on the browser upload path', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: createPotraviny640ImageOnlyUploadPathFiles(),

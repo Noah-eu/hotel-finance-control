@@ -8,6 +8,7 @@ export function placeholder() {
 export type {
   DeterministicDocumentFieldExtractionDebug,
   DeterministicDocumentExtractionSummary,
+  DeterministicDocumentOcrOrVisionFallbackPayload,
   DeterministicDocumentParser,
   DeterministicDocumentParserInput,
   DocumentIngestionCapabilities

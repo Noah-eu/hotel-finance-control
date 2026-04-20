@@ -1,6 +1,7 @@
 import type { ExtractedRecord, SourceDocument } from '../domain'
 import {
   type DeterministicDocumentExtractionSummary,
+  type DeterministicDocumentOcrOrVisionFallbackPayload,
   inspectAirbnbPayoutHeaderDiagnostics,
   inspectComgateHeaderDiagnostics,
   detectInvoiceDocumentKeywordHits,
@@ -49,6 +50,7 @@ type Parser = (input: {
   content: string
   extractedAt: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: DeterministicDocumentOcrOrVisionFallbackPayload
 }) => ExtractedRecord[]
 
 interface ParsedImportedMonthlySourceFile {
@@ -198,6 +200,7 @@ export async function ingestUploadedMonthlyFilesProgressively(input: {
       sourceDocument: classifiedFile.sourceDocument,
       content: input.files[index]!.content,
       binaryContentBase64: input.files[index]!.binaryContentBase64,
+      ocrOrVisionFallback: input.files[index]!.ocrOrVisionFallback,
       routing: {
         classificationBasis: classifiedFile.fileRoute.classificationBasis,
         parserId: classifiedFile.parserId,
@@ -319,6 +322,7 @@ export function prepareUploadedMonthlyBatchFiles(
       sourceDocument: classifiedFile.sourceDocument,
       content: files[index].content,
       binaryContentBase64: files[index].binaryContentBase64,
+      ocrOrVisionFallback: files[index].ocrOrVisionFallback,
       routing: {
         classificationBasis: classifiedFile.fileRoute.classificationBasis,
         parserId: classifiedFile.parserId,
@@ -371,7 +375,8 @@ function inspectUploadedFileParseDiagnostics(
   if (file.sourceDocument.sourceSystem === 'invoice') {
     const summary = inspectInvoiceDocumentExtractionSummary({
       content: file.content,
-      binaryContentBase64: file.binaryContentBase64
+      binaryContentBase64: file.binaryContentBase64,
+      ocrOrVisionFallback: file.ocrOrVisionFallback
     })
 
     return {
@@ -408,7 +413,8 @@ function inspectUploadedFileParseDiagnostics(
   if (file.sourceDocument.sourceSystem === 'receipt') {
     const summary = inspectReceiptDocumentExtractionSummary({
       content: file.content,
-      binaryContentBase64: file.binaryContentBase64
+      binaryContentBase64: file.binaryContentBase64,
+      ocrOrVisionFallback: file.ocrOrVisionFallback
     })
 
     return {
@@ -620,7 +626,8 @@ function parseImportedMonthlySourceFile(
     sourceDocument: file.sourceDocument,
     content: file.content,
     extractedAt,
-    binaryContentBase64: file.binaryContentBase64
+    binaryContentBase64: file.binaryContentBase64,
+    ocrOrVisionFallback: file.ocrOrVisionFallback
   })
 
   return {

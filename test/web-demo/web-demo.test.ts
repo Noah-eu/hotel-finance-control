@@ -8378,6 +8378,88 @@ describe('buildWebDemo', () => {
     }))
   })
 
+  it('shows the exact single-upload Potraviny640 browser proof with non-empty debug workspace truth effectiveValues', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-20T16:10:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-potraviny640-single-upload',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimePdfFile(
+          potraviny640ImageOnlyReceiptFixture.fileName,
+          buildPotraviny640ImageOnlyReceiptPdfBase64()
+        )
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        fileName?: string
+        sourceDocumentId: string
+        effectiveValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+      }>
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{
+          title?: string
+          sourceDocumentIds: string[]
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              amount?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const potravinyExtraction = state.documentExtractions.find((entry) =>
+      entry.sourceDocumentId === potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId
+    )
+    const potravinyItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId)
+    )
+
+    expect(potravinyExtraction).toEqual(expect.objectContaining({
+      fileName: potraviny640ImageOnlyReceiptFixture.fileName,
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId,
+      effectiveValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+    expect(potravinyItem).toEqual(expect.objectContaining({
+      title: expect.not.stringContaining('Zatím bez načteného dokladu'),
+      expenseComparison: expect.objectContaining({
+        document: expect.objectContaining({
+          supplierOrCounterparty: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+          amount: potraviny640ImageOnlyReceiptFixture.expectedWebDisplayAmount
+        })
+      })
+    }))
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const debugArtifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      payload?: {
+        documentExtractions?: Array<{
+          sourceDocumentId: string
+          effectiveValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+        }>
+      }
+    }
+
+    expect(debugArtifact.payload?.documentExtractions).toContainEqual(expect.objectContaining({
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSingleUploadSourceDocumentId,
+      effectiveValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+  })
+
   it('shows no-extract diagnostics for a recognized sparse refund invoice PDF that stops before extracted-record emission', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-31T16:30:00.000Z',

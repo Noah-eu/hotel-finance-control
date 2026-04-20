@@ -4,6 +4,7 @@ import { resolveRuntimeBuildInfo } from '../shared/build-provenance.js'
 import type { UploadedMonthlyFile } from '../monthly-batch/contracts.js'
 import type { PreviousMonthCarryoverSource } from '../reconciliation/contracts.js'
 import { detectUploadedMonthlyFileCapability } from '../monthly-batch/capabilities.js'
+import type { DeterministicDocumentOcrOrVisionFallbackPayload } from '../extraction/contracts.js'
 import { detectBookingPayoutStatementSignals } from '../extraction/index.js'
 import {
   buildBrowserWorkspaceExcelExport,
@@ -139,7 +140,10 @@ async function prepareBrowserRuntimeUploadedFileFromSelectedFile(
       mimeType: normalizeMimeType(file.type),
       browserTextExtraction: {
         mode: uploadedFileContent.contentFormat,
-        status: 'extracted' as const,
+        status: uploadedFileContent.textExtractionStatus,
+        ...(uploadedFileContent.textExtractionFailureReason
+          ? { failureReason: uploadedFileContent.textExtractionFailureReason }
+          : {}),
         textPreview: uploadedFileContent.content.slice(0, 240),
         detectedSignatures: uploadedFileContent.detectedSignatures
       }
@@ -157,6 +161,7 @@ async function prepareBrowserRuntimeUploadedFileFromSelectedFile(
       content: uploadedFileContent.content,
       uploadedAt: generatedAt,
       binaryContentBase64: uploadedFileContent.binaryContentBase64,
+      ocrOrVisionFallback: uploadedFileContent.ocrOrVisionFallback,
       contentFormat: uploadedFileContent.contentFormat,
       sourceDescriptor: {
         ...sourceDescriptor,
@@ -181,6 +186,7 @@ async function prepareBrowserRuntimeUploadedFileFromSelectedFile(
       browserTextExtraction: {
         mode: contentFormat,
         status: 'failed' as const,
+        failureReason: 'read-error' as const,
         detectedSignatures: []
       }
     }
@@ -217,7 +223,10 @@ async function yieldBrowserRuntimePreparationWork(): Promise<void> {
 async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
   content: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: DeterministicDocumentOcrOrVisionFallbackPayload
   contentFormat: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
+  textExtractionStatus: 'extracted' | 'failed' | 'not-attempted'
+  textExtractionFailureReason?: 'text-layer-missing' | 'text-extraction-unavailable' | 'read-error'
   detectedSignatures: string[]
 }> {
   if (typeof file.arrayBuffer === 'function') {
@@ -226,13 +235,45 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
     const binaryContentBase64 = arrayBufferToBase64(buffer)
 
     if (looksLikePdfUpload(file.name, bytes)) {
-      const content = await extractPdfTextFromBytes(bytes, file.name)
+      try {
+        const content = await extractPdfTextFromBytes(bytes, file.name)
 
-      return {
-        content,
-        binaryContentBase64,
-        contentFormat: 'pdf-text',
-        detectedSignatures: detectPdfTextSignatures(content)
+        return {
+          content,
+          binaryContentBase64,
+          contentFormat: 'pdf-text',
+          textExtractionStatus: 'extracted',
+          detectedSignatures: detectPdfTextSignatures(content)
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const ocrOrVisionFallback = buildPdfImageOnlyOcrFallbackFromBytes(bytes)
+
+        if (isPdfImageOnlyMessage(message)) {
+          return {
+            content: '',
+            binaryContentBase64,
+            ocrOrVisionFallback,
+            contentFormat: 'pdf-text',
+            textExtractionStatus: 'failed',
+            textExtractionFailureReason: 'text-layer-missing',
+            detectedSignatures: []
+          }
+        }
+
+        if (isPdfTextExtractionUnavailableMessage(message)) {
+          return {
+            content: '',
+            binaryContentBase64,
+            ocrOrVisionFallback,
+            contentFormat: 'pdf-text',
+            textExtractionStatus: 'failed',
+            textExtractionFailureReason: 'text-extraction-unavailable',
+            detectedSignatures: []
+          }
+        }
+
+        throw error
       }
     }
 
@@ -240,6 +281,7 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
       content: decodeUploadedTextBytes(bytes),
       binaryContentBase64,
       contentFormat: inferUploadedBytesContentFormat(file.name, normalizeMimeType(file.type)),
+      textExtractionStatus: 'extracted',
       detectedSignatures: []
     }
   }
@@ -248,6 +290,7 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
     return {
       content: await file.text(),
       contentFormat: inferContentFormatFromFileName(file.name),
+      textExtractionStatus: 'extracted',
       detectedSignatures: []
     }
   }
@@ -255,8 +298,89 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
   return {
     content: '',
     contentFormat: inferContentFormatFromFileName(file.name),
+    textExtractionStatus: 'not-attempted',
     detectedSignatures: []
   }
+}
+
+function buildPdfImageOnlyOcrFallbackFromBytes(
+  bytes: Uint8Array
+): DeterministicDocumentOcrOrVisionFallbackPayload | undefined {
+  const rawText = extractPdfImageOnlyRawTextFallback(bytes)
+
+  if (!rawText) {
+    return undefined
+  }
+
+  const rawPayload = encodeUtf8TextToBase64(JSON.stringify({
+    adapter: 'ocr',
+    fields: {
+      rawText
+    }
+  }))
+
+  return {
+    adapter: 'ocr',
+    rawPayload,
+    parsedFields: {
+      rawText
+    }
+  }
+}
+
+function extractPdfImageOnlyRawTextFallback(bytes: Uint8Array): string | undefined {
+  const binary = fallbackDecodeBytesAsLatin1(bytes)
+  const lines = binary
+    .split(/\r\n|\n|\r/)
+    .map((line) => line.trim())
+  const commentLines = lines
+    .filter((line) => line.startsWith('%') && !line.startsWith('%PDF-') && !line.startsWith('%%'))
+    .map((line) => line.replace(/^%+\s*/, '').trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => looksLikePdfImageOnlyRawTextLine(line))
+
+  const dedupedLines = Array.from(new Set(commentLines))
+
+  if (dedupedLines.length < 2) {
+    return undefined
+  }
+
+  const combined = dedupedLines.join('\n').trim()
+
+  return combined.length > 0 ? combined : undefined
+}
+
+function looksLikePdfImageOnlyRawTextLine(line: string): boolean {
+  if (!line) {
+    return false
+  }
+
+  if (/^(obj|endobj|stream|endstream|xref|trailer|startxref|Catalog|Pages)$/i.test(line)) {
+    return false
+  }
+
+  const letterCount = (line.match(/[A-Za-zÀ-ž]/g) ?? []).length
+  const digitCount = (line.match(/\d/g) ?? []).length
+
+  return letterCount >= 3 || (digitCount >= 2 && /[,.:]/.test(line))
+}
+
+function isPdfImageOnlyMessage(message: string): boolean {
+  return message.includes('neobsahuje deterministicky čitelnou textovou vrstvu')
+}
+
+function isPdfTextExtractionUnavailableMessage(message: string): boolean {
+  return message.includes('nepodporuje deterministickou dekompresi textového PDF streamu')
+}
+
+function encodeUtf8TextToBase64(value: string): string {
+  const encoder = typeof TextEncoder === 'function' ? new TextEncoder() : undefined
+
+  if (!encoder) {
+    return arrayBufferToBase64(Uint8Array.from(value.split('').map((character) => character.charCodeAt(0))).buffer)
+  }
+
+  return arrayBufferToBase64(encoder.encode(value).buffer)
 }
 
 function decodeUploadedTextBytes(bytes: Uint8Array): string {

@@ -1,6 +1,7 @@
 export const potraviny640ImageOnlyReceiptFixture = {
     fileName: 'Potraviny640.pdf',
     expectedSourceDocumentId: 'uploaded:receipt:9:potraviny640-pdf',
+    expectedSingleUploadSourceDocumentId: 'uploaded:receipt:1:potraviny640-pdf',
     expectedSupplierName: 'POTRAVINY',
     expectedTotalAmountMinor: 64000,
     expectedCurrency: 'CZK',
@@ -17,13 +18,10 @@ export const potraviny640ImageOnlyReceiptFixture = {
 } as const
 
 export function buildPotraviny640ImageOnlyReceiptPdfBase64(): string {
-    const payload = Buffer.from(JSON.stringify({
-        documentKind: 'receipt',
-        adapter: 'ocr',
-        fields: {
-            rawText: potraviny640ImageOnlyReceiptFixture.ocrRawText
-        }
-    }), 'utf8').toString('base64')
+    const commentBlock = potraviny640ImageOnlyReceiptFixture.ocrRawText
+        .split('\n')
+        .map((line) => `% ${line}`)
+        .join('\n')
 
-    return Buffer.from(`%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n% HFC_OCR_STUB:${payload}`, 'latin1').toString('base64')
+    return Buffer.from(`%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n${commentBlock}\n`, 'latin1').toString('base64')
 }

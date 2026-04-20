@@ -6,6 +6,7 @@ export interface DeterministicDocumentParserInput {
   content: string
   extractedAt: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: DeterministicDocumentOcrOrVisionFallbackPayload
 }
 
 export interface DeterministicDocumentParser {
@@ -192,6 +193,12 @@ export interface DeterministicDocumentOcrParsedFields {
   category?: string
   note?: string
   rawText?: string
+}
+
+export interface DeterministicDocumentOcrOrVisionFallbackPayload {
+  adapter: 'ocr' | 'vision'
+  rawPayload?: string
+  parsedFields: DeterministicDocumentOcrParsedFields
 }
 
 export interface DeterministicDocumentExtractionStageDebug {

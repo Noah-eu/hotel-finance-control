@@ -3,6 +3,7 @@ import type {
   AirbnbPayoutHeaderDiagnostics,
   ComgateHeaderDiagnostics,
   DeterministicDocumentExtractionSummary,
+  DeterministicDocumentOcrOrVisionFallbackPayload,
   InvoiceListWorkbookSignatureRuntimeDiagnostics
 } from '../extraction'
 import type { DocumentSettlementDirection } from '../domain'
@@ -93,6 +94,7 @@ export interface UploadedMonthlyFileSourceDescriptor {
   browserTextExtraction?: {
     mode: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
     status: 'extracted' | 'failed' | 'not-attempted'
+    failureReason?: 'text-layer-missing' | 'text-extraction-unavailable' | 'read-error'
     textPreview?: string
     detectedSignatures: string[]
   }
@@ -103,6 +105,7 @@ export interface UploadedMonthlyFile {
   content: string
   uploadedAt: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: DeterministicDocumentOcrOrVisionFallbackPayload
   contentFormat?: 'text' | 'pdf-text' | 'binary-workbook' | 'binary'
   sourceDescriptor?: UploadedMonthlyFileSourceDescriptor
   ingestError?: string
@@ -112,6 +115,7 @@ export interface ImportedMonthlySourceFile {
   sourceDocument: SourceDocument
   content: string
   binaryContentBase64?: string
+  ocrOrVisionFallback?: DeterministicDocumentOcrOrVisionFallbackPayload
   routing?: {
     classificationBasis: UploadedMonthlyFileClassificationBasis
     parserId: string

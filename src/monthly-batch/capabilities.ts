@@ -72,7 +72,10 @@ export function detectUploadedMonthlyFileCapability(
       )
     }
 
-    if (isPdfImageOnlyError(input.ingestError)) {
+    if (
+      isPdfImageOnlyError(input.ingestError)
+      || input.sourceDescriptor?.browserTextExtraction?.failureReason === 'text-layer-missing'
+    ) {
       return buildCapability(
         'pdf_image_only',
         'image_pdf',
@@ -82,7 +85,10 @@ export function detectUploadedMonthlyFileCapability(
       )
     }
 
-    if (isPdfTextExtractionUnavailableError(input.ingestError)) {
+    if (
+      isPdfTextExtractionUnavailableError(input.ingestError)
+      || input.sourceDescriptor?.browserTextExtraction?.failureReason === 'text-extraction-unavailable'
+    ) {
       return buildCapability(
         'pdf_text_layer',
         'text_pdf',
