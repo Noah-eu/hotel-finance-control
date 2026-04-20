@@ -34,7 +34,7 @@ describe('DocumentRecordNormalizer', () => {
         invoiceNumber: 'INV-2026-332'
       }),
       expect.objectContaining({
-        id: 'txn:document:receipt-record-1',
+        id: 'txn:document:receipt-record-1:doc-receipt-2026-03-55',
         source: 'receipt',
         direction: 'out',
         amountMinor: 249000,
@@ -48,7 +48,7 @@ describe('DocumentRecordNormalizer', () => {
       },
       {
         extractedRecordId: 'receipt-record-1',
-        transactionIds: ['txn:document:receipt-record-1']
+        transactionIds: ['txn:document:receipt-record-1:doc-receipt-2026-03-55']
       }
     ])
   })

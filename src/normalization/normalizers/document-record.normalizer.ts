@@ -57,7 +57,7 @@ function normalizeInvoiceRecord(record: ExtractedRecord): NormalizedTransaction 
   const direction = settlementDirection === 'refund_incoming' ? 'in' : 'out'
 
   return {
-    id: makeTransactionId(record.id),
+    id: makeTransactionId(record),
     direction,
     source: 'invoice',
     subtype: settlementDirection === 'refund_incoming' ? 'supplier_refund' : 'supplier_invoice',
@@ -88,7 +88,7 @@ function normalizeReceiptRecord(record: ExtractedRecord): NormalizedTransaction 
   }
 
   return {
-    id: makeTransactionId(record.id),
+    id: makeTransactionId(record),
     direction: 'out',
     source: 'receipt',
     amountMinor,
@@ -102,8 +102,12 @@ function normalizeReceiptRecord(record: ExtractedRecord): NormalizedTransaction 
   }
 }
 
-function makeTransactionId(recordId: string): TransactionId {
-  return `txn:document:${recordId}` as TransactionId
+function makeTransactionId(record: Pick<ExtractedRecord, 'id' | 'sourceDocumentId'>): TransactionId {
+  const normalizedRecordId = record.id.includes(record.sourceDocumentId)
+    ? record.id
+    : `${record.id}:${record.sourceDocumentId}`
+
+  return `txn:document:${normalizedRecordId}` as TransactionId
 }
 
 function requireAmountMinor(record: ExtractedRecord): number {

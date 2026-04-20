@@ -593,15 +593,16 @@ function buildExpenseReviewSections(
   const transactionsById = new Map(
     batch.reconciliation.normalizedTransactions.map((transaction) => [transaction.id, transaction])
   )
-  const extractedRecordsById = new Map(
-    batch.extractedRecords.map((record) => [record.id, record])
+  const extractedRecordsByDocumentIdentity = new Map(
+    batch.extractedRecords.map((record) => [buildDocumentRecordIdentity(record.sourceDocumentId, record.id), record])
   )
   const documentEntries = batch.extractedRecords
     .filter((record) => DOCUMENT_RECORD_TYPE_SET.has(record.recordType))
     .map((record) => ({
       extractedRecord: record,
       normalizedTransaction: batch.reconciliation.normalizedTransactions.find((transaction) =>
-        transaction.extractedRecordIds.includes(record.id)
+        transaction.sourceDocumentIds.includes(record.sourceDocumentId)
+        && transaction.extractedRecordIds.includes(record.id)
       ),
       fileRoute: fileRoutesBySourceDocumentId.get(record.sourceDocumentId)
     }))
@@ -669,7 +670,10 @@ function buildExpenseReviewSections(
     const supportTransaction = transactionsById.get(link.supportTransactionId)
     const documentEntry = documentEntries.find((entry) =>
       entry.normalizedTransaction?.id === link.supportTransactionId
-      || entry.extractedRecord.id === link.supportExtractedRecordIds[0]
+      || (
+        link.supportSourceDocumentIds.includes(entry.extractedRecord.sourceDocumentId)
+        && link.supportExtractedRecordIds.includes(entry.extractedRecord.id)
+      )
       || link.supportSourceDocumentIds.includes(entry.extractedRecord.sourceDocumentId)
     )
 
@@ -677,7 +681,7 @@ function buildExpenseReviewSections(
       return []
     }
 
-    return [toExpenseMatchedReviewItem(batch, documentEntry, bankTransaction, link.reasons, link.matchScore, fileRoutes, extractedRecordsById)]
+    return [toExpenseMatchedReviewItem(batch, documentEntry, bankTransaction, link.reasons, link.matchScore, fileRoutes, extractedRecordsByDocumentIdentity)]
   })
   expenseMatched.push(
     ...internalTransferPairs.map((pair) =>
@@ -696,7 +700,7 @@ function buildExpenseReviewSections(
         getExpenseDocumentExpectedBankDirection(documentEntry) === 'in'
           ? incomingCandidateBankTransactions
           : outgoingCandidateBankTransactions,
-        extractedRecordsById
+        extractedRecordsByDocumentIdentity
       )
     }))
     .sort(compareExpenseCandidatePlans)
@@ -722,7 +726,7 @@ function buildExpenseReviewSections(
           selection.winner.reasons,
           selection.winner.score,
           fileRoutes,
-          extractedRecordsById,
+          extractedRecordsByDocumentIdentity,
           selection.winner
         )
       )
@@ -737,7 +741,7 @@ function buildExpenseReviewSections(
         selection.winner,
         selection.ambiguousCount,
         fileRoutes,
-        extractedRecordsById
+        extractedRecordsByDocumentIdentity
       )
     )
   }
@@ -757,12 +761,12 @@ function buildExpenseReviewSections(
         return []
       }
 
-      return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes, extractedRecordsById)]
+      return [toExpenseUnmatchedOutflowReviewItem(batch, transaction, exceptionCase, fileRoutes, extractedRecordsByDocumentIdentity)]
     })
 
   const expenseUnmatchedInflows = incomingCandidateBankTransactions
     .filter((transaction) => !usedCandidateBankIds.has(transaction.id))
-    .map((transaction) => toExpenseUnmatchedInflowReviewItem(batch, transaction, fileRoutes, extractedRecordsById))
+    .map((transaction) => toExpenseUnmatchedInflowReviewItem(batch, transaction, fileRoutes, extractedRecordsByDocumentIdentity))
 
   return {
     expenseMatched,
@@ -780,7 +784,7 @@ function toExpenseMatchedReviewItem(
   reasons: string[],
   matchScore: number,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
-  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>,
+  extractedRecordsByDocumentIdentity: Map<string, MonthlyBatchResult['extractedRecords'][number]>,
   candidateEvaluation?: ExpenseBankCandidateEvaluation
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
@@ -802,7 +806,7 @@ function toExpenseMatchedReviewItem(
     ],
     sourceDocumentIds: [documentEntry.extractedRecord.sourceDocumentId],
     matchStrength,
-    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons, candidateEvaluation, extractedRecordsById),
+    evidenceSummary: buildExpenseEvidenceSummary(documentEntry, bankTransaction, fileRoutes, reasons, candidateEvaluation, extractedRecordsByDocumentIdentity),
     operatorExplanation: matchStrength === 'potvrzená shoda'
       ? `Částka, datum a alespoň jedna další stopa potvrzují vazbu dokladu na ${bankMovementLabel}.`
       : `Doklad je spárovaný s ${bankMovementLabel}, ale ručně ověřte reference nebo protistranu.`,
@@ -810,7 +814,7 @@ function toExpenseMatchedReviewItem(
       ? 'Ruční kontrolu dělejte jen při sporné protistraně nebo neobvyklém textu v bankovní platbě.'
       : 'Zkontrolujte ručně reference dokladu, protistranu a datum bankovního pohybu.',
     documentBankRelation: `Potvrzená pravděpodobná vazba mezi dokladem a ${bankRelationLabel}.`,
-    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction, extractedRecordsById)
+    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction, extractedRecordsByDocumentIdentity)
   }
 }
 
@@ -844,7 +848,7 @@ function toExpenseNeedsReviewItem(
   candidateEvaluation: ExpenseBankCandidateEvaluation,
   ambiguousCount: number,
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
-  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewSectionItem {
   const documentReference = getExpenseDocumentReference(documentEntry)
   const uniqueCandidate = ambiguousCount === 1
@@ -872,7 +876,7 @@ function toExpenseNeedsReviewItem(
       fileRoutes,
       candidateEvaluation.reasons,
       candidateEvaluation,
-      extractedRecordsById
+      extractedRecordsByDocumentIdentity
     ),
     operatorExplanation: uniqueCandidate
       ? `Systém našel pravděpodobný ${bankCandidateLabel}, ale vazba zatím není dost silná na automatické potvrzení.`
@@ -883,7 +887,7 @@ function toExpenseNeedsReviewItem(
     documentBankRelation: uniqueCandidate
       ? `Doklad je načtený a existuje pravděpodobný ${bankCandidateLabel}, ale vazba zatím není potvrzená.`
       : 'Doklad je načtený a existuje více podobných bankovních kandidátů; vazba není jednoznačná.',
-    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction, extractedRecordsById)
+    expenseComparison: buildExpenseComparison(documentEntry, bankTransaction, extractedRecordsByDocumentIdentity)
   }
 }
 
@@ -919,7 +923,7 @@ function toExpenseUnmatchedOutflowReviewItem(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   exceptionCase: MonthlyBatchResult['reconciliation']['exceptionCases'][number],
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
-  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewSectionItem {
   return {
     id: `expense-unmatched-outflow:${bankTransaction.id}`,
@@ -931,11 +935,11 @@ function toExpenseUnmatchedOutflowReviewItem(
     sourceDocumentIds: [],
     severity: exceptionCase.severity,
     matchStrength: 'nespárováno',
-    evidenceSummary: buildExpenseOutflowEvidenceSummary(bankTransaction, fileRoutes, extractedRecordsById),
+    evidenceSummary: buildExpenseOutflowEvidenceSummary(bankTransaction, fileRoutes, extractedRecordsByDocumentIdentity),
     operatorExplanation: 'Odchozí bankovní platba zatím nemá odpovídající fakturu nebo účtenku.',
     operatorCheckHint: 'Zkontrolujte ručně bankovní zprávu, protistranu a dohledání odpovídajícího dokladu.',
     documentBankRelation: 'Existuje odchozí bankovní platba, ale zatím bez načteného odpovídajícího dokladu.',
-    expenseComparison: buildExpenseOutflowComparison(bankTransaction, extractedRecordsById)
+    expenseComparison: buildExpenseOutflowComparison(bankTransaction, extractedRecordsByDocumentIdentity)
   }
 }
 
@@ -943,7 +947,7 @@ function toExpenseUnmatchedInflowReviewItem(
   _batch: MonthlyBatchResult,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   _fileRoutes: UploadedMonthlyFileRoute[] | undefined,
-  extractedRecordsById: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewSectionItem {
   return {
     id: `expense-unmatched-inflow:${bankTransaction.id}`,
@@ -954,11 +958,11 @@ function toExpenseUnmatchedInflowReviewItem(
     transactionIds: [bankTransaction.id],
     sourceDocumentIds: [],
     matchStrength: 'nespárováno',
-    evidenceSummary: buildExpenseInflowEvidenceSummary(bankTransaction, extractedRecordsById),
+    evidenceSummary: buildExpenseInflowEvidenceSummary(bankTransaction, extractedRecordsByDocumentIdentity),
     operatorExplanation: 'Příchozí bankovní platba zůstává bez potvrzeného vysvětlení v aktuálním měsíčním workflow.',
     operatorCheckHint: 'Zkontrolujte ručně protistranu, zprávu banky a případnou vazbu na payout, refund dokument nebo interní převod.',
     documentBankRelation: 'Existuje příchozí bankovní platba, ale zatím bez potvrzené vazby na payout, refund dokument nebo interní převod.',
-    expenseComparison: buildExpenseInflowComparison(bankTransaction, extractedRecordsById)
+    expenseComparison: buildExpenseInflowComparison(bankTransaction, extractedRecordsByDocumentIdentity)
   }
 }
 
@@ -1166,11 +1170,11 @@ function compareExpenseCandidatePlans(
 function buildExpenseComparison(
   documentEntry: ExpenseDocumentReviewEntry,
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number] | undefined,
-  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewExpenseComparison {
   const documentSummaryTotal = getExpenseDocumentSummaryTotal(documentEntry)
-  const bankExtractedRecord = bankTransaction && extractedRecordsById
-    ? extractedRecordsById.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankExtractedRecord = bankTransaction && extractedRecordsByDocumentIdentity
+    ? getTransactionExtractedRecord(bankTransaction, extractedRecordsByDocumentIdentity)
     : undefined
 
   return {
@@ -1206,9 +1210,11 @@ function buildExpenseComparison(
 
 function buildExpenseOutflowComparison(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
-  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewExpenseComparison {
-  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankExtractedRecord = extractedRecordsByDocumentIdentity
+    ? getTransactionExtractedRecord(bankTransaction, extractedRecordsByDocumentIdentity)
+    : undefined
 
   return {
     variant: 'document-bank',
@@ -1258,14 +1264,14 @@ function buildExpenseEvidenceSummary(
   fileRoutes: UploadedMonthlyFileRoute[] | undefined,
   confirmedReasons: string[] = [],
   candidateEvaluation?: ExpenseBankCandidateEvaluation,
-  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewEvidenceEntry[] {
   const documentReferenceHints = getExpenseDocumentReferenceHints(documentEntry)
   const documentReference = documentReferenceHints[0]
   const documentCounterparty = getExpenseDocumentCounterparty(documentEntry)
   const documentIbanHint = getExpenseDocumentIbanHint(documentEntry)
-  const bankExtractedRecord = bankTransaction && extractedRecordsById
-    ? extractedRecordsById.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankExtractedRecord = bankTransaction && extractedRecordsByDocumentIdentity
+    ? getTransactionExtractedRecord(bankTransaction, extractedRecordsByDocumentIdentity)
     : undefined
   const bankReference = bankTransaction
     ? getExpenseBankReference(bankTransaction, bankExtractedRecord)
@@ -1447,9 +1453,11 @@ function buildNoExtractExpenseDocumentEntries(
 function buildExpenseOutflowEvidenceSummary(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
   _fileRoutes: UploadedMonthlyFileRoute[] | undefined,
-  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewEvidenceEntry[] {
-  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankExtractedRecord = extractedRecordsByDocumentIdentity
+    ? getTransactionExtractedRecord(bankTransaction, extractedRecordsByDocumentIdentity)
+    : undefined
   const bankReference = getExpenseBankReference(bankTransaction, bankExtractedRecord)
   const bankCounterparty = getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord)
 
@@ -1465,9 +1473,11 @@ function buildExpenseOutflowEvidenceSummary(
 
 function buildExpenseInflowEvidenceSummary(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
-  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewEvidenceEntry[] {
-  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankExtractedRecord = extractedRecordsByDocumentIdentity
+    ? getTransactionExtractedRecord(bankTransaction, extractedRecordsByDocumentIdentity)
+    : undefined
   const bankReference = getExpenseBankReference(bankTransaction, bankExtractedRecord)
   const bankCounterparty = getExpenseBankDisplayCounterparty(bankTransaction, bankExtractedRecord)
 
@@ -1513,9 +1523,11 @@ function buildInternalTransferEvidenceSummary(
 
 function buildExpenseInflowComparison(
   bankTransaction: MonthlyBatchResult['reconciliation']['normalizedTransactions'][number],
-  extractedRecordsById?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+  extractedRecordsByDocumentIdentity?: Map<string, MonthlyBatchResult['extractedRecords'][number]>
 ): ReviewExpenseComparison {
-  const bankExtractedRecord = extractedRecordsById?.get(bankTransaction.extractedRecordIds[0] ?? '')
+  const bankExtractedRecord = extractedRecordsByDocumentIdentity
+    ? getTransactionExtractedRecord(bankTransaction, extractedRecordsByDocumentIdentity)
+    : undefined
 
   return {
     variant: 'document-bank',
@@ -1850,6 +1862,29 @@ function buildComparableReviewBankTransactionKey(
     transaction.reference,
     transaction.counterparty
   ].map((value) => String(value ?? '').trim()).join('|')
+}
+
+function buildDocumentRecordIdentity(sourceDocumentId: string | undefined, extractedRecordId: string | undefined): string {
+  return `${String(sourceDocumentId ?? '')}:${String(extractedRecordId ?? '')}`
+}
+
+function getTransactionExtractedRecord(
+  transaction: Pick<NormalizedTransaction, 'sourceDocumentIds' | 'extractedRecordIds'>,
+  extractedRecordsByDocumentIdentity: Map<string, MonthlyBatchResult['extractedRecords'][number]>
+): MonthlyBatchResult['extractedRecords'][number] | undefined {
+  for (const sourceDocumentId of transaction.sourceDocumentIds) {
+    for (const extractedRecordId of transaction.extractedRecordIds) {
+      const record = extractedRecordsByDocumentIdentity.get(
+        buildDocumentRecordIdentity(sourceDocumentId, extractedRecordId)
+      )
+
+      if (record) {
+        return record
+      }
+    }
+  }
+
+  return undefined
 }
 
 function buildPayoutConsumedBankTransactionKey(

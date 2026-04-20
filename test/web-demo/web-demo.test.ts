@@ -6113,6 +6113,87 @@ describe('buildWebDemo', () => {
     expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
   })
 
+  it('keeps Potraviny640 review and browser truth isolated from dm and Tesco receipt identities', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-20T09:25:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-receipt-identity-isolation',
+      locationSearch: '?debug=1',
+      files: createReceiptIdentityIsolationWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        fileName: string
+        sourceDocumentId: string
+        documentId?: string
+        effectiveValues?: {
+          supplierName?: string
+          totalAmountMinor?: number
+          currency?: string
+        }
+      }>
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{
+          sourceDocumentIds: string[]
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              amount?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const potravinyExtraction = state.documentExtractions.find((entry) => entry.fileName === 'Potraviny640.pdf')
+    const dmExtraction = state.documentExtractions.find((entry) => entry.fileName === receiptActualDebugExportFixtures.dm.fileName)
+    const tescoExtraction = state.documentExtractions.find((entry) => entry.fileName === receiptActualDebugExportFixtures.tesco.fileName)
+    const potravinyItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(String(potravinyExtraction?.sourceDocumentId || ''))
+    )
+    const dmItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(String(dmExtraction?.sourceDocumentId || ''))
+    )
+    const tescoItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(String(tescoExtraction?.sourceDocumentId || ''))
+    )
+
+    expect(new Set([
+      potravinyExtraction?.documentId,
+      dmExtraction?.documentId,
+      tescoExtraction?.documentId
+    ]).size).toBe(3)
+
+    expect(potravinyExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: 64000,
+      currency: 'CZK'
+    })
+    expect(String(potravinyExtraction?.effectiveValues?.supplierName || '').toLowerCase()).toContain('potraviny')
+    expect(String(potravinyExtraction?.effectiveValues?.supplierName || '').toLowerCase()).not.toContain('tesco')
+    expect(dmExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: receiptActualDebugExportFixtures.dm.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(String(dmExtraction?.effectiveValues?.supplierName || '').toLowerCase()).toContain('dm')
+    expect(tescoExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: receiptActualDebugExportFixtures.tesco.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(String(tescoExtraction?.effectiveValues?.supplierName || '').toLowerCase()).toContain('tesco')
+
+    expect(String(potravinyItem?.expenseComparison?.document?.supplierOrCounterparty || '').toLowerCase()).toContain('potraviny')
+    expect(String(potravinyItem?.expenseComparison?.document?.supplierOrCounterparty || '').toLowerCase()).not.toContain('tesco')
+    expect(String(potravinyItem?.expenseComparison?.document?.amount || '').replace(/\u00a0/g, ' ')).toBe('640,00 CZK')
+    expect(String(dmItem?.expenseComparison?.document?.amount || '').replace(/\u00a0/g, ' ')).toBe('388,70 CZK')
+    expect(String(tescoItem?.expenseComparison?.document?.amount || '').replace(/\u00a0/g, ' ')).toBe('3 782,50 CZK')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('640,00 CZK')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('3 782,50 CZK')
+  })
+
   it('saves manual document overrides from the preview and reuses them in expense review, restore, and debug export', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-12T09:10:00.000Z',
@@ -9811,6 +9892,24 @@ function createReceiptActualDebugExportWorkflowFiles() {
   const tescoFixture = receiptActualDebugExportFixtures.tesco
 
   return [
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines(dmFixture.fileName, dmFixture.normalizedLines),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines(tescoFixture.fileName, tescoFixture.normalizedLines)
+  ]
+}
+
+function createReceiptIdentityIsolationWorkflowFiles() {
+  const dmFixture = receiptActualDebugExportFixtures.dm
+  const tescoFixture = receiptActualDebugExportFixtures.tesco
+
+  return [
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('Potraviny640.pdf', [
+      'POTRAVINY',
+      'Cislo uctenky 2026032000006',
+      'Datum 20.03.2026 08:10',
+      'Mezisoucet 640,00 CZK',
+      'Celkem 640,00 CZK',
+      'Hotovost 640,00 CZK'
+    ]),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines(dmFixture.fileName, dmFixture.normalizedLines),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines(tescoFixture.fileName, tescoFixture.normalizedLines)
   ]

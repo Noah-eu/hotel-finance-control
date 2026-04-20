@@ -2606,7 +2606,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:receipt-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:receipt-record-1:doc-receipt-2026-03-55' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'receipt',
         amountMinor: 249000,
@@ -2666,7 +2666,7 @@ export const realInputFixtures: RealInputFixture[] = [
     ],
     expectedNormalizedTransactions: [
       normalizedTransaction({
-        id: 'txn:document:receipt-record-1' as NormalizedTransaction['id'],
+        id: 'txn:document:receipt-record-1:doc-receipt-ocr-2026-04-01' as NormalizedTransaction['id'],
         direction: 'out',
         source: 'receipt',
         amountMinor: 24900,
