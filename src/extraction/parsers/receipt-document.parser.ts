@@ -37,7 +37,7 @@ const FIELD_ALIASES = {
   note: ['Note', 'Description', 'Poznámka', 'Účel']
 } satisfies Record<string, string[]>
 
-export interface ParseReceiptDocumentInput extends DeterministicDocumentParserInput {}
+export interface ParseReceiptDocumentInput extends DeterministicDocumentParserInput { }
 
 export type InspectReceiptDocumentExtractionSummaryInput =
   | string
@@ -163,23 +163,23 @@ export class ReceiptDocumentParser {
             : {}),
           ...(isPartialRecord
             ? {
-                debug: {
-                  finalStatus: summary.finalStatus,
-                  missingRequiredFields: summary.missingRequiredFields,
-                  partialRecordCreated: true,
-                  partialRecordDropped: false,
-                  vendorProfile: extraction.vendorProfileKey,
-                  vendorDetectionSignals: extraction.vendorDetectionSignals
-                }
+              debug: {
+                finalStatus: summary.finalStatus,
+                missingRequiredFields: summary.missingRequiredFields,
+                partialRecordCreated: true,
+                partialRecordDropped: false,
+                vendorProfile: extraction.vendorProfileKey,
+                vendorDetectionSignals: extraction.vendorDetectionSignals
               }
+            }
             : {}),
           ...(segmentation.scanClassified ? { scanClassified: true } : {}),
           ...(segmentation.segments.length > 1
             ? {
-                scanSegmentIndex: index + 1,
-                scanSegmentCount: segmentation.segments.length,
-                scanSegmentationReason: segmentation.splitReason ?? 'multi-receipt-segmentation'
-              }
+              scanSegmentIndex: index + 1,
+              scanSegmentCount: segmentation.segments.length,
+              scanSegmentationReason: segmentation.splitReason ?? 'multi-receipt-segmentation'
+            }
             : {})
         }
       })
@@ -370,7 +370,8 @@ function extractReceiptDocumentFields(input: {
     binaryContentBase64: input.binaryContentBase64,
     documentKind: 'receipt'
   })
-  const merged = mergeReceiptTextAndOcrFields(textFields, fieldProvenance, ocrExtraction)
+  const ocrRawTextHeuristicFields = extractReceiptOcrRawTextFallbackFields(ocrExtraction.parsedFields?.rawText)
+  const merged = mergeReceiptTextAndOcrFields(textFields, fieldProvenance, ocrExtraction, ocrRawTextHeuristicFields)
   const vendorProfile = applyReceiptVendorProfile({
     content: input.content,
     currentFields: merged.fields,
@@ -422,7 +423,9 @@ function extractReceiptDocumentFields(input: {
     vendorDetectionSignals: vendorProfile?.detectionSignals ?? [],
     forcePartialRecord: Boolean(vendorProfile?.forcePartialRecord),
     receiptParsingDebug: buildReceiptParsingDebug({
-      content: input.content,
+      content: input.content.trim().length > 0
+        ? input.content
+        : ocrExtraction.parsedFields?.rawText ?? '',
       genericFields: merged.fields,
       finalFields: vendorMergedFields,
       vendorProfile,
@@ -628,7 +631,8 @@ function resolveAnchoredFinalTotalReason(input: {
 function mergeReceiptTextAndOcrFields(
   textFields: ReceiptExtractedFields,
   baseFieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>,
-  ocrExtraction: ReturnType<typeof extractDocumentOcrOrVisionFallback>
+  ocrExtraction: ReturnType<typeof extractDocumentOcrOrVisionFallback>,
+  ocrRawTextHeuristicFields: Partial<ReceiptExtractedFields>
 ): {
   fields: ReceiptExtractedFields
   fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>>
@@ -644,7 +648,7 @@ function mergeReceiptTextAndOcrFields(
   mergeReceiptFallbackField({
     fieldKey: 'referenceNumber',
     currentValue: mergedFields.receiptNumber,
-    fallbackValue: ocrExtraction.parsedFields?.referenceNumber,
+    fallbackValue: ocrExtraction.parsedFields?.referenceNumber ?? ocrRawTextHeuristicFields.receiptNumber,
     normalizeValue: normalizeReceiptReferenceValue,
     assign(value) {
       mergedFields.receiptNumber = value
@@ -658,7 +662,7 @@ function mergeReceiptTextAndOcrFields(
   mergeReceiptFallbackField({
     fieldKey: 'issuerOrCounterparty',
     currentValue: mergedFields.merchant,
-    fallbackValue: ocrExtraction.parsedFields?.issuerOrCounterparty,
+    fallbackValue: ocrExtraction.parsedFields?.issuerOrCounterparty ?? ocrRawTextHeuristicFields.merchant,
     normalizeValue: normalizeComparableReceiptText,
     assign(value) {
       mergedFields.merchant = value
@@ -672,7 +676,9 @@ function mergeReceiptTextAndOcrFields(
   mergeReceiptFallbackField({
     fieldKey: 'paymentDate',
     currentValue: mergedFields.purchaseDateRaw,
-    fallbackValue: ocrExtraction.parsedFields?.paymentDate ?? ocrExtraction.parsedFields?.issueDate,
+    fallbackValue: ocrExtraction.parsedFields?.paymentDate
+      ?? ocrExtraction.parsedFields?.issueDate
+      ?? ocrRawTextHeuristicFields.purchaseDateRaw,
     normalizeValue: normalizeComparableReceiptDate,
     assign(value) {
       mergedFields.purchaseDateRaw = value
@@ -686,7 +692,7 @@ function mergeReceiptTextAndOcrFields(
   mergeReceiptFallbackField({
     fieldKey: 'totalAmount',
     currentValue: mergedFields.totalRaw,
-    fallbackValue: ocrExtraction.parsedFields?.totalAmount,
+    fallbackValue: ocrExtraction.parsedFields?.totalAmount ?? ocrRawTextHeuristicFields.totalRaw,
     normalizeValue: normalizeComparableReceiptMoney,
     assign(value) {
       mergedFields.totalRaw = value
@@ -708,6 +714,9 @@ function mergeReceiptTextAndOcrFields(
   if (!mergedFields.paymentMethod?.trim() && ocrExtraction.parsedFields?.paymentMethod?.trim()) {
     mergedFields.paymentMethod = ocrExtraction.parsedFields.paymentMethod
     fieldProvenance.paymentMethod = fallbackProvenance
+  } else if (!mergedFields.paymentMethod?.trim() && ocrRawTextHeuristicFields.paymentMethod?.trim()) {
+    mergedFields.paymentMethod = ocrRawTextHeuristicFields.paymentMethod
+    fieldProvenance.paymentMethod = fallbackProvenance
   }
 
   return {
@@ -716,6 +725,14 @@ function mergeReceiptTextAndOcrFields(
     ocrRecoveredFields,
     ocrConfirmedFields
   }
+}
+
+function extractReceiptOcrRawTextFallbackFields(rawText: string | undefined): Partial<ReceiptExtractedFields> {
+  if (!rawText?.trim()) {
+    return {}
+  }
+
+  return extractScanLikeReceiptHeuristicFields(rawText)
 }
 
 function mergeReceiptFallbackField(input: {
@@ -804,12 +821,12 @@ function buildReceiptExtractionStages(input: {
       recoveredFields: textRecoveredFields,
       notes: textRecoveredFields.length > 0
         ? [
-            ...(input.scanHeuristicApplied ? ['scan-heuristic-fields-applied'] : []),
-            ...(input.vendorProfileKey && input.vendorProfileKey !== 'generic' ? [`vendor-profile=${input.vendorProfileKey}`] : []),
-            ...(input.vendorDetectionSignals && input.vendorDetectionSignals.length > 0
-              ? [`vendor-signals=${input.vendorDetectionSignals.join('|')}`]
-              : [])
-          ]
+          ...(input.scanHeuristicApplied ? ['scan-heuristic-fields-applied'] : []),
+          ...(input.vendorProfileKey && input.vendorProfileKey !== 'generic' ? [`vendor-profile=${input.vendorProfileKey}`] : []),
+          ...(input.vendorDetectionSignals && input.vendorDetectionSignals.length > 0
+            ? [`vendor-signals=${input.vendorDetectionSignals.join('|')}`]
+            : [])
+        ]
         : ['no text-layer fields recovered']
     },
     {

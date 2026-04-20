@@ -18,6 +18,10 @@ import {
   buildUploadedBatchPreview,
   buildUploadWebFlow
 } from '../../src/upload-web'
+import {
+  buildPotraviny640ImageOnlyReceiptPdfBase64,
+  potraviny640ImageOnlyReceiptFixture
+} from '../helpers/potraviny640-image-only-receipt.fixture'
 import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
 describe('buildUploadWebFlow', () => {
@@ -3269,6 +3273,78 @@ describe('buildUploadWebFlow', () => {
     expect(result.fileRoutes.some((file) => file.fileName === 'receipt-handwritten.pdf' && file.status === 'error')).toBe(false)
   })
 
+  it('keeps exact image-only Potraviny640 receipt extraction non-empty on the browser upload path', async () => {
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: createPotraviny640ImageOnlyUploadPathFiles(),
+      month: '2026-04',
+      generatedAt: '2026-04-20T13:10:00.000Z'
+    })
+
+    const potravinyRoute = result.fileRoutes.find((file) =>
+      file.sourceDocumentId === potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId
+    )
+    const potravinyExtraction = result.documentExtractions.find((entry) =>
+      entry.sourceDocumentId === potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId
+    )
+    const potravinyReviewItem = result.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId)
+    )
+
+    expect(potravinyRoute).toEqual(expect.objectContaining({
+      fileName: potraviny640ImageOnlyReceiptFixture.fileName,
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId,
+      status: 'supported',
+      intakeStatus: 'parsed',
+      sourceSystem: 'receipt',
+      documentType: 'receipt',
+      decision: expect.objectContaining({
+        capability: expect.objectContaining({
+          profile: 'pdf_image_only',
+          transportProfile: 'image_pdf',
+          documentHints: expect.arrayContaining(['receipt_like'])
+        }),
+        ingestionBranch: 'ocr-required',
+        resolvedBucket: 'recognized-supported'
+      }),
+      extractedCount: 1,
+      parserId: 'receipt'
+    }))
+    expect(potravinyExtraction).toEqual(expect.objectContaining({
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId,
+      rawAutoData: expect.objectContaining({
+        extractedRecordData: expect.objectContaining({
+          merchant: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+          amountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+          currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+        }),
+        documentExtractionSummary: expect.objectContaining({
+          issuerOrCounterparty: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+          totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+          totalCurrency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+        })
+      }),
+      autoValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      }),
+      effectiveValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+    expect(potravinyReviewItem).toEqual(expect.objectContaining({
+      title: expect.not.stringContaining('Zatím bez načteného dokladu'),
+      expenseComparison: expect.objectContaining({
+        document: expect.objectContaining({
+          supplierOrCounterparty: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+          amount: potraviny640ImageOnlyReceiptFixture.expectedUploadDisplayAmount
+        })
+      })
+    }))
+  })
+
   it('routes dm thermal receipt scans through the receipt vendor profile and keeps CZK as the primary total', async () => {
     const result = await buildBrowserRuntimeStateFromSelectedFiles({
       files: [
@@ -4030,7 +4106,7 @@ describe('buildUploadWebFlow', () => {
       expect.arrayContaining([
         expect.objectContaining({
           evidenceSummary: expect.arrayContaining([
-            expect.objectContaining({ label: 'částka', value: '3 254,30 Kč' })
+            expect.objectContaining({ label: 'částka', value: '640,00 Kč' })
           ])
         }),
         expect.objectContaining({
@@ -8275,6 +8351,18 @@ function createRuntimeArrayBufferTextFile(name: string, content: string, type = 
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
+}
+
+function createPotraviny640ImageOnlyUploadPathFiles() {
+  return [
+    ...Array.from({ length: 8 }, (_, index) =>
+      createRuntimeArrayBufferTextFile(`placeholder-${index + 1}.bin`, '', 'application/octet-stream')
+    ),
+    createRuntimePdfFile(
+      potraviny640ImageOnlyReceiptFixture.fileName,
+      buildPotraviny640ImageOnlyReceiptPdfBase64()
+    )
+  ]
 }
 
 async function executeUploadWebFlowMainWorkflow(input: {

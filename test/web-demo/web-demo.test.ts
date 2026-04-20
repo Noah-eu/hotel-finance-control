@@ -10,6 +10,10 @@ import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
 import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
 import { emitBrowserRuntimeAssets } from '../../src/upload-web'
+import {
+  buildPotraviny640ImageOnlyReceiptPdfBase64,
+  potraviny640ImageOnlyReceiptFixture
+} from '../helpers/potraviny640-image-only-receipt.fixture'
 import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
 function collectRuntimePayoutDiagnosticDataFromState(state: Awaited<ReturnType<typeof buildBrowserRuntimeStateFromSelectedFiles>>) {
@@ -8293,6 +8297,87 @@ describe('buildWebDemo', () => {
     expect(rendered.runtimeFileIntakeDiagnosticsContent.innerHTML).toContain('Missing fields: referenceNumber')
   })
 
+  it('keeps exact image-only Potraviny640 receipt visible in browser truth, review UI, and debug workspace export', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-20T13:20:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-potraviny640-image-only-receipt',
+      locationSearch: '?debug=1',
+      files: createPotraviny640ImageOnlyWebDemoFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        fileName?: string
+        sourceDocumentId: string
+        autoValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+        effectiveValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+      }>
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{
+          title?: string
+          sourceDocumentIds: string[]
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              amount?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const potravinyExtraction = state.documentExtractions.find((entry) => entry.fileName === potraviny640ImageOnlyReceiptFixture.fileName)
+    const potravinyItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(String(potravinyExtraction?.sourceDocumentId || ''))
+    )
+
+    expect(potravinyExtraction).toEqual(expect.objectContaining({
+      fileName: potraviny640ImageOnlyReceiptFixture.fileName,
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId,
+      autoValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      }),
+      effectiveValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+    expect(potravinyItem).toEqual(expect.objectContaining({
+      title: expect.not.stringContaining('Zatím bez načteného dokladu'),
+      expenseComparison: expect.objectContaining({
+        document: expect.objectContaining({
+          supplierOrCounterparty: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+          amount: potraviny640ImageOnlyReceiptFixture.expectedWebDisplayAmount
+        })
+      })
+    }))
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const debugArtifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      payload?: {
+        documentExtractions?: Array<{
+          sourceDocumentId: string
+          effectiveValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+        }>
+      }
+    }
+
+    expect(debugArtifact.payload?.documentExtractions).toContainEqual(expect.objectContaining({
+      sourceDocumentId: potraviny640ImageOnlyReceiptFixture.expectedSourceDocumentId,
+      effectiveValues: expect.objectContaining({
+        supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
+        totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
+        currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+  })
+
   it('shows no-extract diagnostics for a recognized sparse refund invoice PDF that stops before extracted-record emission', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-03-31T16:30:00.000Z',
@@ -10203,6 +10288,18 @@ function createWebDemoRuntimeArrayBufferTextFile(name: string, content: string, 
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
     }
   }
+}
+
+function createPotraviny640ImageOnlyWebDemoFiles() {
+  return [
+    ...Array.from({ length: 8 }, (_, index) =>
+      createWebDemoRuntimeArrayBufferTextFile(`placeholder-${index + 1}.txt`, `placeholder ${index + 1}`, 'text/plain')
+    ),
+    createWebDemoRuntimePdfFile(
+      potraviny640ImageOnlyReceiptFixture.fileName,
+      buildPotraviny640ImageOnlyReceiptPdfBase64()
+    )
+  ]
 }
 
 function createWebDemoRuntimeWindows1250TextFile(name: string, content: string, type = 'text/plain') {

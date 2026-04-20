@@ -191,6 +191,7 @@ export interface DeterministicDocumentOcrParsedFields {
   ibanHint?: string
   category?: string
   note?: string
+  rawText?: string
 }
 
 export interface DeterministicDocumentExtractionStageDebug {
