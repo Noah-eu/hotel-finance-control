@@ -20,7 +20,9 @@ import {
 } from '../../src/upload-web'
 import {
   buildPotraviny640ImageOnlyReceiptPdfBase64,
-  potraviny640ImageOnlyReceiptFixture
+  buildPotraviny640UnreadableBrowserFallbackPdfBase64,
+  potraviny640ImageOnlyReceiptFixture,
+  potraviny640UnreadableBrowserFallbackFixture
 } from '../helpers/potraviny640-image-only-receipt.fixture'
 import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
@@ -3373,6 +3375,46 @@ describe('buildUploadWebFlow', () => {
         currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
       })
     }))
+  })
+
+  it('does not infer a bogus 9,00 total from an unreadable single-upload Potraviny640 browser fallback payload', async () => {
+    const files = [
+      createRuntimePdfFile(
+        potraviny640UnreadableBrowserFallbackFixture.fileName,
+        buildPotraviny640UnreadableBrowserFallbackPdfBase64()
+      )
+    ]
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files,
+      month: '2026-04',
+      generatedAt: '2026-04-20T16:20:00.000Z'
+    })
+
+    const potravinyIntake = result.runtimeAudit.fileIntakeDiagnostics.find((entry) =>
+      entry.sourceDocumentId === potraviny640UnreadableBrowserFallbackFixture.expectedSingleUploadSourceDocumentId
+    )
+    const ocrStage = potravinyIntake?.documentExtractionSummary?.extractionStages?.find((stage) =>
+      stage.stage === 'ocr_or_vision_fallback'
+    )
+    const potravinyExtraction = result.documentExtractions.find((entry) =>
+      entry.sourceDocumentId === potraviny640UnreadableBrowserFallbackFixture.expectedSingleUploadSourceDocumentId
+    )
+    const potravinyReviewItem = result.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(potraviny640UnreadableBrowserFallbackFixture.expectedSingleUploadSourceDocumentId)
+    )
+
+    expect(ocrStage).toEqual(expect.objectContaining({
+      stage: 'ocr_or_vision_fallback',
+      outcome: 'applied',
+      adapter: 'ocr'
+    }))
+    expect(ocrStage?.recoveredFields).not.toContain('totalAmount')
+    expect(potravinyIntake?.documentExtractionSummary?.totalAmountMinor).toBeUndefined()
+    expect(potravinyExtraction?.autoValues?.totalAmountMinor).toBeUndefined()
+    expect(potravinyExtraction?.effectiveValues?.totalAmountMinor).toBeUndefined()
+    expect(String(potravinyReviewItem?.expenseComparison?.document?.amount || '')).toBe('')
+    expect(String(potravinyReviewItem?.expenseComparison?.document?.amount || '')).not.toBe(potraviny640UnreadableBrowserFallbackFixture.bogusDisplayAmount)
   })
 
   it('keeps exact image-only Potraviny640 receipt extraction non-empty on the browser upload path', async () => {

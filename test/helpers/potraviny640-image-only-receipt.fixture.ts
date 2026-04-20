@@ -17,8 +17,29 @@ export const potraviny640ImageOnlyReceiptFixture = {
     ].join('\n')
 } as const
 
+export const potraviny640UnreadableBrowserFallbackFixture = {
+    fileName: 'Potraviny640.pdf',
+    expectedSingleUploadSourceDocumentId: 'uploaded:receipt:1:potraviny640-pdf',
+    bogusDisplayAmount: '9,00 Kč',
+    bogusWebDisplayAmount: '9,00 CZK',
+    bogusOcrRawText: [
+        'POTRAVINY',
+        'ÐÏà¡±á hotovost 9,00 CZK',
+        'ÿÿÿ karta 9,00'
+    ].join('\n')
+} as const
+
 export function buildPotraviny640ImageOnlyReceiptPdfBase64(): string {
     const commentBlock = potraviny640ImageOnlyReceiptFixture.ocrRawText
+        .split('\n')
+        .map((line) => `% ${line}`)
+        .join('\n')
+
+    return Buffer.from(`%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n${commentBlock}\n`, 'latin1').toString('base64')
+}
+
+export function buildPotraviny640UnreadableBrowserFallbackPdfBase64(): string {
+    const commentBlock = potraviny640UnreadableBrowserFallbackFixture.bogusOcrRawText
         .split('\n')
         .map((line) => `% ${line}`)
         .join('\n')

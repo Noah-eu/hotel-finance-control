@@ -737,7 +737,55 @@ function extractReceiptOcrRawTextFallbackFields(rawText: string | undefined): Pa
     return {}
   }
 
-  return extractScanLikeReceiptHeuristicFields(rawText)
+  const extracted = extractScanLikeReceiptHeuristicFields(rawText)
+
+  if (!shouldTrustReceiptOcrRawTextForGenericTotal(rawText)) {
+    delete extracted.totalRaw
+  }
+
+  return extracted
+}
+
+function shouldTrustReceiptOcrRawTextForGenericTotal(rawText: string): boolean {
+  const normalized = normalizeReceiptScanStructuredContent(rawText).trim()
+
+  if (!normalized) {
+    return false
+  }
+
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/.test(rawText)) {
+    return false
+  }
+
+  const lines = normalized
+    .split(/\r\n?|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  if (lines.length === 0) {
+    return false
+  }
+
+  const merchant = extractReceiptMerchantFromLines(lines)
+  const purchaseDateRaw = extractReceiptDateFromLines(lines)
+  const receiptNumber = extractReceiptReferenceFromLines(lines)
+  const paymentMethod = extractReceiptPaymentMethod(lines)
+  const hasAmount = /\d{1,6}(?:[ .]\d{3})*[.,]\d{2}\b/.test(normalized)
+  const hasCurrency = /\b(czk|kč|eur|usd)\b/i.test(normalized)
+  const hasTotalMarker = lines.some((line) => /\b(total|celkem|zaplaceno|částka|castka)\b/i.test(line))
+  const printable = normalized.replace(/\s+/g, '')
+  const suspiciousCharacters = printable.match(/[^\p{L}\p{N}.,:;+\-\/()&%@#*]/gu) ?? []
+  const suspiciousRatio = printable.length > 0
+    ? suspiciousCharacters.length / printable.length
+    : 1
+
+  return Boolean(
+    suspiciousRatio <= 0.12
+    && merchant
+    && hasAmount
+    && (purchaseDateRaw || receiptNumber)
+    && (hasTotalMarker || paymentMethod || hasCurrency)
+  )
 }
 
 function mergeReceiptFallbackField(input: {

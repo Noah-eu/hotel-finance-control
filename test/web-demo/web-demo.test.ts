@@ -12,7 +12,9 @@ import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/
 import { emitBrowserRuntimeAssets } from '../../src/upload-web'
 import {
   buildPotraviny640ImageOnlyReceiptPdfBase64,
-  potraviny640ImageOnlyReceiptFixture
+  buildPotraviny640UnreadableBrowserFallbackPdfBase64,
+  potraviny640ImageOnlyReceiptFixture,
+  potraviny640UnreadableBrowserFallbackFixture
 } from '../helpers/potraviny640-image-only-receipt.fixture'
 import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
@@ -8456,6 +8458,71 @@ describe('buildWebDemo', () => {
         supplierName: potraviny640ImageOnlyReceiptFixture.expectedSupplierName,
         totalAmountMinor: potraviny640ImageOnlyReceiptFixture.expectedTotalAmountMinor,
         currency: potraviny640ImageOnlyReceiptFixture.expectedCurrency
+      })
+    }))
+  })
+
+  it('does not show a bogus 9,00 amount in the exact single-upload Potraviny640 browser UI when the fallback rawText is unreadable', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-20T16:20:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-potraviny640-single-upload-unreadable-fallback',
+      locationSearch: '?debug=1',
+      files: [
+        createWebDemoRuntimePdfFile(
+          potraviny640UnreadableBrowserFallbackFixture.fileName,
+          buildPotraviny640UnreadableBrowserFallbackPdfBase64()
+        )
+      ]
+    })
+
+    rendered.openExpenseReviewPage()
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        fileName?: string
+        sourceDocumentId: string
+        effectiveValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+      }>
+      reviewSections: {
+        expenseUnmatchedDocuments: Array<{
+          title?: string
+          sourceDocumentIds: string[]
+          expenseComparison?: {
+            document?: {
+              supplierOrCounterparty?: string
+              amount?: string
+            }
+          }
+        }>
+      }
+    }
+
+    const potravinyExtraction = state.documentExtractions.find((entry) =>
+      entry.sourceDocumentId === potraviny640UnreadableBrowserFallbackFixture.expectedSingleUploadSourceDocumentId
+    )
+    const potravinyItem = state.reviewSections.expenseUnmatchedDocuments.find((item) =>
+      item.sourceDocumentIds.includes(potraviny640UnreadableBrowserFallbackFixture.expectedSingleUploadSourceDocumentId)
+    )
+
+    expect(potravinyExtraction?.effectiveValues?.totalAmountMinor).toBeUndefined()
+    expect(String(potravinyItem?.expenseComparison?.document?.amount || '')).toBe('')
+    expect(String(potravinyItem?.expenseComparison?.document?.amount || '')).not.toBe(potraviny640UnreadableBrowserFallbackFixture.bogusWebDisplayAmount)
+
+    rendered.downloadDebugWorkspaceTruthExport()
+    const debugArtifact = rendered.getLastDebugWorkspaceTruthExport() as {
+      payload?: {
+        documentExtractions?: Array<{
+          sourceDocumentId: string
+          effectiveValues?: { supplierName?: string; totalAmountMinor?: number; currency?: string }
+        }>
+      }
+    }
+
+    expect(debugArtifact.payload?.documentExtractions).toContainEqual(expect.objectContaining({
+      sourceDocumentId: potraviny640UnreadableBrowserFallbackFixture.expectedSingleUploadSourceDocumentId,
+      effectiveValues: expect.not.objectContaining({
+        totalAmountMinor: 900
       })
     }))
   })
