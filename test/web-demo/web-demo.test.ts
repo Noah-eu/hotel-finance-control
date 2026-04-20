@@ -10,6 +10,7 @@ import { getRealInputFixture } from '../../src/real-input-fixtures'
 import { emitBrowserRuntimeBundle } from '../../src/upload-web/browser-bundle'
 import { buildBrowserRuntimeStateFromSelectedFiles } from '../../src/upload-web/browser-runtime'
 import { emitBrowserRuntimeAssets } from '../../src/upload-web'
+import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
 function collectRuntimePayoutDiagnosticDataFromState(state: Awaited<ReturnType<typeof buildBrowserRuntimeStateFromSelectedFiles>>) {
   const runtimeAudit = state.runtimeAudit.payoutDiagnostics
@@ -6097,6 +6098,21 @@ describe('buildWebDemo', () => {
     expect(reloaded.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
   })
 
+  it('actual browser debug-export Tesco and dm footer OCR keeps totals visible in browser expense review', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-12T14:30:03.703Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-actual-receipt-debug-export',
+      locationSearch: '?debug=1',
+      files: createReceiptActualDebugExportWorkflowFiles()
+    })
+
+    rendered.openExpenseReviewPage()
+
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('3 782,50 CZK')
+    expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
+  })
+
   it('saves manual document overrides from the preview and reuses them in expense review, restore, and debug export', async () => {
     const rendered = await executeWebDemoMainWorkflow({
       generatedAt: '2026-04-12T09:10:00.000Z',
@@ -9787,6 +9803,16 @@ function createReceiptRealBrowserOcrWorkflowFiles() {
       '46,00',
       ...'Datum04.04.202612:26:03Ce1kemEUR15,52CZK388,70V1SADPH'.split('')
     ])
+  ]
+}
+
+function createReceiptActualDebugExportWorkflowFiles() {
+  const dmFixture = receiptActualDebugExportFixtures.dm
+  const tescoFixture = receiptActualDebugExportFixtures.tesco
+
+  return [
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines(dmFixture.fileName, dmFixture.normalizedLines),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines(tescoFixture.fileName, tescoFixture.normalizedLines)
   ]
 }
 

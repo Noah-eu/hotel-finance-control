@@ -8,6 +8,7 @@ import {
   parseReceiptDocument
 } from '../../src/extraction'
 import { getRealInputFixture } from '../../src/real-input-fixtures'
+import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
 describe('parseInvoiceDocument', () => {
   it('exposes deterministic-first document ingestion capabilities with a browser-safe OCR stub adapter', () => {
@@ -733,6 +734,98 @@ describe('parseInvoiceDocument', () => {
     expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ raw: '388,70 CZK', amountMinor: 38870 })
+      ])
+    )
+  })
+
+  it('extracts dm total from the actual browser debug-export footer OCR shape', () => {
+    const fixture = receiptActualDebugExportFixtures.dm
+    const content = fixture.normalizedLines.join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: fixture.sourceDocumentId as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: fixture.fileName,
+        uploadedAt: '2026-04-12T14:29:43.062Z'
+      },
+      content,
+      extractedAt: '2026-04-12T14:30:03.703Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: fixture.expectedTotalAmountMinor,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        vendorProfile: 'dm',
+        paymentMethod: expect.stringMatching(/VISA/i)
+      })
+    })
+    expect(summary).toMatchObject({
+      totalAmountMinor: fixture.expectedTotalAmountMinor,
+      totalCurrency: 'CZK'
+    })
+    expect(summary.receiptParsingDebug).toMatchObject({
+      winningAmountSource: 'vendor-profile-anchored-final-total',
+      footerAnchorMatched: true,
+      footerAmountWinnerRaw: fixture.expectedDisplayAmount
+    })
+    expect(summary.receiptParsingDebug?.normalizedLines).toEqual(fixture.normalizedLines)
+    expect(summary.receiptParsingDebug?.reconstructedReceiptLines).toEqual(
+      expect.arrayContaining(fixture.reconstructedReceiptLines)
+    )
+    expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: fixture.expectedDisplayAmount, amountMinor: fixture.expectedTotalAmountMinor })
+      ])
+    )
+  })
+
+  it('extracts Tesco total from the actual browser debug-export footer OCR shape', () => {
+    const fixture = receiptActualDebugExportFixtures.tesco
+    const content = fixture.normalizedLines.join('\n')
+
+    const records = parseReceiptDocument({
+      sourceDocument: {
+        id: fixture.sourceDocumentId as any,
+        sourceSystem: 'receipt',
+        documentType: 'receipt',
+        fileName: fixture.fileName,
+        uploadedAt: '2026-04-12T14:29:43.079Z'
+      },
+      content,
+      extractedAt: '2026-04-12T14:30:03.703Z'
+    })
+    const summary = inspectReceiptDocumentExtractionSummary(content)
+
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      amountMinor: fixture.expectedTotalAmountMinor,
+      currency: 'CZK',
+      data: expect.objectContaining({
+        vendorProfile: 'tesco',
+        paymentMethod: expect.stringMatching(/VISA|kart/i)
+      })
+    })
+    expect(summary).toMatchObject({
+      totalAmountMinor: fixture.expectedTotalAmountMinor,
+      totalCurrency: 'CZK'
+    })
+    expect(summary.receiptParsingDebug).toMatchObject({
+      winningAmountSource: 'vendor-profile-anchored-final-total',
+      footerAnchorMatched: true,
+      footerAmountWinnerRaw: fixture.expectedDisplayAmount
+    })
+    expect(summary.receiptParsingDebug?.normalizedLines).toEqual(fixture.normalizedLines)
+    expect(summary.receiptParsingDebug?.reconstructedReceiptLines).toEqual(
+      expect.arrayContaining(fixture.reconstructedReceiptLines)
+    )
+    expect(summary.receiptParsingDebug?.footerAmountCandidatesNormalized).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ raw: fixture.expectedDisplayAmount, amountMinor: fixture.expectedTotalAmountMinor })
       ])
     )
   })

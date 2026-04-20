@@ -1236,64 +1236,64 @@ function reconstructReceiptOcrLineClusters(lines: string[]): string[] {
   })
 }
 
-  function collectReceiptFooterCandidateLines(lines: string[]): string[] {
-    return mergeUniqueReceiptLines([
-      ...lines.filter((line) => hasAnyReceiptFooterSignal(line)),
-      ...collectReceiptFooterRawJoinedWindows(lines)
-    ])
-  }
+function collectReceiptFooterCandidateLines(lines: string[]): string[] {
+  return mergeUniqueReceiptLines([
+    ...lines.filter((line) => hasAnyReceiptFooterSignal(line)),
+    ...collectReceiptFooterRawJoinedWindows(lines)
+  ])
+}
 
-  function collectReceiptFooterRawJoinedWindows(lines: string[]): string[] {
-    const windows: string[] = []
+function collectReceiptFooterRawJoinedWindows(lines: string[]): string[] {
+  const windows: string[] = []
 
-    for (let startIndex = 0; startIndex < lines.length; startIndex += 1) {
-      for (let windowSize = 2; windowSize <= 12; windowSize += 1) {
-        const window = lines.slice(startIndex, startIndex + windowSize)
+  for (let startIndex = 0; startIndex < lines.length; startIndex += 1) {
+    for (let windowSize = 2; windowSize <= 12; windowSize += 1) {
+      const window = lines.slice(startIndex, startIndex + windowSize)
 
-        if (window.length !== windowSize || !window.every((line) => isMergeableReceiptClusterLine(line))) {
-          continue
-        }
+      if (window.length !== windowSize || !window.every((line) => isMergeableReceiptClusterLine(line))) {
+        continue
+      }
 
-        const joinedLine = normalizeReceiptFooterAmountLine(window.join(' '))
-        if (!joinedLine || joinedLine.length > 180) {
-          continue
-        }
+      const joinedLine = normalizeReceiptFooterAmountLine(window.join(' '))
+      if (!joinedLine || joinedLine.length > 180) {
+        continue
+      }
 
-        if ((hasAnyReceiptFooterSignal(joinedLine) && containsReceiptAmountFragment(joinedLine)) || scoreReceiptFooterAnchorCandidate(joinedLine) >= 2) {
-          windows.push(joinedLine)
-        }
+      if ((hasAnyReceiptFooterSignal(joinedLine) && containsReceiptAmountFragment(joinedLine)) || scoreReceiptFooterAnchorCandidate(joinedLine) >= 2) {
+        windows.push(joinedLine)
       }
     }
-
-    return mergeUniqueReceiptLines(windows)
   }
 
-  function scoreReceiptFooterAnchorCandidate(line: string): number {
-    const signalText = normalizeReceiptFooterSignalText(line)
-    let score = 0
+  return mergeUniqueReceiptLines(windows)
+}
 
-    if (containsReceiptTotalAnchorSignal(signalText)) {
-      score += 3
-    }
+function scoreReceiptFooterAnchorCandidate(line: string): number {
+  const signalText = normalizeReceiptFooterSignalText(line)
+  let score = 0
 
-    if (containsReceiptPaymentAnchorSignal(signalText)) {
-      score += 2
-    }
-
-    if (containsReceiptCurrencySignal(signalText)) {
-      score += 1
-    }
-
-    if (containsReceiptVatSignal(signalText)) {
-      score += 1
-    }
-
-    if (containsReceiptAmountFragment(line)) {
-      score += 1
-    }
-
-    return score
+  if (containsReceiptTotalAnchorSignal(signalText)) {
+    score += 3
   }
+
+  if (containsReceiptPaymentAnchorSignal(signalText)) {
+    score += 2
+  }
+
+  if (containsReceiptCurrencySignal(signalText)) {
+    score += 1
+  }
+
+  if (containsReceiptVatSignal(signalText)) {
+    score += 1
+  }
+
+  if (containsReceiptAmountFragment(line)) {
+    score += 1
+  }
+
+  return score
+}
 
 function reconstructReceiptFooterPaymentArea(lines: string[]): string[] {
   return mergeUniqueReceiptLines(
@@ -1348,7 +1348,8 @@ function collectReceiptFooterAnchorDiagnostics(lines: string[]): {
   rejectedLines: string[]
   normalizationSteps: string[]
 } {
-  const evaluationStartIndex = Math.max(0, lines.length - 24)
+  const evaluationStartIndex = Math.max(0, lines.length - 64)
+  const nearFooterRegionStartIndex = Math.max(0, lines.length - 24)
   const accepted = new Set<number>()
   const rejected = new Set<string>()
   let strongMatches = 0
@@ -1369,21 +1370,28 @@ function collectReceiptFooterAnchorDiagnostics(lines: string[]): {
 
       const anchorScore = scoreReceiptFooterAnchorCandidate(joinedLine)
       const nearBottom = startIndex >= Math.max(0, lines.length - 10)
+      const nearFooterRegion = startIndex >= nearFooterRegionStartIndex
+      const extendedFooterRegion = startIndex >= evaluationStartIndex
       const hasNormalizedAmount = containsReceiptNumericAmount(joinedLine)
 
-      if (anchorScore >= 4 || (anchorScore >= 3 && nearBottom)) {
+      if ((anchorScore >= 4 && hasNormalizedAmount && extendedFooterRegion) || anchorScore >= 5 || (anchorScore >= 3 && nearBottom)) {
         accepted.add(startIndex)
         strongMatches += 1
         continue
       }
 
-      if ((anchorScore >= 2 && nearBottom) || (anchorScore >= 1 && nearBottom && hasNormalizedAmount && hasAnyReceiptFooterSignal(joinedLine))) {
+      if (
+        (anchorScore >= 3 && hasNormalizedAmount && nearFooterRegion)
+        || (anchorScore >= 2 && nearBottom)
+        || (anchorScore >= 2 && hasNormalizedAmount && nearFooterRegion && hasAnyReceiptFooterSignal(joinedLine))
+        || (anchorScore >= 1 && nearBottom && hasNormalizedAmount && hasAnyReceiptFooterSignal(joinedLine))
+      ) {
         accepted.add(startIndex)
         weakMatches += 1
         continue
       }
 
-      if (anchorScore > 0 && nearBottom) {
+      if (anchorScore > 0 && (nearBottom || (extendedFooterRegion && hasNormalizedAmount))) {
         rejected.add(joinedLine)
       }
     }
@@ -1450,14 +1458,19 @@ function collectReconstructedAmountTokens(lines: string[]): string[] {
 }
 
 function normalizeReceiptOcrAmountLine(line: string): string {
-  return line
-    .replace(/fi/gi, '8')
-    .replace(/[?]/g, '7')
-    .replace(/([,.]\s*)(?:il|li|ll|ii|i1|1i|l1|1l)\b/gi, '$10')
-    .replace(/\b(?:il|li|ll|ii|i1|1i|l1|1l)\b/gi, '10')
-    .replace(/([0-9])[oO](?=[0-9.,])/g, '$10')
-    .replace(/([,.]\s*7)[iIlL](?=\b)/g, '$10')
-    .replace(/(?<=\d)[bB](?=[\d,.])/g, '8')
+  return normalizeReceiptOcrSplitAmountFragments(
+    line
+      .replace(/fi/gi, '8')
+      .replace(/ffi/gi, '8')
+      .replace(/[?]/g, '7')
+      .replace(/([,.]\s*)(?:il|li|ll|ii|i1|1i|l1|1l)\b/gi, '$10')
+      .replace(/([,.]\s*7)(?:il|li|ll|ii|i1|1i|l1|1l)\b/gi, '$10')
+      .replace(/\b(?:il|li|ll|ii|i1|1i|l1|1l)\b/gi, '10')
+      .replace(/([0-9])[oO](?=[0-9.,])/g, '$10')
+      .replace(/([,.]\s*7)[iIlL](?=\b)/g, '$10')
+      .replace(/(?<=\d)[bB](?=[\d,.])/g, '8')
+      .replace(/f+(?=\d|[.,])/gi, '8')
+  )
 }
 
 function normalizeReceiptFooterAmountLine(line: string): string {
@@ -1750,24 +1763,31 @@ function normalizeReceiptFooterSignalText(value: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[|!]/g, '1')
+    .replace(/\$/g, 's')
     .replace(/0/g, 'o')
     .replace(/1/g, 'i')
     .replace(/5/g, 's')
+    .replace(/4/g, 'a')
+    .replace(/7/g, 't')
+    .replace(/8/g, 'b')
+    .replace(/6/g, 'g')
+    .replace(/2/g, 'z')
+    .replace(/3/g, 'e')
     .replace(/[^a-z]+/g, '')
 }
 
 function containsReceiptTotalAnchorSignal(signalText: string): boolean {
-  return /(celkem|ceikem|ceikern|celkern|celkcm|total|kplatbe|zaplaceno|uhrazeno)/.test(signalText)
+  return /(celkem|ceikem|ceikern|celkern|celkcm|telkem|telkr|ilerkem|total|kplatbe|zaplaceno|uhrazeno)/.test(signalText)
 }
 
 function containsReceiptVisaSignal(signalText: string): boolean {
-  return /visa/.test(signalText)
+  return /(visa|uisa|usa)/.test(signalText)
 }
 
 function containsReceiptCardSignal(signalText: string): boolean {
   const sanitizedSignalText = signalText.replace(/clubcard/g, '')
 
-  return /(visa|mastercard|maestro|karta|kartou|card|payment|pinok|prodej|hotovost|cash)/.test(sanitizedSignalText)
+  return /(visa|uisa|usa|mastercard|maestro|karta|kartou|card|payment|pinok|prodej|ptodej|hotovost|cash)/.test(sanitizedSignalText)
 }
 
 function containsReceiptPaymentAnchorSignal(signalText: string): boolean {
@@ -1789,6 +1809,47 @@ function hasAnyReceiptFooterSignal(value: string): boolean {
     || containsReceiptPaymentAnchorSignal(signalText)
     || containsReceiptCurrencySignal(signalText)
     || containsReceiptVatSignal(signalText)
+}
+
+function normalizeReceiptOcrSplitAmountFragments(line: string): string {
+  return line.replace(/\b([\p{L}\p{N}$?']{2,8})\s*,\s*([\p{L}\p{N}$?']{1,3})\b/gu, (match, wholePart, decimalPart) => {
+    const normalizedWholePart = normalizeReceiptOcrAmountFragment(String(wholePart), false)
+    const normalizedDecimalPart = normalizeReceiptOcrAmountFragment(String(decimalPart), true)
+
+    if (!normalizedWholePart || !normalizedDecimalPart) {
+      return match
+    }
+
+    const normalizedCandidate = `${normalizedWholePart},${normalizedDecimalPart}`
+    return /^\d{2,4},\d{2}$/.test(normalizedCandidate) ? normalizedCandidate : match
+  })
+}
+
+function normalizeReceiptOcrAmountFragment(value: string, decimalPart: boolean): string {
+  const normalized = value
+    .replace(/ffi/gi, '8')
+    .replace(/fi/gi, '8')
+    .replace(/f+(?=\d|$)/gi, '8')
+    .replace(/[?]/g, '7')
+    .replace(/[oO]/g, '0')
+    .replace(/[dD]/g, '5')
+    .replace(/[tT]/g, '7')
+    .replace(/[zZ]/g, '2')
+    .replace(/[aA]/g, '8')
+    .replace(/[gG]/g, '6')
+    .replace(/[$sS]/g, decimalPart ? '5' : '3')
+    .replace(/[iIlLjJ|!]/g, decimalPart ? '0' : '1')
+    .replace(/[^0-9]/g, '')
+
+  if (!normalized) {
+    return ''
+  }
+
+  if (decimalPart) {
+    return normalized.length >= 2 ? normalized.slice(0, 2) : normalized.padEnd(2, '0')
+  }
+
+  return normalized.length > 4 ? normalized.slice(0, 4) : normalized
 }
 
 function normalizeReceiptYear(value: string): string {

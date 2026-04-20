@@ -321,6 +321,7 @@ function buildDocumentExtractionEntries(
       const data = extractedRecord?.data as Record<string, unknown> | undefined
       const summary = route?.parseDiagnostics?.documentExtractionSummary
       const autoValues = buildAutoDocumentValues(extractedRecord, summary)
+      const effectiveValues = { ...autoValues }
 
       return {
         sourceDocumentId: file.sourceDocument.id,
@@ -329,6 +330,7 @@ function buildDocumentExtractionEntries(
         sourceSystem: file.sourceDocument.sourceSystem,
         documentType: file.sourceDocument.documentType,
         autoValues,
+        effectiveValues,
         rawAutoData: {
           ...(extractedRecord?.id ? { extractedRecordId: extractedRecord.id } : {}),
           ...(typeof extractedRecord?.rawReference === 'string' ? { rawReference: extractedRecord.rawReference } : {}),

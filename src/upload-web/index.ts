@@ -117,6 +117,7 @@ export interface BrowserDocumentExtractionEntry {
   sourceSystem: string
   documentType: string
   autoValues: ManualDocumentOverrideValues
+  effectiveValues: ManualDocumentOverrideValues
   rawAutoData: {
     extractedRecordId?: string
     rawReference?: string

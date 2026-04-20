@@ -18,6 +18,7 @@ import {
   buildUploadedBatchPreview,
   buildUploadWebFlow
 } from '../../src/upload-web'
+import { receiptActualDebugExportFixtures } from '../helpers/receipt-actual-debug-export.fixture'
 
 describe('buildUploadWebFlow', () => {
   it('renders a browser-visible local upload flow with practical Czech copy', () => {
@@ -3611,6 +3612,56 @@ describe('buildUploadWebFlow', () => {
         })
       ])
     )
+  })
+
+  it('keeps actual browser debug-export Tesco and dm footer totals visible on the upload path', async () => {
+    const dmFixture = receiptActualDebugExportFixtures.dm
+    const tescoFixture = receiptActualDebugExportFixtures.tesco
+
+    const result = await buildBrowserRuntimeStateFromSelectedFiles({
+      files: [
+        createRuntimePdfFileFromToUnicodeTextLines(dmFixture.fileName, dmFixture.normalizedLines),
+        createRuntimePdfFileFromToUnicodeTextLines(tescoFixture.fileName, tescoFixture.normalizedLines)
+      ],
+      month: '2026-04',
+      generatedAt: '2026-04-12T14:30:03.703Z'
+    })
+
+    const dmDocumentExtraction = result.documentExtractions.find((entry) => entry.fileName === dmFixture.fileName)
+    const tescoDocumentExtraction = result.documentExtractions.find((entry) => entry.fileName === tescoFixture.fileName)
+
+    expect(dmDocumentExtraction?.autoValues).toMatchObject({
+      totalAmountMinor: dmFixture.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(dmDocumentExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: dmFixture.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(dmDocumentExtraction?.rawAutoData?.extractedRecordData).toMatchObject({
+      amountMinor: dmFixture.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(dmDocumentExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
+      totalAmountMinor: dmFixture.expectedTotalAmountMinor,
+      totalCurrency: 'CZK'
+    })
+    expect(tescoDocumentExtraction?.autoValues).toMatchObject({
+      totalAmountMinor: tescoFixture.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(tescoDocumentExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: tescoFixture.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(tescoDocumentExtraction?.rawAutoData?.extractedRecordData).toMatchObject({
+      amountMinor: tescoFixture.expectedTotalAmountMinor,
+      currency: 'CZK'
+    })
+    expect(tescoDocumentExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
+      totalAmountMinor: tescoFixture.expectedTotalAmountMinor,
+      totalCurrency: 'CZK'
+    })
   })
 
   it('keeps handwritten key-related receipt-like PDFs in the receipt path as partial records instead of unsupported files', async () => {
