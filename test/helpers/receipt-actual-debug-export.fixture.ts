@@ -2,6 +2,8 @@ type ReceiptActualDebugExportFixture = {
     fileName: string
     sourceDocumentId: string
     expectedTotalAmountMinor: number
+    expectedVatAmountMinor: number
+    expectedVatBaseAmountMinor: number
     expectedDisplayAmount: string
     expectedSupplierName: string
     normalizedLines: string[]
@@ -910,6 +912,8 @@ export const receiptActualDebugExportFixtures: Record<'dm' | 'tesco', ReceiptAct
         fileName: 'ScanDMPDF',
         sourceDocumentId: 'uploaded:receipt:1:scandmpdf',
         expectedTotalAmountMinor: 38870,
+        expectedVatAmountMinor: 6746,
+        expectedVatBaseAmountMinor: 32124,
         expectedDisplayAmount: '388,70 CZK',
         expectedSupplierName: 'dm drogerie markt s.r.o.',
         normalizedLines: dmNormalizedLines,
@@ -919,6 +923,8 @@ export const receiptActualDebugExportFixtures: Record<'dm' | 'tesco', ReceiptAct
         fileName: 'ScanTesco.PDF',
         sourceDocumentId: 'uploaded:receipt:2:scantesco-pdf',
         expectedTotalAmountMinor: 378250,
+        expectedVatAmountMinor: 65647,
+        expectedVatBaseAmountMinor: 312603,
         expectedDisplayAmount: '3 782,50 CZK',
         expectedSupplierName: 'TESCO Praha Eden',
         normalizedLines: tescoNormalizedLines,

@@ -3852,34 +3852,50 @@ describe('buildUploadWebFlow', () => {
 
     expect(dmDocumentExtraction?.autoValues).toMatchObject({
       totalAmountMinor: dmFixture.expectedTotalAmountMinor,
+      vatAmountMinor: dmFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: dmFixture.expectedVatBaseAmountMinor,
       currency: 'CZK'
     })
     expect(dmDocumentExtraction?.effectiveValues).toMatchObject({
       totalAmountMinor: dmFixture.expectedTotalAmountMinor,
+      vatAmountMinor: dmFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: dmFixture.expectedVatBaseAmountMinor,
       currency: 'CZK'
     })
     expect(dmDocumentExtraction?.rawAutoData?.extractedRecordData).toMatchObject({
       amountMinor: dmFixture.expectedTotalAmountMinor,
+      vatAmountMinor: dmFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: dmFixture.expectedVatBaseAmountMinor,
       currency: 'CZK'
     })
     expect(dmDocumentExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
       totalAmountMinor: dmFixture.expectedTotalAmountMinor,
+      vatAmountMinor: dmFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: dmFixture.expectedVatBaseAmountMinor,
       totalCurrency: 'CZK'
     })
     expect(tescoDocumentExtraction?.autoValues).toMatchObject({
       totalAmountMinor: tescoFixture.expectedTotalAmountMinor,
+      vatAmountMinor: tescoFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: tescoFixture.expectedVatBaseAmountMinor,
       currency: 'CZK'
     })
     expect(tescoDocumentExtraction?.effectiveValues).toMatchObject({
       totalAmountMinor: tescoFixture.expectedTotalAmountMinor,
+      vatAmountMinor: tescoFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: tescoFixture.expectedVatBaseAmountMinor,
       currency: 'CZK'
     })
     expect(tescoDocumentExtraction?.rawAutoData?.extractedRecordData).toMatchObject({
       amountMinor: tescoFixture.expectedTotalAmountMinor,
+      vatAmountMinor: tescoFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: tescoFixture.expectedVatBaseAmountMinor,
       currency: 'CZK'
     })
     expect(tescoDocumentExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
       totalAmountMinor: tescoFixture.expectedTotalAmountMinor,
+      vatAmountMinor: tescoFixture.expectedVatAmountMinor,
+      vatBaseAmountMinor: tescoFixture.expectedVatBaseAmountMinor,
       totalCurrency: 'CZK'
     })
   })

@@ -6117,6 +6117,131 @@ describe('buildWebDemo', () => {
 
     expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('3 782,50 CZK')
     expect(rendered.expenseUnmatchedDocumentsContent.innerHTML.replace(/&nbsp;|\u00a0/g, ' ')).toContain('388,70 CZK')
+
+    const state = rendered.getLastVisibleRuntimeState() as {
+      documentExtractions: Array<{
+        fileName: string
+        effectiveValues?: {
+          totalAmountMinor?: number
+          vatAmountMinor?: number
+          vatBaseAmountMinor?: number
+          currency?: string
+        }
+        rawAutoData?: {
+          extractedRecordData?: {
+            amountMinor?: number
+            vatAmountMinor?: number
+            vatBaseAmountMinor?: number
+            currency?: string
+          }
+          documentExtractionSummary?: {
+            totalAmountMinor?: number
+            vatAmountMinor?: number
+            vatBaseAmountMinor?: number
+            totalCurrency?: string
+          }
+        }
+      }>
+    }
+    const dmExtraction = state.documentExtractions.find((entry) => entry.fileName === receiptActualDebugExportFixtures.dm.fileName)
+    const tescoExtraction = state.documentExtractions.find((entry) => entry.fileName === receiptActualDebugExportFixtures.tesco.fileName)
+
+    expect(dmExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: receiptActualDebugExportFixtures.dm.expectedTotalAmountMinor,
+      vatAmountMinor: receiptActualDebugExportFixtures.dm.expectedVatAmountMinor,
+      vatBaseAmountMinor: receiptActualDebugExportFixtures.dm.expectedVatBaseAmountMinor,
+      currency: 'CZK'
+    })
+    expect(dmExtraction?.rawAutoData?.extractedRecordData).toMatchObject({
+      amountMinor: receiptActualDebugExportFixtures.dm.expectedTotalAmountMinor,
+      vatAmountMinor: receiptActualDebugExportFixtures.dm.expectedVatAmountMinor,
+      vatBaseAmountMinor: receiptActualDebugExportFixtures.dm.expectedVatBaseAmountMinor,
+      currency: 'CZK'
+    })
+    expect(dmExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
+      totalAmountMinor: receiptActualDebugExportFixtures.dm.expectedTotalAmountMinor,
+      vatAmountMinor: receiptActualDebugExportFixtures.dm.expectedVatAmountMinor,
+      vatBaseAmountMinor: receiptActualDebugExportFixtures.dm.expectedVatBaseAmountMinor,
+      totalCurrency: 'CZK'
+    })
+    expect(tescoExtraction?.effectiveValues).toMatchObject({
+      totalAmountMinor: receiptActualDebugExportFixtures.tesco.expectedTotalAmountMinor,
+      vatAmountMinor: receiptActualDebugExportFixtures.tesco.expectedVatAmountMinor,
+      vatBaseAmountMinor: receiptActualDebugExportFixtures.tesco.expectedVatBaseAmountMinor,
+      currency: 'CZK'
+    })
+    expect(tescoExtraction?.rawAutoData?.extractedRecordData).toMatchObject({
+      amountMinor: receiptActualDebugExportFixtures.tesco.expectedTotalAmountMinor,
+      vatAmountMinor: receiptActualDebugExportFixtures.tesco.expectedVatAmountMinor,
+      vatBaseAmountMinor: receiptActualDebugExportFixtures.tesco.expectedVatBaseAmountMinor,
+      currency: 'CZK'
+    })
+    expect(tescoExtraction?.rawAutoData?.documentExtractionSummary).toMatchObject({
+      totalAmountMinor: receiptActualDebugExportFixtures.tesco.expectedTotalAmountMinor,
+      vatAmountMinor: receiptActualDebugExportFixtures.tesco.expectedVatAmountMinor,
+      vatBaseAmountMinor: receiptActualDebugExportFixtures.tesco.expectedVatBaseAmountMinor,
+      totalCurrency: 'CZK'
+    })
+  })
+
+  it('actual receipt scan debug text shapes expose VAT in debug workspace truth effective values', async () => {
+    const rendered = await executeWebDemoMainWorkflow({
+      generatedAt: '2026-04-28T15:55:00.000Z',
+      month: '2026-04',
+      outputDirName: 'test-web-demo-actual-receipt-vat-scans',
+      locationSearch: '?debug=1',
+      files: createActualReceiptVatScanDebugTextWorkflowFiles()
+    })
+
+    rendered.downloadDebugWorkspaceTruthExport()
+
+    const artifact = rendered.getLastDebugWorkspaceTruthExport() as { jsonContent: string }
+    const payload = JSON.parse(artifact.jsonContent) as {
+      uploadedFiles: Array<{
+        fileName: string
+        sourceDocumentId: string
+      }>
+      documentExtractions: Array<{
+        sourceDocumentId: string
+        effectiveValues?: {
+          totalAmountMinor?: number
+          vatAmountMinor?: number
+          vatBaseAmountMinor?: number
+          currency?: string
+        }
+        rawAutoData?: {
+          extractedRecordData?: {
+            amountMinor?: number
+            vatAmountMinor?: number
+            vatBaseAmountMinor?: number
+            currency?: string
+          }
+        }
+      }>
+    }
+    const sourceDocumentIdByFileName = new Map(
+      payload.uploadedFiles.map((file) => [file.fileName, file.sourceDocumentId])
+    )
+
+    for (const expected of actualReceiptVatScanExpectations) {
+      const extraction = payload.documentExtractions.find((entry) => entry.sourceDocumentId === sourceDocumentIdByFileName.get(expected.fileName))
+
+      expect(extraction?.effectiveValues, expected.fileName).toMatchObject({
+        totalAmountMinor: expected.totalAmountMinor,
+        vatAmountMinor: expected.vatAmountMinor,
+        currency: expected.currency
+      })
+      expect(extraction?.rawAutoData?.extractedRecordData, expected.fileName).toMatchObject({
+        amountMinor: expected.totalAmountMinor,
+        vatAmountMinor: expected.vatAmountMinor,
+        currency: expected.currency
+      })
+
+      if (expected.vatBaseAmountMinor !== undefined) {
+        expect(extraction?.effectiveValues?.vatBaseAmountMinor, expected.fileName).toBe(expected.vatBaseAmountMinor)
+        expect(extraction?.rawAutoData?.extractedRecordData?.vatBaseAmountMinor, expected.fileName).toBe(expected.vatBaseAmountMinor)
+      }
+    }
   })
 
   it('keeps Potraviny640 review and browser truth isolated from dm and Tesco receipt identities', async () => {
@@ -10128,6 +10253,56 @@ function createReceiptActualDebugExportWorkflowFiles() {
   return [
     createWebDemoRuntimePdfFileFromToUnicodeTextLines(dmFixture.fileName, dmFixture.normalizedLines),
     createWebDemoRuntimePdfFileFromToUnicodeTextLines(tescoFixture.fileName, tescoFixture.normalizedLines)
+  ]
+}
+
+const actualReceiptVatScanExpectations = [
+  {
+    fileName: 'Tesco2153.PDF',
+    totalAmountMinor: 215300,
+    vatAmountMinor: 37366,
+    currency: 'CZK'
+  },
+  {
+    fileName: 'ScanTesco.PDF',
+    totalAmountMinor: 378250,
+    vatAmountMinor: 65647,
+    currency: 'CZK'
+  },
+  {
+    fileName: 'DM388.7.PDF',
+    totalAmountMinor: 38870,
+    vatAmountMinor: 6746,
+    vatBaseAmountMinor: 32124,
+    currency: 'CZK'
+  }
+] satisfies Array<{
+  fileName: string
+  totalAmountMinor: number
+  vatAmountMinor: number
+  vatBaseAmountMinor?: number
+  currency: string
+}>
+
+function createActualReceiptVatScanDebugTextWorkflowFiles() {
+  return [
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('Tesco2153.PDF', [
+      'TESCO',
+      'Hypennerket Prahe Eden',
+      'ID dokladu TESCO2153',
+      'Datum prodeje 28.04.2026 12:00:00',
+      'CELKEi1',
+      '2153, 00',
+      'Celkem 2153,00 CZK',
+      'Platebnl karta',
+      '2153,00',
+      'DPH Cel kem',
+      'Sazba',
+      '373,66 2153,004',
+      '2l"l'
+    ]),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('ScanTesco.PDF', receiptActualDebugExportFixtures.tesco.normalizedLines),
+    createWebDemoRuntimePdfFileFromToUnicodeTextLines('DM388.7.PDF', receiptActualDebugExportFixtures.dm.normalizedLines)
   ]
 }
 

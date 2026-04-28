@@ -11,6 +11,7 @@ import type {
 } from '../contracts'
 import {
   normalizeDocumentDate,
+  parseDocumentAmountMinor,
   parseDocumentMoney,
   parseLabeledDocumentText,
   pickRequiredField
@@ -256,6 +257,8 @@ function buildReceiptDocumentExtractionSummary(
   const extracted = extraction.fields
   const purchaseDate = safeNormalizeDocumentDate(extracted.purchaseDateRaw, 'Receipt purchase date')
   const total = safeParseDocumentMoney(extracted.totalRaw, 'Receipt total')
+  const vatBase = safeParseDocumentMoney(extracted.vatBaseRaw, 'Receipt VAT base')
+  const vatAmount = safeParseDocumentMoney(extracted.vatRaw, 'Receipt VAT amount')
   const missingRequiredFields = collectMissingReceiptSummaryFields(extracted)
   const hasMeaningfulFields = Boolean(
     extracted.receiptNumber
@@ -300,6 +303,8 @@ function buildReceiptDocumentExtractionSummary(
     ...(extracted.merchant ? { issuerOrCounterparty: extracted.merchant } : {}),
     ...(purchaseDate ? { paymentDate: purchaseDate } : {}),
     ...(total ? { totalAmountMinor: total.amountMinor, totalCurrency: total.currency } : {}),
+    ...(vatBase ? { vatBaseAmountMinor: vatBase.amountMinor, vatBaseCurrency: vatBase.currency } : {}),
+    ...(vatAmount ? { vatAmountMinor: vatAmount.amountMinor, vatCurrency: vatAmount.currency } : {}),
     ...(extracted.paymentMethod ? { paymentMethod: extracted.paymentMethod } : {}),
     ...(extracted.receiptNumber ? { referenceNumber: extracted.receiptNumber } : {}),
     confidence,
@@ -341,7 +346,9 @@ function extractReceiptDocumentFields(input: {
     totalRaw: labeledTextFields.totalRaw ?? scanHeuristicFields.totalRaw,
     paymentMethod: scanHeuristicFields.paymentMethod,
     category: labeledTextFields.category ?? scanHeuristicFields.category,
-    note: labeledTextFields.note ?? scanHeuristicFields.note
+    note: labeledTextFields.note ?? scanHeuristicFields.note,
+    vatBaseRaw: scanHeuristicFields.vatBaseRaw,
+    vatRaw: scanHeuristicFields.vatRaw
   }
   const fieldProvenance: Partial<Record<DeterministicDocumentSummaryFieldKey, DeterministicDocumentFieldProvenance>> = {}
 
@@ -368,6 +375,12 @@ function extractReceiptDocumentFields(input: {
   if (textFields.paymentMethod?.trim()) {
     fieldProvenance.paymentMethod = scanHeuristicFields.paymentMethod?.trim() ? 'inferred' : 'text'
   }
+  if (scanHeuristicFields.vatBaseRaw?.trim()) {
+    fieldProvenance.vatBaseAmount = 'inferred'
+  }
+  if (scanHeuristicFields.vatRaw?.trim()) {
+    fieldProvenance.vatAmount = 'inferred'
+  }
 
   const ocrExtraction = extractDocumentOcrOrVisionFallback({
     content: input.content,
@@ -382,7 +395,10 @@ function extractReceiptDocumentFields(input: {
     currentFields: merged.fields,
     ocrParsedFields: ocrExtraction.parsedFields
   })
-  const vendorMergedFields = applyReceiptVendorOverrides(merged.fields, vendorProfile)
+  const vendorMergedFields = applyReceiptVatRecapFallback(
+    applyReceiptVendorOverrides(merged.fields, vendorProfile),
+    input.content
+  )
   const vendorFieldProvenance = { ...merged.fieldProvenance }
 
   if (vendorProfile?.merchant) {
@@ -399,6 +415,12 @@ function extractReceiptDocumentFields(input: {
   }
   if (vendorProfile?.receiptNumber) {
     vendorFieldProvenance.referenceNumber = vendorFieldProvenance.referenceNumber ?? 'inferred'
+  }
+  if (vendorMergedFields.vatBaseRaw && !merged.fields.vatBaseRaw && !vendorProfile?.vatBaseRaw) {
+    vendorFieldProvenance.vatBaseAmount = vendorFieldProvenance.vatBaseAmount ?? 'inferred'
+  }
+  if (vendorMergedFields.vatRaw && !merged.fields.vatRaw && !vendorProfile?.vatRaw) {
+    vendorFieldProvenance.vatAmount = vendorFieldProvenance.vatAmount ?? 'inferred'
   }
 
   return {
@@ -708,6 +730,34 @@ function mergeReceiptTextAndOcrFields(
     confirmedFields: ocrConfirmedFields
   })
 
+  mergeReceiptFallbackField({
+    fieldKey: 'vatBaseAmount',
+    currentValue: mergedFields.vatBaseRaw,
+    fallbackValue: ocrExtraction.parsedFields?.vatBaseAmount ?? ocrRawTextHeuristicFields.vatBaseRaw,
+    normalizeValue: normalizeComparableReceiptMoney,
+    assign(value) {
+      mergedFields.vatBaseRaw = value
+    },
+    fallbackProvenance,
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
+  mergeReceiptFallbackField({
+    fieldKey: 'vatAmount',
+    currentValue: mergedFields.vatRaw,
+    fallbackValue: ocrExtraction.parsedFields?.vatAmount ?? ocrRawTextHeuristicFields.vatRaw,
+    normalizeValue: normalizeComparableReceiptMoney,
+    assign(value) {
+      mergedFields.vatRaw = value
+    },
+    fallbackProvenance,
+    fieldProvenance,
+    recoveredFields: ocrRecoveredFields,
+    confirmedFields: ocrConfirmedFields
+  })
+
   if (!mergedFields.note?.trim() && ocrExtraction.parsedFields?.note?.trim()) {
     mergedFields.note = ocrExtraction.parsedFields.note
   }
@@ -832,6 +882,8 @@ function buildReceiptFieldConfidenceMap(
       ['issuerOrCounterparty', fields.merchant],
       ['paymentDate', fields.purchaseDateRaw],
       ['totalAmount', fields.totalRaw],
+      ['vatBaseAmount', fields.vatBaseRaw],
+      ['vatAmount', fields.vatRaw],
       ['paymentMethod', fields.paymentMethod]
     ] as Array<[DeterministicDocumentSummaryFieldKey, string | undefined]>)
       .map(([fieldKey, value]) => [fieldKey, deriveFieldConfidence(fieldProvenance[fieldKey], Boolean(value?.trim()))])
@@ -861,6 +913,12 @@ function buildReceiptExtractionStages(input: {
   }
   if (input.textFields.totalRaw?.trim()) {
     textRecoveredFields.push('totalAmount')
+  }
+  if (input.textFields.vatBaseRaw?.trim()) {
+    textRecoveredFields.push('vatBaseAmount')
+  }
+  if (input.textFields.vatRaw?.trim()) {
+    textRecoveredFields.push('vatAmount')
   }
   if (input.textFields.paymentMethod?.trim()) {
     textRecoveredFields.push('paymentMethod')
@@ -1094,14 +1152,337 @@ function extractScanLikeReceiptHeuristicFields(content: string): Partial<Receipt
   const totalRaw = extractReceiptTotalFromLines(lines)
   const receiptNumber = extractReceiptReferenceFromLines(lines)
   const paymentMethod = extractReceiptPaymentMethod(lines)
+  const vatRecap = extractReceiptVatRecapFromLines(lines, totalRaw)
 
   return {
     ...(merchant ? { merchant } : {}),
     ...(purchaseDateRaw ? { purchaseDateRaw } : {}),
     ...(totalRaw ? { totalRaw } : {}),
     ...(receiptNumber ? { receiptNumber } : {}),
-    ...(paymentMethod ? { paymentMethod } : {})
+    ...(paymentMethod ? { paymentMethod } : {}),
+    ...(vatRecap.vatBaseRaw ? { vatBaseRaw: vatRecap.vatBaseRaw } : {}),
+    ...(vatRecap.vatRaw ? { vatRaw: vatRecap.vatRaw } : {})
   }
+}
+
+function applyReceiptVatRecapFallback(fields: ReceiptExtractedFields, content: string): ReceiptExtractedFields {
+  const lines = normalizeReceiptScanStructuredContent(content)
+    .split(/\r\n?|\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const vatRecap = extractReceiptVatRecapFromLines(lines, fields.totalRaw, fields.supplementaryAmounts)
+
+  if (fields.vatBaseRaw?.trim() && fields.vatRaw?.trim() && isExistingReceiptVatRecapPlausible(fields)) {
+    return fields
+  }
+
+  if (!vatRecap.vatBaseRaw && !vatRecap.vatRaw) {
+    return fields
+  }
+
+  return {
+    ...fields,
+    ...(shouldReplaceReceiptTotalWithVatRecapGross(fields.totalRaw, vatRecap) && vatRecap.totalRaw
+      ? { totalRaw: vatRecap.totalRaw }
+      : {}),
+    ...(vatRecap.vatBaseRaw ? { vatBaseRaw: vatRecap.vatBaseRaw } : fields.vatBaseRaw ? { vatBaseRaw: fields.vatBaseRaw } : {}),
+    ...(vatRecap.vatRaw ? { vatRaw: vatRecap.vatRaw } : fields.vatRaw ? { vatRaw: fields.vatRaw } : {})
+  }
+}
+
+function shouldReplaceReceiptTotalWithVatRecapGross(
+  currentTotalRaw: string | undefined,
+  vatRecap: { totalRaw?: string; vatRaw?: string }
+): boolean {
+  const recapTotal = safeParseDocumentMoney(vatRecap.totalRaw, 'Receipt VAT recap gross total')
+
+  if (!recapTotal || recapTotal.amountMinor < 10_000) {
+    return false
+  }
+
+  const currentTotal = safeParseDocumentMoney(currentTotalRaw, 'Receipt current total before VAT recap gross')
+  if (!currentTotal) {
+    return true
+  }
+
+  const vatAmount = safeParseDocumentMoney(vatRecap.vatRaw, 'Receipt VAT recap amount for gross guard')
+
+  return Boolean(
+    vatAmount
+    && currentTotal.amountMinor < vatAmount.amountMinor
+    && recapTotal.amountMinor > currentTotal.amountMinor
+  )
+}
+
+function isExistingReceiptVatRecapPlausible(fields: ReceiptExtractedFields): boolean {
+  const knownTotalMinor = resolveReceiptVatKnownTotalMinor(fields)
+  const vatAmount = safeParseDocumentMoney(fields.vatRaw, 'Receipt existing VAT amount')
+
+  if (!knownTotalMinor || !vatAmount) {
+    return false
+  }
+
+  return Math.abs(vatAmount.amountMinor - calculateStandardCzechVatFromGrossMinor(knownTotalMinor)) <= 1
+}
+
+function resolveReceiptVatKnownTotalMinor(fields: ReceiptExtractedFields): number | undefined {
+  const total = safeParseDocumentMoney(fields.totalRaw, 'Receipt known VAT total')
+
+  if (total && total.amountMinor >= 10_000) {
+    return total.amountMinor
+  }
+
+  return fields.supplementaryAmounts
+    ?.find((amount) => amount.currency === 'CZK' && amount.amountMinor >= 10_000 && amount.amountMinor <= 1_000_000)
+    ?.amountMinor
+}
+
+function extractReceiptVatRecapFromLines(
+  lines: string[],
+  totalRaw: string | undefined,
+  supplementaryAmounts: ReceiptVendorProfileSupplementaryAmount[] = []
+): { totalRaw?: string; vatBaseRaw?: string; vatRaw?: string } {
+  const parsedTotal = safeParseDocumentMoney(totalRaw, 'Receipt VAT recap total')
+  const supplementaryTotalAmounts = supplementaryAmounts
+    .filter((amount) => amount.currency === 'CZK' && amount.amountMinor >= 10_000 && amount.amountMinor <= 1_000_000)
+    .map((amount) => amount.amountMinor)
+  const candidateWindows = collectReceiptVatRecapWindows(lines)
+
+  for (const windowLines of candidateWindows) {
+    const joinedWindow = windowLines.join(' ')
+    const amountCandidates = collectReceiptVatRecapAmountCandidates(windowLines)
+    const recapTotal = selectReceiptVatRecapTotalCandidate(
+      amountCandidates,
+      parsedTotal?.amountMinor,
+      supplementaryTotalAmounts
+    )
+    const knownTotalMinor = recapTotal?.amountMinor ?? parsedTotal?.amountMinor
+
+    if (!knownTotalMinor || knownTotalMinor <= 0) {
+      continue
+    }
+
+    const expectedVatMinor = calculateStandardCzechVatFromGrossMinor(knownTotalMinor)
+    const explicitVat = amountCandidates.find((candidate) => Math.abs(candidate.amountMinor - expectedVatMinor) <= 1)
+    const hasRateEvidence = hasReceiptVatRateEvidence(joinedWindow)
+
+    if (!explicitVat && !hasRateEvidence) {
+      continue
+    }
+
+    const vatAmountMinor = explicitVat?.amountMinor ?? expectedVatMinor
+    const baseAmountMinor = knownTotalMinor - vatAmountMinor
+
+    if (baseAmountMinor <= 0) {
+      continue
+    }
+
+    const explicitBase = amountCandidates.find((candidate) => Math.abs(candidate.amountMinor - baseAmountMinor) <= 1)
+
+    return {
+      totalRaw: recapTotal?.raw ?? formatReceiptCzkMinor(knownTotalMinor),
+      vatBaseRaw: explicitBase || hasRateEvidence ? formatReceiptCzkMinor(baseAmountMinor) : undefined,
+      vatRaw: explicitVat?.raw ?? formatReceiptCzkMinor(vatAmountMinor)
+    }
+  }
+
+  return {}
+}
+
+function collectReceiptVatRecapWindows(lines: string[]): string[][] {
+  const windows: string[][] = []
+
+  for (const [index, line] of lines.entries()) {
+    if (!isStrongReceiptVatAnchorLine(line)) {
+      continue
+    }
+
+    const windowStart = Math.max(0, index - 3)
+    const windowEnd = Math.min(lines.length, index + 7)
+    const windowLines = lines.slice(windowStart, windowEnd)
+
+    if (!isReceiptVatRecapWindow(windowLines)) {
+      continue
+    }
+
+    windows.push(windowLines)
+  }
+
+  return windows
+}
+
+function isStrongReceiptVatAnchorLine(line: string): boolean {
+  const normalized = normalizeReceiptVatRecapText(line)
+  const compact = normalized.replace(/\s+/g, '')
+
+  return /\b(dph|vat)\b/.test(normalized)
+    || /(?:dph|dptj|dpri|dpfi|dpj|dpf)/.test(compact)
+    || /saz/.test(compact)
+}
+
+function isReceiptVatRecapWindow(lines: string[]): boolean {
+  const normalized = normalizeReceiptVatRecapText(lines.join(' '))
+  const compact = normalized.replace(/\s+/g, '')
+  const hasVatAnchor = /(?:\bdph\b|\bvat\b|dptj|dpri|dpfi|dpj|dpf)/.test(compact)
+    || (/saz/.test(compact) && hasReceiptVatRateEvidence(normalized))
+  const hasRecapStructure = /saz|zaklad|z[aá]klad|celkem|ce1kem|ilerkem|base|total/.test(normalized)
+
+  return hasVatAnchor && (hasRecapStructure || hasReceiptVatRateEvidence(normalized))
+}
+
+function hasReceiptVatRateEvidence(value: string): boolean {
+  const normalized = normalizeReceiptVatRecapText(value)
+  const compact = normalized.replace(/\s+/g, '')
+
+  return /(?:^|[^0-9])(21|2l|2i)(?:%|pct|procent|[^0-9]|$)/i.test(normalized)
+    || /(?:ztx|=\??l|=\??1|=\??7l|=\??21)/i.test(compact)
+}
+
+function collectReceiptVatRecapAmountCandidates(lines: string[]): Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }> {
+  const candidates: Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }> = []
+  const amountPattern = /[0-9OolIi!]{1,6}(?:[ .][0-9OolIi!]{3})*[,.]\s*[0-9OolIi!]{2,3}/g
+
+  for (const [lineIndex, line] of lines.entries()) {
+    for (const match of line.matchAll(amountPattern)) {
+      const rawToken = match[0]?.trim()
+      const amountMinor = parseReceiptVatRecapAmountMinor(rawToken)
+
+      if (!rawToken || amountMinor === undefined || amountMinor <= 0 || amountMinor > 10_000_000) {
+        continue
+      }
+
+      candidates.push({
+        raw: formatReceiptCzkMinor(amountMinor),
+        amountMinor,
+        line,
+        lineIndex
+      })
+    }
+  }
+
+  return candidates.filter((candidate, index, allCandidates) =>
+    allCandidates.findIndex((otherCandidate) => otherCandidate.amountMinor === candidate.amountMinor) === index
+  )
+}
+
+function parseReceiptVatRecapAmountMinor(rawToken: string | undefined): number | undefined {
+  if (!rawToken?.trim()) {
+    return undefined
+  }
+
+  const normalized = rawToken
+    .replace(/[Oo]/g, '0')
+    .replace(/[Il!]/g, '1')
+    .replace(/\s+/g, '')
+    .trim()
+  const match = normalized.match(/^([0-9]{1,6}(?:[.][0-9]{3})*)([,.])([0-9]{2})([0-9]*)$/)
+
+  if (!match?.[1] || !match[3]) {
+    return undefined
+  }
+
+  const major = match[1]
+  const cents = match[3]
+
+  try {
+    return parseDocumentAmountMinor(`${major},${cents}`, 'Receipt VAT recap amount')
+  } catch {
+    return undefined
+  }
+}
+
+function selectReceiptVatRecapTotalCandidate(
+  candidates: Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }>,
+  parsedTotalAmountMinor: number | undefined,
+  supplementaryTotalAmounts: number[]
+): { raw: string; amountMinor: number } | undefined {
+  for (const supplementaryTotalAmount of supplementaryTotalAmounts) {
+    const matchingSupplementaryTotal = candidates.find((candidate) => Math.abs(candidate.amountMinor - supplementaryTotalAmount) <= 1)
+    if (matchingSupplementaryTotal) {
+      return matchingSupplementaryTotal
+    }
+  }
+
+  if (parsedTotalAmountMinor && parsedTotalAmountMinor >= 10_000) {
+    const matchingTotal = candidates.find((candidate) => Math.abs(candidate.amountMinor - parsedTotalAmountMinor) <= 1)
+    if (matchingTotal) {
+      return matchingTotal
+    }
+
+    return {
+      raw: formatReceiptCzkMinor(parsedTotalAmountMinor),
+      amountMinor: parsedTotalAmountMinor
+    }
+  }
+
+  if (supplementaryTotalAmounts.length > 0) {
+    const supplementaryTotalAmount = supplementaryTotalAmounts[0]
+    if (supplementaryTotalAmount) {
+      return {
+        raw: formatReceiptCzkMinor(supplementaryTotalAmount),
+        amountMinor: supplementaryTotalAmount
+      }
+    }
+  }
+
+  return candidates
+    .filter((candidate) => candidate.amountMinor >= 10_000 && candidate.amountMinor <= 1_000_000)
+    .map((candidate) => ({
+      ...candidate,
+      score: scoreReceiptVatRecapTotalCandidate(candidate)
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+
+      if (left.lineIndex !== right.lineIndex) {
+        return left.lineIndex - right.lineIndex
+      }
+
+      return right.amountMinor - left.amountMinor
+    })[0]
+}
+
+function scoreReceiptVatRecapTotalCandidate(candidate: { amountMinor: number; line: string }): number {
+  const normalizedLine = normalizeReceiptVatRecapText(candidate.line)
+  let score = 0
+
+  if (/celkem|ce1kem|ilerkem|total/.test(normalizedLine)) {
+    score += 70
+  }
+  if (/visa|karta|kartou|platba|prodej/.test(normalizedLine)) {
+    score += 50
+  }
+  if (candidate.amountMinor > 500_000) {
+    score -= 80
+  }
+  if (/\b(i[čc]o|di[čc]|uid|dic|tel|telefon)\b/.test(normalizedLine)) {
+    score -= 120
+  }
+
+  return score
+}
+
+function calculateStandardCzechVatFromGrossMinor(totalAmountMinor: number): number {
+  return Math.round(totalAmountMinor * 21 / 121)
+}
+
+function formatReceiptCzkMinor(amountMinor: number): string {
+  const sign = amountMinor < 0 ? '-' : ''
+  const absolute = Math.abs(amountMinor)
+  const major = Math.trunc(absolute / 100)
+  const cents = String(absolute % 100).padStart(2, '0')
+
+  return `${sign}${major},${cents} CZK`
+}
+
+function normalizeReceiptVatRecapText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[|]/g, 'l')
 }
 
 function extractReceiptMerchantFromLines(lines: string[]): string | undefined {
