@@ -100,6 +100,14 @@ export class ReceiptDocumentParser {
         binaryContentBase64: segmentBinaryContentBase64,
         ocrOrVisionFallback: segmentation.segments.length === 1 ? input.ocrOrVisionFallback : undefined
       })
+      const merchantOverride = resolveSegmentedReceiptMerchantOverride({
+        fullContent: input.content,
+        segmentContent: segment.content,
+        merchant: extraction.fields.merchant
+      })
+      if (merchantOverride) {
+        extraction.fields.merchant = merchantOverride
+      }
       const summary = buildReceiptDocumentExtractionSummary(
         extraction,
         segmentBinaryContentBase64,
@@ -1593,6 +1601,58 @@ function extractReceiptMerchantFromLines(lines: string[]): string | undefined {
     }
   }
   return undefined
+}
+
+function resolveSegmentedReceiptMerchantOverride(input: {
+  fullContent: string
+  segmentContent: string
+  merchant?: string
+}): string | undefined {
+  if (!input.merchant || !containsStrongTescoReceiptSignalBeforeSegment(input.fullContent, input.segmentContent)) {
+    return undefined
+  }
+
+  if (containsStrongTescoReceiptSignal(input.segmentContent)) {
+    return undefined
+  }
+
+  return isTescoStoreLocationMerchant(input.merchant) ? 'TESCO' : undefined
+}
+
+function containsStrongTescoReceiptSignal(content: string): boolean {
+  const normalized = normalizeReceiptTextForMerchantOverride(content)
+  return /\btesco\b/.test(normalized)
+}
+
+function containsStrongTescoReceiptSignalBeforeSegment(fullContent: string, segmentContent: string): boolean {
+  const segmentFirstLine = segmentContent
+    .split(/\r\n?|\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+  if (!segmentFirstLine) {
+    return false
+  }
+
+  const normalizedFullContent = normalizeReceiptScanStructuredContent(fullContent)
+  const segmentStartIndex = normalizedFullContent.indexOf(segmentFirstLine)
+  if (segmentStartIndex === -1) {
+    return false
+  }
+
+  return containsStrongTescoReceiptSignal(
+    normalizedFullContent.slice(Math.max(0, segmentStartIndex - 600), segmentStartIndex)
+  )
+}
+
+function isTescoStoreLocationMerchant(merchant: string): boolean {
+  return /\b(hypermarket|hypennerket|hypemarket)\b/.test(normalizeReceiptTextForMerchantOverride(merchant))
+}
+
+function normalizeReceiptTextForMerchantOverride(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
 }
 
 function extractReceiptDateFromLines(lines: string[]): string | undefined {
