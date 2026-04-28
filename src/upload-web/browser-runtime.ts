@@ -523,6 +523,15 @@ async function extractPdfTextFromBytes(bytes: Uint8Array, fileName: string): Pro
     .filter(Boolean)
     .join('\n')
 
+  if (normalizedText && isUsablePdfTextExtraction(normalizedText)) {
+    return normalizedText
+  }
+
+  const nodeFallbackText = await extractPdfTextWithNodePdftotextFallback(bytes, fileName)
+  if (nodeFallbackText) {
+    return nodeFallbackText
+  }
+
   if (normalizedText) {
     return normalizedText
   }
@@ -532,6 +541,80 @@ async function extractPdfTextFromBytes(bytes: Uint8Array, fileName: string): Pro
   }
 
   throw new Error(`PDF soubor ${fileName} neobsahuje deterministicky čitelnou textovou vrstvu.`)
+}
+
+function isUsablePdfTextExtraction(text: string): boolean {
+  const sample = text.slice(0, 4000)
+  const printable = sample.replace(/[\p{L}\p{N}\p{P}\p{S}\s]/gu, '')
+  const printableRatio = sample.length === 0 ? 0 : 1 - (printable.length / sample.length)
+  const normalized = sample.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+
+  return printableRatio > 0.85
+    && (
+      normalized.includes('faktura')
+      || normalized.includes('danovy doklad')
+      || normalized.includes('celkem')
+      || normalized.includes('invoice')
+      || normalized.includes('dodavatel')
+    )
+}
+
+async function extractPdfTextWithNodePdftotextFallback(bytes: Uint8Array, fileName: string): Promise<string | undefined> {
+  if (!isNodeRuntime()) {
+    return undefined
+  }
+
+  try {
+    const dynamicImport = Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<unknown>
+    const fs = await dynamicImport('node:fs/promises') as {
+      writeFile(path: string, data: Uint8Array): Promise<void>
+      rm(path: string, options?: { force?: boolean }): Promise<void>
+    }
+    const os = await dynamicImport('node:os') as { tmpdir(): string }
+    const path = await dynamicImport('node:path') as { join(...parts: string[]): string }
+    const childProcess = await dynamicImport('node:child_process') as {
+      execFileFile?: never
+      execFile(command: string, args: string[], callback: (error: Error | null, stdout: string, stderr: string) => void): void
+    }
+    const tmpPath = path.join(os.tmpdir(), `hfc-pdf-text-${Date.now()}-${Math.random().toString(16).slice(2)}-${sanitizePdfTempFileName(fileName)}`)
+
+    await fs.writeFile(tmpPath, bytes)
+    try {
+      const stdout = await new Promise<string>((resolve, reject) => {
+        childProcess.execFile('/usr/bin/pdftotext', [tmpPath, '-'], (error, output) => {
+          if (error) {
+            reject(error)
+            return
+          }
+          resolve(output)
+        })
+      })
+      const normalized = stdout
+        .split(/\r\n?|\n/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join('\n')
+
+      return normalized || undefined
+    } finally {
+      await fs.rm(tmpPath, { force: true })
+    }
+  } catch {
+    return undefined
+  }
+}
+
+function isNodeRuntime(): boolean {
+  try {
+    const processLike = Function('return typeof process !== "undefined" ? process : undefined')() as { versions?: { node?: string } } | undefined
+    return Boolean(processLike?.versions?.node)
+  } catch {
+    return false
+  }
+}
+
+function sanitizePdfTempFileName(fileName: string): string {
+  return fileName.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 80) || 'document.pdf'
 }
 
 async function inflatePdfStream(bytes: Uint8Array): Promise<string | undefined> {
@@ -576,17 +659,16 @@ async function buildPdfTextExtractionContext(binary: string): Promise<PdfTextExt
   for (const object of objects) {
     const fontBlock = extractNamedDictionaryBlock(object.dictionary, '/Font')
 
-    if (!fontBlock) {
+    if (fontBlock) {
+      collectPdfFontResourceReferences(fontBlock, fontObjectIdsByResourceName)
       continue
     }
 
-    for (const match of fontBlock.matchAll(/\/([^\s/<>\[\]()%]+)\s+(\d+)\s+(\d+)\s+R/g)) {
-      const resourceName = match[1]?.trim()
-      const objectId = match[2] && match[3] ? `${match[2]} ${match[3]}` : undefined
+    const indirectFontReference = extractIndirectObjectReference(object.dictionary, '/Font')
+    const indirectFontObject = indirectFontReference ? objectsById.get(indirectFontReference) : undefined
 
-      if (resourceName && objectId) {
-        fontObjectIdsByResourceName.set(resourceName, objectId)
-      }
+    if (indirectFontObject) {
+      collectPdfFontResourceReferences(indirectFontObject.dictionary, fontObjectIdsByResourceName)
     }
   }
 
@@ -633,6 +715,20 @@ async function buildPdfTextExtractionContext(binary: string): Promise<PdfTextExt
     fallbackFontDecoder: fontDecodersByResourceName.size === 1
       ? Array.from(fontDecodersByResourceName.values())[0]
       : undefined
+  }
+}
+
+function collectPdfFontResourceReferences(
+  dictionary: string,
+  target: Map<string, string>
+): void {
+  for (const match of dictionary.matchAll(/\/([^\s/<>\[\]()%]+)\s+(\d+)\s+(\d+)\s+R/g)) {
+    const resourceName = match[1]?.trim()
+    const objectId = match[2] && match[3] ? `${match[2]} ${match[3]}` : undefined
+
+    if (resourceName && objectId) {
+      target.set(resourceName, objectId)
+    }
   }
 }
 
@@ -1207,13 +1303,14 @@ function decodePdfBytesWithFontMap(bytes: Uint8Array, fontDecoder: PdfFontDecode
     for (const codeHexLength of fontDecoder.codeHexLengths) {
       const candidate = hexValue.slice(index, index + codeHexLength)
       const mappedCharacter = fontDecoder.codePointMap.get(candidate)
+        ?? (candidate.length < codeHexLength ? fontDecoder.codePointMap.get(candidate.padStart(codeHexLength, '0')) : undefined)
 
       if (!mappedCharacter) {
         continue
       }
 
       decoded += mappedCharacter
-      index += codeHexLength
+      index += Math.min(codeHexLength, hexValue.length - index)
       mappedCharacters += 1
       matched = true
       break

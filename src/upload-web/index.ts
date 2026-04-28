@@ -78,6 +78,7 @@ export type ManualDocumentOverrideFieldKey =
   | 'supplierDic'
   | 'documentNumber'
   | 'issueDate'
+  | 'dueDate'
   | 'taxableDate'
   | 'currency'
   | 'totalAmountMinor'
@@ -93,6 +94,7 @@ export interface ManualDocumentOverrideValues {
   supplierDic?: string
   documentNumber?: string
   issueDate?: string
+  dueDate?: string
   taxableDate?: string
   currency?: string
   totalAmountMinor?: number

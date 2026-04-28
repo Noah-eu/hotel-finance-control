@@ -50,10 +50,31 @@ export function normalizeDocumentDate(value: string, fieldName: string): string 
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   }
 
+  const dayFirstDotShortYear = /^(\d{1,2})\.(\d{1,2})\.(\d{2})$/.exec(normalized)
+  if (dayFirstDotShortYear) {
+    const [, day, month, year] = dayFirstDotShortYear
+    return `20${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+
   const dayFirstSlash = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(normalized)
   if (dayFirstSlash) {
     const [, day, month, year] = dayFirstSlash
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+
+  const dayFirstSlashShortYear = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec(normalized)
+  if (dayFirstSlashShortYear) {
+    const [, day, month, year] = dayFirstSlashShortYear
+    return `20${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  }
+
+  const czechMonth = /^(\d{1,2})\.\s*([a-zá-ž]+)\s+(\d{4})$/iu.exec(normalized)
+  if (czechMonth) {
+    const [, day, monthName, year] = czechMonth
+    const month = czechMonthNumber(monthName)
+    if (month) {
+      return `${year}-${month}-${day.padStart(2, '0')}`
+    }
   }
 
   throw new Error(`${fieldName} has unsupported date format: ${value}`)
@@ -86,7 +107,10 @@ export function parseDocumentAmountMinor(value: string, fieldName: string): numb
     return Number.parseInt(normalized, 10) * 100
   }
 
-  const tolerant = normalized.replace(',', '.')
+  const withoutLocaleThousands = normalized.includes(',')
+    ? normalized.replace(/\./g, '')
+    : normalized
+  const tolerant = withoutLocaleThousands.replace(',', '.')
   if (!/^-?\d+(\.\d{1,2})?$/.test(tolerant)) {
     throw new Error(`${fieldName} has unsupported amount format: ${value}`)
   }
@@ -127,4 +151,34 @@ function normalizeDocumentCurrency(value: string): CurrencyCode {
   }
 
   return normalized as CurrencyCode
+}
+
+function czechMonthNumber(value: string): string | undefined {
+  const normalized = value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  const months: Record<string, string> = {
+    ledna: '01',
+    unor: '02',
+    unora: '02',
+    brezen: '03',
+    brezna: '03',
+    duben: '04',
+    dubna: '04',
+    kveten: '05',
+    kvetna: '05',
+    cerven: '06',
+    cervna: '06',
+    cervenec: '07',
+    cervence: '07',
+    srpen: '08',
+    srpna: '08',
+    zari: '09',
+    rijen: '10',
+    rijna: '10',
+    listopad: '11',
+    listopadu: '11',
+    prosinec: '12',
+    prosince: '12'
+  }
+
+  return months[normalized]
 }

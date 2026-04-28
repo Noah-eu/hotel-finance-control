@@ -369,6 +369,8 @@ function buildAutoDocumentValues(
     ?? optionalString(summary?.issueDate)
     ?? optionalString(summary?.paymentDate)
     ?? (summary?.documentKind === 'receipt' ? undefined : optionalString(extractedRecord?.occurredAt))
+  const dueDate = optionalString(data?.dueDate)
+    ?? optionalString(summary?.dueDate)
   const taxableDate = optionalString(data?.taxableDate)
     ?? optionalString(summary?.taxableDate)
   const currency = optionalString(extractedRecord?.currency)
@@ -402,6 +404,7 @@ function buildAutoDocumentValues(
     ...(supplierDic ? { supplierDic } : {}),
     ...(documentNumber ? { documentNumber } : {}),
     ...(issueDate ? { issueDate } : {}),
+    ...(dueDate ? { dueDate } : {}),
     ...(taxableDate ? { taxableDate } : {}),
     ...(currency ? { currency } : {}),
     ...(typeof totalAmountMinor === 'number' ? { totalAmountMinor } : {}),
