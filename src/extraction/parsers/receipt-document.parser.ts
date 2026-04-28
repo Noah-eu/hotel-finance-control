@@ -390,14 +390,20 @@ function extractReceiptDocumentFields(input: {
   })
   const ocrRawTextHeuristicFields = extractReceiptOcrRawTextFallbackFields(ocrExtraction.parsedFields?.rawText)
   const merged = mergeReceiptTextAndOcrFields(textFields, fieldProvenance, ocrExtraction, ocrRawTextHeuristicFields)
+  const trustedOcrRawText = ocrExtraction.parsedFields?.rawText && shouldTrustReceiptOcrRawTextForGenericTotal(ocrExtraction.parsedFields.rawText)
+    ? ocrExtraction.parsedFields.rawText
+    : undefined
+  const receiptEvidenceContent = input.content.trim().length > 0
+    ? input.content
+    : trustedOcrRawText ?? ''
   const vendorProfile = applyReceiptVendorProfile({
-    content: input.content,
+    content: receiptEvidenceContent,
     currentFields: merged.fields,
     ocrParsedFields: ocrExtraction.parsedFields
   })
   const vendorMergedFields = applyReceiptVatRecapFallback(
     applyReceiptVendorOverrides(merged.fields, vendorProfile),
-    input.content
+    receiptEvidenceContent
   )
   const vendorFieldProvenance = { ...merged.fieldProvenance }
 
@@ -822,7 +828,7 @@ function shouldTrustReceiptOcrRawTextForGenericTotal(rawText: string): boolean {
   const paymentMethod = extractReceiptPaymentMethod(lines)
   const hasAmount = /\d{1,6}(?:[ .]\d{3})*[.,]\d{2}\b/.test(normalized)
   const hasCurrency = /\b(czk|kč|eur|usd)\b/i.test(normalized)
-  const hasTotalMarker = lines.some((line) => /\b(total|celkem|zaplaceno|částka|castka)\b/i.test(line))
+  const hasTotalMarker = lines.some((line) => /\b(total|celkem|zaplaceno|částka|castka|k\s+platb[eě]|uhrazeno|prodej)\b/i.test(line))
   const printable = normalized.replace(/\s+/g, '')
   const suspiciousCharacters = printable.match(/[^\p{L}\p{N}.,:;+\-\/()&%@#*]/gu) ?? []
   const suspiciousRatio = printable.length > 0
@@ -1084,7 +1090,7 @@ function splitReceiptContentIntoCandidateSegments(content: string): {
     })
     .filter((segment) => {
       const fields = extractScanLikeReceiptHeuristicFields(segment.content)
-      return Boolean(fields.totalRaw || fields.purchaseDateRaw || fields.merchant)
+      return Boolean(fields.totalRaw || fields.purchaseDateRaw || fields.receiptNumber)
     })
 
   if (segments.length < 2) {
@@ -1103,7 +1109,7 @@ function splitReceiptContentIntoCandidateSegments(content: string): {
 
 function looksLikeScanReceiptText(content: string): boolean {
   const normalized = content.toLowerCase()
-  return /(tesco|potraviny|datart|účtenka|uctenka|fiskalni|fiskální|pokladna|hotovost|karta|celkem)/.test(normalized)
+  return /(tesco|potraviny|lidl|bauhaus|locksystems|drogerie|datart|stvrzenka|daňový|danovy|účtenka|uctenka|fiskalni|fiskální|pokladna|hotovost|karta|celkem|k\s+platb[eě]|zaplacen[aá]\s+[cč]a?stka)/.test(normalized)
     || countDateMatches(content) > 0
 }
 
@@ -1118,16 +1124,16 @@ function isLikelyReceiptMerchantHeader(line: string): boolean {
     return false
   }
 
+  if (/^(tesco|potraviny|datart|hp\s*tronic|albert|billa|lidl|kaufland|penny|globus|rossmann|dm|bauhaus|locksystems)\b/i.test(normalized)) {
+    return true
+  }
+
   if (/[:]/.test(normalized)) {
     return false
   }
 
-  if (/\b(total|celkem|zaplaceno|dph|vat|hotovost|karta|datum|date|id\s*dokladu|visa|mastercard|maestro|pin\s*ok|prodej|payment|card)\b/i.test(normalized)) {
+  if (/\b(total|celkem|zaplaceno|dph|vat|hotovost|karta|datum|date|id\s*dokladu|visa|mastercard|maestro|pin\s*ok|prodej|payment|card|cislo|číslo|nazev|název|zbozi|zboží|cena|pocet|počet)\b/i.test(normalized)) {
     return false
-  }
-
-  if (/^(tesco|potraviny|datart|hp\s*tronic|albert|billa|lidl|kaufland|penny|globus|rossmann|dm)\b/i.test(normalized)) {
-    return true
   }
 
   if (/[0-9]/.test(normalized)) {
@@ -1262,31 +1268,116 @@ function extractReceiptVatRecapFromLines(
       continue
     }
 
-    const expectedVatMinor = calculateStandardCzechVatFromGrossMinor(knownTotalMinor)
-    const explicitVat = amountCandidates.find((candidate) => Math.abs(candidate.amountMinor - expectedVatMinor) <= 1)
+    const vatSelection = selectReceiptVatRecapVatAndBase(amountCandidates, knownTotalMinor)
     const hasRateEvidence = hasReceiptVatRateEvidence(joinedWindow)
 
-    if (!explicitVat && !hasRateEvidence) {
+    if (!vatSelection && !hasRateEvidence) {
       continue
     }
 
-    const vatAmountMinor = explicitVat?.amountMinor ?? expectedVatMinor
-    const baseAmountMinor = knownTotalMinor - vatAmountMinor
+    const vatAmountMinor = vatSelection?.vatAmountMinor ?? calculateStandardCzechVatFromGrossMinor(knownTotalMinor)
+    const baseAmountMinor = vatSelection?.baseAmountMinor ?? knownTotalMinor - vatAmountMinor
 
     if (baseAmountMinor <= 0) {
       continue
     }
 
-    const explicitBase = amountCandidates.find((candidate) => Math.abs(candidate.amountMinor - baseAmountMinor) <= 1)
-
     return {
       totalRaw: recapTotal?.raw ?? formatReceiptCzkMinor(knownTotalMinor),
-      vatBaseRaw: explicitBase || hasRateEvidence ? formatReceiptCzkMinor(baseAmountMinor) : undefined,
-      vatRaw: explicitVat?.raw ?? formatReceiptCzkMinor(vatAmountMinor)
+      vatBaseRaw: vatSelection?.hasExplicitBase || hasRateEvidence ? formatReceiptCzkMinor(baseAmountMinor) : undefined,
+      vatRaw: vatSelection?.vatRaw ?? formatReceiptCzkMinor(vatAmountMinor)
     }
   }
 
   return {}
+}
+
+function selectReceiptVatRecapVatAndBase(
+  candidates: Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }>,
+  knownTotalMinor: number
+): { vatAmountMinor: number; baseAmountMinor: number; vatRaw: string; hasExplicitBase: boolean } | undefined {
+  const expectedVatMinor = calculateStandardCzechVatFromGrossMinor(knownTotalMinor)
+  const expectedVat = candidates.find((candidate) => Math.abs(candidate.amountMinor - expectedVatMinor) <= 1)
+
+  if (expectedVat) {
+    const baseAmountMinor = knownTotalMinor - expectedVat.amountMinor
+    return {
+      vatAmountMinor: expectedVat.amountMinor,
+      baseAmountMinor,
+      vatRaw: expectedVat.raw,
+      hasExplicitBase: candidates.some((candidate) => Math.abs(candidate.amountMinor - baseAmountMinor) <= 1)
+    }
+  }
+
+  const pairSelection = selectReceiptVatRecapExplicitPair(candidates, knownTotalMinor)
+  if (pairSelection) {
+    return pairSelection
+  }
+
+  return undefined
+}
+
+function selectReceiptVatRecapExplicitPair(
+  candidates: Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }>,
+  knownTotalMinor: number
+): { vatAmountMinor: number; baseAmountMinor: number; vatRaw: string; hasExplicitBase: boolean } | undefined {
+  const candidateRows = [
+    ...new Set(candidates.map((candidate) => candidate.lineIndex))
+  ].map((lineIndex) => candidates.filter((candidate) => candidate.lineIndex === lineIndex))
+
+  for (const row of candidateRows) {
+    const rowSelection = selectReceiptVatRecapExplicitPairFromCandidates(row, knownTotalMinor)
+    if (rowSelection) {
+      return rowSelection
+    }
+  }
+
+  return selectReceiptVatRecapExplicitPairFromCandidates(candidates, knownTotalMinor)
+}
+
+function selectReceiptVatRecapExplicitPairFromCandidates(
+  candidates: Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }>,
+  knownTotalMinor: number
+): { vatAmountMinor: number; baseAmountMinor: number; vatRaw: string; hasExplicitBase: boolean } | undefined {
+  const grossCandidates = candidates
+    .filter((candidate) => candidate.amountMinor >= 10_000 && candidate.amountMinor <= knownTotalMinor && knownTotalMinor - candidate.amountMinor <= 150)
+    .sort((left, right) => right.amountMinor - left.amountMinor)
+
+  for (const grossCandidate of grossCandidates) {
+    const selection = selectReceiptVatBasePairForGross(candidates, grossCandidate.amountMinor)
+    if (selection) {
+      return selection
+    }
+  }
+
+  return selectReceiptVatBasePairForGross(candidates, knownTotalMinor)
+}
+
+function selectReceiptVatBasePairForGross(
+  candidates: Array<{ raw: string; amountMinor: number; line: string; lineIndex: number }>,
+  grossAmountMinor: number
+): { vatAmountMinor: number; baseAmountMinor: number; vatRaw: string; hasExplicitBase: boolean } | undefined {
+  const vatCandidates = candidates
+    .filter((candidate) => candidate.amountMinor > 0 && candidate.amountMinor <= Math.round(grossAmountMinor * 0.25))
+    .sort((left, right) => right.amountMinor - left.amountMinor)
+
+  for (const vatCandidate of vatCandidates) {
+    const baseAmountMinor = grossAmountMinor - vatCandidate.amountMinor
+    const explicitBase = candidates.find((candidate) => Math.abs(candidate.amountMinor - baseAmountMinor) <= 1)
+
+    if (!explicitBase) {
+      continue
+    }
+
+    return {
+      vatAmountMinor: vatCandidate.amountMinor,
+      baseAmountMinor: explicitBase.amountMinor,
+      vatRaw: vatCandidate.raw,
+      hasExplicitBase: true
+    }
+  }
+
+  return undefined
 }
 
 function collectReceiptVatRecapWindows(lines: string[]): string[][] {
@@ -1323,7 +1414,7 @@ function isStrongReceiptVatAnchorLine(line: string): boolean {
 function isReceiptVatRecapWindow(lines: string[]): boolean {
   const normalized = normalizeReceiptVatRecapText(lines.join(' '))
   const compact = normalized.replace(/\s+/g, '')
-  const hasVatAnchor = /(?:\bdph\b|\bvat\b|dptj|dpri|dpfi|dpj|dpf)/.test(compact)
+  const hasVatAnchor = /(?:dph|vat|dptj|dpri|dpfi|dpj|dpf)/.test(compact)
     || (/saz/.test(compact) && hasReceiptVatRateEvidence(normalized))
   const hasRecapStructure = /saz|zaklad|z[aá]klad|celkem|ce1kem|ilerkem|base|total/.test(normalized)
 
@@ -1486,7 +1577,17 @@ function normalizeReceiptVatRecapText(value: string): string {
 }
 
 function extractReceiptMerchantFromLines(lines: string[]): string | undefined {
-  for (const line of lines.slice(0, 6)) {
+  const topLines = lines.slice(0, 8)
+  const legalName = topLines.find((line) =>
+    isLikelyReceiptMerchantHeader(line)
+    && /\b(s\.?\s*r\.?\s*o\.?|k\.?\s*s\.?|a\.?\s*s\.?|stores|drogerie\s+markt)\b/i.test(line)
+  )
+
+  if (legalName) {
+    return legalName
+  }
+
+  for (const line of topLines) {
     if (isLikelyReceiptMerchantHeader(line)) {
       return line
     }
@@ -1510,15 +1611,24 @@ function extractReceiptDateFromLines(lines: string[]): string | undefined {
 }
 
 function extractReceiptTotalFromLines(lines: string[]): string | undefined {
-  const amountCandidates: Array<{ amountMinor: number; raw: string; score: number; lineIndex: number }> = []
+  const amountCandidates: Array<{ amountMinor: number; raw: string; score: number; lineIndex: number; matchIndex: number }> = []
 
   for (const [lineIndex, line] of lines.entries()) {
     const lineScore = scoreReceiptTotalLine(line)
-    const matches = Array.from(line.matchAll(/-?\d{1,6}(?:[ .]\d{3})*(?:[.,]\d{2})?/g))
+    if (lineScore <= -80) {
+      continue
+    }
 
-    for (const match of matches) {
+    const normalizedLine = normalizeReceiptScanTotalLine(line)
+    const matches = Array.from(normalizedLine.matchAll(/-?\d{1,6}(?:[ .]\d{3})*(?:[.,]\d{2})?/g))
+
+    for (const [matchIndex, match] of matches.entries()) {
       const rawAmount = match[0]?.trim()
       if (!rawAmount) {
+        continue
+      }
+
+      if (shouldRejectReceiptScanTotalCandidate(rawAmount, normalizedLine, match.index ?? 0, lineScore)) {
         continue
       }
 
@@ -1532,6 +1642,10 @@ function extractReceiptTotalFromLines(lines: string[]): string | undefined {
       }
 
       const hasDecimal = /[.,]\d{2}$/.test(normalized)
+      if (!hasDecimal && !hasReceiptScanTotalOrPaymentAnchor(normalizedLine)) {
+        continue
+      }
+
       const moneyCandidate = hasDecimal
         ? `${normalized} CZK`
         : `${normalized},00 CZK`
@@ -1549,7 +1663,8 @@ function extractReceiptTotalFromLines(lines: string[]): string | undefined {
         amountMinor: parsed.amountMinor,
         raw: moneyCandidate,
         score: lineScore + Math.min(3, String(parsed.amountMinor).length),
-        lineIndex
+        lineIndex,
+        matchIndex
       })
     }
   }
@@ -1567,7 +1682,11 @@ function extractReceiptTotalFromLines(lines: string[]): string | undefined {
       return right.lineIndex - left.lineIndex
     }
 
-    return right.amountMinor - left.amountMinor
+    if (right.amountMinor !== left.amountMinor) {
+      return right.amountMinor - left.amountMinor
+    }
+
+    return left.matchIndex - right.matchIndex
   })
 
   return amountCandidates[0]?.raw
@@ -1575,11 +1694,16 @@ function extractReceiptTotalFromLines(lines: string[]): string | undefined {
 
 function extractReceiptReferenceFromLines(lines: string[]): string | undefined {
   const patterns = [
-    /(?:id\s*dokladu|č(?:íslo)?\s*dokladu|účtenka\s*č?|uctenka\s*c?)\s*[:#-]?\s*([A-Z0-9/-]{6,})/iu,
+    /(?:stvrzenka\s*-?\s*(?:danovy|daňový)\s*doklad|daňový\s*doklad|danovy\s*doklad)\s*[:#-]?\s*([A-Z0-9/-]{4,})/iu,
+    /(?:eet\s*[:#-]?\s*)?(?:pokladna\s*\/\s*doklad|id\s*dokladu|č(?:íslo)?\s*dokladu|cislo\s*dokladu|doklad\s*č?|doklad\s*c?|účtenka\s*č(?:íslo)?|uctenka\s*c(?:islo)?|receipt\s*(?:no|number))\s*[:#-]?\s*([A-Z0-9/-]{4,})/iu,
     /\b([0-9]{12,})\b/
   ]
 
   for (const line of lines) {
+    if (/\b(i[čc]o|di[čc]|tax\s*id|tel|telefon|phone)\b/i.test(line)) {
+      continue
+    }
+
     for (const pattern of patterns) {
       const match = line.match(pattern)
       if (match?.[1]) {
@@ -1592,21 +1716,96 @@ function extractReceiptReferenceFromLines(lines: string[]): string | undefined {
 }
 
 function scoreReceiptTotalLine(line: string): number {
+  const normalized = normalizeReceiptTotalSignalText(line)
   let score = 0
 
-  if (/\b(total|celkem|zaplaceno|částka|castka)\b/i.test(line)) {
-    score += 6
+  if (/\b(k\s*platbe|k\s*platbě|celkova\s+zaplacena\s+castka|celková\s+zaplacená\s+částka)\b/.test(normalized)) {
+    score += 120
   }
 
-  if (/\b(karta|kartou|hotovost|platba|payment|cash)\b/i.test(line)) {
-    score += 7
+  if (/\b(total|celkem|zaplaceno|castka|částka|uhrazeno)\b/.test(normalized)) {
+    score += 95
   }
 
-  if (/\b(dph|sazba|základ|zaklad|mezisoucet|mezisoučet|subtotal|vraceno|sleva|discount|body|points|věrnost|vernost|bonus)\b/i.test(line)) {
-    score -= 10
+  if (/\b(prodej|karta|kartou|platebni\s+karta|platební\s+karta|visa|mastercard|maestro|platba|payment|card)\b/.test(normalized)) {
+    score += 35
+  }
+
+  if (/\b(hotovost|cash)\b/.test(normalized)) {
+    score += 8
+  }
+
+  if (/\b(vraceno|vráceno|returned|nazp[eě]t|zpet|zpět)\b/.test(normalized)) {
+    score -= 160
+  }
+
+  if (/\b(dph|sazba|základ|zaklad|bez\s+dph|mezisoucet|mezisoučet|subtotal|sleva|discount|body|points|věrnost|vernost|bonus|obrat\s+netto|suma\s+dph)\b/.test(normalized)) {
+    score -= 130
+  }
+
+  if (/\b(i[čc]o|di[čc]|dic|uid|tel|telefon|phone|psc|psč)\b/.test(normalized)) {
+    score -= 120
+  }
+
+  if (/\b(cislo\s+nazev\s+zbozi|číslo\s+název\s+zboží|pocet|počet|mnozstvi|množství|ks|kus)\b/.test(normalized)) {
+    score -= 120
   }
 
   return score
+}
+
+function normalizeReceiptScanTotalLine(line: string): string {
+  return normalizeReceiptScanLine(line)
+    .replace(/\b(KČ|Kč|KC|Kc)\b/g, 'CZK')
+}
+
+function normalizeReceiptTotalSignalText(line: string): string {
+  return normalizeReceiptScanTotalLine(line)
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\bc\s+e\s+l\s+k\s+e\s+m\b/g, 'celkem')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function hasReceiptScanTotalOrPaymentAnchor(line: string): boolean {
+  const normalizedLine = normalizeReceiptTotalSignalText(line)
+
+  return /\b(total|celkem|zaplaceno|castka|částka|uhrazeno|k\s*platbe|k\s*platbě|prodej|karta|kartou|visa|mastercard|maestro|platba|payment|card|hotovost|cash|czk)\b/.test(normalizedLine)
+}
+
+function shouldRejectReceiptScanTotalCandidate(
+  rawAmount: string,
+  line: string,
+  matchIndex: number,
+  lineScore: number
+): boolean {
+  const normalizedLine = normalizeReceiptTotalSignalText(line)
+  const matchEnd = matchIndex + rawAmount.length
+  const context = line.slice(Math.max(0, matchIndex - 8), Math.min(line.length, matchEnd + 8))
+
+  if (/\d{1,2}[./-]\d{1,2}[./-]\d{2,4}/.test(context) || /\d{1,2}:\d{2}(?::\d{2})?/.test(context)) {
+    return true
+  }
+
+  if (/\b(i[čc]o|di[čc]|dic|uid|tel|telefon|phone|psc|psč)\b/.test(normalizedLine)) {
+    return true
+  }
+
+  if (/\b(vraceno|vráceno|returned|nazp[eě]t|zpet|zpět)\b/.test(normalizedLine)) {
+    return true
+  }
+
+  if (/\b(obrat\s+netto|suma\s+dph|zaklad\s+dph|základ\s+dph|dph\s*21|sazba\s+dph|bez\s+dph)\b/.test(normalizedLine)) {
+    return true
+  }
+
+  if (/\b(hotovost|cash)\b/.test(normalizedLine) && !/\b(total|celkem|zaplaceno|castka|částka|uhrazeno|k\s*platbe|k\s*platbě)\b/.test(normalizedLine) && lineScore < 40) {
+    return true
+  }
+
+  return false
 }
 
 function resolveFallbackReceiptPurchaseDate(content: string, extractedAt: string): string {

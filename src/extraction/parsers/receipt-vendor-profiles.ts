@@ -126,11 +126,23 @@ export function detectReceiptVendorSignals(input: string | { content: string; no
     signals.push('vendor:potraviny')
   }
 
+  if (containsLidlSignal(normalized)) {
+    signals.push('vendor:lidl')
+  }
+
+  if (containsBauhausSignal(normalized)) {
+    signals.push('vendor:bauhaus')
+  }
+
+  if (containsLocksystemsSignal(normalized)) {
+    signals.push('vendor:locksystems')
+  }
+
   if (containsDmSignal(normalized)) {
     signals.push('vendor:dm')
   }
 
-  if (containsHandwrittenOrKeySignal(normalized)) {
+  if (containsHandwrittenOrKeySignal(normalized) && !containsLocksystemsSignal(normalized)) {
     signals.push('profile:handwritten_key')
   }
 
@@ -143,7 +155,7 @@ export function applyReceiptVendorProfile(input: ReceiptVendorProfileInput): Rec
   const note = input.currentFields.note ?? input.ocrParsedFields?.note
   const normalized = normalizeReceiptVendorText([input.content, note ?? ''].filter(Boolean).join('\n'))
 
-  if (containsHandwrittenOrKeySignal(normalized)) {
+  if (containsHandwrittenOrKeySignal(normalized) && !containsLocksystemsSignal(normalized)) {
     return buildHandwrittenKeyProfile(preNormalized, input, detectReceiptVendorSignals({ content: input.content, note }))
   }
 
@@ -327,7 +339,7 @@ function buildNamedMerchantProfile(
     ? findAnchoredReceiptTimestampDate(candidateLines) ?? findAnchoredReceiptTimestampDate(lines) ?? findReceiptDateCandidate(candidateLines) ?? findReceiptDateCandidate(lines)
     : findReceiptDateCandidate(candidateLines) ?? findReceiptDateCandidate(lines)
   const totalRaw = key === 'tesco'
-    ? findTescoPrimaryAmountRaw(preNormalized)
+    ? findTescoPrimaryAmountRaw(preNormalized) ?? findPreferredCzkTotal(candidateLines) ?? findPreferredCzkTotal(lines)
     : findPreferredCzkTotal(candidateLines) ?? findPreferredCzkTotal(lines)
   const merchant = candidateLines.find((line) => key === 'tesco'
     ? /\btesco\b/i.test(line)
@@ -359,6 +371,7 @@ function buildDmProfile(
   const lines = preNormalized.normalizedLines
   const candidateLines = preNormalized.reconstructedReceiptLines
   const primaryAmount = findDmPrimaryAmount(preNormalized)
+  const totalRaw = primaryAmount?.raw ?? input.currentFields.totalRaw
   const purchaseDateRaw = findAnchoredReceiptTimestampDate(candidateLines)
     ?? findAnchoredReceiptTimestampDate(lines)
     ?? findReceiptDateCandidate(candidateLines)
@@ -379,7 +392,7 @@ function buildDmProfile(
     detectionSignals,
     merchant: 'dm drogerie markt s.r.o.',
     ...(purchaseDateRaw ? { purchaseDateRaw } : {}),
-    ...(primaryAmount ? { totalRaw: primaryAmount.raw } : {}),
+    ...(totalRaw ? { totalRaw } : {}),
     ...(paymentMethod ? { paymentMethod } : {}),
     ...(findReceiptReferenceCandidate(candidateLines) || findReceiptReferenceCandidate(lines)
       ? { receiptNumber: findReceiptReferenceCandidate(candidateLines) ?? findReceiptReferenceCandidate(lines) }
@@ -435,7 +448,7 @@ function findDmPrimaryAmount(preNormalized: ReceiptOcrPreNormalization): {
   supplementaryAmounts: ReceiptVendorProfileSupplementaryAmount[]
 } | undefined {
   const totalAnchorPattern = /\b(celkem|total|k platbe|zaplaceno|uhrazeno)\b/
-  const rejectPattern = /\b(body|points|dph|vat|zaklad|base|sleva|discount|mezisoucet|subtotal|bonus|ean|mnozstvi|cena|ks|kus)\b/
+  const rejectPattern = /\b(body|points|dph|vat|zaklad|base|sleva|discount|mezisoucet|subtotal|bonus|ean|mnozstvi|cena|ks|kus|hotovost|cash|vraceno|vráceno|returned)\b/
   const anchoredSearch = collectAnchoredReceiptAmountCandidatesWithReconstruction(preNormalized, {
     paymentAnchorPattern: /\b(visa|mastercard|maestro|karta|card)\b/,
     totalAnchorPattern,
@@ -617,7 +630,7 @@ function findReceiptDateCandidate(lines: string[]): string | undefined {
 
 function findPreferredCzkTotal(lines: string[]): string | undefined {
   const candidates = collectReceiptAmountCandidates(lines)
-    .filter((candidate) => candidate.currency === 'CZK')
+    .filter((candidate) => candidate.currency === 'CZK' && candidate.amountMinor > 0)
     .map((candidate) => ({
       ...candidate,
       score: scoreNamedMerchantAmountCandidate(normalizeReceiptVendorText(candidate.line), candidate)
@@ -778,7 +791,7 @@ function collectAnchoredReceiptAmountCandidates(
     const normalizedLine = normalizeReceiptVendorText(line)
     const footerSignalText = normalizeReceiptFooterSignalText(line)
 
-    if (!options.paymentAnchorPattern.test(normalizedLine) && !containsReceiptPaymentAnchorSignal(footerSignalText)) {
+    if ((!options.paymentAnchorPattern.test(normalizedLine) && !containsReceiptPaymentAnchorSignal(footerSignalText)) || options.rejectPattern.test(normalizedLine)) {
       continue
     }
 
@@ -1740,12 +1753,24 @@ function containsPotravinySignal(normalized: string): boolean {
   return /\bpotraviny\b/.test(normalized)
 }
 
+function containsLidlSignal(normalized: string): boolean {
+  return /\blidl\b/.test(normalized)
+}
+
+function containsBauhausSignal(normalized: string): boolean {
+  return /\bbauhaus\b/.test(normalized)
+}
+
+function containsLocksystemsSignal(normalized: string): boolean {
+  return /\blocksystems\b/.test(normalized)
+}
+
 function containsDmSignal(normalized: string): boolean {
   return /\bdm\b/.test(normalized) || normalized.includes('dmdrogeriemarkt')
 }
 
 function containsHandwrittenOrKeySignal(normalized: string): boolean {
-  return /(handwritten|rucnepsany|rucnepsana|rucnipismo|klic|klice|key|keys|zamek|lock)/.test(normalized)
+  return /\b(handwritten|rucnepsany|rucnepsana|rucnipismo|klic|klice|key|keys|zamek|zamky|zamecnictvi|lock|locks)\b/.test(normalized)
 }
 
 function normalizeReceiptVendorText(value: string): string {
