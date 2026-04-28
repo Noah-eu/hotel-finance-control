@@ -233,6 +233,7 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
     const buffer = await file.arrayBuffer()
     const bytes = new Uint8Array(buffer)
     const binaryContentBase64 = arrayBufferToBase64(buffer)
+    const normalizedMimeType = normalizeMimeType(file.type)
 
     if (looksLikePdfUpload(file.name, bytes)) {
       try {
@@ -277,16 +278,35 @@ async function readUploadedFileContent(file: BrowserRuntimeInputFile): Promise<{
       }
     }
 
+    if (looksLikeImageUpload(file.name, normalizedMimeType, bytes)) {
+      return {
+        content: '',
+        binaryContentBase64,
+        contentFormat: 'binary',
+        textExtractionStatus: 'not-attempted',
+        detectedSignatures: []
+      }
+    }
+
     return {
       content: decodeUploadedTextBytes(bytes),
       binaryContentBase64,
-      contentFormat: inferUploadedBytesContentFormat(file.name, normalizeMimeType(file.type)),
+      contentFormat: inferUploadedBytesContentFormat(file.name, normalizedMimeType),
       textExtractionStatus: 'extracted',
       detectedSignatures: []
     }
   }
 
   if (typeof file.text === 'function') {
+    if (looksLikeImageUpload(file.name, normalizeMimeType(file.type))) {
+      return {
+        content: '',
+        contentFormat: 'binary',
+        textExtractionStatus: 'not-attempted',
+        detectedSignatures: []
+      }
+    }
+
     return {
       content: await file.text(),
       contentFormat: inferContentFormatFromFileName(file.name),
@@ -433,6 +453,31 @@ function looksLikePdfUpload(fileName: string, bytes: Uint8Array): boolean {
       && bytes[1] === 0x50
       && bytes[2] === 0x44
       && bytes[3] === 0x46)
+}
+
+function looksLikeImageUpload(fileName: string, mimeType: string | undefined, bytes?: Uint8Array): boolean {
+  const normalizedFileName = fileName.toLowerCase()
+  const normalizedMime = mimeType?.toLowerCase()
+
+  return normalizedMime?.startsWith('image/') === true
+    || /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i.test(normalizedFileName)
+    || looksLikeImageBytes(bytes)
+}
+
+function looksLikeImageBytes(bytes: Uint8Array | undefined): boolean {
+  if (!bytes || bytes.length < 4) {
+    return false
+  }
+
+  return (
+    bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+  ) || (
+    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+  ) || (
+    bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  )
 }
 
 function inferContentFormatFromFileName(fileName: string): 'text' | 'pdf-text' | 'binary-workbook' | 'binary' {

@@ -960,6 +960,28 @@ function classifyUploadedMonthlyFile(
     }
   }
 
+  if (shouldGuardImageReceiptWithoutOcr(file, classification.decision)) {
+    const decision = buildImageReceiptOcrRequiredGuardDecision(classification.decision)
+
+    return {
+      fileRoute: {
+        fileName: file.name.trim(),
+        uploadedAt: file.uploadedAt,
+        status: 'unsupported',
+        intakeStatus: 'unsupported',
+        sourceSystem: classification.sourceSystem,
+        documentType: classification.documentType,
+        classificationBasis: classification.classificationBasis,
+        role: classification.role,
+        extractedCount: 0,
+        extractedRecordIds: [],
+        warnings: [],
+        reason: decision.ingestionReason,
+        decision
+      }
+    }
+  }
+
   if (classification.decision.resolvedBucket === 'unsupported' && classification.decision.ingestionBranch === 'ocr-required') {
     return {
       fileRoute: {
@@ -1044,6 +1066,36 @@ function classifyUploadedMonthlyFile(
       warnings: [],
       decision: classification.decision
     }
+  }
+}
+
+function shouldGuardImageReceiptWithoutOcr(
+  file: UploadedMonthlyFile,
+  decision: UploadedMonthlyFileDecision
+): boolean {
+  return decision.capability.profile === 'image_receipt_like'
+    && decision.ingestionBranch === 'ocr-required'
+    && !hasTrustedOcrOrVisionRawText(file.ocrOrVisionFallback)
+}
+
+function hasTrustedOcrOrVisionRawText(
+  fallback: DeterministicDocumentOcrOrVisionFallbackPayload | undefined
+): boolean {
+  return typeof fallback?.parsedFields?.rawText === 'string'
+    && fallback.parsedFields.rawText.trim().length > 0
+}
+
+function buildImageReceiptOcrRequiredGuardDecision(
+  decision: UploadedMonthlyFileDecision
+): UploadedMonthlyFileDecision {
+  return {
+    ...decision,
+    parserSupported: false,
+    matchedRules: Array.from(new Set([
+      ...decision.matchedRules.filter((rule) => rule !== 'ocr-fallback-parser-supported'),
+      'capability-ocr-required'
+    ])),
+    resolvedBucket: 'unsupported'
   }
 }
 
